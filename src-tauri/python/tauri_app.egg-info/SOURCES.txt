@@ -1,0 +1,9 @@
+pyproject.toml
+python/tauri_app/__init__.py
+python/tauri_app/__main__.py
+python/tauri_app.egg-info/PKG-INFO
+python/tauri_app.egg-info/SOURCES.txt
+python/tauri_app.egg-info/dependency_links.txt
+python/tauri_app.egg-info/entry_points.txt
+python/tauri_app.egg-info/requires.txt
+python/tauri_app.egg-info/top_level.txt
