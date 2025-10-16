@@ -4,8 +4,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-sidebar";
-import { useChat } from "@/app/contexts/chat-context";
-import ChatPanel from "@/app/components/ChatPanel";
+import { useChat } from "@/contexts/chat-context";
+import ChatPanel from "@/components/ChatPanel";
 
 export default function Home() {
   const { chatTitle } = useChat();

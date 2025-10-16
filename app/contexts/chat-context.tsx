@@ -22,7 +22,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const { models, selectedModel, setSelectedModel, modelInfoMap, getModelInfo } = useModels();
+  const { models, selectedModel, setSelectedModel } = useModels();
 
   const operations = useChatOperations({
     allChatsData,
@@ -98,8 +98,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       selectedModel,
       setSelectedModel,
       models,
-      modelInfoMap,
-      getModelInfo,
     }),
     [
       currentChatId,
@@ -110,8 +108,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       operations,
       selectedModel,
       models,
-      modelInfoMap,
-      getModelInfo,
     ]
   );
 

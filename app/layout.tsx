@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import "katex/dist/katex.min.css"; // 📚 KaTeX styles for math rendering
-import { ThemeProvider } from "@/app/contexts/theme-context";
-import { AuthProvider } from "@/app/contexts/auth-context";
+import "katex/dist/katex.min.css";
+import { ThemeProvider } from "@/contexts/theme-context";
 import { Suspense } from "react";
 
 const geistSans = Geist({
@@ -30,11 +29,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
-          <AuthProvider>
-            <Suspense fallback={<></>}>
-              {children}
-            </Suspense>
-          </AuthProvider>
+          <Suspense fallback={<></>}>
+            {children}
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

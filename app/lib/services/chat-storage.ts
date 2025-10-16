@@ -1,4 +1,4 @@
-import { AllChatsData, ChatData } from '@/lib/types/chat';
+import { AllChatsData } from '@/lib/types/chat';
 import { debounce } from 'lodash';
 
 const STORAGE_KEY = 'chat-storage';

@@ -1,9 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MoreVertical, PlusIcon, Pencil, Trash2, Settings, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { backendApiService } from "@/lib/services/backend-api";
+import { MoreVertical, PlusIcon, Pencil, Trash2, Settings } from "lucide-react";
 
 import {
   Sidebar,
@@ -15,7 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import clsx from "clsx";
-import { useChat } from "@/app/contexts/chat-context";
+import { useChat } from "@/contexts/chat-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,9 +22,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useEffect, useState } from "react";
-import { SettingsDialog } from "@/components/settings-dialog";
-import { useUserProfile } from "@/lib/hooks/useUserProfile"
 
 /**
  * Sidebar that shows all stored chats and offers
@@ -35,8 +30,6 @@ import { useUserProfile } from "@/lib/hooks/useUserProfile"
 export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
-  const router = useRouter();
-  const { profile: userProfile, loading: profileLoading } = useUserProfile();
   const {
     chatId: currentChatId,
     visualChatId,
@@ -49,12 +42,6 @@ export function AppSidebar({
    } = useChat();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
-
-  const handleSignOut = async () => {
-    await backendApiService.logout();
-    window.location.href = '/login';
-  };
 
   const handleRenameConfirm = async (id: string) => {
     if (editTitle.trim()) {
@@ -206,19 +193,7 @@ export function AppSidebar({
       <SidebarFooter className="p-4">
         <div className="flex justify-between items-center w-full">
           <span className="flex min-w-0 items-center gap-3">
-            <img 
-              src={userProfile?.avatar_url || "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"} 
-              className="size-10 rounded-full" 
-              alt="Profile" 
-            />
-            <span className="min-w-0">
-              <span className="block truncate text-sm/5 font-medium text-zinc-950 dark:text-white">
-                {userProfile?.name || userProfile?.email?.split('@')[0] || 'Loading...'}
-              </span>
-              <span className="block truncate text-xs/5 font-normal text-zinc-500 dark:text-zinc-400">
-                {userProfile?.email || 'Loading...'}
-              </span>
-            </span>
+            Hi
           </span>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -232,21 +207,13 @@ export function AppSidebar({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-                  <Settings className="mr-2 size-4" />
-                  Settings
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
-                  <LogOut className="mr-2 size-4" />
-                  Sign out
-                </DropdownMenuItem>
+                {/* Auth removed; no sign-out */}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </SidebarFooter>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </Sidebar>
   );
 }

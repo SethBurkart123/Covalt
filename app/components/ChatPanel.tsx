@@ -2,12 +2,12 @@
 
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import ChatInputForm from "@/app/components/ChatInputForm";
-import { useChat } from "@/app/contexts/chat-context";
-import { useChatInput } from "@/app/components/Chat";
+import ChatInputForm from "@/components/ChatInputForm";
+import { useChat } from "@/contexts/chat-context";
+import { useChatInput } from "@/components/Chat";
 
 // Keep Chat itself dynamically imported as in the page to avoid SSR issues
-const Chat = dynamic(() => import("@/app/components/Chat"), { ssr: false });
+const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
 
 /**
  * ChatPanel isolates the frequently-updating streaming state
@@ -15,7 +15,7 @@ const Chat = dynamic(() => import("@/app/components/Chat"), { ssr: false });
  * on every token.
  */
 export default function ChatPanel() {
-  const { selectedModel, setSelectedModel, models, getModelInfo } = useChat();
+  const { selectedModel, setSelectedModel, models } = useChat();
 
   // Own streaming + input state locally inside this subtree
   const { input, handleInputChange, handleSubmit, isLoading, inputRef, messages } = useChatInput();
@@ -36,7 +36,8 @@ export default function ChatPanel() {
   }, []);
 
   // Stable getModelName so it doesn't force re-renders
-  const getModelName = useCallback((id: string) => getModelInfo(id)?.name || id, [getModelInfo]);
+  // Model IDs are shown directly; no extra metadata
+  const getModelName = useCallback((id: string) => id, []);
 
   return (
     <>
@@ -62,4 +63,3 @@ export default function ChatPanel() {
     </>
   );
 }
-

@@ -21,8 +21,6 @@ export interface AllChatsData {
   };
 }
 
-import type { ModelInfo } from '@/lib/hooks/useModels';
-
 export interface ChatContextType {
   chatId: string;
   visualChatId: string;
@@ -40,6 +38,4 @@ export interface ChatContextType {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: string[];
-  modelInfoMap: Map<string, ModelInfo>;
-  getModelInfo: (modelId: string) => ModelInfo | undefined;
 }

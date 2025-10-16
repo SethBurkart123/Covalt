@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Message } from 'ai';
-import { AllChatsData, ChatData, ThinkingTime } from '@/lib/types/chat';
+import { AllChatsData, ThinkingTime } from '@/lib/types/chat';
 import { BackendChatStorageService } from '@/lib/services/backend-chat-storage';
 
 interface UseChatOperationsProps {

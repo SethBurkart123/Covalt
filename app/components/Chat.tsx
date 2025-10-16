@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useChat } from "@/app/contexts/chat-context";
+import { useChat } from "@/contexts/chat-context";
 import ChatMessageList from "./ChatMessageList";
 import type { Message } from "ai";
 import { backendApiService } from "@/lib/services/backend-api";
@@ -35,7 +35,6 @@ export function useChatInput() {
     updateChatMessages,
     finalizeNewChat,
     selectedModel,
-    getModelInfo,
   } = useChat();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -134,12 +133,9 @@ export function useChatInput() {
     setIsLoading(true);
 
     abortControllerRef.current = new AbortController();
-    let agnoSessionId: string | null = null;
+    let sessionId: string | null = null;
 
     try {
-      const modelInfo = getModelInfo(selectedModel);
-      const modelType = modelInfo?.type || 'agent';
-      
       const response = await backendApiService.streamChat(
         newMessages.map(msg => ({
           id: msg.id,
@@ -148,8 +144,7 @@ export function useChatInput() {
           createdAt: new Date().toISOString(),
         })),
         selectedModel,
-        isNewChat ? undefined : currentChatId,
-        modelType
+        isNewChat ? undefined : currentChatId
       );
 
       if (!response.ok) {
@@ -237,7 +232,7 @@ export function useChatInput() {
               const parsed = JSON.parse(data);
               
               if (currentEvent === "RunStarted" && parsed.session_id) {
-                agnoSessionId = parsed.session_id;
+                sessionId = parsed.session_id;
                 updateAssistantMessage();
               } else if (currentEvent === "RunContent") {
                 let needsUpdate = false;
@@ -356,10 +351,10 @@ export function useChatInput() {
       }];
       
       if (isNewChat) {
-        if (!agnoSessionId) {
-          throw new Error("No session ID received from Agno");
+        if (!sessionId) {
+          throw new Error("No session ID received from backend");
         }
-        await finalizeNewChat(agnoSessionId, finalMessages);
+        await finalizeNewChat(sessionId, finalMessages);
       } else {
         await updateChatMessages(currentChatId, finalMessages);
       }
@@ -375,8 +370,8 @@ export function useChatInput() {
       setMessages(errorMessages);
       
       if (isNewChat) {
-        if (agnoSessionId) {
-          await finalizeNewChat(agnoSessionId, errorMessages);
+        if (sessionId) {
+          await finalizeNewChat(sessionId, errorMessages);
         }
       } else if (currentChatId) {
         await updateChatMessages(currentChatId, errorMessages);

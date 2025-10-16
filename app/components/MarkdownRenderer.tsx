@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { animate, spring, stagger } from 'motion';
-import { useTheme } from '@/app/contexts/theme-context';
+import { useTheme } from '@/contexts/theme-context';
 import { Check, Copy } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 
