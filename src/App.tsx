@@ -1,20 +1,16 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 //import { invoke } from "@tauri-apps/api/core";
-import { pyInvoke } from "tauri-plugin-pytauri-api";
+import { getVersion, greet } from "./client/apiClient";
 import "./App.css";
-
-interface Greeting {
-  message: string;
-}
 
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
 
   async function greet2() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg((await pyInvoke<Greeting>("greet", { name: name })).message);
+    setGreetMsg((await greet({ name: name })).message);
+    console.log(await getVersion());
   }
 
   return (
