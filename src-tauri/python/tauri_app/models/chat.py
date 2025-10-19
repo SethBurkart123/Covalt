@@ -127,3 +127,11 @@ class SaveProviderConfigInput(_BaseModel):
 class AllProvidersResponse(_BaseModel):
     providers: List[ProviderConfig]
 
+
+class DefaultToolsResponse(_BaseModel):
+    tool_ids: List[str]
+
+
+class SetDefaultToolsInput(_BaseModel):
+    tool_ids: List[str]
+

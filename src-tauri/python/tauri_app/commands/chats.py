@@ -13,7 +13,12 @@ from ..models.chat import (
     ChatId,
     CreateChatInput,
     UpdateChatInput,
+    ToggleChatToolsInput,
+    UpdateChatModelInput,
+    ToolInfo,
+    AvailableToolsResponse,
 )
+
 from ..services.agent_factory import update_agent_tools, update_agent_model
 from ..services.tool_registry import get_tool_registry
 from . import commands
@@ -132,15 +137,6 @@ async def get_chat(body: ChatId, app_handle: AppHandle) -> Dict[str, Any]:
     finally:
         sess.close()
     return {"id": body.id, "messages": msgs}
-
-
-# Import new types for the commands below
-from ..models.chat import (
-    ToggleChatToolsInput,
-    UpdateChatModelInput,
-    ToolInfo,
-    AvailableToolsResponse,
-)
 
 
 @commands.command()

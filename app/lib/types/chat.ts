@@ -5,6 +5,13 @@ export interface ModelInfo {
   isDefault?: boolean;
 }
 
+export interface ToolInfo {
+  id: string;
+  name: string | null;
+  description: string | null;
+  category: string | null;
+}
+
 export interface AgentConfig {
   provider: string;
   modelId: string;

@@ -23,6 +23,8 @@ export type Apikey1 = (string | null)
 export type Baseurl1 = (string | null)
 export type Enabled1 = boolean
 export type RootModelNoneType = null
+export type Toolids = string[]
+export type Toolids1 = string[]
 export type Id = (string | null)
 export type Title = string
 export type Id1 = string
@@ -43,7 +45,7 @@ export type Title1 = (string | null)
 export type Model1 = (string | null)
 export type Provider3 = string
 export type Modelid1 = string
-export type Toolids = string[]
+export type Toolids2 = string[]
 export type Instructions = string[]
 export type Name1 = (string | null)
 export type Description = (string | null)
@@ -52,7 +54,7 @@ export type Title2 = (string | null)
 export type Model2 = (string | null)
 export type Id5 = string
 export type Chatid = string
-export type Toolids1 = string[]
+export type Toolids3 = string[]
 export type Chatid1 = string
 export type Provider4 = string
 export type Modelid2 = string
@@ -85,6 +87,14 @@ output: AllProvidersResponse
 }
 save_provider_settings: {
 input: SaveProviderConfigInput
+output: RootModelNoneType
+}
+get_default_tools: {
+input: void | undefined
+output: DefaultToolsResponse
+}
+set_default_tools: {
+input: SetDefaultToolsInput
 output: RootModelNoneType
 }
 get_all_chats: {
@@ -154,6 +164,12 @@ apiKey?: Apikey1
 baseUrl?: Baseurl1
 enabled?: Enabled1
 }
+export interface DefaultToolsResponse {
+toolIds: Toolids
+}
+export interface SetDefaultToolsInput {
+toolIds: Toolids1
+}
 export interface AllChatsData {
 chats: Chats
 }
@@ -194,7 +210,7 @@ agentConfig?: (AgentConfig | null)
 export interface AgentConfig {
 provider?: Provider3
 modelId?: Modelid1
-toolIds?: Toolids
+toolIds?: Toolids2
 instructions?: Instructions
 name?: Name1
 description?: Description
@@ -212,7 +228,7 @@ export interface RootModelDictStrAny {
 }
 export interface ToggleChatToolsInput {
 chatId: Chatid
-toolIds: Toolids1
+toolIds: Toolids3
 }
 export interface UpdateChatModelInput {
 chatId: Chatid1

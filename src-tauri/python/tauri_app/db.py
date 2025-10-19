@@ -53,6 +53,13 @@ class ProviderSettings(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+    
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 _engine = None
 _Session = None
 _db_path_override: Optional[Path] = None
@@ -378,3 +385,76 @@ def save_provider_settings(
         sess.add(settings)
     
     sess.commit()
+
+
+# User Settings Functions
+
+
+def get_user_setting(sess: Session, key: str) -> Optional[str]:
+    """
+    Get a user setting value.
+    
+    Args:
+        sess: Database session
+        key: Setting key
+        
+    Returns:
+        Setting value or None if not found
+    """
+    setting: Optional[UserSettings] = sess.get(UserSettings, key)
+    return setting.value if setting else None
+
+
+def set_user_setting(sess: Session, key: str, value: str) -> None:
+    """
+    Set a user setting value.
+    
+    Args:
+        sess: Database session
+        key: Setting key
+        value: Setting value (will be stored as string)
+    """
+    setting: Optional[UserSettings] = sess.get(UserSettings, key)
+    
+    if setting:
+        setting.value = value
+    else:
+        setting = UserSettings(key=key, value=value)
+        sess.add(setting)
+    
+    sess.commit()
+
+
+def get_default_tool_ids(sess: Session) -> List[str]:
+    """
+    Get default tool IDs for new chats.
+    
+    Args:
+        sess: Database session
+        
+    Returns:
+        List of tool IDs
+    """
+    value = get_user_setting(sess, "default_tool_ids")
+    if not value:
+        return []
+    
+    try:
+        import json
+        tool_ids = json.loads(value)
+        return tool_ids if isinstance(tool_ids, list) else []
+    except Exception:
+        return []
+
+
+def set_default_tool_ids(sess: Session, tool_ids: List[str]) -> None:
+    """
+    Set default tool IDs for new chats.
+    
+    Args:
+        sess: Database session
+        tool_ids: List of tool IDs
+    """
+    import json
+    value = json.dumps(tool_ids)
+    set_user_setting(sess, "default_tool_ids", value)

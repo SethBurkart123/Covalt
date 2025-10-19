@@ -12,6 +12,8 @@ from ..models.chat import (
     AllProvidersResponse,
     ProviderConfig,
     SaveProviderConfigInput,
+    DefaultToolsResponse,
+    SetDefaultToolsInput,
 )
 from ..services.model_factory import get_available_models as get_models_from_factory
 from . import commands
@@ -103,6 +105,41 @@ async def save_provider_settings(body: SaveProviderConfigInput, app_handle: AppH
             base_url=body.base_url,
             enabled=body.enabled,
         )
+    finally:
+        sess.close()
+    
+    return None
+
+
+@commands.command()
+async def get_default_tools(app_handle: AppHandle) -> DefaultToolsResponse:
+    """
+    Get default tool IDs for new chats.
+    
+    Returns:
+        List of default tool IDs
+    """
+    sess = db.session(app_handle)
+    try:
+        tool_ids = db.get_default_tool_ids(sess)
+    finally:
+        sess.close()
+    
+    return DefaultToolsResponse(tool_ids=tool_ids)
+
+
+@commands.command()
+async def set_default_tools(body: SetDefaultToolsInput, app_handle: AppHandle) -> None:
+    """
+    Set default tool IDs for new chats.
+    
+    Args:
+        body: Contains list of tool IDs to set as defaults
+        app_handle: Tauri app handle
+    """
+    sess = db.session(app_handle)
+    try:
+        db.set_default_tool_ids(sess, body.tool_ids)
     finally:
         sess.close()
     

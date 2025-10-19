@@ -66,6 +66,33 @@ export async function saveProviderSettings(
     return await pyInvoke("save_provider_settings", body, options);
 }
 
+/**
+ * Get default tool IDs for new chats.
+ *
+ * Returns:
+ *     List of default tool IDs
+ */
+export async function getDefaultTools(
+    body: Commands["get_default_tools"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_default_tools"]["output"]> {
+    return await pyInvoke("get_default_tools", body, options);
+}
+
+/**
+ * Set default tool IDs for new chats.
+ *
+ * Args:
+ *     body: Contains list of tool IDs to set as defaults
+ *     app_handle: Tauri app handle
+ */
+export async function setDefaultTools(
+    body: Commands["set_default_tools"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["set_default_tools"]["output"]> {
+    return await pyInvoke("set_default_tools", body, options);
+}
+
 export async function getAllChats(
     body: Commands["get_all_chats"]["input"],
     options?: InvokeOptions

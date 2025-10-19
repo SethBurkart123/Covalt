@@ -1,4 +1,4 @@
-import React, { KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import React, { KeyboardEvent, useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Plus,
@@ -6,12 +6,12 @@ import {
   Sparkles,
   MoreHorizontal,
   ArrowUp,
-  Check,
 } from "lucide-react";
 import clsx from "clsx";
-import { useSidebar, SIDEBAR_TRANSITION } from '@/components/ui/sidebar';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import type { ModelInfo } from '@/lib/types/chat';
+import { ToolSelector } from '@/components/ToolSelector';
+import { useChat } from '@/contexts/chat-context';
 
 interface ChatInputFormProps {
   input: string;
@@ -83,7 +83,7 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
 
   const optionHeight = 32;
   const verticalPadding = 8;
-  const optionsVisibleHeight = (models.length) * optionHeight + verticalPadding;
+  const optionsVisibleHeight = Math.min(10, (models.length)) * optionHeight + verticalPadding;
 
   // Helper to format model display name
   const formatModelDisplay = (model: ModelInfo) => {
@@ -132,11 +132,10 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
         <AnimatePresence>
           {isOpen && buttonWidth > 0 && (
             <motion.div
-              className="absolute bottom-[1px] rounded-2xl left-1/2 -translate-x-1/2 origin-bottom flex flex-col items-center overflow-hidden border bg-secondary shadow-lg z-0 w-auto"
+              className="absolute bottom-[-1px] rounded-2xl left-1/2 -translate-x-1/2 origin-bottom flex flex-col items-center overflow-hidden border bg-secondary shadow-lg z-0 w-auto pb-10"
               initial={{
                 height: 0,
                 minWidth: buttonWidth,
-                y: -16,
                 filter: "blur(10px)",
               }}
               animate={{
@@ -146,21 +145,19 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
                   height: { type: "spring", stiffness: 300, damping: 27 },
                   opacity: { duration: 0.2 }
                 },
-                y: 0,
                 filter: "blur(0px)",
               }}
               exit={{
                 height: 0,
-                y: -16,
                 filter: "blur(10px)",
                 transition: { duration: 0.3, ease: "easeInOut" }
               }}
               style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
             >
-              <div className="flex flex-col items-center w-full p-1 pb-10">
+              <div className="flex flex-col items-center w-full p-1 overflow-y-auto">
                 {models
                   .filter((model) => getModelKey(model) !== selectedModel)
-                  .map((model, index) => {
+                  .map((model) => {
                     const modelKey = getModelKey(model);
                     const displayName = formatModelDisplay(model);
                     return (
@@ -177,16 +174,14 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
                           setSelectedModel(modelKey);
                           setIsOpen(false);
                         }}
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0 }}
                         animate={{ 
                           opacity: 1, 
-                          y: 0,
-                          transition: { delay: index * 0.1, duration: 0.2, ease: 'easeOut' }
+                          transition: { duration: 0.2, ease: 'easeOut' }
                         }}
                         exit={{ 
                           opacity: 0,
-                          y: 5,
-                          transition: { duration: 0.2, ease: 'easeOut', delay: index * 0.1 }
+                          transition: { duration: 0.2, ease: 'easeOut' }
                         }}
                         whileTap={{ scale: 0.98 }}
                       >
@@ -212,9 +207,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
   selectedModel,
   setSelectedModel,
   models,
-  getModelName,
 }) => {
-  const { open } = useSidebar();
+  const { chatId } = useChat();
+  const [isToolSelectorOpen, setIsToolSelectorOpen] = useState(false);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -282,6 +277,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
               size="icon"
               className="h-9 w-9 flex-shrink-0 rounded-full p-2"
               disabled={isLoading}
+              onClick={() => setIsToolSelectorOpen(!isToolSelectorOpen)}
             >
               <Plus className="size-5" />
             </Button>
@@ -323,6 +319,13 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
           </LayoutGroup>
         </LayoutGroup>
       </div>
+
+      {/* Tool Selector Popover */}
+      <ToolSelector 
+        isOpen={isToolSelectorOpen} 
+        onClose={() => setIsToolSelectorOpen(false)}
+        chatId={chatId}
+      />
     </motion.form>
   );
 });
