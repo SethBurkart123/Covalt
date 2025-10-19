@@ -125,7 +125,7 @@ async def get_default_tools(app_handle: AppHandle) -> DefaultToolsResponse:
     finally:
         sess.close()
     
-    return DefaultToolsResponse(tool_ids=tool_ids)
+    return DefaultToolsResponse(toolIds=tool_ids)
 
 
 @commands.command()
@@ -139,7 +139,7 @@ async def set_default_tools(body: SetDefaultToolsInput, app_handle: AppHandle) -
     """
     sess = db.session(app_handle)
     try:
-        db.set_default_tool_ids(sess, body.tool_ids)
+        db.set_default_tool_ids(sess, body.toolIds)
     finally:
         sess.close()
     

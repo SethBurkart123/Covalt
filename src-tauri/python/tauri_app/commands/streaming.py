@@ -96,26 +96,35 @@ async def stream_chat(
                 createdAt=now,
                 updatedAt=now,
             )
-            # Set initial agent config with provider and model
+            # Load default tools from database and snapshot them for this chat
+            default_tool_ids = db.get_default_tool_ids(sess)
+            
             config = {
                 "provider": provider,
                 "model_id": actual_model_id,
-                "tool_ids": [],
+                "tool_ids": default_tool_ids,
                 "instructions": [],
             }
             db.update_chat_agent_config(sess, chatId=chatId, config=config)
         finally:
             sess.close()
     else:
-        # Update existing chat's agent config with selected model
+        # For existing chat, only ensure config exists
+        # Don't overwrite tool_ids - those are managed by toggleChatTools
         sess = db.session(app_handle)
         try:
             config = db.get_chat_agent_config(sess, chatId)
             if not config:
-                config = db.get_default_agent_config()
-            config["provider"] = provider
-            config["model_id"] = actual_model_id
-            db.update_chat_agent_config(sess, chatId=chatId, config=config)
+                # Chat exists but has no config - create one with defaults
+                default_tool_ids = db.get_default_tool_ids(sess)
+                config = {
+                    "provider": provider,
+                    "model_id": actual_model_id,
+                    "tool_ids": default_tool_ids,
+                    "instructions": [],
+                }
+                db.update_chat_agent_config(sess, chatId=chatId, config=config)
+            # If config exists, don't touch it - agent_factory will read it as-is
         finally:
             sess.close()
 

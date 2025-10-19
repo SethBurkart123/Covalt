@@ -7,9 +7,9 @@ export interface ModelInfo {
 
 export interface ToolInfo {
   id: string;
-  name: string | null;
-  description: string | null;
-  category: string | null;
+  name?: string | null;
+  description?: string | null;
+  category?: string | null;
 }
 
 export interface AgentConfig {

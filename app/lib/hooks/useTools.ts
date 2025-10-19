@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAvailableTools, toggleChatTools, setDefaultTools, getDefaultTools } from '@/python/apiClient';
 import type { ToolInfo } from '@/lib/types/chat';
+import { getChatAgentConfig } from '@/python/apiClient';
 
 export function useTools(chatId: string) {
   const [availableTools, setAvailableTools] = useState<ToolInfo[]>([]);
@@ -28,14 +29,20 @@ export function useTools(chatId: string) {
       setIsLoading(true);
       try {
         if (!chatId) {
-          // No chat selected - load defaults
-          const response = await getDefaultTools(undefined);
-          setActiveToolIds(response.tool_ids || []);
+          // No chat selected - load defaults for new chat
+          const response = await getDefaultTools();
+          setActiveToolIds(response.toolIds || []);
         } else {
-          // Load chat's active tools
-          // For now, load from defaults - we'll get this from chat's agent_config later
-          const response = await getDefaultTools(undefined);
-          setActiveToolIds(response.tool_ids || []);
+          // Load this chat's specific tools from its agent_config
+          try {
+            const config = await getChatAgentConfig({ id: chatId });
+            setActiveToolIds(config.toolIds || []);
+          } catch (error) {
+            console.error('Failed to load chat config:', error);
+            // Fallback to defaults
+            const response = await getDefaultTools();
+            setActiveToolIds(response.toolIds || []);
+          }
         }
       } catch (error) {
         console.error('Failed to load active tools:', error);
@@ -63,7 +70,7 @@ export function useTools(chatId: string) {
       }
 
       // Always save as defaults for future chats
-      await setDefaultTools({ tool_ids: newActiveToolIds }, undefined);
+      await setDefaultTools({ toolIds: newActiveToolIds }, undefined);
     } catch (error) {
       console.error('Failed to toggle tool:', error);
       // Revert on error

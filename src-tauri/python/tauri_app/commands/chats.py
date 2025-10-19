@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pytauri import AppHandle
 
@@ -17,6 +17,7 @@ from ..models.chat import (
     UpdateChatModelInput,
     ToolInfo,
     AvailableToolsResponse,
+    ChatAgentConfigResponse,
 )
 
 from ..services.agent_factory import update_agent_tools, update_agent_model
@@ -187,4 +188,32 @@ async def get_available_tools(app_handle: AppHandle) -> AvailableToolsResponse:
     ]
     
     return AvailableToolsResponse(tools=tools)
+
+
+@commands.command()
+async def get_chat_agent_config(body: ChatId, app_handle: AppHandle) -> ChatAgentConfigResponse:
+    """
+    Get agent configuration for a chat (tools, provider, model).
+    
+    Args:
+        body: Contains chatId
+        app_handle: Tauri app handle
+        
+    Returns:
+        Chat's agent configuration
+    """
+    sess = db.session(app_handle)
+    try:
+        config = db.get_chat_agent_config(sess, body.id)
+        if not config:
+            # No config yet, return defaults
+            config = db.get_default_agent_config()
+    finally:
+        sess.close()
+    
+    return ChatAgentConfigResponse(
+        toolIds=config.get("tool_ids", []),
+        provider=config.get("provider", "openai"),
+        modelId=config.get("model_id", "gpt-4o-mini"),
+    )
 

@@ -63,6 +63,9 @@ export type Name2 = (string | null)
 export type Description1 = (string | null)
 export type Category = (string | null)
 export type Tools = ToolInfo[]
+export type Toolids4 = string[]
+export type Provider5 = string
+export type Modelid3 = string
 export type JavaScriptChannelIdChatEvent = string
 
 /**
@@ -128,6 +131,10 @@ output: RootModelNoneType
 get_available_tools: {
 input: void | undefined
 output: AvailableToolsResponse
+}
+get_chat_agent_config: {
+input: ChatId
+output: ChatAgentConfigResponse
 }
 stream_chat: {
 input: JavaScriptChannelIdChatEvent
@@ -243,4 +250,9 @@ id: Id6
 name?: Name2
 description?: Description1
 category?: Category
+}
+export interface ChatAgentConfigResponse {
+toolIds: Toolids4
+provider: Provider5
+modelId: Modelid3
 }

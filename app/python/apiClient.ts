@@ -170,6 +170,23 @@ export async function getAvailableTools(
 }
 
 /**
+ * Get agent configuration for a chat (tools, provider, model).
+ *
+ * Args:
+ *     body: Contains chatId
+ *     app_handle: Tauri app handle
+ *
+ * Returns:
+ *     Chat's agent configuration
+ */
+export async function getChatAgentConfig(
+    body: Commands["get_chat_agent_config"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_chat_agent_config"]["output"]> {
+    return await pyInvoke("get_chat_agent_config", body, options);
+}
+
+/**
  * Stream chat completions via a Channel to the frontend.
  *
  * Saves messages incrementally to DB:

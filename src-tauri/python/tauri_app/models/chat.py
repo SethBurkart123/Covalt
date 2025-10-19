@@ -129,9 +129,15 @@ class AllProvidersResponse(_BaseModel):
 
 
 class DefaultToolsResponse(_BaseModel):
-    tool_ids: List[str]
+    toolIds: List[str]
 
 
 class SetDefaultToolsInput(_BaseModel):
-    tool_ids: List[str]
+    toolIds: List[str]
+
+
+class ChatAgentConfigResponse(_BaseModel):
+    toolIds: List[str]
+    provider: str
+    modelId: str
 
