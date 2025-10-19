@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { MoreVertical, PlusIcon, Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, PlusIcon, Pencil, Trash2, Settings } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import {
   Sidebar,
@@ -30,6 +31,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
+  const router = useRouter();
   const {
     chatId: currentChatId,
     chatIds,
@@ -207,6 +209,10 @@ export function AppSidebar({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => router.push('/settings')}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {/* Auth removed; no sign-out */}
               </DropdownMenuContent>

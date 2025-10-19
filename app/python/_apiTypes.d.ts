@@ -8,6 +8,21 @@
 export type Name = string
 export type Message = string
 export type RootModelStr = string
+export type Provider = string
+export type Modelid = string
+export type Displayname = string
+export type Isdefault = boolean
+export type Models = ModelInfo[]
+export type Provider1 = string
+export type Apikey = (string | null)
+export type Baseurl = (string | null)
+export type Enabled = boolean
+export type Providers = ProviderConfig[]
+export type Provider2 = string
+export type Apikey1 = (string | null)
+export type Baseurl1 = (string | null)
+export type Enabled1 = boolean
+export type RootModelNoneType = null
 export type Id = (string | null)
 export type Title = string
 export type Id1 = string
@@ -26,11 +41,26 @@ export type Updatedat = (string | null)
 export type Id3 = (string | null)
 export type Title1 = (string | null)
 export type Model1 = (string | null)
+export type Provider3 = string
+export type Modelid1 = string
+export type Toolids = string[]
+export type Instructions = string[]
+export type Name1 = (string | null)
+export type Description = (string | null)
 export type Id4 = string
 export type Title2 = (string | null)
 export type Model2 = (string | null)
 export type Id5 = string
-export type RootModelNoneType = null
+export type Chatid = string
+export type Toolids1 = string[]
+export type Chatid1 = string
+export type Provider4 = string
+export type Modelid2 = string
+export type Id6 = string
+export type Name2 = (string | null)
+export type Description1 = (string | null)
+export type Category = (string | null)
+export type Tools = ToolInfo[]
 export type JavaScriptChannelIdChatEvent = string
 
 /**
@@ -44,6 +74,18 @@ output: Greeting
 get_version: {
 input: void | undefined
 output: RootModelStr
+}
+get_available_models: {
+input: void | undefined
+output: AvailableModelsResponse
+}
+get_provider_settings: {
+input: void | undefined
+output: AllProvidersResponse
+}
+save_provider_settings: {
+input: SaveProviderConfigInput
+output: RootModelNoneType
 }
 get_all_chats: {
 input: void | undefined
@@ -65,6 +107,18 @@ get_chat: {
 input: ChatId
 output: RootModelDictStrAny
 }
+toggle_chat_tools: {
+input: ToggleChatToolsInput
+output: RootModelNoneType
+}
+update_chat_model: {
+input: UpdateChatModelInput
+output: RootModelNoneType
+}
+get_available_tools: {
+input: void | undefined
+output: AvailableToolsResponse
+}
 stream_chat: {
 input: JavaScriptChannelIdChatEvent
 output: RootModelNoneType
@@ -75,6 +129,30 @@ name: Name
 }
 export interface Greeting {
 message: Message
+}
+export interface AvailableModelsResponse {
+models: Models
+}
+export interface ModelInfo {
+provider: Provider
+modelId: Modelid
+displayName: Displayname
+isDefault?: Isdefault
+}
+export interface AllProvidersResponse {
+providers: Providers
+}
+export interface ProviderConfig {
+provider: Provider1
+apiKey?: Apikey
+baseUrl?: Baseurl
+enabled?: Enabled
+}
+export interface SaveProviderConfigInput {
+provider: Provider2
+apiKey?: Apikey1
+baseUrl?: Baseurl1
+enabled?: Enabled1
 }
 export interface AllChatsData {
 chats: Chats
@@ -111,6 +189,15 @@ export interface CreateChatInput {
 id?: Id3
 title?: Title1
 model?: Model1
+agentConfig?: (AgentConfig | null)
+}
+export interface AgentConfig {
+provider?: Provider3
+modelId?: Modelid1
+toolIds?: Toolids
+instructions?: Instructions
+name?: Name1
+description?: Description
 }
 export interface UpdateChatInput {
 id: Id4
@@ -122,4 +209,22 @@ id: Id5
 }
 export interface RootModelDictStrAny {
 [k: string]: unknown
+}
+export interface ToggleChatToolsInput {
+chatId: Chatid
+toolIds: Toolids1
+}
+export interface UpdateChatModelInput {
+chatId: Chatid1
+provider: Provider4
+modelId: Modelid2
+}
+export interface AvailableToolsResponse {
+tools: Tools
+}
+export interface ToolInfo {
+id: Id6
+name?: Name2
+description?: Description1
+category?: Category
 }

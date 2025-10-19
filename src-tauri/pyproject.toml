@@ -9,7 +9,12 @@ dependencies = [
     "anyio == 4.*",
     "SQLAlchemy >= 2, < 3",
     "openai >= 1.30.0",
-    "python-dotenv >= 1.0.1"
+    "python-dotenv >= 1.0.1",
+    "agno >= 2.0.0",
+    "anthropic >= 0.40.0",
+    "groq >= 0.10.0",
+    "duckduckgo-search >= 6.0.0",
+    "requests >= 2.31.0"
 ]  
 
 [project.entry-points.pytauri]

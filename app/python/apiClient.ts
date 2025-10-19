@@ -24,6 +24,48 @@ export async function getVersion(
     return await pyInvoke("get_version", body, options);
 }
 
+/**
+ * Get list of available models based on configured providers.
+ *
+ * Checks both environment variables and database provider settings.
+ *
+ * Returns:
+ *     List of available models with provider, modelId, displayName, and isDefault
+ */
+export async function getAvailableModels(
+    body: Commands["get_available_models"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_available_models"]["output"]> {
+    return await pyInvoke("get_available_models", body, options);
+}
+
+/**
+ * Get all configured provider settings.
+ *
+ * Returns:
+ *     List of provider configurations
+ */
+export async function getProviderSettings(
+    body: Commands["get_provider_settings"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_provider_settings"]["output"]> {
+    return await pyInvoke("get_provider_settings", body, options);
+}
+
+/**
+ * Save or update provider settings.
+ *
+ * Args:
+ *     body: Provider configuration to save
+ *     app_handle: Tauri app handle
+ */
+export async function saveProviderSettings(
+    body: Commands["save_provider_settings"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["save_provider_settings"]["output"]> {
+    return await pyInvoke("save_provider_settings", body, options);
+}
+
 export async function getAllChats(
     body: Commands["get_all_chats"]["input"],
     options?: InvokeOptions
@@ -57,6 +99,47 @@ export async function getChat(
     options?: InvokeOptions
 ): Promise<Commands["get_chat"]["output"]> {
     return await pyInvoke("get_chat", body, options);
+}
+
+/**
+ * Update active tools for a chat session.
+ *
+ * Args:
+ *     body: Contains chatId and list of tool IDs to activate
+ *     app_handle: Tauri app handle
+ */
+export async function toggleChatTools(
+    body: Commands["toggle_chat_tools"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["toggle_chat_tools"]["output"]> {
+    return await pyInvoke("toggle_chat_tools", body, options);
+}
+
+/**
+ * Switch the model/provider for a chat session.
+ *
+ * Args:
+ *     body: Contains chatId, provider, and modelId
+ *     app_handle: Tauri app handle
+ */
+export async function updateChatModel(
+    body: Commands["update_chat_model"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["update_chat_model"]["output"]> {
+    return await pyInvoke("update_chat_model", body, options);
+}
+
+/**
+ * Get list of all available tools.
+ *
+ * Returns:
+ *     List of tool information (id, name, description, category)
+ */
+export async function getAvailableTools(
+    body: Commands["get_available_tools"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_available_tools"]["output"]> {
+    return await pyInvoke("get_available_tools", body, options);
 }
 
 /**

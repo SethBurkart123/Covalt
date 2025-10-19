@@ -1,36 +1,53 @@
 import { useState, useEffect } from 'react';
+import { getAvailableModels } from '@/python/apiClient';
+import type { ModelInfo } from '@/lib/types/chat';
 
 export function useModels() {
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load available models from env at startup.
-    // Format: comma-separated IDs, optionally with provider hints.
-    const envModels = (process.env.NEXT_PUBLIC_AVAILABLE_MODELS || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Load available models from backend
+    const loadModels = async () => {
+      try {
+        const response = await getAvailableModels(undefined);
+        const availableModels = response.models;
+        setModels(availableModels);
 
-    const available = envModels.length > 0
-      ? envModels
-      : (process.env.OPENAI_MODEL ? [process.env.OPENAI_MODEL] : []);
-    setModels(available);
-
-    // Restore persisted selection or default to first.
-    if (available.length > 0) {
-      const saved = typeof window !== 'undefined' ? localStorage.getItem('selectedModel') : null;
-      if (saved && available.includes(saved)) {
-        setSelectedModel(saved);
-      } else {
-        setSelectedModel(available[0]);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('selectedModel', available[0]);
+        // Restore persisted selection or default to first
+        if (availableModels.length > 0) {
+          const saved = typeof window !== 'undefined' ? localStorage.getItem('selectedModel') : null;
+          
+          // Check if saved model exists in available models
+          const savedExists = saved && availableModels.some(
+            m => `${m.provider}:${m.modelId}` === saved
+          );
+          
+          if (savedExists && saved) {
+            setSelectedModel(saved);
+          } else {
+            // Default to first model or the one marked as default
+            const defaultModel = availableModels.find(m => m.isDefault === true) || availableModels[0];
+            const modelKey = `${defaultModel.provider}:${defaultModel.modelId}`;
+            setSelectedModel(modelKey);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('selectedModel', modelKey);
+            }
+          }
+        } else {
+          setSelectedModel('');
         }
+      } catch (error) {
+        console.error('Failed to load models:', error);
+        setModels([]);
+        setSelectedModel('');
+      } finally {
+        setIsLoading(false);
       }
-    } else {
-      setSelectedModel('');
-    }
+    };
 
-    setIsLoading(false);
+    loadModels();
   }, []);
 
   const updateSelectedModel = (model: string) => {

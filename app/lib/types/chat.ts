@@ -1,9 +1,26 @@
+export interface ModelInfo {
+  provider: string;
+  modelId: string;
+  displayName: string;
+  isDefault?: boolean;
+}
+
+export interface AgentConfig {
+  provider: string;
+  modelId: string;
+  toolIds: string[];
+  instructions?: string[];
+  name?: string;
+  description?: string;
+}
+
 export interface ChatData {
   id?: string;
   title: string;
   model?: string;
   createdAt?: string;
   updatedAt?: string;
+  agentConfig?: AgentConfig;
 }
 
 export interface AllChatsData {
@@ -24,5 +41,5 @@ export interface ChatContextType {
   refreshChats: () => Promise<void>;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: string[];
+  models: ModelInfo[];
 }

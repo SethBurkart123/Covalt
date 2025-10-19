@@ -10,8 +10,7 @@ from pytauri.webview import WebviewWindow
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
-from ..config import get_env
-from ..services.openai_service import stream_chat_completion
+from ..services.agent_factory import create_agent_for_chat
 from . import commands
 
 
@@ -72,6 +71,17 @@ async def stream_chat(
         except Exception:
             pass
 
+    # Parse provider and model from modelId (format: "provider:modelId")
+    provider = "openai"
+    actual_model_id = "gpt-4o-mini"
+    if modelId and ":" in modelId:
+        parts = modelId.split(":", 1)
+        provider = parts[0]
+        actual_model_id = parts[1]
+    elif modelId:
+        # Fallback: try to guess provider or use as-is
+        actual_model_id = modelId
+
     # Create new chat if needed
     if not chatId:
         chatId = str(uuid.uuid4())
@@ -86,6 +96,26 @@ async def stream_chat(
                 createdAt=now,
                 updatedAt=now,
             )
+            # Set initial agent config with provider and model
+            config = {
+                "provider": provider,
+                "model_id": actual_model_id,
+                "tool_ids": [],
+                "instructions": [],
+            }
+            db.update_chat_agent_config(sess, chatId=chatId, config=config)
+        finally:
+            sess.close()
+    else:
+        # Update existing chat's agent config with selected model
+        sess = db.session(app_handle)
+        try:
+            config = db.get_chat_agent_config(sess, chatId)
+            if not config:
+                config = db.get_default_agent_config()
+            config["provider"] = provider
+            config["model_id"] = actual_model_id
+            db.update_chat_agent_config(sess, chatId=chatId, config=config)
         finally:
             sess.close()
 
@@ -125,21 +155,84 @@ async def stream_chat(
     finally:
         sess.close()
 
-    # Stream from OpenAI and update DB incrementally
+    # Stream from Agno agent and update DB incrementally
     try:
-        if not modelId:
-            modelId = get_env("OPENAI_MODEL") or "gpt-4o-mini"
+        # Create fresh Agno agent instance for this request
+        agent = create_agent_for_chat(chatId, app_handle)
         
-        for part, done in stream_chat_completion(
-            model=modelId, 
-            messages=[m.model_dump(by_alias=False) for m in messages]
-        ):
-            if done:
-                ch.send_model(ChatEvent(event="RunCompleted"))
-                break
-            if part:
-                assistantContent += part
-                # Update DB with accumulated content
+        # Get the last user message
+        if not messages or messages[-1].role != "user":
+            raise ValueError("No user message found in request")
+        
+        user_message = messages[-1].content
+        
+        # Run agent with streaming
+        # Agno's stream format: yields strings (content deltas) or may not stream at all
+        response_stream = agent.run(user_message, stream=True)
+        
+        # Parse stream chunks
+        # Agno typically yields either strings or RunResponse-like objects
+        for chunk in response_stream:
+            # Handle string chunks (most common case)
+            if isinstance(chunk, str):
+                if chunk:  # Skip empty strings
+                    assistantContent += chunk
+                    
+                    # Update DB with accumulated content
+                    sess = db.session(app_handle)
+                    try:
+                        db.update_message_content(
+                            sess,
+                            messageId=assistantMessageId,
+                            content=assistantContent,
+                        )
+                    finally:
+                        sess.close()
+                    
+                    ch.send_model(ChatEvent(event="RunContent", content=chunk))
+            
+            # Handle object chunks (RunResponse or similar)
+            elif chunk is not None:
+                # Try to extract content
+                content = None
+                if hasattr(chunk, 'content'):
+                    content = chunk.content
+                elif hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
+                    content = chunk.delta.content
+                
+                if content:
+                    content_str = str(content)
+                    assistantContent += content_str
+                    
+                    # Update DB
+                    sess = db.session(app_handle)
+                    try:
+                        db.update_message_content(
+                            sess,
+                            messageId=assistantMessageId,
+                            content=assistantContent,
+                        )
+                    finally:
+                        sess.close()
+                    
+                    ch.send_model(ChatEvent(event="RunContent", content=content_str))
+                
+                # Check for tool calls (if present in chunk)
+                if hasattr(chunk, 'tool_calls') and chunk.tool_calls:
+                    for tool_call in chunk.tool_calls:
+                        tool_data = {
+                            "name": getattr(tool_call, 'name', 'unknown'),
+                            "args": getattr(tool_call, 'arguments', {}),
+                            "result": getattr(tool_call, 'result', None),
+                        }
+                        ch.send_model(ChatEvent(event="ToolCall", tool=tool_data))
+        
+        # Ensure we have some content
+        if not assistantContent:
+            # If streaming didn't produce anything, get the final response
+            # This happens when stream=True doesn't actually stream
+            if hasattr(response_stream, 'content'):
+                assistantContent = str(response_stream.content)
                 sess = db.session(app_handle)
                 try:
                     db.update_message_content(
@@ -149,11 +242,19 @@ async def stream_chat(
                     )
                 finally:
                     sess.close()
-                
-                ch.send_model(ChatEvent(event="RunContent", content=part))
+                ch.send_model(ChatEvent(event="RunContent", content=assistantContent))
+        
+        # Signal completion
+        ch.send_model(ChatEvent(event="RunCompleted"))
+        
     except Exception as e:
+        import traceback
+        print(f"[stream_chat] Error: {e}")
+        print(traceback.format_exc())
+        
         errorMsg = f"\n\n[Error: {e}]"
         assistantContent += errorMsg
+        
         # Save error to DB
         sess = db.session(app_handle)
         try:
@@ -164,4 +265,5 @@ async def stream_chat(
             )
         finally:
             sess.close()
+        
         ch.send_model(ChatEvent(event="RunCompleted", content=errorMsg))

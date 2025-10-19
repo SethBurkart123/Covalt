@@ -11,6 +11,7 @@ import {
 import clsx from "clsx";
 import { useSidebar, SIDEBAR_TRANSITION } from '@/components/ui/sidebar';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import type { ModelInfo } from '@/lib/types/chat';
 
 interface ChatInputFormProps {
   input: string;
@@ -20,7 +21,7 @@ interface ChatInputFormProps {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: string[];
+  models: ModelInfo[];
   getModelName?: (modelId: string) => string;
 }
 
@@ -74,7 +75,7 @@ const ScrollingText = React.memo(({ text, className = "" }: { text: string; clas
 
 ScrollingText.displayName = 'ScrollingText';
 
-const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: { selectedModel: string, setSelectedModel: (model: string) => void, models: string[] }) => {
+const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: { selectedModel: string, setSelectedModel: (model: string) => void, models: ModelInfo[] }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const buttonRef = React.useRef<HTMLButtonElement>(null);
@@ -83,6 +84,19 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
   const optionHeight = 32;
   const verticalPadding = 8;
   const optionsVisibleHeight = (models.length) * optionHeight + verticalPadding;
+
+  // Helper to format model display name
+  const formatModelDisplay = (model: ModelInfo) => {
+    const providerName = model.provider.charAt(0).toUpperCase() + model.provider.slice(1);
+    return `${providerName}: ${model.displayName}`;
+  };
+
+  // Helper to get model key for storage
+  const getModelKey = (model: ModelInfo) => `${model.provider}:${model.modelId}`;
+
+  // Find the currently selected model info
+  const selectedModelInfo = models.find(m => getModelKey(m) === selectedModel);
+  const selectedDisplayName = selectedModelInfo ? formatModelDisplay(selectedModelInfo) : selectedModel;
 
   useEffect(() => {
     if (buttonRef.current) {
@@ -111,7 +125,7 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.2 }}
           >
-            {selectedModel}
+            {selectedDisplayName}
           </motion.span>
         </motion.button>
 
@@ -145,37 +159,41 @@ const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: {
             >
               <div className="flex flex-col items-center w-full p-1 pb-10">
                 {models
-                  .filter((model) => model !== selectedModel)
-                  .map((model, index) => (
-                    <motion.button
-                      key={model}
-                      className={clsx(
-                        "flex w-full items-center rounded-lg px-3 py-2 text-sm text-nowrap",
-                        "transition-colors duration-150 justify-center relative",
-                        "hover:bg-white/40 hover:border-border hover:border"
-                      )}
-                      style={{ height: `${optionHeight}px` }}
-                      onClick={(event) => {
-                        event?.preventDefault()
-                        setSelectedModel(model);
-                        setIsOpen(false);
-                      }}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ 
-                        opacity: 1, 
-                        y: 0,
-                        transition: { delay: index * 0.1, duration: 0.2, ease: 'easeOut' }
-                      }}
-                      exit={{ 
-                        opacity: 0,
-                        y: 5,
-                        transition: { duration: 0.2, ease: 'easeOut', delay: index * 0.1 }
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      {model}
-                    </motion.button>
-                  ))}
+                  .filter((model) => getModelKey(model) !== selectedModel)
+                  .map((model, index) => {
+                    const modelKey = getModelKey(model);
+                    const displayName = formatModelDisplay(model);
+                    return (
+                      <motion.button
+                        key={modelKey}
+                        className={clsx(
+                          "flex w-full items-center rounded-lg px-3 py-2 text-sm text-nowrap",
+                          "transition-colors duration-150 justify-center relative",
+                          "hover:bg-white/40 hover:border-border hover:border"
+                        )}
+                        style={{ height: `${optionHeight}px` }}
+                        onClick={(event) => {
+                          event?.preventDefault()
+                          setSelectedModel(modelKey);
+                          setIsOpen(false);
+                        }}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ 
+                          opacity: 1, 
+                          y: 0,
+                          transition: { delay: index * 0.1, duration: 0.2, ease: 'easeOut' }
+                        }}
+                        exit={{ 
+                          opacity: 0,
+                          y: 5,
+                          transition: { duration: 0.2, ease: 'easeOut', delay: index * 0.1 }
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {displayName}
+                      </motion.button>
+                    );
+                  })}
               </div>
             </motion.div>
           )}

@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Optional, Union
 from pytauri import App, AppHandle, Manager
 from pytauri.ffi.webview import WebviewWindow
 from pytauri.path import PathResolver
-from sqlalchemy import String, Text, ForeignKey, create_engine, select
+import sqlalchemy
+from sqlalchemy import Boolean, String, Text, ForeignKey, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 
@@ -23,6 +24,7 @@ class Chat(Base):
     model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     createdAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updatedAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    agent_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     messages: Mapped[List["Message"]] = relationship(
         back_populates="chat", cascade="all, delete-orphan"
@@ -40,6 +42,15 @@ class Message(Base):
     toolCalls: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
+
+
+class ProviderSettings(Base):
+    __tablename__ = "provider_settings"
+    
+    provider: Mapped[str] = mapped_column(String, primary_key=True)
+    api_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    base_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 _engine = None
@@ -77,7 +88,35 @@ def _ensure_engine(app: Union[App, AppHandle, WebviewWindow]):
 def init_database(app: Union[App, AppHandle, WebviewWindow]) -> Path:
     """Ensure the database engine and schema exist. Returns DB path."""
     _ensure_engine(app)
+    _run_migrations(app)
     return get_db_path(app)
+
+
+def _run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
+    """Run database migrations for schema changes."""
+    global _engine
+    if _engine is None:
+        return
+    
+    # Migration: Add agent_config column to chats table if it doesn't exist
+    try:
+        with _engine.connect() as conn:
+            # Check if column exists by trying to query it
+            result = conn.execute(
+                sqlalchemy.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='chats'")
+            )
+            table_def = result.fetchone()
+            
+            if table_def and 'agent_config' not in table_def[0]:
+                # Column doesn't exist, add it
+                print("[db] Running migration: Adding agent_config column to chats table")
+                conn.execute(
+                    sqlalchemy.text("ALTER TABLE chats ADD COLUMN agent_config TEXT")
+                )
+                conn.commit()
+                print("[db] Migration completed successfully")
+    except Exception as e:
+        print(f"[db] Migration warning (may be safe to ignore if column exists): {e}")
 
 
 def session(app: Union[App, AppHandle, WebviewWindow]) -> Session:
@@ -195,3 +234,147 @@ def delete_chat(sess: Session, *, chatId: str) -> None:
     if chat:
         sess.delete(chat)
         sess.commit()
+
+
+def get_chat_agent_config(sess: Session, chatId: str) -> Optional[Dict[str, Any]]:
+    """
+    Get agent configuration for a chat.
+    
+    Returns:
+        Agent config dict or None if not set
+    """
+    chat: Optional[Chat] = sess.get(Chat, chatId)
+    if not chat or not chat.agent_config:
+        return None
+    
+    try:
+        return json.loads(chat.agent_config)
+    except Exception:
+        return None
+
+
+def update_chat_agent_config(
+    sess: Session,
+    *,
+    chatId: str,
+    config: Dict[str, Any],
+) -> None:
+    """
+    Update agent configuration for a chat.
+    
+    Args:
+        sess: Database session
+        chatId: Chat identifier
+        config: Agent configuration dict (provider, model_id, tool_ids, etc.)
+    """
+    chat: Optional[Chat] = sess.get(Chat, chatId)
+    if not chat:
+        return
+    
+    chat.agent_config = json.dumps(config)
+    sess.commit()
+
+
+def get_default_agent_config() -> Dict[str, Any]:
+    """
+    Get default agent configuration for new chats.
+    
+    Returns:
+        Default config with openai provider and no tools
+    """
+    return {
+        "provider": "openai",
+        "model_id": "gpt-4o-mini",
+        "tool_ids": [],
+        "instructions": [],
+    }
+
+
+# Provider Settings Functions
+
+
+def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
+    """
+    Get settings for a specific provider.
+    
+    Args:
+        sess: Database session
+        provider: Provider name (openai, anthropic, groq, ollama)
+        
+    Returns:
+        Provider settings dict or None if not found
+    """
+    settings: Optional[ProviderSettings] = sess.get(ProviderSettings, provider)
+    if not settings:
+        return None
+    
+    return {
+        "provider": settings.provider,
+        "api_key": settings.api_key,
+        "base_url": settings.base_url,
+        "enabled": settings.enabled,
+    }
+
+
+def get_all_provider_settings(sess: Session) -> Dict[str, Dict[str, Any]]:
+    """
+    Get all provider settings.
+    
+    Args:
+        sess: Database session
+        
+    Returns:
+        Dict mapping provider name to settings dict
+    """
+    stmt = select(ProviderSettings)
+    rows = list(sess.scalars(stmt))
+    
+    result = {}
+    for row in rows:
+        result[row.provider] = {
+            "provider": row.provider,
+            "api_key": row.api_key,
+            "base_url": row.base_url,
+            "enabled": row.enabled,
+        }
+    return result
+
+
+def save_provider_settings(
+    sess: Session,
+    *,
+    provider: str,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    enabled: bool = True,
+) -> None:
+    """
+    Save or update provider settings.
+    
+    Args:
+        sess: Database session
+        provider: Provider name (openai, anthropic, groq, ollama)
+        api_key: API key for the provider
+        base_url: Base URL for the provider (optional, for custom endpoints)
+        enabled: Whether the provider is enabled
+    """
+    settings: Optional[ProviderSettings] = sess.get(ProviderSettings, provider)
+    
+    if settings:
+        # Update existing
+        if api_key is not None:
+            settings.api_key = api_key
+        if base_url is not None:
+            settings.base_url = base_url
+        settings.enabled = enabled
+    else:
+        # Create new
+        settings = ProviderSettings(
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            enabled=enabled,
+        )
+        sess.add(settings)
+    
+    sess.commit()

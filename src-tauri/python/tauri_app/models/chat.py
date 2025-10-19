@@ -35,10 +35,20 @@ class AllChatsData(_BaseModel):
     chats: Dict[str, ChatData]
 
 
+class AgentConfig(_BaseModel):
+    provider: str = "openai"
+    modelId: str = "gpt-4o-mini"
+    toolIds: List[str] = Field(default_factory=list)
+    instructions: List[str] = Field(default_factory=list)
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 class CreateChatInput(_BaseModel):
     id: Optional[str] = None
     title: Optional[str] = None
     model: Optional[str] = None
+    agentConfig: Optional[AgentConfig] = None
 
 
 class UpdateChatInput(_BaseModel):
@@ -65,4 +75,55 @@ class ChatEvent(_BaseModel):
     reasoningContent: Optional[str] = None
     sessionId: Optional[str] = None
     tool: Optional[Dict[str, Any]] = None
+
+
+class ToggleChatToolsInput(_BaseModel):
+    chatId: str
+    toolIds: List[str]
+
+
+class UpdateChatModelInput(_BaseModel):
+    chatId: str
+    provider: str
+    modelId: str
+
+
+class ToolInfo(_BaseModel):
+    id: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+
+
+class AvailableToolsResponse(_BaseModel):
+    tools: List[ToolInfo]
+
+
+class ModelInfo(_BaseModel):
+    provider: str
+    modelId: str
+    displayName: str
+    isDefault: bool = False
+
+
+class AvailableModelsResponse(_BaseModel):
+    models: List[ModelInfo]
+
+
+class ProviderConfig(_BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    enabled: bool = True
+
+
+class SaveProviderConfigInput(_BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    enabled: bool = True
+
+
+class AllProvidersResponse(_BaseModel):
+    providers: List[ProviderConfig]
 

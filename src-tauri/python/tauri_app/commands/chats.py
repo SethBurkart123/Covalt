@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from pytauri import AppHandle
 
@@ -14,6 +14,8 @@ from ..models.chat import (
     CreateChatInput,
     UpdateChatInput,
 )
+from ..services.agent_factory import update_agent_tools, update_agent_model
+from ..services.tool_registry import get_tool_registry
 from . import commands
 
 
@@ -42,6 +44,22 @@ async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
     now = datetime.utcnow().isoformat()
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
+    
+    # Handle agent config
+    agent_config = None
+    if body.agentConfig:
+        agent_config = {
+            "provider": body.agentConfig.provider,
+            "model_id": body.agentConfig.modelId,
+            "tool_ids": body.agentConfig.toolIds,
+            "instructions": body.agentConfig.instructions,
+            "name": body.agentConfig.name,
+            "description": body.agentConfig.description,
+        }
+    else:
+        # Use default config
+        agent_config = db.get_default_agent_config()
+    
     sess = db.session(app_handle)
     try:
         db.create_chat(
@@ -52,6 +70,8 @@ async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
             createdAt=now,
             updatedAt=now,
         )
+        # Set agent config
+        db.update_chat_agent_config(sess, chatId=chatId, config=agent_config)
     finally:
         sess.close()
     return ChatData(
@@ -112,4 +132,63 @@ async def get_chat(body: ChatId, app_handle: AppHandle) -> Dict[str, Any]:
     finally:
         sess.close()
     return {"id": body.id, "messages": msgs}
+
+
+# Import new types for the commands below
+from ..models.chat import (
+    ToggleChatToolsInput,
+    UpdateChatModelInput,
+    ToolInfo,
+    AvailableToolsResponse,
+)
+
+
+@commands.command()
+async def toggle_chat_tools(body: ToggleChatToolsInput, app_handle: AppHandle) -> None:
+    """
+    Update active tools for a chat session.
+    
+    Args:
+        body: Contains chatId and list of tool IDs to activate
+        app_handle: Tauri app handle
+    """
+    update_agent_tools(body.chatId, body.toolIds, app_handle)
+    return None
+
+
+@commands.command()
+async def update_chat_model(body: UpdateChatModelInput, app_handle: AppHandle) -> None:
+    """
+    Switch the model/provider for a chat session.
+    
+    Args:
+        body: Contains chatId, provider, and modelId
+        app_handle: Tauri app handle
+    """
+    update_agent_model(body.chatId, body.provider, body.modelId, app_handle)
+    return None
+
+
+@commands.command()
+async def get_available_tools(app_handle: AppHandle) -> AvailableToolsResponse:
+    """
+    Get list of all available tools.
+    
+    Returns:
+        List of tool information (id, name, description, category)
+    """
+    tool_registry = get_tool_registry()
+    tools_data = tool_registry.list_available_tools()
+    
+    tools = [
+        ToolInfo(
+            id=tool["id"],
+            name=tool.get("name"),
+            description=tool.get("description"),
+            category=tool.get("category"),
+        )
+        for tool in tools_data
+    ]
+    
+    return AvailableToolsResponse(tools=tools)
 
