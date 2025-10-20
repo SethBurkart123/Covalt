@@ -133,11 +133,15 @@ export function useChatInput() {
 
       // Coalesce streaming updates to ~1 per frame
       const framePendingRef = { current: false } as { current: boolean };
+      // Prevent post-completion UI updates from duplicating assistant message
+      let streamingDone = false;
       const updateAssistantMessage = () => {
+        if (streamingDone) return;
         if (framePendingRef.current) return;
         framePendingRef.current = true;
         requestAnimationFrame(() => {
           framePendingRef.current = false;
+          if (streamingDone) return;
           setMessages(prev => {
             const withoutLast = prev.filter(m => m.id !== assistantMessageId);
             return [
@@ -145,7 +149,10 @@ export function useChatInput() {
               {
                 id: assistantMessageId,
                 role: "assistant",
-                content: contentBlocks.length > 0 ? contentBlocks : [{ type: "text", content: currentTextBlock + currentReasoningBlock }],
+                // Important: always pass a fresh array so React.memo re-renders
+                content: contentBlocks.length > 0
+                  ? [...contentBlocks]
+                  : [{ type: "text", content: currentTextBlock + currentReasoningBlock }],
               },
             ];
           });
@@ -176,6 +183,8 @@ export function useChatInput() {
 
             try {
               const parsed = JSON.parse(data);
+
+              console.log(`[DEBUG] Current Event: ${JSON.stringify(currentEvent)}`);
               
               if (currentEvent === "RunStarted" && parsed.sessionId) {
                 sessionId = parsed.sessionId;
@@ -216,6 +225,7 @@ export function useChatInput() {
               }
               else if (currentEvent === "ToolCallStarted") {
                 flushTextBlock();
+                console.log(`[DEBUG] Tool call started: ${JSON.stringify(parsed.tool)}`);
                 if (parsed.tool) {
                   contentBlocks.push({
                     type: "tool_call",
@@ -228,6 +238,7 @@ export function useChatInput() {
                 }
               }
               else if (currentEvent === "ToolCallCompleted") {
+                console.log(`[DEBUG] Tool call completed: ${JSON.stringify(parsed.tool)}`);
                 if (parsed.tool) {
                   // Find and update the tool block
                   const toolBlock = [...contentBlocks].reverse().find(
@@ -263,6 +274,8 @@ export function useChatInput() {
       if (sessionId || currentChatId) {
         const finalChatId = sessionId || currentChatId;
         try {
+          // Mark done before fetching to avoid race with a pending rAF update
+          streamingDone = true;
           const fullChat = await api.getChat(finalChatId!);
           setMessages(fullChat.messages || []);
         } catch (error) {

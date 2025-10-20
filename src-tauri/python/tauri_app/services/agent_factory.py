@@ -14,6 +14,7 @@ from .. import db
 from .model_factory import get_model, get_default_model_for_provider
 from .tool_registry import get_tool_registry
 
+from agno.agent import Agent
 
 def create_agent_for_chat(
     chat_id: str,
@@ -37,7 +38,6 @@ def create_agent_for_chat(
     Raises:
         RuntimeError: If agent configuration is invalid or missing required keys
     """
-    from agno.agent import Agent
     
     # Load agent configuration from database
     sess = db.session(app_handle)
@@ -75,7 +75,7 @@ def create_agent_for_chat(
         description=description,
         instructions=instructions if instructions else None,
         markdown=True,  # Enable markdown formatting
-        debug_mode=True,  # Temporary for debugging tool calls
+        #debug_mode=True,  # Temporary for debugging tool calls
     )
     
     return agent

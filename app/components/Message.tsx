@@ -86,13 +86,6 @@ export default React.memo(function ChatMessage({
     };
   }, [isStreaming, content]);
 
-  useEffect(() => {
-    console.log("================================================");
-    console.log(content);
-    console.log(isStreaming);
-    console.log("================================================");
-  }, [content, isStreaming]);
-
   return (
     <div
       className={clsx(

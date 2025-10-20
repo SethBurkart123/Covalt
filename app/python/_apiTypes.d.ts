@@ -279,9 +279,6 @@ toolIds: Toolids4
 provider: Provider5
 modelId: Modelid3
 }
-/**
- * Request model for stream_chat command.
- */
 export interface StreamChatRequest {
 channel: JavaScriptChannelIdChatEvent
 messages: Messages1

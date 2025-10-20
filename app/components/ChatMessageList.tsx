@@ -68,16 +68,9 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, isLoading, 
       endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
       isAtBottomRef.current = true;
     } else if (isAtBottomRef.current && endOfMessagesRef.current) {
-      console.log('scrolling to bottom');
+      // console.log('scrolling to bottom');
       endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    console.log("================================================");
-    console.log(messages);
-    console.log(isLoading);
-    console.log("================================================");
   }, [messages, isLoading]);
 
   return (

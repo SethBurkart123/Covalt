@@ -186,13 +186,6 @@ export async function getChatAgentConfig(
     return await pyInvoke("get_chat_agent_config", body, options);
 }
 
-/**
- * Stream chat completions via a Channel to the frontend.
- *
- * Saves messages incrementally to DB:
- * - User message saved immediately
- * - Assistant message created and updated as content streams
- */
 export async function streamChat(
     body: Commands["stream_chat"]["input"],
     options?: InvokeOptions
