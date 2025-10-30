@@ -40,15 +40,12 @@ def create_agent_for_chat(
     """
     
     # Load agent configuration from database
-    sess = db.session(app_handle)
-    try:
+    with db.db_session(app_handle) as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             # Use default config if not set
             config = db.get_default_agent_config()
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-    finally:
-        sess.close()
     
     # Extract configuration
     provider = config.get("provider", "openai")
@@ -151,16 +148,13 @@ def update_agent_tools(
         tool_ids: List of tool IDs to activate
         app_handle: Tauri app handle for database access
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session(app_handle) as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             config = db.get_default_agent_config()
         
         config["tool_ids"] = tool_ids
         db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-    finally:
-        sess.close()
 
 
 def update_agent_model(
@@ -181,8 +175,7 @@ def update_agent_model(
         model_id: Model identifier
         app_handle: Tauri app handle for database access
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session(app_handle) as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             config = db.get_default_agent_config()
@@ -190,6 +183,4 @@ def update_agent_model(
         config["provider"] = provider
         config["model_id"] = model_id
         db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-    finally:
-        sess.close()
 

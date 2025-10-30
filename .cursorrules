@@ -1,100 +1,35 @@
-# Agno App - Cursor AI Rules
+**Write code that makes you excited!** This codebase values clarity, composability, and that satisfying feeling when everything just *clicks*.
 
-## Python-TypeScript Communication Pattern
+### The Tinygrad Way
+Take inspiration from tinygrad - keep it minimal, functional, and beautiful:
+- **Small, focused functions** that do ONE thing really well
+- **No over-abstraction** - if you can't explain it in one sentence, it's too complex
+- **Composable building blocks** - functions that snap together like LEGO
+- **Context managers over boilerplate** - use `with db.db_session(app):` instead of try/finally everywhere
 
-### ALWAYS Use Auto-Generated API Client
+### Make Boring Code Fun
+- **Extract helpers** when you see the same pattern twice
+- **Use context managers** to eliminate repetitive cleanup code
+- **Break giant functions** into readable chunks - aim for <30 lines per function
+- **Choose clear names** - `ensure_chat_initialized()` beats `init_chat_stuff()`
+- **Clean flows** - the main function should read like a story, details go in helpers
 
-**CRITICAL**: This project uses PyTauri with auto-generated TypeScript bindings.
+### Python Zen
+```python
+# Instead of this mess:
+sess = db.session(app)
+try:
+    do_something(sess)
+finally:
+    sess.close()
 
-**DO NOT** manually call `pyInvoke` from `tauri-plugin-pytauri-api` directly!
-
-**DO** use the auto-generated functions from `@/python/apiClient.ts` (or `app/python/apiClient.ts`)
-
-### How It Works
-
-1. **Python Backend**: Commands are defined in `src-tauri/python/tauri_app/commands/`
-2. **Auto-Generation**: PyTauri generates TypeScript types and functions in:
-   - `app/python/_apiTypes.d.ts` - TypeScript type definitions
-   - `app/python/apiClient.ts` - Typed API client functions
-
-3. **Frontend**: Import and use the generated functions
-
-### Examples
-
-#### ❌ WRONG - Don't do this:
-```typescript
-import { pyInvoke } from 'tauri-plugin-pytauri-api';
-
-// Manual invocation - BAD!
-const result = await pyInvoke('get_all_chats');
+# Write this beauty:
+with db.db_session(app) as sess:
+    do_something(sess)
 ```
 
-#### ✅ CORRECT - Do this:
-```typescript
-import { getAllChats } from '@/python/apiClient';
+### The Golden Rule
+**If it feels messy, it probably is!** Refactor with joy. Future you will high-five present you.
 
-// Use auto-generated function - GOOD!
-const result = await getAllChats();
-```
-
-#### ✅ CORRECT - With body parameters:
-```typescript
-import { createChat } from '@/python/apiClient';
-
-const newChat = await createChat({ 
-  title: "My Chat", 
-  model: "gpt-4" 
-});
-```
-
-#### ✅ CORRECT - Streaming with Channels:
-```typescript
-import { Channel } from '@tauri-apps/api/core';
-import { pyInvoke } from 'tauri-plugin-pytauri-api';
-
-const channel = new Channel((data) => {
-  console.log(data);
-});
-
-// IMPORTANT: Use channel.toJSON() to pass channel to PyTauri commands
-// JavaScriptChannelId is serialized/deserialized as a string
-await pyInvoke('stream_chat', channel.toJSON(), {
-  headers: { 'x-custom-header': 'value' }
-});
-```
-
-### Why This Matters
-
-1. **Type Safety**: Auto-generated functions provide full TypeScript type checking
-2. **Maintainability**: Types stay in sync with Python backend automatically
-3. **Documentation**: Function signatures are self-documenting
-4. **Refactoring**: Renaming Python commands breaks TypeScript at compile-time, not runtime
-
-### File Locations
-
-- Python Commands: `src-tauri/python/tauri_app/commands/`
-- Generated Types: `app/python/_apiTypes.d.ts`
-- Generated Client: `app/python/apiClient.ts`
-- Frontend Usage: Import from `@/python/apiClient`
-
----
-
-## Additional Rules
-
-### Streaming Pattern
-- For streaming commands, use Tauri Channels
-- Import `Channel` from `@tauri-apps/api/core`
-- **IMPORTANT**: Pass `channel.toJSON()` to PyTauri commands, NOT the channel directly
-- JavaScriptChannelId is serialized as a string between frontend and backend
-- Example: `await pyInvoke('stream_chat', channel.toJSON(), { headers: {...} })`
-
-### Error Handling
-- All generated functions are async and can throw
-- Always wrap in try-catch blocks
-- Log errors appropriately for debugging
-
-### State Management
-- Use React Context for global state (chat, stream, theme)
-- Keep streaming state separate from chat metadata
-- Allow concurrent streams per chat ID
+Remember: Code is read WAY more than it's written, so make it a pleasure to read! 🚀
 
