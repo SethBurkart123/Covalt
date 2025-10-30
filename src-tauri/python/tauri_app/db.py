@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -130,6 +131,16 @@ def session(app: Union[App, AppHandle, WebviewWindow]) -> Session:
     _ensure_engine(app)
     assert _Session is not None
     return _Session()
+
+
+@contextmanager
+def db_session(app: Union[App, AppHandle, WebviewWindow]):
+    """Context manager for database sessions - handles cleanup automatically."""
+    sess = session(app)
+    try:
+        yield sess
+    finally:
+        sess.close()
 
 
 def list_chats(sess: Session) -> List[Chat]:
