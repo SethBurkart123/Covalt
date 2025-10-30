@@ -5,7 +5,6 @@ import { useChat } from "@/contexts/chat-context";
 import ChatMessageList from "./ChatMessageList";
 import { api } from "@/lib/services/api";
 import type { Message, MessageSibling } from "@/lib/types/chat";
-import { MessageActions } from "./MessageActions";
 
 // Stream processor - handles SSE parsing and content block building
 async function processMessageStream(
@@ -310,31 +309,17 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
     }
   }, [chatId, onRefreshMessages]);
 
-  const AssistantMessageActions = useCallback(({ messageIndex }: { messageIndex: number }) => {
-    const message = messages[messageIndex];
-    if (!message) return null;
-
-    const siblings = messageSiblings[message.id] || [];
-    
-    return (
-      <MessageActions
-        message={message}
-        siblings={siblings}
-        onContinue={!message.isComplete ? () => handleContinue(message.id) : undefined}
-        onRetry={message.role === 'assistant' ? () => handleRetry(message.id) : undefined}
-        onEdit={message.role === 'user' ? () => handleEdit(message.id) : undefined}
-        onNavigate={(siblingId) => handleNavigate(message.id, siblingId)}
-        isLoading={actionLoading === message.id}
-      />
-    );
-  }, [messages, messageSiblings, actionLoading, handleContinue, handleRetry, handleEdit, handleNavigate]);
-
   return (
     <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
       <ChatMessageList 
         messages={messages}
         isLoading={isLoading}
-        AssistantMessageActions={AssistantMessageActions}
+        messageSiblings={messageSiblings}
+        onContinue={handleContinue}
+        onRetry={handleRetry}
+        onEdit={handleEdit}
+        onNavigate={handleNavigate}
+        actionLoading={actionLoading}
       />
     </div>
   );

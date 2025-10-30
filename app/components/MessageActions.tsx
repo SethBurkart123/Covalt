@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { ChevronLeft, ChevronRight, RotateCcw, Play, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import type { Message, MessageSibling } from '@/lib/types/chat';
 
 interface MessageActionsProps {
@@ -39,74 +39,103 @@ export function MessageActions({
     }
   };
 
+  // Check if message has an error
+  const hasError = Array.isArray(message.content) && 
+    message.content.some(block => block.type === 'error');
+
   return (
-    <div className="flex items-center gap-2 mt-2">
+    <div className="flex items-center gap-1">
       {/* Continue button for incomplete assistant messages */}
       {!message.isComplete && message.role === 'assistant' && onContinue && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onContinue}
-          disabled={isLoading}
-          className="h-8 px-2 text-xs"
-        >
-          <Play className="size-3 mr-1" />
-          Continue
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onContinue}
+              disabled={isLoading}
+              className="h-7 px-2 text-xs"
+            >
+              <Play className="size-3.5 mr-1" />
+              {hasError && 'Continue'}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Continue generation</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Retry button for assistant messages */}
       {message.role === 'assistant' && onRetry && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRetry}
-          disabled={isLoading}
-          className="h-8 px-2 text-xs"
-        >
-          <RotateCcw className="size-3 mr-1" />
-          Retry
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRetry}
+              disabled={isLoading}
+              className="h-7 px-2 text-xs"
+            >
+              <RotateCcw className="size-3.5 mr-1" />
+              {hasError && 'Retry'}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Retry generation</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Edit button for user messages */}
       {message.role === 'user' && onEdit && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onEdit}
-          disabled={isLoading}
-          className="h-8 px-2 text-xs"
-        >
-          <Edit2 className="size-3 mr-1" />
-          Edit
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEdit}
+              disabled={isLoading}
+              className="h-7 px-2 text-xs"
+            >
+              <Edit2 className="size-3.5 mr-1" />
+              {hasError && 'Edit'}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit message</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Sibling navigation */}
       {showSiblingNav && (
-        <div className="flex items-center gap-1 ml-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handlePrevious}
-            disabled={!hasPrevSibling || isLoading}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <span className="text-xs text-muted-foreground px-2">
+        <div className="flex items-center gap-0.5 ml-auto">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handlePrevious}
+                disabled={!hasPrevSibling || isLoading}
+                className="h-7 w-7 p-0"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Previous version</TooltipContent>
+          </Tooltip>
+          <span className="text-xs text-muted-foreground px-1.5">
             {currentIndex + 1}/{siblings.length}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleNext}
-            disabled={!hasNextSibling || isLoading}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNext}
+                disabled={!hasNextSibling || isLoading}
+                className="h-7 w-7 p-0"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Next version</TooltipContent>
+          </Tooltip>
         </div>
       )}
     </div>

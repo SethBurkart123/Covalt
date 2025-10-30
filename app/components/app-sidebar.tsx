@@ -214,7 +214,6 @@ export function AppSidebar({
                   Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {/* Auth removed; no sign-out */}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

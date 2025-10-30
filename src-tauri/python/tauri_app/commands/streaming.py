@@ -205,7 +205,6 @@ async def handle_content_stream(
     content_blocks = []
     current_text = ""
     tool_counter = 0
-    full_content = ""
     had_error = False
     
     def flush_text():
@@ -214,13 +213,20 @@ async def handle_content_stream(
             content_blocks.append({"type": "text", "content": current_text})
             current_text = ""
     
+    def save_current_state():
+        """Save current content blocks state to database."""
+        # Build temporary blocks including any unflushed text
+        temp_blocks = content_blocks.copy()
+        if current_text:
+            temp_blocks.append({"type": "text", "content": current_text})
+        return json.dumps(temp_blocks)
+    
     async for chunk in response_stream:
         if chunk.event == RunEvent.run_content:
             if chunk.content:
-                full_content += chunk.content
                 current_text += chunk.content
                 ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
-                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, full_content)
+                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_current_state())
         
         elif chunk.event == RunEvent.tool_call_started:
             tool_id = f"{assistant_msg_id}-tool-{tool_counter}"

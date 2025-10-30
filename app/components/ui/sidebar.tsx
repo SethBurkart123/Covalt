@@ -255,9 +255,6 @@ function Sidebar({
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
             className="bg-sidebar group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
           >
             {children}
           </motion.div>
@@ -491,19 +488,10 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
 
 function SidebarMenuItem({ className, index, ...props }: React.ComponentProps<"li"> & { index?: number } & HTMLMotionProps<"li">) {
   return (
-    <motion.li
+    <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
       className={cn("group/menu-item relative", className)}
-      initial={{ y: 30, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{
-        delay: index ? index * 0.015 : 0,
-        type: 'spring',
-        stiffness: 580,
-        damping: 50,
-        mass: 1
-      }}
       {...props}
     />
   );

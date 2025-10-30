@@ -68,7 +68,7 @@ async def continue_message(
             ChatMessage(
                 id=m.id,
                 role=m.role,
-                content=m.content if isinstance(m.content, str) else json.dumps(m.content),
+                content=json.loads(m.content),
                 createdAt=m.createdAt,
             )
             for m in messages
@@ -120,7 +120,7 @@ async def retry_message(
             ChatMessage(
                 id=m.id,
                 role=m.role,
-                content=m.content if isinstance(m.content, str) else json.dumps(m.content),
+                content=json.loads(m.content),
                 createdAt=m.createdAt,
             )
             for m in messages
@@ -198,7 +198,7 @@ async def edit_user_message(
             ChatMessage(
                 id=m.id,
                 role=m.role,
-                content=m.content if isinstance(m.content, str) else json.dumps(m.content),
+                content=json.loads(m.content),
                 createdAt=m.createdAt,
             )
             for m in messages

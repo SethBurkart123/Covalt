@@ -1,14 +1,28 @@
 import React, { useEffect, useRef } from "react";
 import ChatMessage from "./Message";
-import { Message } from "@/lib/types/chat";
+import { Message, MessageSibling } from "@/lib/types/chat";
 
 interface ChatMessageListProps {
   messages: Message[];
   isLoading: boolean;
-  AssistantMessageActions: React.FC<{ messageIndex: number }>;
+  messageSiblings: Record<string, MessageSibling[]>;
+  onContinue?: (messageId: string) => void;
+  onRetry?: (messageId: string) => void;
+  onEdit?: (messageId: string) => void;
+  onNavigate?: (messageId: string, siblingId: string) => void;
+  actionLoading?: string | null;
 }
 
-const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, isLoading, AssistantMessageActions }) => {
+const ChatMessageList: React.FC<ChatMessageListProps> = ({ 
+  messages, 
+  isLoading, 
+  messageSiblings,
+  onContinue,
+  onRetry,
+  onEdit,
+  onNavigate,
+  actionLoading,
+}) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const prevMessagesLengthRef = useRef(messages.length);
@@ -73,22 +87,38 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, isLoading, 
     }
   }, [messages, isLoading]);
 
+  const filteredMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  
+  // Find the last assistant message index
+  const lastAssistantIndex = filteredMessages.reduce((lastIdx, m, idx) => {
+    return m.role === "assistant" ? idx : lastIdx;
+  }, -1);
+
   return (
     <>
-      {messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m, index) => (
-          <div className="group flex flex-col relative" key={m.id}>
-            <ChatMessage
-              role={m.role as "user" | "assistant"}
-              content={m.content}
-              isStreaming={isLoading && index === messages.length - 1 && m.role === "assistant"}
-            />
-            {!isLoading && (
-              <AssistantMessageActions messageIndex={index} />
-            )}
-          </div>
-        ))}
+      {filteredMessages.map((m, index) => {
+          const siblings = messageSiblings[m.id] || [];
+          const isStreamingMessage = isLoading && index === filteredMessages.length - 1 && m.role === "assistant";
+          const isLastAssistantMessage = !isLoading && index === lastAssistantIndex && m.role === "assistant";
+          
+          return (
+            <div key={m.id}>
+              <ChatMessage
+                role={m.role as "user" | "assistant"}
+                content={m.content}
+                isStreaming={isStreamingMessage}
+                message={m}
+                siblings={siblings}
+                onContinue={!m.isComplete && m.role === 'assistant' && onContinue ? () => onContinue(m.id) : undefined}
+                onRetry={m.role === 'assistant' && onRetry ? () => onRetry(m.id) : undefined}
+                onEdit={m.role === 'user' && onEdit ? () => onEdit(m.id) : undefined}
+                onNavigate={onNavigate ? (siblingId) => onNavigate(m.id, siblingId) : undefined}
+                isLoading={actionLoading === m.id}
+                isLastAssistantMessage={isLastAssistantMessage}
+              />
+            </div>
+          );
+        })}
       <div ref={endOfMessagesRef} className="h-8 -mt-" />
     </>
   );

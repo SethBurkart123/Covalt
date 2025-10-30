@@ -4,21 +4,38 @@ import React, { useEffect, useRef } from "react";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
+import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import type { ContentBlock } from "@/lib/types/chat";
+import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
 
 export interface ChatMessageProps {
   role: "user" | "assistant";
   content: string | ContentBlock[];
   isStreaming?: boolean;
+  message?: Message;
+  siblings?: MessageSibling[];
+  onContinue?: () => void;
+  onRetry?: () => void;
+  onEdit?: () => void;
+  onNavigate?: (siblingId: string) => void;
+  isLoading?: boolean;
+  isLastAssistantMessage?: boolean;
 }
 
 export default React.memo(function ChatMessage({
   role,
   content,
   isStreaming,
+  message,
+  siblings,
+  onContinue,
+  onRetry,
+  onEdit,
+  onNavigate,
+  isLoading,
+  isLastAssistantMessage,
 }: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -86,16 +103,18 @@ export default React.memo(function ChatMessage({
     };
   }, [isStreaming, content]);
 
+  const showActions = message && (onContinue || onRetry || onEdit || (siblings && siblings.length > 1));
+
   return (
     <div
       className={clsx(
-        "flex w-full",
+        "flex w-full group/message",
         role === "user" ? "justify-end" : "justify-start"
       )}
     >
       <div
         className={clsx(
-          "rounded-3xl text-base leading-relaxed max-w-full min-w-0",
+          "rounded-3xl text-base leading-relaxed max-w-full min-w-0 relative",
           role === "user"
             ? "bg-muted text-muted-foreground px-5 py-2.5 mb-2"
             : "text-card-foreground",
@@ -259,6 +278,27 @@ export default React.memo(function ChatMessage({
                 )}
               </>
             )}
+          </div>
+        )}
+        
+        {/* Message Actions - positioned absolutely, visible on hover (or always visible for last assistant message) */}
+        {showActions && !isStreaming && (
+          <div className={clsx(
+            "absolute bottom-1 flex items-center gap-1 transition-opacity duration-200",
+            role === "user" ? "right-2" : "left-2",
+            isLastAssistantMessage && role === "assistant" 
+              ? "opacity-100" 
+              : "opacity-0 group-hover/message:opacity-100"
+          )}>
+            <MessageActions
+              message={message!}
+              siblings={siblings || []}
+              onContinue={onContinue}
+              onRetry={onRetry}
+              onEdit={onEdit}
+              onNavigate={onNavigate}
+              isLoading={isLoading}
+            />
           </div>
         )}
       </div>
