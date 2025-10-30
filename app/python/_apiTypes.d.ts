@@ -81,6 +81,21 @@ export type Messages1 = {
 }[]
 export type Modelid4 = (string | null)
 export type Chatid2 = (string | null)
+export type Messageid = string
+export type Chatid3 = string
+export type Messageid1 = string
+export type Chatid4 = string
+export type Messageid2 = string
+export type Newcontent = string
+export type Chatid5 = string
+export type Messageid3 = string
+export type Siblingid = string
+export type Chatid6 = string
+export type Messageid4 = string
+export type Id8 = string
+export type Sequence = number
+export type Isactive = boolean
+export type RootModelListMessageSiblingInfo = MessageSiblingInfo[]
 
 /**
  * Commands Input and Output Schemas
@@ -153,6 +168,26 @@ output: ChatAgentConfigResponse
 stream_chat: {
 input: StreamChatRequest
 output: RootModelNoneType
+}
+continue_message: {
+input: ContinueMessageRequest
+output: RootModelNoneType
+}
+retry_message: {
+input: RetryMessageRequest
+output: RootModelNoneType
+}
+edit_user_message: {
+input: EditUserMessageRequest
+output: RootModelNoneType
+}
+switch_to_sibling: {
+input: SwitchToSiblingRequest
+output: RootModelNoneType
+}
+get_message_siblings: {
+input: GetMessageSiblingsRequest
+output: RootModelListMessageSiblingInfo
 }
 }
 export interface Person {
@@ -284,5 +319,40 @@ channel: JavaScriptChannelIdChatEvent
 messages: Messages1
 modelId?: Modelid4
 chatId?: Chatid2
+[k: string]: unknown
+}
+export interface ContinueMessageRequest {
+messageId: Messageid
+chatId: Chatid3
+channel: JavaScriptChannelIdChatEvent
+[k: string]: unknown
+}
+export interface RetryMessageRequest {
+messageId: Messageid1
+chatId: Chatid4
+channel: JavaScriptChannelIdChatEvent
+[k: string]: unknown
+}
+export interface EditUserMessageRequest {
+messageId: Messageid2
+newContent: Newcontent
+chatId: Chatid5
+channel: JavaScriptChannelIdChatEvent
+[k: string]: unknown
+}
+export interface SwitchToSiblingRequest {
+messageId: Messageid3
+siblingId: Siblingid
+chatId: Chatid6
+[k: string]: unknown
+}
+export interface GetMessageSiblingsRequest {
+messageId: Messageid4
+[k: string]: unknown
+}
+export interface MessageSiblingInfo {
+id: Id8
+sequence: Sequence
+isActive: Isactive
 [k: string]: unknown
 }

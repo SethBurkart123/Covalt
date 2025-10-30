@@ -192,3 +192,53 @@ export async function streamChat(
 ): Promise<Commands["stream_chat"]["output"]> {
     return await pyInvoke("stream_chat", body, options);
 }
+
+/**
+ * Continue incomplete assistant message from where it stopped.
+ */
+export async function continueMessage(
+    body: Commands["continue_message"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["continue_message"]["output"]> {
+    return await pyInvoke("continue_message", body, options);
+}
+
+/**
+ * Create sibling message and retry generation.
+ */
+export async function retryMessage(
+    body: Commands["retry_message"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["retry_message"]["output"]> {
+    return await pyInvoke("retry_message", body, options);
+}
+
+/**
+ * Edit user message by creating sibling with new content.
+ */
+export async function editUserMessage(
+    body: Commands["edit_user_message"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["edit_user_message"]["output"]> {
+    return await pyInvoke("edit_user_message", body, options);
+}
+
+/**
+ * Switch active branch to different sibling.
+ */
+export async function switchToSibling(
+    body: Commands["switch_to_sibling"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["switch_to_sibling"]["output"]> {
+    return await pyInvoke("switch_to_sibling", body, options);
+}
+
+/**
+ * Get all sibling messages for navigation UI.
+ */
+export async function getMessageSiblings(
+    body: Commands["get_message_siblings"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_message_siblings"]["output"]> {
+    return await pyInvoke("get_message_siblings", body, options);
+}

@@ -1,11 +1,4 @@
-import type { AllChatsData, ChatData, ContentBlock } from '@/lib/types/chat';
-
-export type Message = {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: ContentBlock[] | string;
-  createdAt?: string;
-};
+import type { AllChatsData, ChatData, Message, MessageSibling } from '@/lib/types/chat';
 
 async function invoke<T = any>(cmd: string, body?: any): Promise<T> {
   const { pyInvoke } = await import('tauri-plugin-pytauri-api');
@@ -111,6 +104,168 @@ class ApiService {
         Connection: 'keep-alive',
       },
     });
+  }
+
+  async continueMessage(messageId: string, chatId: string): Promise<Response> {
+    const encoder = new TextEncoder();
+    const { Channel } = await import('@tauri-apps/api/core');
+    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const sendEvent = (event: string, data: Record<string, any>) => {
+          enqueueLine(`event: ${event}\n`);
+          enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        const chatChannel = new Channel((evt: any) => {
+          const { event, ...rest } = evt || {};
+          const data: Record<string, any> = {};
+          
+          if (rest.sessionId) data.sessionId = rest.sessionId;
+          if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (rest.tool) data.tool = rest.tool;
+          
+          sendEvent(event || 'RunContent', data);
+          
+          if (event === 'RunCompleted' || event === 'RunError') {
+            controller.close();
+          }
+        });
+
+        try {
+          await pyInvoke('continue_message', {
+            channel: chatChannel.toJSON(),
+            messageId,
+            chatId,
+          });
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      cancel: () => {},
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    });
+  }
+
+  async retryMessage(messageId: string, chatId: string): Promise<Response> {
+    const encoder = new TextEncoder();
+    const { Channel } = await import('@tauri-apps/api/core');
+    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const sendEvent = (event: string, data: Record<string, any>) => {
+          enqueueLine(`event: ${event}\n`);
+          enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        const chatChannel = new Channel((evt: any) => {
+          const { event, ...rest } = evt || {};
+          const data: Record<string, any> = {};
+          
+          if (rest.sessionId) data.sessionId = rest.sessionId;
+          if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (rest.tool) data.tool = rest.tool;
+          
+          sendEvent(event || 'RunContent', data);
+          
+          if (event === 'RunCompleted' || event === 'RunError') {
+            controller.close();
+          }
+        });
+
+        try {
+          await pyInvoke('retry_message', {
+            channel: chatChannel.toJSON(),
+            messageId,
+            chatId,
+          });
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      cancel: () => {},
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    });
+  }
+
+  async editUserMessage(messageId: string, newContent: string, chatId: string): Promise<Response> {
+    const encoder = new TextEncoder();
+    const { Channel } = await import('@tauri-apps/api/core');
+    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const sendEvent = (event: string, data: Record<string, any>) => {
+          enqueueLine(`event: ${event}\n`);
+          enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        const chatChannel = new Channel((evt: any) => {
+          const { event, ...rest } = evt || {};
+          const data: Record<string, any> = {};
+          
+          if (rest.sessionId) data.sessionId = rest.sessionId;
+          if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (rest.tool) data.tool = rest.tool;
+          
+          sendEvent(event || 'RunContent', data);
+          
+          if (event === 'RunCompleted' || event === 'RunError') {
+            controller.close();
+          }
+        });
+
+        try {
+          await pyInvoke('edit_user_message', {
+            channel: chatChannel.toJSON(),
+            messageId,
+            newContent,
+            chatId,
+          });
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      cancel: () => {},
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    });
+  }
+
+  async switchToSibling(messageId: string, siblingId: string, chatId: string): Promise<void> {
+    return invoke<void>('switch_to_sibling', { messageId, siblingId, chatId });
+  }
+
+  async getMessageSiblings(messageId: string): Promise<MessageSibling[]> {
+    return invoke<MessageSibling[]>('get_message_siblings', { messageId });
   }
 }
 

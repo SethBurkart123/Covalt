@@ -63,32 +63,51 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
     return chat_id
 
 
-def save_user_msg(app_handle: AppHandle, msg: ChatMessage, chat_id: str):
+def save_user_msg(app_handle: AppHandle, msg: ChatMessage, chat_id: str, parent_id: Optional[str] = None):
     """Save user message to db."""
     with db.db_session(app_handle) as sess:
-        db.append_message(
-            sess,
+        # Get sequence number for siblings
+        sequence = db.get_next_sibling_sequence(sess, parent_id)
+        
+        # Create the message
+        message = db.Message(
             id=msg.id,
             chatId=chat_id,
             role=msg.role,
             content=msg.content,
             createdAt=msg.createdAt or datetime.utcnow().isoformat(),
-            toolCalls=msg.toolCalls,
+            parent_message_id=parent_id,
+            is_complete=True,  # User messages are always complete
+            sequence=sequence,
         )
+        sess.add(message)
+        sess.commit()
+        
+        # Update active leaf to this message
+        db.set_active_leaf(sess, chat_id, msg.id)
 
 
-def init_assistant_msg(app_handle: AppHandle, chat_id: str) -> str:
+def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> str:
     """Create empty assistant message, return id."""
     msg_id = str(uuid.uuid4())
     with db.db_session(app_handle) as sess:
-        db.append_message(
-            sess,
+        sequence = db.get_next_sibling_sequence(sess, parent_id)
+        
+        message = db.Message(
             id=msg_id,
             chatId=chat_id,
             role="assistant",
             content="",
             createdAt=datetime.utcnow().isoformat(),
+            parent_message_id=parent_id,
+            is_complete=False,
+            sequence=sequence,
         )
+        sess.add(message)
+        sess.commit()
+        
+        # Update active leaf to this message
+        db.set_active_leaf(sess, chat_id, msg_id)
     return msg_id
 
 
@@ -187,6 +206,7 @@ async def handle_content_stream(
     current_text = ""
     tool_counter = 0
     full_content = ""
+    had_error = False
     
     def flush_text():
         nonlocal current_text
@@ -232,8 +252,10 @@ async def handle_content_stream(
         
         elif chunk.event == RunEvent.run_completed:
             flush_text()
-            ch.send_model(ChatEvent(event="RunCompleted"))
             await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, json.dumps(content_blocks))
+            with db.db_session(app_handle) as sess:
+                db.mark_message_complete(sess, assistant_msg_id)
+            ch.send_model(ChatEvent(event="RunCompleted"))
         
         elif chunk.event == RunEvent.run_error:
             print(f"[stream] RunError: {chunk.error.message}")
@@ -247,6 +269,14 @@ async def handle_content_stream(
             content_blocks.append(error_block)
             ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
             await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, json.dumps(content_blocks))
+            had_error = True
+            return
+    
+    if not had_error:
+        with db.db_session(app_handle) as sess:
+            message = sess.get(db.Message, assistant_msg_id)
+            if message and not message.is_complete:
+                db.mark_message_complete(sess, assistant_msg_id)
 
 
 class StreamChatRequest(BaseModel):
@@ -276,12 +306,19 @@ async def stream_chat(
     
     chat_id = ensure_chat_initialized(app_handle, body.chatId, body.modelId)
     
+    # Get the current active leaf to use as parent
+    with db.db_session(app_handle) as sess:
+        chat = sess.get(db.Chat, chat_id)
+        parent_id = chat.active_leaf_message_id if chat else None
+    
     if messages and messages[-1].role == "user":
-        save_user_msg(app_handle, messages[-1], chat_id)
+        save_user_msg(app_handle, messages[-1], chat_id, parent_id)
+        # Update parent_id to the newly saved user message
+        parent_id = messages[-1].id
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
     
-    assistant_msg_id = init_assistant_msg(app_handle, chat_id)
+    assistant_msg_id = init_assistant_msg(app_handle, chat_id, parent_id)
     
     try:
         agent = create_agent_for_chat(chat_id, app_handle)
@@ -310,3 +347,4 @@ async def stream_chat(
         
         save_msg_content(app_handle, assistant_msg_id, json.dumps([error_block]))
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
+        # Note: message stays is_complete=False so user can retry/continue

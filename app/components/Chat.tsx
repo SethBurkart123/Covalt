@@ -1,19 +1,133 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import ChatMessageList from "./ChatMessageList";
-import { api, type Message } from "@/lib/services/api";
+import { api } from "@/lib/services/api";
+import type { Message, MessageSibling } from "@/lib/types/chat";
+import { MessageActions } from "./MessageActions";
 
 interface ChatProps {
   messages: Message[];
   isLoading: boolean;
+  onRefreshMessages: () => Promise<void>;
 }
 
-export default function Chat({ messages, isLoading }: ChatProps) {
-  const AssistantMessageActions = () => {
-    return <></>;
+export default function Chat({ messages, isLoading, onRefreshMessages }: ChatProps) {
+  const { chatId } = useChat();
+  const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Load sibling information for all messages
+  useEffect(() => {
+    const loadSiblings = async () => {
+      const siblingsMap: Record<string, MessageSibling[]> = {};
+      
+      for (const msg of messages) {
+        try {
+          const siblings = await api.getMessageSiblings(msg.id);
+          siblingsMap[msg.id] = siblings;
+        } catch (error) {
+          console.error(`Failed to load siblings for message ${msg.id}:`, error);
+          siblingsMap[msg.id] = [];
+        }
+      }
+      
+      setMessageSiblings(siblingsMap);
+    };
+
+    if (messages.length > 0) {
+      loadSiblings();
+    }
+  }, [messages]);
+
+  const handleContinue = useCallback(async (messageId: string) => {
+    if (!chatId) return;
+    
+    setActionLoading(messageId);
+    try {
+      const response = await api.continueMessage(messageId, chatId);
+      await processStreamResponse(response);
+      await onRefreshMessages();
+    } catch (error) {
+      console.error('Failed to continue message:', error);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [chatId, onRefreshMessages]);
+
+  const handleRetry = useCallback(async (messageId: string) => {
+    if (!chatId) return;
+    
+    setActionLoading(messageId);
+    try {
+      const response = await api.retryMessage(messageId, chatId);
+      await processStreamResponse(response);
+      await onRefreshMessages();
+    } catch (error) {
+      console.error('Failed to retry message:', error);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [chatId, onRefreshMessages]);
+
+  const handleEdit = useCallback(async (messageId: string) => {
+    // TODO: Implement edit UI (inline textarea)
+    const newContent = prompt('Edit your message:');
+    if (!newContent || !chatId) return;
+    
+    setActionLoading(messageId);
+    try {
+      const response = await api.editUserMessage(messageId, newContent, chatId);
+      await processStreamResponse(response);
+      await onRefreshMessages();
+    } catch (error) {
+      console.error('Failed to edit message:', error);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [chatId, onRefreshMessages]);
+
+  const handleNavigate = useCallback(async (messageId: string, siblingId: string) => {
+    if (!chatId) return;
+    
+    try {
+      await api.switchToSibling(messageId, siblingId, chatId);
+      await onRefreshMessages();
+    } catch (error) {
+      console.error('Failed to switch sibling:', error);
+    }
+  }, [chatId, onRefreshMessages]);
+
+  const processStreamResponse = async (response: Response) => {
+    // Simple stream processing - just consume the stream
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
   };
+
+  const AssistantMessageActions = useCallback(({ messageIndex }: { messageIndex: number }) => {
+    const message = messages[messageIndex];
+    if (!message) return null;
+
+    const siblings = messageSiblings[message.id] || [];
+    
+    return (
+      <MessageActions
+        message={message}
+        siblings={siblings}
+        onContinue={!message.isComplete ? () => handleContinue(message.id) : undefined}
+        onRetry={message.role === 'assistant' ? () => handleRetry(message.id) : undefined}
+        onEdit={message.role === 'user' ? () => handleEdit(message.id) : undefined}
+        onNavigate={(siblingId) => handleNavigate(message.id, siblingId)}
+        isLoading={actionLoading === message.id}
+      />
+    );
+  }, [messages, messageSiblings, actionLoading, handleContinue, handleRetry, handleEdit, handleNavigate]);
 
   return (
     <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
@@ -36,8 +150,21 @@ export function useChatInput() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [canSendMessage, setCanSendMessage] = useState(true);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Check if we can send messages (last message must be complete)
+  useEffect(() => {
+    if (messages.length === 0) {
+      setCanSendMessage(true);
+      return;
+    }
+    
+    const lastMessage = messages[messages.length - 1];
+    setCanSendMessage(lastMessage.isComplete !== false);
+  }, [messages]);
 
   // Abort stream and clear input when switching chats
   useEffect(() => {
@@ -49,7 +176,7 @@ export function useChatInput() {
     setInput("");
   }, [chatId]);
 
-  // Load messages when chatId changes
+  // Load messages when chatId changes or reload is triggered
   useEffect(() => {
     const loadChatMessages = async () => {
       if (!chatId) {
@@ -67,7 +194,7 @@ export function useChatInput() {
     };
     
     loadChatMessages();
-  }, [chatId]);
+  }, [chatId, reloadTrigger]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -76,7 +203,7 @@ export function useChatInput() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !canSendMessage) return;
 
     const currentChatId = chatId;
     const userMessageContent = input.trim();
@@ -86,6 +213,8 @@ export function useChatInput() {
       role: "user",
       content: userMessageContent,
       createdAt: new Date().toISOString(),
+      isComplete: true,
+      sequence: 1,
     };
 
     // Optimistically show user message
@@ -153,7 +282,9 @@ export function useChatInput() {
                 content: contentBlocks.length > 0
                   ? [...contentBlocks]
                   : [{ type: "text", content: currentTextBlock + currentReasoningBlock }],
-              },
+                isComplete: false,
+                sequence: 1,
+              } as Message,
             ];
           });
         });
@@ -289,6 +420,8 @@ export function useChatInput() {
         id: crypto.randomUUID(),
         role: "assistant",
         content: [{ type: "error", content: "Sorry, there was an error processing your request." }],
+        isComplete: false,
+        sequence: 1,
       };
       setMessages([...newMessages, errorMessage]);
     } finally {
@@ -297,6 +430,10 @@ export function useChatInput() {
     }
   };
 
+  const triggerReload = useCallback(() => {
+    setReloadTrigger(prev => prev + 1);
+  }, []);
+
   return {
     input,
     handleInputChange,
@@ -304,5 +441,7 @@ export function useChatInput() {
     isLoading,
     inputRef,
     messages,
+    canSendMessage,
+    triggerReload,
   };
 }

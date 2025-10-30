@@ -13,4 +13,5 @@ commands = Commands(experimental_gen_ts=PYTAURI_GEN_TS)
 from . import system  # noqa: E402, F401
 from . import chats  # noqa: E402, F401
 from . import streaming  # noqa: E402, F401
+from . import branches  # noqa: E402, F401
 

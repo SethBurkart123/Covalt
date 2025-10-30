@@ -26,6 +26,7 @@ class Chat(Base):
     createdAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updatedAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     agent_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active_leaf_message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     messages: Mapped[List["Message"]] = relationship(
         back_populates="chat", cascade="all, delete-orphan"
@@ -41,6 +42,9 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     createdAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     toolCalls: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_complete: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sequence: Mapped[int] = mapped_column(sqlalchemy.Integer, default=1, nullable=False)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
 
@@ -125,6 +129,91 @@ def _run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
                 print("[db] Migration completed successfully")
     except Exception as e:
         print(f"[db] Migration warning (may be safe to ignore if column exists): {e}")
+    
+    # Migration: Add branching columns to messages table
+    try:
+        with _engine.connect() as conn:
+            result = conn.execute(
+                sqlalchemy.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'")
+            )
+            table_def = result.fetchone()
+            
+            if table_def:
+                needs_migration = False
+                
+                if 'parent_message_id' not in table_def[0]:
+                    print("[db] Running migration: Adding parent_message_id column to messages table")
+                    conn.execute(
+                        sqlalchemy.text("ALTER TABLE messages ADD COLUMN parent_message_id TEXT")
+                    )
+                    needs_migration = True
+                
+                if 'is_complete' not in table_def[0]:
+                    print("[db] Running migration: Adding is_complete column to messages table")
+                    conn.execute(
+                        sqlalchemy.text("ALTER TABLE messages ADD COLUMN is_complete INTEGER DEFAULT 1 NOT NULL")
+                    )
+                    needs_migration = True
+                
+                if 'sequence' not in table_def[0]:
+                    print("[db] Running migration: Adding sequence column to messages table")
+                    conn.execute(
+                        sqlalchemy.text("ALTER TABLE messages ADD COLUMN sequence INTEGER DEFAULT 1 NOT NULL")
+                    )
+                    needs_migration = True
+                
+                if needs_migration:
+                    conn.commit()
+                    print("[db] Messages table migration completed")
+    except Exception as e:
+        print(f"[db] Migration warning for messages table: {e}")
+    
+    # Migration: Add active_leaf_message_id to chats table
+    try:
+        with _engine.connect() as conn:
+            result = conn.execute(
+                sqlalchemy.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='chats'")
+            )
+            table_def = result.fetchone()
+            
+            if table_def and 'active_leaf_message_id' not in table_def[0]:
+                print("[db] Running migration: Adding active_leaf_message_id column to chats table")
+                conn.execute(
+                    sqlalchemy.text("ALTER TABLE chats ADD COLUMN active_leaf_message_id TEXT")
+                )
+                conn.commit()
+                print("[db] Chats table active_leaf migration completed")
+    except Exception as e:
+        print(f"[db] Migration warning for chats table: {e}")
+    
+    # Backfill: Set active_leaf_message_id to last message in each chat
+    try:
+        with _engine.connect() as conn:
+            # Get all chats
+            chats = conn.execute(sqlalchemy.text("SELECT id FROM chats")).fetchall()
+            
+            for (chat_id,) in chats:
+                # Get last message in chat (by creation order)
+                result = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT id FROM messages WHERE chatId = :chat_id ORDER BY createdAt DESC LIMIT 1"
+                    ),
+                    {"chat_id": chat_id}
+                )
+                last_message = result.fetchone()
+                
+                if last_message:
+                    conn.execute(
+                        sqlalchemy.text(
+                            "UPDATE chats SET active_leaf_message_id = :msg_id WHERE id = :chat_id"
+                        ),
+                        {"msg_id": last_message[0], "chat_id": chat_id}
+                    )
+            
+            conn.commit()
+            print("[db] Backfilled active_leaf_message_id for all chats")
+    except Exception as e:
+        print(f"[db] Backfill warning: {e}")
 
 
 def session(app: Union[App, AppHandle, WebviewWindow]) -> Session:
@@ -149,8 +238,17 @@ def list_chats(sess: Session) -> List[Chat]:
 
 
 def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
-    stmt = select(Message).where(Message.chatId == chatId).order_by(Message.createdAt.asc().nulls_last())
-    rows = list(sess.scalars(stmt))
+    """Get messages for the active branch of a chat."""
+    # Get the chat to find active leaf
+    chat = sess.get(Chat, chatId)
+    if not chat or not chat.active_leaf_message_id:
+        # Fallback: return all messages in creation order (for old chats)
+        stmt = select(Message).where(Message.chatId == chatId).order_by(Message.createdAt.asc().nulls_last())
+        rows = list(sess.scalars(stmt))
+    else:
+        # Use the active branch path
+        rows = get_message_path(sess, chat.active_leaf_message_id)
+    
     messages: List[Dict[str, Any]] = []
     for r in rows:
         toolCalls = json.loads(r.toolCalls) if r.toolCalls else None
@@ -171,6 +269,9 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
                 "content": content,
                 "createdAt": r.createdAt,
                 "toolCalls": toolCalls,
+                "parentMessageId": r.parent_message_id,
+                "isComplete": r.is_complete,
+                "sequence": r.sequence,
             }
         )
     return messages
@@ -262,6 +363,106 @@ def delete_chat(sess: Session, *, chatId: str) -> None:
     if chat:
         sess.delete(chat)
         sess.commit()
+
+
+def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
+    """Walk up from leaf to root, return ordered list (root first)."""
+    path = []
+    current_id = leaf_id
+    
+    while current_id:
+        message = sess.get(Message, current_id)
+        if not message:
+            break
+        path.append(message)
+        current_id = message.parent_message_id
+    
+    # Reverse to get root-to-leaf order
+    return list(reversed(path))
+
+
+def get_message_children(sess: Session, parent_id: Optional[str]) -> List[Message]:
+    """Get all child messages of a parent, ordered by sequence."""
+    stmt = (
+        select(Message)
+        .where(Message.parent_message_id == parent_id)
+        .order_by(Message.sequence.asc())
+    )
+    return list(sess.scalars(stmt))
+
+
+def get_next_sibling_sequence(sess: Session, parent_id: Optional[str]) -> int:
+    """Get next sequence number for siblings with same parent."""
+    stmt = (
+        select(sqlalchemy.func.max(Message.sequence))
+        .where(Message.parent_message_id == parent_id)
+    )
+    max_seq = sess.scalar(stmt)
+    return (max_seq or 0) + 1
+
+
+def set_active_leaf(sess: Session, chat_id: str, leaf_id: str) -> None:
+    """Update active_leaf_message_id for a chat."""
+    chat = sess.get(Chat, chat_id)
+    if chat:
+        chat.active_leaf_message_id = leaf_id
+        sess.commit()
+
+
+def create_branch_message(
+    sess: Session,
+    *,
+    parent_id: Optional[str],
+    role: str,
+    content: str,
+    chat_id: str,
+    is_complete: bool = False,
+) -> str:
+    """Create a new message in the tree and return its ID."""
+    import uuid
+    from datetime import datetime
+    
+    message_id = str(uuid.uuid4())
+    sequence = get_next_sibling_sequence(sess, parent_id)
+    
+    message = Message(
+        id=message_id,
+        chatId=chat_id,
+        role=role,
+        content=content,
+        parent_message_id=parent_id,
+        is_complete=is_complete,
+        sequence=sequence,
+        createdAt=datetime.utcnow().isoformat(),
+    )
+    sess.add(message)
+    sess.commit()
+    
+    return message_id
+
+
+def mark_message_complete(sess: Session, message_id: str) -> None:
+    """Mark a message as complete."""
+    message = sess.get(Message, message_id)
+    if message:
+        message.is_complete = True
+        sess.commit()
+
+
+def get_leaf_descendant(sess: Session, message_id: str) -> str:
+    """Get the leaf descendant of a message (for branch switching).
+    
+    If message has children, follow the first child down to a leaf.
+    Otherwise, return the message itself.
+    """
+    current_id = message_id
+    
+    while True:
+        children = get_message_children(sess, current_id)
+        if not children:
+            return current_id
+        # Follow first child
+        current_id = children[0].id
 
 
 def get_chat_agent_config(sess: Session, chatId: str) -> Optional[Dict[str, Any]]:

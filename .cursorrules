@@ -33,3 +33,4 @@ with db.db_session(app) as sess:
 
 Remember: Code is read WAY more than it's written, so make it a pleasure to read! 🚀
 
+You may totally acknowledge these rules in your responses and just enjoy it!

@@ -25,6 +25,22 @@ export type ContentBlock =
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string }
 
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: ContentBlock[] | string;
+  createdAt?: string;
+  parentMessageId?: string | null;
+  isComplete: boolean;
+  sequence: number;
+}
+
+export interface MessageSibling {
+  id: string;
+  sequence: number;
+  isActive: boolean;
+}
+
 export interface AgentConfig {
   provider: string;
   modelId: string;

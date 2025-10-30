@@ -23,6 +23,7 @@ interface ChatInputFormProps {
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
   getModelName?: (modelId: string) => string;
+  canSendMessage?: boolean;
 }
 
 const MAX_HEIGHT = 200;
@@ -207,6 +208,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
   selectedModel,
   setSelectedModel,
   models,
+  canSendMessage = true,
 }) => {
   const { chatId } = useChat();
   const [isToolSelectorOpen, setIsToolSelectorOpen] = useState(false);
@@ -258,13 +260,15 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
             "w-full flex-1 border-none bg-transparent pt-2 px-1 text-lg shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-muted-foreground resize-none h-full",
             "min-h-[40px] max-h-[200px] overflow-y-auto",
-            "query-input"
+            "query-input",
+            !canSendMessage && "opacity-50 cursor-not-allowed"
           )}
-          placeholder="Ask anything"
+          placeholder={canSendMessage ? "Ask anything" : "Complete or retry the previous message first"}
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           rows={1}
+          disabled={!canSendMessage}
         />
       </div>
 
@@ -310,9 +314,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
               size="icon"
               className={clsx(
                 "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90",
-                input.trim() && !isLoading ? "opacity-100" : "cursor-not-allowed opacity-50"
+                input.trim() && !isLoading && canSendMessage ? "opacity-100" : "cursor-not-allowed opacity-50"
               )}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || !canSendMessage}
             >
               <ArrowUp className="size-5.5" />
             </Button>
