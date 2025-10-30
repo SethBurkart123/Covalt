@@ -252,8 +252,8 @@ async def switch_to_sibling(
     """Switch active branch to different sibling."""
     with db.db_session(app_handle) as sess:
         # Get the leaf descendant of the sibling
-        leaf_id = db.get_leaf_descendant(sess, body.siblingId)
-        
+        leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
+
         # Update active leaf to point to this branch
         db.set_active_leaf(sess, body.chatId, leaf_id)
 
@@ -268,17 +268,17 @@ async def get_message_siblings(
         message = sess.get(db.Message, body.messageId)
         if not message:
             return []
-        
-        # Get all siblings (messages with same parent)
-        siblings = db.get_message_children(sess, message.parent_message_id)
-        
+
+        # Get all siblings (messages with same parent in the same chat)
+        siblings = db.get_message_children(sess, message.parent_message_id, message.chatId)
+
         # Get the chat to determine which is active
         chat = sess.get(db.Chat, message.chatId)
         active_path = []
         if chat and chat.active_leaf_message_id:
             active_path_msgs = db.get_message_path(sess, chat.active_leaf_message_id)
             active_path = [m.id for m in active_path_msgs]
-        
+
         return [
             MessageSiblingInfo(
                 id=sib.id,

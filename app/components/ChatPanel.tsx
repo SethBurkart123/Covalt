@@ -18,12 +18,17 @@ export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models } = useChat();
 
   // Own streaming + input state locally inside this subtree
-  const { input, handleInputChange, handleSubmit, isLoading, inputRef, messages, canSendMessage, triggerReload } = useChatInput();
+  const { input, handleInputChange, handleSubmit, isLoading, inputRef, messages, canSendMessage, triggerReload, setMessages } = useChatInput();
 
   // Refresh messages callback for branch operations
   const handleRefreshMessages = useCallback(async () => {
     triggerReload();
   }, [triggerReload]);
+
+  // Allow Chat component to update messages optimistically during streaming
+  const handleUpdateMessages = useCallback((updater: (prev: any[]) => any[]) => {
+    setMessages(updater);
+  }, [setMessages]);
 
   // Provide stable callback wrappers so siblings like ChatInputForm
   // don't re-render on every token just because handler identity changes.
@@ -49,10 +54,11 @@ export default function ChatPanel() {
       <div className="overflow-y-scroll flex-1">
         <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
         <div className="flex flex-col">
-          <Chat 
-            messages={messages} 
+          <Chat
+            messages={messages}
             isLoading={isLoading}
             onRefreshMessages={handleRefreshMessages}
+            onUpdateMessages={handleUpdateMessages}
           />
         </div>
       </div>

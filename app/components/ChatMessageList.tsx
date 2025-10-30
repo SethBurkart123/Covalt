@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import ChatMessage from "./Message";
-import { Message } from "@/lib/services/api";
+import { Message } from "@/lib/types/chat";
 
 interface ChatMessageListProps {
   messages: Message[];
@@ -84,7 +84,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, isLoading, 
               content={m.content}
               isStreaming={isLoading && index === messages.length - 1 && m.role === "assistant"}
             />
-            {m.role === "assistant" && !isLoading && (
+            {!isLoading && (
               <AssistantMessageActions messageIndex={index} />
             )}
           </div>

@@ -381,21 +381,23 @@ def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
     return list(reversed(path))
 
 
-def get_message_children(sess: Session, parent_id: Optional[str]) -> List[Message]:
-    """Get all child messages of a parent, ordered by sequence."""
+def get_message_children(sess: Session, parent_id: Optional[str], chat_id: str) -> List[Message]:
+    """Get all child messages of a parent within a specific chat, ordered by sequence."""
     stmt = (
         select(Message)
         .where(Message.parent_message_id == parent_id)
+        .where(Message.chatId == chat_id)
         .order_by(Message.sequence.asc())
     )
     return list(sess.scalars(stmt))
 
 
-def get_next_sibling_sequence(sess: Session, parent_id: Optional[str]) -> int:
-    """Get next sequence number for siblings with same parent."""
+def get_next_sibling_sequence(sess: Session, parent_id: Optional[str], chat_id: str) -> int:
+    """Get next sequence number for siblings with same parent in the same chat."""
     stmt = (
         select(sqlalchemy.func.max(Message.sequence))
         .where(Message.parent_message_id == parent_id)
+        .where(Message.chatId == chat_id)
     )
     max_seq = sess.scalar(stmt)
     return (max_seq or 0) + 1
@@ -423,8 +425,8 @@ def create_branch_message(
     from datetime import datetime
     
     message_id = str(uuid.uuid4())
-    sequence = get_next_sibling_sequence(sess, parent_id)
-    
+    sequence = get_next_sibling_sequence(sess, parent_id, chat_id)
+
     message = Message(
         id=message_id,
         chatId=chat_id,
@@ -449,16 +451,16 @@ def mark_message_complete(sess: Session, message_id: str) -> None:
         sess.commit()
 
 
-def get_leaf_descendant(sess: Session, message_id: str) -> str:
+def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
     """Get the leaf descendant of a message (for branch switching).
-    
+
     If message has children, follow the first child down to a leaf.
     Otherwise, return the message itself.
     """
     current_id = message_id
-    
+
     while True:
-        children = get_message_children(sess, current_id)
+        children = get_message_children(sess, current_id, chat_id)
         if not children:
             return current_id
         # Follow first child

@@ -67,7 +67,7 @@ def save_user_msg(app_handle: AppHandle, msg: ChatMessage, chat_id: str, parent_
     """Save user message to db."""
     with db.db_session(app_handle) as sess:
         # Get sequence number for siblings
-        sequence = db.get_next_sibling_sequence(sess, parent_id)
+        sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         
         # Create the message
         message = db.Message(
@@ -91,7 +91,7 @@ def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> s
     """Create empty assistant message, return id."""
     msg_id = str(uuid.uuid4())
     with db.db_session(app_handle) as sess:
-        sequence = db.get_next_sibling_sequence(sess, parent_id)
+        sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         
         message = db.Message(
             id=msg_id,
