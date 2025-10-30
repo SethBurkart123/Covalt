@@ -5,6 +5,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+import traceback
 
 from pydantic import BaseModel
 from pytauri import AppHandle
@@ -48,14 +49,14 @@ async def stream_chat(
     modelId = body.modelId
     chatId = body.chatId
 
-    provider = "openai"
-    actual_model_id = "gpt-4o-mini"
+    provider = ""
+    model_id = ""
     if modelId and ":" in modelId:
         parts = modelId.split(":", 1)
         provider = parts[0]
-        actual_model_id = parts[1]
+        model_id = parts[1]
     elif modelId:
-        actual_model_id = modelId
+        model_id = modelId
 
     if not chatId:
         chatId = str(uuid.uuid4())
@@ -74,7 +75,7 @@ async def stream_chat(
             
             config = {
                 "provider": provider,
-                "model_id": actual_model_id,
+                "model_id": model_id,
                 "tool_ids": default_tool_ids,
                 "instructions": [],
             }
@@ -89,7 +90,7 @@ async def stream_chat(
                 default_tool_ids = db.get_default_tool_ids(sess)
                 config = {
                     "provider": provider,
-                    "model_id": actual_model_id,
+                    "model_id": model_id,
                     "tool_ids": default_tool_ids,
                     "instructions": [],
                 }
@@ -165,6 +166,7 @@ async def stream_chat(
         async for chunk in response_stream:
             if chunk.event == RunEvent.run_content:
                 if chunk.content:
+                    print(f"[stream_chat] Content: {chunk.content}")
                     assistantContent += chunk.content
                     current_text_buffer += chunk.content
                     ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
@@ -200,8 +202,6 @@ async def stream_chat(
             
             elif chunk.event == RunEvent.run_completed:
                 flush_text_block()
-                if not content_blocks:
-                    content_blocks = [{"type": "text", "content": ""}]
                 
                 ch.send_model(ChatEvent(event="RunCompleted"))
                 
@@ -220,13 +220,15 @@ async def stream_chat(
                 await asyncio.to_thread(save_final)
             
             elif chunk.event == RunEvent.run_error:
+                print(f"[stream_chat] RunError: {chunk.error.message}")
                 flush_text_block()
                 
                 error_block = {
                     "type": "error",
-                    "message": str(chunk),
+                    "content": str(chunk.error.message) if hasattr(chunk.error, 'message') else str(chunk),
                     "timestamp": datetime.utcnow().isoformat()
                 }
+                print(error_block)
                 content_blocks.append(error_block)
                 
                 ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
@@ -245,13 +247,12 @@ async def stream_chat(
                 await asyncio.to_thread(save_error)
         
     except Exception as e:
-        import traceback
         print(f"[stream_chat] Error: {e}")
         print(traceback.format_exc())
         
         error_block = {
             "type": "error",
-            "message": str(e),
+            "content": json.loads(e.message)['error']['message'],
             "traceback": traceback.format_exc(),
             "timestamp": datetime.utcnow().isoformat()
         }

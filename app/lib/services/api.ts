@@ -79,7 +79,7 @@ class ApiService {
           
           sendEvent(event || 'RunContent', data);
           
-          if (event === 'RunCompleted') {
+          if (event === 'RunCompleted' || event === 'RunError') {
             controller.close();
           }
         });

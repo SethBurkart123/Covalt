@@ -251,7 +251,7 @@ export function useChatInput() {
                   updateAssistantMessage();
                 }
               }
-              else if (currentEvent === "RunCompleted") {
+              else if (currentEvent === "RunCompleted" || currentEvent === "RunError") {
                 flushTextBlock();
                 if (currentReasoningBlock) {
                   contentBlocks.push({

@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -p 4096",
     "lint": "next lint",
-    "tauri": "tauri"
+    "tauri": "PYTAURI_GEN_TS=1 tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
