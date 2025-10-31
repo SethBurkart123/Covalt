@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 from ..types import _BaseModel
 
@@ -15,6 +15,9 @@ class ToolCall(_BaseModel):
 
 
 class ContentBlock(_BaseModel):
+    # Allow extra fields on content blocks so we can attach
+    # metadata like timestamps or tracebacks to error blocks
+    model_config = ConfigDict(extra="allow")
     type: str  # "text", "tool_call", "reasoning"
     # For text blocks
     content: Optional[str] = None
@@ -88,6 +91,8 @@ class ChatEvent(_BaseModel):
     sessionId: Optional[str] = None
     tool: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    # For seeding existing content blocks on continuation
+    blocks: Optional[List[Dict[str, Any]]] = None
 
 
 class ToggleChatToolsInput(_BaseModel):
@@ -153,4 +158,3 @@ class ChatAgentConfigResponse(_BaseModel):
     toolIds: List[str]
     provider: str
     modelId: str
-

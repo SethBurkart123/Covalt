@@ -202,12 +202,40 @@ async def handle_content_stream(
     agno_messages = []
     for msg in messages:
         agno_messages.extend(convert_to_agno_messages(msg))
-    
+
     response_stream = agent.arun(input=agno_messages, stream=True, stream_intermediate_steps=True)
-    
-    content_blocks = []
+
+    # Initialize content blocks with any existing message content so we append
+    content_blocks: List[Dict[str, Any]] = []
     current_text = ""
     tool_counter = 0
+
+    # Load existing assistant message content (for continue) and trim trailing error
+    try:
+        with db.db_session(app_handle) as sess:
+            message = sess.get(db.Message, assistant_msg_id)
+            if message and message.content:
+                raw = message.content.strip()
+                initial_blocks: List[Dict[str, Any]] = []
+                if raw.startswith('['):
+                    try:
+                        initial_blocks = json.loads(raw)
+                    except Exception:
+                        # If parsing fails, treat as legacy text
+                        initial_blocks = [{"type": "text", "content": message.content}]
+                else:
+                    # Legacy/plain text
+                    initial_blocks = [{"type": "text", "content": message.content}]
+
+                # Remove trailing error blocks so continuation starts from valid content
+                while initial_blocks and isinstance(initial_blocks[-1], dict) and initial_blocks[-1].get("type") == "error":
+                    initial_blocks.pop()
+
+                content_blocks.extend(initial_blocks)
+                # Initialize tool counter to number of existing tool_call blocks
+                tool_counter = sum(1 for b in content_blocks if isinstance(b, dict) and b.get("type") == "tool_call")
+    except Exception as e:
+        print(f"[stream] Warning loading initial content for {assistant_msg_id}: {e}")
     had_error = False
     run_id = None
     
@@ -298,8 +326,8 @@ async def handle_content_stream(
                 "timestamp": datetime.utcnow().isoformat()
             }
             content_blocks.append(error_block)
-            ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
             await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, json.dumps(content_blocks))
+            ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
             had_error = True
             return
     
@@ -415,7 +443,25 @@ async def stream_chat(
             "traceback": traceback.format_exc(),
             "timestamp": datetime.utcnow().isoformat()
         }
-        
-        save_msg_content(app_handle, assistant_msg_id, json.dumps([error_block]))
+
+        # Preserve any existing content and append the error block
+        try:
+            with db.db_session(app_handle) as sess:
+                message = sess.get(db.Message, assistant_msg_id)
+                blocks: List[Dict[str, Any]] = []
+                if message and message.content:
+                    raw = message.content.strip()
+                    if raw.startswith('['):
+                        try:
+                            blocks = json.loads(raw)
+                        except Exception:
+                            blocks = [{"type": "text", "content": message.content}]
+                    else:
+                        blocks = [{"type": "text", "content": message.content}]
+                blocks.append(error_block)
+                db.update_message_content(sess, messageId=assistant_msg_id, content=json.dumps(blocks))
+        except Exception as e2:
+            print(f"[stream] Failed to append error block, falling back: {e2}")
+            save_msg_content(app_handle, assistant_msg_id, json.dumps([error_block]))
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
         # Note: message stays is_complete=False so user can retry/continue

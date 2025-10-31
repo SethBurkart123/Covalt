@@ -109,7 +109,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
                 isStreaming={isStreamingMessage}
                 message={m}
                 siblings={siblings}
-                onContinue={!m.isComplete && m.role === 'assistant' && onContinue ? () => onContinue(m.id) : undefined}
+                onContinue={m.role === 'assistant' && onContinue ? () => onContinue(m.id) : undefined}
                 onRetry={m.role === 'assistant' && onRetry ? () => onRetry(m.id) : undefined}
                 onEdit={m.role === 'user' && onEdit ? () => onEdit(m.id) : undefined}
                 onNavigate={onNavigate ? (siblingId) => onNavigate(m.id, siblingId) : undefined}

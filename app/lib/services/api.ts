@@ -61,14 +61,18 @@ class ApiService {
           sessionId?: string;
           reasoningContent?: string;
           tool?: any;
+          blocks?: any[];
+          error?: string;
         }) => {
           const { event, ...rest } = evt || ({} as any);
           const data: Record<string, any> = {};
           
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.error === 'string') data.error = rest.error;
           if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
+          if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
           
           sendEvent(event || 'RunContent', data);
           
@@ -125,8 +129,10 @@ class ApiService {
           
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.error === 'string') data.error = rest.error;
           if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
+          if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
           
           sendEvent(event || 'RunContent', data);
           
@@ -176,6 +182,7 @@ class ApiService {
           
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.error === 'string') data.error = rest.error;
           if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
           
@@ -227,6 +234,7 @@ class ApiService {
           
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === 'string') data.content = rest.content;
+          if (typeof rest.error === 'string') data.error = rest.error;
           if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
           

@@ -260,6 +260,7 @@ toolName?: Toolname
 toolArgs?: Toolargs
 toolResult?: Toolresult
 isCompleted?: Iscompleted
+[k: string]: unknown
 }
 export interface ToolCall {
 id: Id3

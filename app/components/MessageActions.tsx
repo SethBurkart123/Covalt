@@ -84,8 +84,8 @@ export function MessageActions({
         <TooltipContent>{copied ? 'Copied!' : 'Copy message'}</TooltipContent>
       </Tooltip>
 
-      {/* Continue button for incomplete assistant messages */}
-      {!message.isComplete && message.role === 'assistant' && onContinue && (
+      {/* Continue button for any assistant message */}
+      {message.role === 'assistant' && onContinue && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -96,7 +96,7 @@ export function MessageActions({
               className="h-7 px-2 text-xs"
             >
               <Play className="size-3.5 mr-1" />
-              {hasError && 'Continue'}
+              Continue
             </Button>
           </TooltipTrigger>
           <TooltipContent>Continue generation</TooltipContent>
@@ -180,4 +180,3 @@ export function MessageActions({
     </div>
   );
 }
-

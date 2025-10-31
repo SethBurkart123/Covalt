@@ -30,9 +30,19 @@ async function processMessageStream(
 
   const scheduleUpdate = () => {
     requestAnimationFrame(() => {
-      const content = contentBlocks.length > 0
-        ? [...contentBlocks]
-        : [{ type: "text", content: currentTextBlock + currentReasoningBlock }];
+      const content = [...contentBlocks];
+      const hasText = currentTextBlock && currentTextBlock.length > 0;
+      const hasReason = currentReasoningBlock && currentReasoningBlock.length > 0;
+      if (hasText) {
+        content.push({ type: "text", content: currentTextBlock });
+      }
+      if (hasReason) {
+        content.push({ type: "reasoning", content: currentReasoningBlock, isCompleted: false });
+      }
+      if (content.length === 0) {
+        // ensure at least an empty text block to prevent flicker
+        content.push({ type: "text", content: "" });
+      }
       onUpdate(content);
     });
   };
@@ -69,7 +79,25 @@ async function processMessageStream(
               onMessageId(parsed.content);
             }
             else if (currentEvent === "RunContent" && parsed.content) {
+              // If we just seeded blocks and the last block is text, merge into streaming text
+              if (
+                currentTextBlock === "" &&
+                contentBlocks.length > 0 &&
+                contentBlocks[contentBlocks.length - 1]?.type === "text"
+              ) {
+                const last = contentBlocks.pop();
+                if (last && typeof last.content === 'string') {
+                  currentTextBlock = last.content;
+                }
+              }
               currentTextBlock += parsed.content;
+              scheduleUpdate();
+            }
+            else if (currentEvent === "SeedBlocks" && Array.isArray(parsed.blocks)) {
+              // Seed with existing blocks from backend (continuation)
+              contentBlocks.splice(0, contentBlocks.length, ...parsed.blocks);
+              currentTextBlock = "";
+              currentReasoningBlock = "";
               scheduleUpdate();
             }
             else if (currentEvent === "ReasoningStarted") {
@@ -122,6 +150,13 @@ async function processMessageStream(
                   content: currentReasoningBlock,
                   isCompleted: true
                 });
+                currentReasoningBlock = "";
+              }
+              if (currentEvent === "RunError") {
+                console.log('Error: ', parsed)
+                const errText = typeof parsed.error === 'string' ? parsed.error
+                  : (typeof parsed.content === 'string' ? parsed.content : 'An error occurred.');
+                contentBlocks.push({ type: "error", content: errText });
               }
               scheduleUpdate();
             }

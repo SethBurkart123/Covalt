@@ -59,6 +59,8 @@ async def continue_message(
     """Continue incomplete assistant message from where it stopped."""
     ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
     
+    existing_blocks: List[Dict[str, Any]] = []
+
     with db.db_session(app_handle) as sess:
         # Get the message path up to this message
         messages = db.get_message_path(sess, body.messageId)
@@ -81,10 +83,28 @@ async def continue_message(
                     createdAt=m.createdAt,
                 )
             )
+
+        # Seed blocks for the assistant message being continued (trim trailing error)
+        target_msg = sess.get(db.Message, body.messageId)
+        if target_msg and isinstance(target_msg.content, str):
+            raw = target_msg.content.strip()
+            if raw.startswith('['):
+                try:
+                    existing_blocks = json.loads(raw)
+                except Exception:
+                    existing_blocks = [{"type": "text", "content": target_msg.content}]
+            else:
+                existing_blocks = [{"type": "text", "content": target_msg.content}]
+            # Remove trailing error blocks
+            while existing_blocks and isinstance(existing_blocks[-1], dict) and existing_blocks[-1].get("type") == "error":
+                existing_blocks.pop()
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     # For parity with other streams, emit the assistant message ID being continued
     ch.send_model(ChatEvent(event="AssistantMessageId", content=body.messageId))
+    # Seed existing content so the frontend doesn't clear it on first chunk
+    if existing_blocks:
+        ch.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
     
     try:
         agent = create_agent_for_chat(body.chatId, app_handle)
@@ -100,6 +120,27 @@ async def continue_message(
         
     except Exception as e:
         print(f"[continue_message] Error: {e}")
+        # Persist error to the message so reload shows it
+        try:
+            with db.db_session(app_handle) as sess:
+                message = sess.get(db.Message, body.messageId)
+                blocks: List[Dict[str, Any]] = []
+                if message and message.content:
+                    raw = message.content.strip()
+                    if raw.startswith('['):
+                        try:
+                            blocks = json.loads(raw)
+                        except Exception:
+                            blocks = [{"type": "text", "content": message.content}]
+                    else:
+                        blocks = [{"type": "text", "content": message.content}]
+                blocks.append({
+                    "type": "error",
+                    "content": str(e),
+                })
+                db.update_message_content(sess, messageId=body.messageId, content=json.dumps(blocks))
+        except Exception as _:
+            pass
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -175,6 +216,27 @@ async def retry_message(
         
     except Exception as e:
         print(f"[retry_message] Error: {e}")
+        # Persist error to the new assistant message
+        try:
+            with db.db_session(app_handle) as sess:
+                message = sess.get(db.Message, new_msg_id)
+                blocks: List[Dict[str, Any]] = []
+                if message and message.content:
+                    raw = message.content.strip()
+                    if raw.startswith('['):
+                        try:
+                            blocks = json.loads(raw)
+                        except Exception:
+                            blocks = [{"type": "text", "content": message.content}]
+                    else:
+                        blocks = [{"type": "text", "content": message.content}]
+                blocks.append({
+                    "type": "error",
+                    "content": str(e),
+                })
+                db.update_message_content(sess, messageId=new_msg_id, content=json.dumps(blocks))
+        except Exception as _:
+            pass
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -271,6 +333,27 @@ async def edit_user_message(
         
     except Exception as e:
         print(f"[edit_user_message] Error: {e}")
+        # Persist error to the assistant message
+        try:
+            with db.db_session(app_handle) as sess:
+                message = sess.get(db.Message, assistant_msg_id)
+                blocks: List[Dict[str, Any]] = []
+                if message and message.content:
+                    raw = message.content.strip()
+                    if raw.startswith('['):
+                        try:
+                            blocks = json.loads(raw)
+                        except Exception:
+                            blocks = [{"type": "text", "content": message.content}]
+                    else:
+                        blocks = [{"type": "text", "content": message.content}]
+                blocks.append({
+                    "type": "error",
+                    "content": str(e),
+                })
+                db.update_message_content(sess, messageId=assistant_msg_id, content=json.dumps(blocks))
+        except Exception as _:
+            pass
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
