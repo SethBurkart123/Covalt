@@ -211,7 +211,9 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
 
     setActionLoading(messageId);
     let streamingDone = false;
-    const newAssistantMessageId = crypto.randomUUID();
+
+    const tempAssistantMessageId = crypto.randomUUID();
+    let currentAssistantMessageId = tempAssistantMessageId;
 
     try {
       const response = await api.retryMessage(messageId, chatId);
@@ -230,7 +232,7 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
           return [
             ...upToParent,
             {
-              id: newAssistantMessageId,
+              id: currentAssistantMessageId,
               role: 'assistant',
               content,
               isComplete: false,
@@ -238,6 +240,11 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
             } as Message,
           ];
         });
+      },
+      undefined,
+      (assistantId) => {
+        // Switch to backend-assigned message ID mid-stream
+        currentAssistantMessageId = assistantId;
       });
 
       // Final refresh to get authoritative state
@@ -258,7 +265,8 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
     setActionLoading(messageId);
     let streamingDone = false;
     const newUserMessageId = crypto.randomUUID();
-    const newAssistantMessageId = crypto.randomUUID();
+    const tempAssistantMessageId = crypto.randomUUID();
+    let currentAssistantMessageId = tempAssistantMessageId;
 
     try {
       const response = await api.editUserMessage(messageId, newContent, chatId);
@@ -282,7 +290,7 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
               sequence: 1,
             } as Message,
             {
-              id: newAssistantMessageId,
+              id: currentAssistantMessageId,
               role: 'assistant',
               content,
               isComplete: false,
@@ -290,6 +298,10 @@ export default function Chat({ messages, isLoading, onRefreshMessages, onUpdateM
             } as Message,
           ];
         });
+      },
+      undefined,
+      (assistantId) => {
+        currentAssistantMessageId = assistantId;
       });
 
       // Final refresh to get authoritative state

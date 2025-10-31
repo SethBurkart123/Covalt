@@ -274,4 +274,3 @@ class ApiService {
 }
 
 export const api = ApiService.getInstance();
-

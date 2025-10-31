@@ -63,18 +63,28 @@ async def continue_message(
         # Get the message path up to this message
         messages = db.get_message_path(sess, body.messageId)
         
-        # Convert to ChatMessage format
-        chat_messages = [
-            ChatMessage(
-                id=m.id,
-                role=m.role,
-                content=json.loads(m.content),
-                createdAt=m.createdAt,
+        # Convert to ChatMessage format (parse JSON array content if present)
+        chat_messages = []
+        for m in messages:
+            content = m.content
+            if isinstance(content, str) and content.strip().startswith('['):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    # Keep as-is if parsing fails (legacy/plain text)
+                    pass
+            chat_messages.append(
+                ChatMessage(
+                    id=m.id,
+                    role=m.role,
+                    content=content,
+                    createdAt=m.createdAt,
+                )
             )
-            for m in messages
-        ]
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    # For parity with other streams, emit the assistant message ID being continued
+    ch.send_model(ChatEvent(event="AssistantMessageId", content=body.messageId))
     
     try:
         agent = create_agent_for_chat(body.chatId, app_handle)
@@ -115,16 +125,24 @@ async def retry_message(
         else:
             messages = []
         
-        # Convert to ChatMessage format
-        chat_messages = [
-            ChatMessage(
-                id=m.id,
-                role=m.role,
-                content=json.loads(m.content),
-                createdAt=m.createdAt,
+        # Convert to ChatMessage format (parse JSON array content if present)
+        chat_messages = []
+        for m in messages:
+            content = m.content
+            if isinstance(content, str) and content.strip().startswith('['):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    # Keep as-is if parsing fails (legacy/plain text)
+                    pass
+            chat_messages.append(
+                ChatMessage(
+                    id=m.id,
+                    role=m.role,
+                    content=content,
+                    createdAt=m.createdAt,
+                )
             )
-            for m in messages
-        ]
         
         # Create new sibling assistant message
         new_msg_id = db.create_branch_message(
@@ -140,6 +158,8 @@ async def retry_message(
         db.set_active_leaf(sess, body.chatId, new_msg_id)
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    # Emit the assistant message ID so the frontend can track updates
+    ch.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
     
     try:
         agent = create_agent_for_chat(body.chatId, app_handle)
@@ -194,15 +214,23 @@ async def edit_user_message(
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
         
         # Convert to ChatMessage format (including the new user message)
-        chat_messages = [
-            ChatMessage(
-                id=m.id,
-                role=m.role,
-                content=json.loads(m.content),
-                createdAt=m.createdAt,
+        chat_messages = []
+        for m in messages:
+            content = m.content
+            if isinstance(content, str) and content.strip().startswith('['):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    # Keep as-is if parsing fails (legacy/plain text)
+                    pass
+            chat_messages.append(
+                ChatMessage(
+                    id=m.id,
+                    role=m.role,
+                    content=content,
+                    createdAt=m.createdAt,
+                )
             )
-            for m in messages
-        ]
         chat_messages.append(
             ChatMessage(
                 id=new_user_msg_id,
@@ -226,6 +254,8 @@ async def edit_user_message(
         db.set_active_leaf(sess, body.chatId, assistant_msg_id)
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    # Emit the assistant message ID for frontend tracking
+    ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
     
     try:
         agent = create_agent_for_chat(body.chatId, app_handle)
@@ -287,4 +317,3 @@ async def get_message_siblings(
             )
             for sib in siblings
         ]
-
