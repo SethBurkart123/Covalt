@@ -5,6 +5,7 @@ import { useChat } from "@/contexts/chat-context";
 import ChatMessageList from "./ChatMessageList";
 import { api } from "@/lib/services/api";
 import type { Message, MessageSibling } from "@/lib/types/chat";
+import { addRecentModel } from "@/lib/utils";
 
 // Stream processor - handles SSE parsing and content block building
 async function processMessageStream(
@@ -408,6 +409,11 @@ export function useChatInput() {
         streamingDone = true;
         const fullChat = await api.getChat(finalChatId);
         setMessages(fullChat.messages || []);
+        
+        // Track model usage for recent models
+        if (selectedModel) {
+          addRecentModel(selectedModel);
+        }
       }
 
     } catch (error) {
@@ -434,6 +440,9 @@ export function useChatInput() {
   const handleContinue = useCallback(async (messageId: string) => {
     if (!chatId) return;
 
+    const message = messages.find(m => m.id === messageId);
+    const modelUsed = message?.modelUsed;
+
     try {
       const response = await api.continueMessage(messageId, chatId);
       await streamAction(
@@ -442,10 +451,15 @@ export function useChatInput() {
           prev.map(m => m.id === messageId ? { ...m, content, isComplete: false } : m)
         )
       );
+      
+      // Track model usage for recent models
+      if (modelUsed) {
+        addRecentModel(modelUsed);
+      }
     } catch (error) {
       console.error('Failed to continue message:', error);
     }
-  }, [chatId]);
+  }, [chatId, messages]);
 
   const handleRetry = useCallback(async (messageId: string) => {
     if (!chatId) return;
@@ -478,6 +492,11 @@ export function useChatInput() {
           return updated;
         })
       );
+      
+      // Track model usage for recent models
+      if (selectedModel) {
+        addRecentModel(selectedModel);
+      }
     } catch (error) {
       console.error('Failed to retry message:', error);
     }

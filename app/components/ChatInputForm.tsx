@@ -3,16 +3,16 @@ import { Button } from "@/components/ui/button";
 import {
   Plus,
   Search,
-  Sparkles,
   MoreHorizontal,
   ArrowUp,
   Square,
 } from "lucide-react";
 import clsx from "clsx";
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, LayoutGroup } from 'framer-motion';
 import type { ModelInfo } from '@/lib/types/chat';
 import { ToolSelector } from '@/components/ToolSelector';
 import { useChat } from '@/contexts/chat-context';
+import ModelSelector from '@/components/ModelSelector';
 
 interface ChatInputFormProps {
   input: string;
@@ -77,129 +77,6 @@ const ScrollingText = React.memo(({ text, className = "" }: { text: string; clas
 });
 
 ScrollingText.displayName = 'ScrollingText';
-
-const ModelSelector = React.memo(({ selectedModel, setSelectedModel, models }: { selectedModel: string, setSelectedModel: (model: string) => void, models: ModelInfo[] }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const [buttonWidth, setButtonWidth] = useState(0);
-
-  const optionHeight = 32;
-  const verticalPadding = 8;
-  const optionsVisibleHeight = Math.min(10, (models.length)) * optionHeight + verticalPadding;
-
-  // Helper to format model display name
-  const formatModelDisplay = (model: ModelInfo) => {
-    const providerName = model.provider.charAt(0).toUpperCase() + model.provider.slice(1);
-    return `${providerName}: ${model.displayName}`;
-  };
-
-  // Helper to get model key for storage
-  const getModelKey = (model: ModelInfo) => `${model.provider}:${model.modelId}`;
-
-  // Find the currently selected model info
-  const selectedModelInfo = models.find(m => getModelKey(m) === selectedModel);
-  const selectedDisplayName = selectedModelInfo ? formatModelDisplay(selectedModelInfo) : selectedModel;
-
-  useEffect(() => {
-    if (buttonRef.current) {
-      setButtonWidth(buttonRef.current.offsetWidth);
-    }
-  }, [selectedModel]);
-
-  return (
-    <LayoutGroup>
-      <motion.div className="relative" layout="size" layoutId="model-selector" transition={{ type: "spring", damping: 20, stiffness: 400 }}>
-        <motion.button
-          ref={buttonRef}
-          type="button"
-          className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm relative font-medium h-9 z-10 bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 justify-center whitespace-nowrap disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive min-w-20"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <motion.div
-            animate={{ rotate: isOpen ? 360 : 0 }}
-            transition={{ duration: 0.5, type: 'spring', damping: 20, stiffness: 300 }}
-          >
-            <Sparkles className="size-4" />
-          </motion.div>
-          <motion.span
-            key={selectedModel}
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.2 }}
-          >
-            {selectedDisplayName}
-          </motion.span>
-        </motion.button>
-
-        <AnimatePresence>
-          {isOpen && buttonWidth > 0 && (
-            <motion.div
-              className="absolute bottom-[-1px] rounded-2xl left-1/2 -translate-x-1/2 origin-bottom flex flex-col items-center overflow-hidden border bg-secondary shadow-lg z-0 w-auto pb-10"
-              initial={{
-                height: 0,
-                minWidth: buttonWidth,
-                filter: "blur(10px)",
-              }}
-              animate={{
-                height: optionsVisibleHeight,
-                minWidth: buttonWidth,
-                transition: {
-                  height: { type: "spring", stiffness: 300, damping: 27 },
-                  opacity: { duration: 0.2 }
-                },
-                filter: "blur(0px)",
-              }}
-              exit={{
-                height: 0,
-                filter: "blur(10px)",
-                transition: { duration: 0.3, ease: "easeInOut" }
-              }}
-              style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
-            >
-              <div className="flex flex-col items-center w-full p-1 overflow-y-auto">
-                {models
-                  .filter((model) => getModelKey(model) !== selectedModel)
-                  .map((model) => {
-                    const modelKey = getModelKey(model);
-                    const displayName = formatModelDisplay(model);
-                    return (
-                      <motion.button
-                        key={modelKey}
-                        className={clsx(
-                          "flex w-full items-center rounded-lg px-3 py-2 text-sm text-nowrap",
-                          "transition-colors duration-150 justify-center relative",
-                          "hover:bg-white/40 hover:border-border hover:border"
-                        )}
-                        style={{ height: `${optionHeight}px` }}
-                        onClick={(event) => {
-                          event?.preventDefault()
-                          setSelectedModel(modelKey);
-                          setIsOpen(false);
-                        }}
-                        initial={{ opacity: 0 }}
-                        animate={{ 
-                          opacity: 1, 
-                          transition: { duration: 0.2, ease: 'easeOut' }
-                        }}
-                        exit={{ 
-                          opacity: 0,
-                          transition: { duration: 0.2, ease: 'easeOut' }
-                        }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        {displayName}
-                      </motion.button>
-                    );
-                  })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </LayoutGroup>
-  );
-});
 
 const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
   input,
