@@ -95,6 +95,19 @@ def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> s
     msg_id = str(uuid.uuid4())
     with db.db_session(app_handle) as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
+        # Determine model used from chat's agent config
+        model_used: Optional[str] = None
+        try:
+            config = db.get_chat_agent_config(sess, chat_id)
+            if config:
+                provider = config.get("provider") or ""
+                model_id = config.get("model_id") or ""
+                if provider and model_id:
+                    model_used = f"{provider}:{model_id}"
+                else:
+                    model_used = model_id or None
+        except Exception:
+            model_used = None
         
         message = db.Message(
             id=msg_id,
@@ -105,6 +118,7 @@ def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> s
             parent_message_id=parent_id,
             is_complete=False,
             sequence=sequence,
+            model_used=model_used,
         )
         sess.add(message)
         sess.commit()

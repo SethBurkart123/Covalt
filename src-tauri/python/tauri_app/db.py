@@ -45,6 +45,7 @@ class Message(Base):
     parent_message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_complete: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sequence: Mapped[int] = mapped_column(sqlalchemy.Integer, default=1, nullable=False)
+    model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
 
@@ -161,6 +162,13 @@ def _run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
                         sqlalchemy.text("ALTER TABLE messages ADD COLUMN sequence INTEGER DEFAULT 1 NOT NULL")
                     )
                     needs_migration = True
+
+                if 'model_used' not in table_def[0]:
+                    print("[db] Running migration: Adding model_used column to messages table")
+                    conn.execute(
+                        sqlalchemy.text("ALTER TABLE messages ADD COLUMN model_used TEXT")
+                    )
+                    needs_migration = True
                 
                 if needs_migration:
                     conn.commit()
@@ -272,6 +280,7 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
                 "parentMessageId": r.parent_message_id,
                 "isComplete": r.is_complete,
                 "sequence": r.sequence,
+                "modelUsed": r.model_used,
             }
         )
     return messages
@@ -427,6 +436,21 @@ def create_branch_message(
     message_id = str(uuid.uuid4())
     sequence = get_next_sibling_sequence(sess, parent_id, chat_id)
 
+    # Determine model used for assistant messages from chat agent config
+    model_used: Optional[str] = None
+    if role == "assistant":
+        try:
+            config = get_chat_agent_config(sess, chat_id)
+            if config:
+                provider = config.get("provider") or ""
+                model_id = config.get("model_id") or ""
+                if provider and model_id:
+                    model_used = f"{provider}:{model_id}"
+                else:
+                    model_used = model_id or None
+        except Exception:
+            model_used = None
+
     message = Message(
         id=message_id,
         chatId=chat_id,
@@ -436,6 +460,7 @@ def create_branch_message(
         is_complete=is_complete,
         sequence=sequence,
         createdAt=datetime.utcnow().isoformat(),
+        model_used=model_used,
     )
     sess.add(message)
     sess.commit()

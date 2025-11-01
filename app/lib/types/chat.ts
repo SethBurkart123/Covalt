@@ -33,6 +33,7 @@ export interface Message {
   parentMessageId?: string | null;
   isComplete: boolean;
   sequence: number;
+  modelUsed?: string;
 }
 
 export interface MessageSibling {

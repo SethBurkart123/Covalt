@@ -28,6 +28,9 @@ export function MessageActions({
   const hasPrevSibling = currentIndex > 0;
   const hasNextSibling = currentIndex < siblings.length - 1;
   const showSiblingNav = siblings.length > 1;
+  const modelLabel = (message.role === 'assistant' && typeof (message as any).modelUsed === 'string')
+    ? (message as any).modelUsed
+    : undefined;
 
   const handlePrevious = () => {
     if (hasPrevSibling && onNavigate) {
@@ -62,10 +65,6 @@ export function MessageActions({
       console.error('Failed to copy:', err);
     }
   };
-
-  // Check if message has an error
-  const hasError = Array.isArray(message.content) && 
-    message.content.some(block => block.type === 'error');
 
   return (
     <div className="flex items-center gap-1">
@@ -114,7 +113,6 @@ export function MessageActions({
               className="h-7 w-7 p-0"
             >
               <RotateCcw className="size-3.5 mr-1" />
-              {hasError && 'Retry'}
             </Button>
           </TooltipTrigger>
           <TooltipContent>Retry generation</TooltipContent>
@@ -133,7 +131,6 @@ export function MessageActions({
               className="h-7 px-2 text-xs"
             >
               <Edit2 className="size-3.5 mr-1" />
-              {hasError && 'Edit'}
             </Button>
           </TooltipTrigger>
           <TooltipContent>Edit message</TooltipContent>
@@ -175,6 +172,12 @@ export function MessageActions({
             <TooltipContent>Next version</TooltipContent>
           </Tooltip>
         </div>
+      )}
+
+      {message.role === 'assistant' && modelLabel && (
+        <span className="text-[11px] text-muted-foreground px-1.5">
+          {modelLabel}
+        </span>
       )}
     </div>
   );
