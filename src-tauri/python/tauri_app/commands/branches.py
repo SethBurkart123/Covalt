@@ -4,6 +4,7 @@ import json
 from typing import Dict, List, Any
 
 from pydantic import BaseModel
+from typing import Optional
 from pytauri import AppHandle
 from pytauri.ipc import Channel, JavaScriptChannelId
 from pytauri.webview import WebviewWindow
@@ -11,7 +12,7 @@ from pytauri.webview import WebviewWindow
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
-from .streaming import convert_to_agno_messages, handle_content_stream
+from .streaming import handle_content_stream, parse_model_id
 from . import commands
 
 
@@ -25,6 +26,7 @@ class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
     channel: JavaScriptChannelId[ChatEvent]
+    modelId: Optional[str] = None
 
 
 class EditUserMessageRequest(BaseModel):
@@ -154,6 +156,12 @@ async def retry_message(
     ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
     
     with db.db_session(app_handle) as sess:
+        if body.modelId:
+            provider, model = parse_model_id(body.modelId)
+            db.update_chat_agent_config(sess, chatId=body.chatId, config={
+                "provider": provider,
+                "model_id": model,
+            })
         # Get the original message to find its parent
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:

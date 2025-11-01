@@ -469,7 +469,7 @@ export function useChatInput() {
     });
 
     try {
-      const response = await api.retryMessage(messageId, chatId);
+      const response = await api.retryMessage(messageId, chatId, selectedModel || undefined);
       await streamAction(
         response,
         (content) => setMessages(prev => {
@@ -481,7 +481,7 @@ export function useChatInput() {
     } catch (error) {
       console.error('Failed to retry message:', error);
     }
-  }, [chatId]);
+  }, [chatId, selectedModel]);
 
   const handleEdit = useCallback(async (messageId: string) => {
     const newContent = prompt('Edit your message:');

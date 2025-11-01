@@ -86,6 +86,7 @@ export type Messageid1 = string
 export type Chatid3 = string
 export type Messageid2 = string
 export type Chatid4 = string
+export type Modelid5 = (string | null)
 export type Messageid3 = string
 export type Newcontent = string
 export type Chatid5 = string
@@ -344,6 +345,7 @@ export interface RetryMessageRequest {
 messageId: Messageid2
 chatId: Chatid4
 channel: JavaScriptChannelIdChatEvent
+modelId?: Modelid5
 [k: string]: unknown
 }
 export interface EditUserMessageRequest {
