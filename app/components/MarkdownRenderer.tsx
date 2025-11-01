@@ -8,28 +8,6 @@ import { useTheme } from '@/contexts/theme-context';
 import { Check, Copy } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 
-// Custom component for the Copy button in code blocks
-const CopyButton = memo(({ text }: { text: string }) => {
-  const [copied, setCopied] = React.useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="absolute duration-75 right-2 top-2 rounded-md bg-white/50 border border-neutral-300 p-2 text-[0.75em] text-neutral-400 hover:bg-white/80 hover:text-neutral-800 dark:bg-neutral-800/50 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 cursor-pointer"
-    >
-      {copied ? 'Copied!' : 'Copy'}
-    </button>
-  );
-});
-
-CopyButton.displayName = 'CopyButton';
-
 // Memoized components for better performance
 const MemoizedComponents = {
   h1: memo(({node, ...props}: any) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />),
@@ -38,7 +16,7 @@ const MemoizedComponents = {
   h4: memo(({node, ...props}: any) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />),
   p: memo(({node, ...props}: any) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />),
   blockquote: memo(({node, ...props}: any) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />),
-  ul: memo(({node, ...props}: any) => <ul className="my-6 ml-6 list-disc [&>li]:mt-2" {...props} />),
+  ul: memo(({node, ...props}: any) => <ul className="!my-1 ml-6 list-disc" {...props} />),
   ol: memo(({node, ...props}: any) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2" {...props} />),
   table: memo(({node, ...props}: any) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>),
   th: memo(({node, ...props}: any) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
@@ -46,6 +24,7 @@ const MemoizedComponents = {
   a: memo(({node, ...props}: any) => <a className="font-medium text-primary underline underline-offset-4" {...props} />),
   pre: memo(({node, ...props}: any) => <pre {...props} />),
   img: memo(({node, ...props}: any) => <img className="w-full h-auto rounded-lg" {...props} />),
+  hr: memo(({node, ...props}: any) => <hr className="!my-8" {...props} />),
   input: memo(({node, className, ...props}: any) => {
     if (props.type === 'checkbox') {
       return <input type="checkbox" className={`mr-2 ${className}`} {...props} />;

@@ -26,7 +26,7 @@ export default function ProviderItem({ def, config, configured, saving, saved, o
   return (
     <Card className="overflow-hidden border-border/70 py-2 gap-0">
       <button
-        className="w-full px-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        className="w-full px-4 flex items-center justify-between transition-colors"
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex items-center gap-3 text-left">
