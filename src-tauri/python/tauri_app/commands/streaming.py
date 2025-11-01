@@ -35,7 +35,11 @@ def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
 
 
 def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model_id: Optional[str]) -> str:
-    """Create chat and config if needed, return chat_id."""
+    """
+    Create chat and config if needed, and ensure model/provider are up to date.
+
+    Returns the chat_id.
+    """
     if not chat_id:
         chat_id = str(uuid.uuid4())
         with db.db_session(app_handle) as sess:
@@ -50,7 +54,9 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
             }
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         return chat_id
-    
+
+    # Existing chat: ensure agent config exists and, if a model_id was provided,
+    # update the provider/model to match the current selection.
     with db.db_session(app_handle) as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
@@ -62,7 +68,19 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
                 "instructions": [],
             }
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-    
+        elif model_id:
+            # Only update provider/model; preserve tools/instructions and other fields
+            provider, model = parse_model_id(model_id)
+            # Update if different from current config
+            cur_provider = config.get("provider") or ""
+            cur_model = config.get("model_id") or ""
+            if (provider and provider != cur_provider) or (model and model != cur_model):
+                if provider:
+                    config["provider"] = provider
+                if model:
+                    config["model_id"] = model
+                db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+
     return chat_id
 
 

@@ -145,11 +145,17 @@ export default function ModelSelector({ selectedModel, setSelectedModel, models 
                       const isSelected = modelKey === selectedModel
                       const modelProviderDef = PROVIDER_MAP[model.provider]
                       const ProviderIcon = modelProviderDef?.icon
+                      const uniqueValue = group.isRecent 
+                        ? `recent:${model.modelId}` 
+                        : model.modelId
+                      const uniqueKey = group.isRecent 
+                        ? `recent:${modelKey}` 
+                        : modelKey
                       
                       return (
                         <CommandItem
-                          key={modelKey}
-                          value={model.modelId}
+                          key={uniqueKey}
+                          value={uniqueValue}
                           onSelect={() => {
                             setSelectedModel(modelKey)
                             setOpen(false)
