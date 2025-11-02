@@ -58,6 +58,98 @@ export default function ChatPanel() {
   // Model IDs are shown directly; no extra metadata
   const getModelName = useCallback((id: string) => id, []);
 
+  useEffect(() => {
+    if (!canSendMessage) return;
+
+    let isComposing = false;
+    
+    const handleCompositionStart = () => {
+      isComposing = true;
+    };
+    
+    const handleCompositionEnd = () => {
+      isComposing = false;
+    };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Skip during IME composition
+      if (isComposing || e.isComposing) return;
+      
+      const activeElement = document.activeElement;
+      
+      // Don't trigger if an input/textarea/contentEditable is focused
+      const isInputFocused = activeElement?.tagName === 'INPUT' || 
+                            activeElement?.tagName === 'TEXTAREA' ||
+                            activeElement?.getAttribute('contenteditable') === 'true';
+      
+      // Don't trigger if text is selected
+      const selection = window.getSelection();
+      const hasSelection = selection && selection.toString().trim().length > 0;
+      
+      // Don't trigger if modifiers are pressed (keyboard shortcuts)
+      const hasModifiers = e.metaKey || e.ctrlKey || e.altKey;
+      
+      // Don't trigger for special keys
+      const specialKeys = [
+        'Escape', 'Tab', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'Home', 'End', 'PageUp', 'PageDown', 'Insert', 'Delete', 'Backspace',
+        'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+        'PrintScreen', 'ScrollLock', 'Pause', 'Pause'
+      ];
+      const isSpecialKey = specialKeys.includes(e.key);
+      
+      // Only trigger for single printable characters
+      const isPrintableKey = e.key.length === 1 && !isSpecialKey;
+      
+      // Check if chat input is already focused
+      const isChatInputFocused = activeElement === inputRef.current;
+      
+      // Skip if any exclusion condition is met
+      if (isInputFocused || hasSelection || hasModifiers || !isPrintableKey || isChatInputFocused) {
+        return;
+      }
+      
+      // Focus the textarea and simulate typing
+      const textarea = inputRef.current;
+      if (!textarea) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Focus the textarea first to ensure selection properties are available
+      textarea.focus();
+      
+      // Get cursor position (will be at end if not previously focused)
+      const start = textarea.selectionStart ?? input.length;
+      const end = textarea.selectionEnd ?? input.length;
+      const currentValue = input;
+      const newValue = currentValue.slice(0, start) + e.key + currentValue.slice(end);
+      
+      // Update input value
+      const syntheticEvent = {
+        target: { value: newValue },
+      } as React.ChangeEvent<HTMLTextAreaElement>;
+      
+      handleInputChange(syntheticEvent);
+      
+      // Set cursor position after the inserted character
+      requestAnimationFrame(() => {
+        const newPosition = start + 1;
+        textarea.setSelectionRange(newPosition, newPosition);
+      });
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('compositionstart', handleCompositionStart);
+    window.addEventListener('compositionend', handleCompositionEnd);
+    
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('compositionstart', handleCompositionStart);
+      window.removeEventListener('compositionend', handleCompositionEnd);
+    };
+  }, [canSendMessage, input, inputRef, handleInputChange]);
+
   return (
     <>
       <div className="overflow-y-scroll flex-1">
