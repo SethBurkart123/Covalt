@@ -240,12 +240,14 @@ export interface ProviderConfig {
 provider: Provider1
 apiKey?: Apikey
 baseUrl?: Baseurl
+extra?: unknown
 enabled?: Enabled
 }
 export interface SaveProviderConfigInput {
 provider: Provider2
 apiKey?: Apikey1
 baseUrl?: Baseurl1
+extra?: unknown
 enabled?: Enabled1
 }
 export interface DefaultToolsResponse {

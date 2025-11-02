@@ -132,6 +132,7 @@ class ProviderConfig(_BaseModel):
     provider: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
+    extra: Optional[Any] = None
     enabled: bool = True
 
 
@@ -139,6 +140,7 @@ class SaveProviderConfigInput(_BaseModel):
     provider: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
+    extra: Optional[Any] = None
     enabled: bool = True
 
 

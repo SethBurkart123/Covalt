@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import ProviderSettings
+import json
 
 
 def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
@@ -27,6 +28,7 @@ def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, An
         "provider": settings.provider,
         "api_key": settings.api_key,
         "base_url": settings.base_url,
+        "extra": settings.extra,  # raw JSON string (UI handles editing)
         "enabled": settings.enabled,
     }
 
@@ -50,6 +52,7 @@ def get_all_provider_settings(sess: Session) -> Dict[str, Dict[str, Any]]:
             "provider": row.provider,
             "api_key": row.api_key,
             "base_url": row.base_url,
+            "extra": row.extra,
             "enabled": row.enabled,
         }
     return result
@@ -61,6 +64,7 @@ def save_provider_settings(
     provider: str,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    extra: Optional[Dict[str, Any] | str] = None,
     enabled: bool = True,
 ) -> None:
     """
@@ -81,16 +85,34 @@ def save_provider_settings(
             settings.api_key = api_key
         if base_url is not None:
             settings.base_url = base_url
+        if extra is not None:
+            # Accept dict or string; store as JSON string
+            if isinstance(extra, str):
+                settings.extra = extra
+            else:
+                try:
+                    settings.extra = json.dumps(extra)
+                except Exception:
+                    settings.extra = None
         settings.enabled = enabled
     else:
         # Create new
+        json_extra = None
+        if extra is not None:
+            if isinstance(extra, str):
+                json_extra = extra
+            else:
+                try:
+                    json_extra = json.dumps(extra)
+                except Exception:
+                    json_extra = None
         settings = ProviderSettings(
             provider=provider,
             api_key=api_key,
             base_url=base_url,
+            extra=json_extra,
             enabled=enabled,
         )
         sess.add(settings)
     
     sess.commit()
-

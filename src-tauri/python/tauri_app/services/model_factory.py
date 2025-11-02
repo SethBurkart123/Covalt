@@ -14,6 +14,7 @@ from agno.models.anthropic import Claude
 from agno.models.groq import Groq
 from agno.models.ollama import Ollama
 from agno.models.vllm import VLLM
+from agno.models.google import Gemini
 from agno.models.lmstudio import LMStudio
 
 
@@ -48,12 +49,14 @@ def get_model(provider: str, model_id: str, app_handle: Any = None, **kwargs: An
         return _get_vllm_model(model_id, app_handle, **kwargs)
     elif provider == "lmstudio":
         return _get_lmstudio_model(model_id, app_handle, **kwargs)
+    elif provider in ("google", "gemini", "google_ai_studio"):
+        return _get_google_model(model_id, app_handle, **kwargs)
     elif provider in ("openai_like", "openai-compatible", "openai_compatible"):
         return _get_openai_like_model(model_id, app_handle, **kwargs)
     else:
         raise ValueError(
             f"Unsupported provider: {provider}. "
-            f"Supported providers: openai, anthropic, groq, ollama, vllm, lmstudio, openai_like"
+            f"Supported providers: openai, anthropic, groq, ollama, vllm, lmstudio, google, openai_like"
         )
 
 
@@ -202,6 +205,52 @@ def _get_openai_like_model(model_id: str, app_handle: Any = None, **kwargs: Any)
     )
 
 
+def _get_google_model(model_id: str, app_handle: Any = None, **kwargs: Any) -> Any:
+    """Create Google Gemini model instance (Google AI Studio or Vertex AI)."""
+    # Pull config from DB only
+    api_key, _ = _get_api_key_for_provider("google", app_handle)
+    
+    # Load 'extra' from DB if present (JSON string)
+    extra_raw = None
+    try:
+        from .. import db
+        sess = db.session(app_handle)
+        try:
+            settings = db.get_provider_settings(sess, "google")
+            if settings:
+                extra_raw = settings.get("extra")
+        finally:
+            sess.close()
+    except Exception as e:
+        print(f"[ModelFactory] Warning: Failed to load google extras: {e}")
+
+    extra = {}
+    if isinstance(extra_raw, str) and extra_raw.strip():
+        try:
+            import json
+            extra = json.loads(extra_raw)
+        except Exception:
+            extra = {}
+
+    use_vertex = bool(extra.get("vertexai", False))
+    project_id = extra.get("project_id")
+    location = extra.get("location")
+
+    if not api_key and not use_vertex:
+        raise RuntimeError(
+            "Google API key not configured. Set it in Settings (or enable Vertex AI in extras)."
+        )
+
+    return Gemini(
+        id=model_id,
+        api_key=api_key,
+        vertexai=use_vertex,
+        project_id=project_id,
+        location=location,
+        **kwargs,
+    )
+
+
 def list_supported_providers() -> list[str]:
     """Return list of supported provider names."""
     return [
@@ -211,6 +260,7 @@ def list_supported_providers() -> list[str]:
         "ollama",
         "vllm",
         "lmstudio",
+        "google",
         "openai_like",
     ]
 
@@ -362,12 +412,17 @@ def get_available_models(app_handle: Any = None) -> list[Dict[str, Any]]:
                 if base_url:
                     api_key = config.get("api_key")
                     provider_models = _fetch_openai_models(api_key or "", base_url)
-            
+
             elif provider in ("openai_like", "openai-compatible", "openai_compatible"):
                 base_url = config.get("base_url")
                 api_key = config.get("api_key")
                 if base_url:
                     provider_models = _fetch_openai_models(api_key or "", base_url)
+            
+            elif provider in ("google", "gemini", "google_ai_studio"):
+                api_key = config.get("api_key")
+                if api_key:
+                    provider_models = _fetch_google_models(api_key)
         
         except Exception as e:
             print(f"[ModelFactory] Error fetching models for {provider}: {e}")
@@ -404,3 +459,37 @@ def _check_db_providers(app_handle: Any) -> Dict[str, Dict[str, Any]]:
     except Exception as e:
         print(f"[ModelFactory] Warning: Failed to check DB providers: {e}")
         return {}
+
+
+def _fetch_google_models(api_key: str) -> list[Dict[str, str]]:
+    """Fetch available models from Google AI Studio (Generative Language API)."""
+    try:
+        # v1beta returns list of models; using query param for API key
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            models = []
+            for m in data.get("models", []):
+                raw_name = m.get("name", "")  # e.g., "models/gemini-2.0-flash"
+                model_id = raw_name.split("/")[-1] if raw_name else m.get("baseModelId") or ""
+                display = m.get("displayName") or model_id
+                # Filter only chat-capable Gemini entries if needed
+                if model_id:
+                    models.append({"id": model_id, "name": display})
+            # Provide a stable fallback order if API returns none
+            if not models:
+                models = [
+                    {"id": "gemini-2.0-flash", "name": "gemini-2.0-flash"},
+                    {"id": "gemini-2.0-flash-lite", "name": "gemini-2.0-flash-lite"},
+                    {"id": "gemini-2.5-pro-exp-03-25", "name": "gemini-2.5-pro-exp-03-25"},
+                ]
+            return models
+    except Exception as e:
+        print(f"[ModelFactory] Failed to fetch Google models: {e}")
+    # Fallback static list
+    return [
+        {"id": "gemini-2.0-flash", "name": "gemini-2.0-flash"},
+        {"id": "gemini-2.0-flash-lite", "name": "gemini-2.0-flash-lite"},
+        {"id": "gemini-2.5-pro-exp-03-25", "name": "gemini-2.5-pro-exp-03-25"},
+    ]

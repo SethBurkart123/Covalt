@@ -48,6 +48,8 @@ class ProviderSettings(Base):
     provider: Mapped[str] = mapped_column(String, primary_key=True)
     api_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     base_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # JSON string with provider-specific options
+    extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
@@ -56,4 +58,3 @@ class UserSettings(Base):
     
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
-

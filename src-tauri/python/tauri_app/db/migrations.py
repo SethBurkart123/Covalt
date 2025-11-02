@@ -96,6 +96,23 @@ def run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
                 print("[db] Chats table active_leaf migration completed")
     except Exception as e:
         print(f"[db] Migration warning for chats table: {e}")
+
+    # Migration: Add 'extra' column to provider_settings table
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                sqlalchemy.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='provider_settings'")
+            )
+            table_def = result.fetchone()
+            if table_def and ' extra ' not in (table_def[0] or '') and '"extra"' not in (table_def[0] or ''):
+                print("[db] Running migration: Adding extra column to provider_settings table")
+                conn.execute(
+                    sqlalchemy.text("ALTER TABLE provider_settings ADD COLUMN extra TEXT")
+                )
+                conn.commit()
+                print("[db] provider_settings table migration completed")
+    except Exception as e:
+        print(f"[db] Migration warning for provider_settings table: {e}")
     
     # Backfill: Set active_leaf_message_id to last message in each chat
     try:
@@ -125,4 +142,3 @@ def run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
             print("[db] Backfilled active_leaf_message_id for all chats")
     except Exception as e:
         print(f"[db] Backfill warning: {e}")
-

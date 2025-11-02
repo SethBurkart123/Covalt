@@ -4,20 +4,23 @@ import GroqIcon from './icons/Groq';
 import OllamaIcon from './icons/Ollama';
 import VLLMIcon from './icons/VLLM';
 import LMStudioIcon from './icons/LMStudio';
+import GeminiIcon from './icons/Gemini';
 
 export interface ProviderConfig {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
+  // JSON string representing provider-specific options
+  extra?: string;
   enabled: boolean;
 }
 
-export type FieldId = 'apiKey' | 'baseUrl';
+export type FieldId = 'apiKey' | 'baseUrl' | 'extra';
 
 export interface ProviderFieldDef {
   id: FieldId;
   label: string;
-  type: 'password' | 'text';
+  type: 'password' | 'text' | 'textarea';
   placeholder?: string;
   required?: boolean; // default true
 }
@@ -32,6 +35,17 @@ export interface ProviderDefinition {
 }
 
 export const PROVIDERS: ProviderDefinition[] = [
+  {
+    key: 'google',
+    name: 'Google AI Studio',
+    description: 'Gemini models via Google AI Studio',
+    icon: GeminiIcon,
+    fields: [
+      { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'AIza...' },
+      { id: 'extra', label: 'Extra (JSON)', type: 'textarea', placeholder: '{\n  "vertexai": false,\n  "project_id": "",\n  "location": ""\n}', required: false },
+    ],
+    defaults: { enabled: true },
+  },
   {
     key: 'openai',
     name: 'OpenAI',

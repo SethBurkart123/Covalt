@@ -83,6 +83,7 @@ async def get_provider_settings(app_handle: AppHandle) -> AllProvidersResponse:
                 provider=provider,
                 api_key=config.get("api_key"),
                 base_url=config.get("base_url"),
+                extra=_safe_parse_json(config.get("extra")),
                 enabled=config.get("enabled", True),
             )
         )
@@ -106,12 +107,23 @@ async def save_provider_settings(body: SaveProviderConfigInput, app_handle: AppH
             provider=body.provider,
             api_key=body.api_key,
             base_url=body.base_url,
+            extra=body.extra,
             enabled=body.enabled,
         )
     finally:
         sess.close()
     
     return None
+
+
+def _safe_parse_json(value: str | None):
+    if not value:
+        return None
+    try:
+        import json
+        return json.loads(value)
+    except Exception:
+        return None
 
 
 @commands.command()

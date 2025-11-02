@@ -72,6 +72,8 @@ async function processMessageStream(
           try {
             const parsed = JSON.parse(data);
 
+            console.log('parsed: ', parsed);
+
             if (currentEvent === "RunStarted" && parsed.sessionId && onSessionId) {
               onSessionId(parsed.sessionId);
               scheduleUpdate();

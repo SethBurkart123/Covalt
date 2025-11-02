@@ -16,6 +16,7 @@ dependencies = [
     "duckduckgo-search >= 6.0.0",
     "requests >= 2.31.0",
     "docker>=7.1.0",
+    "google-genai>=1.47.0",
 ]  
 
 [project.entry-points.pytauri]

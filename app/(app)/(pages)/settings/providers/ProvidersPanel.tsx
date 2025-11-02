@@ -29,11 +29,18 @@ export default function ProvidersPanel() {
         const apiKey = p.apiKey ?? p.api_key ?? '';
         const baseUrl = p.baseUrl ?? p.base_url ?? '';
         const enabled = p.enabled ?? true;
+        const extraVal = p.extra;
+        const extra = typeof extraVal === 'string'
+          ? extraVal
+          : extraVal && typeof extraVal === 'object'
+          ? JSON.stringify(extraVal, null, 2)
+          : '';
 
         map[p.provider] = {
           provider: p.provider,
           apiKey,
           baseUrl,
+          extra,
           enabled: Boolean(enabled),
         };
       });
@@ -44,6 +51,7 @@ export default function ProvidersPanel() {
             provider: def.key,
             apiKey: '',
             baseUrl: def.defaults?.baseUrl,
+            extra: '',
             enabled: def.defaults?.enabled ?? true,
           };
         }
@@ -116,13 +124,24 @@ export default function ProvidersPanel() {
     setSaved((s) => ({ ...s, [key]: false }));
     try {
       const cfg = providerConfigs[key];
+      let extra: any = undefined;
+      if (typeof cfg.extra === 'string' && cfg.extra.trim().length > 0) {
+        try {
+          extra = JSON.parse(cfg.extra);
+        } catch (e) {
+          // Keep as raw string so backend can store it; don't block save
+          extra = cfg.extra;
+        }
+      }
+
       await saveProviderSettings(
         {
           provider: key,
           apiKey: cfg.apiKey || undefined,
           baseUrl: cfg.baseUrl || undefined,
+          extra,
           enabled: cfg.enabled,
-        },
+        } as any,
         undefined
       );
       setSaved((s) => ({ ...s, [key]: true }));

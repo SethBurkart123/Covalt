@@ -72,7 +72,7 @@ def create_agent_for_chat(
         description=description,
         instructions=instructions if instructions else None,
         markdown=True,  # Enable markdown formatting
-        #debug_mode=True,  # Temporary for debugging tool calls
+        debug_mode=True,  # Temporary for debugging tool calls
     )
     
     return agent
