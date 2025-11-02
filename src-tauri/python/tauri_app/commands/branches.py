@@ -20,6 +20,7 @@ class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
     channel: JavaScriptChannelId[ChatEvent]
+    modelId: Optional[str] = None
 
 
 class RetryMessageRequest(BaseModel):
@@ -34,6 +35,7 @@ class EditUserMessageRequest(BaseModel):
     newContent: str
     chatId: str
     channel: JavaScriptChannelId[ChatEvent]
+    modelId: Optional[str] = None
 
 
 class SwitchToSiblingRequest(BaseModel):
@@ -64,6 +66,13 @@ async def continue_message(
     existing_blocks: List[Dict[str, Any]] = []
 
     with db.db_session(app_handle) as sess:
+        if body.modelId:
+            provider, model = parse_model_id(body.modelId)
+            # Load existing config and merge model changes (preserve tools!)
+            config = db.get_chat_agent_config(sess, body.chatId) or {}
+            config["provider"] = provider
+            config["model_id"] = model
+            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
         # Get the message path up to this message
         messages = db.get_message_path(sess, body.messageId)
         
@@ -158,10 +167,11 @@ async def retry_message(
     with db.db_session(app_handle) as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
-            db.update_chat_agent_config(sess, chatId=body.chatId, config={
-                "provider": provider,
-                "model_id": model,
-            })
+            # Load existing config and merge model changes (preserve tools!)
+            config = db.get_chat_agent_config(sess, body.chatId) or {}
+            config["provider"] = provider
+            config["model_id"] = model
+            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
         # Get the original message to find its parent
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
@@ -258,6 +268,13 @@ async def edit_user_message(
     ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
     
     with db.db_session(app_handle) as sess:
+        if body.modelId:
+            provider, model = parse_model_id(body.modelId)
+            # Load existing config and merge model changes (preserve tools!)
+            config = db.get_chat_agent_config(sess, body.chatId) or {}
+            config["provider"] = provider
+            config["model_id"] = model
+            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
         # Get the original message to find its parent
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:

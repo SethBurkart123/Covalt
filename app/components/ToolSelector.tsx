@@ -40,11 +40,8 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
       {isOpen && (
         <>
           {/* Backdrop */}
-          <motion.div
+          <div
             className="fixed inset-0 z-40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
             onClick={onClose}
           />
 

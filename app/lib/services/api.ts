@@ -110,7 +110,7 @@ class ApiService {
     });
   }
 
-  async continueMessage(messageId: string, chatId: string): Promise<Response> {
+  async continueMessage(messageId: string, chatId: string, modelId?: string): Promise<Response> {
     const encoder = new TextEncoder();
     const { Channel } = await import('@tauri-apps/api/core');
     const { pyInvoke } = await import('tauri-plugin-pytauri-api');
@@ -146,6 +146,7 @@ class ApiService {
             channel: chatChannel.toJSON(),
             messageId,
             chatId,
+            modelId,
           });
         } catch (err) {
           controller.error(err);
@@ -216,7 +217,7 @@ class ApiService {
     });
   }
 
-  async editUserMessage(messageId: string, newContent: string, chatId: string): Promise<Response> {
+  async editUserMessage(messageId: string, newContent: string, chatId: string, modelId?: string): Promise<Response> {
     const encoder = new TextEncoder();
     const { Channel } = await import('@tauri-apps/api/core');
     const { pyInvoke } = await import('tauri-plugin-pytauri-api');
@@ -252,6 +253,7 @@ class ApiService {
             messageId,
             newContent,
             chatId,
+            modelId,
           });
         } catch (err) {
           controller.error(err);

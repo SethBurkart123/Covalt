@@ -2,11 +2,14 @@
 Model Factory for multi-provider support.
 
 Provides abstraction layer to instantiate models from different providers
-(OpenAI, Anthropic, Groq, Ollama, vLLM, LM Studio, OpenAI‑compatible) dynamically based on configuration.
+(OpenAI, Anthropic, Groq, Ollama, vLLM, LM Studio, OpenAI-compatible) dynamically based on configuration.
 """
 from __future__ import annotations
+import json
 from typing import Any, Dict, Optional
 import requests
+
+from .. import db
 
 from agno.models.openai import OpenAIChat
 from agno.models.openai.like import OpenAILike
@@ -74,15 +77,11 @@ def _get_api_key_for_provider(provider: str, app_handle: Any = None) -> tuple[st
     base_url = None
     
     try:
-        from .. import db
-        sess = db.session(app_handle)
-        try:
+        with db.db_session(app_handle) as sess:
             settings = db.get_provider_settings(sess, provider)
             if settings:
                 api_key = settings.get("api_key")
                 base_url = settings.get("base_url")
-        finally:
-            sess.close()
     except Exception as e:
         print(f"[ModelFactory] Warning: Failed to check DB for {provider} settings: {e}")
     
@@ -213,21 +212,16 @@ def _get_google_model(model_id: str, app_handle: Any = None, **kwargs: Any) -> A
     # Load 'extra' from DB if present (JSON string)
     extra_raw = None
     try:
-        from .. import db
-        sess = db.session(app_handle)
-        try:
+        with db.db_session(app_handle) as sess:
             settings = db.get_provider_settings(sess, "google")
             if settings:
                 extra_raw = settings.get("extra")
-        finally:
-            sess.close()
     except Exception as e:
         print(f"[ModelFactory] Warning: Failed to load google extras: {e}")
 
     extra = {}
     if isinstance(extra_raw, str) and extra_raw.strip():
         try:
-            import json
             extra = json.loads(extra_raw)
         except Exception:
             extra = {}
@@ -247,6 +241,7 @@ def _get_google_model(model_id: str, app_handle: Any = None, **kwargs: Any) -> A
         vertexai=use_vertex,
         project_id=project_id,
         location=location,
+        include_thoughts=True,
         **kwargs,
     )
 
@@ -448,14 +443,9 @@ def get_available_models(app_handle: Any = None) -> list[Dict[str, Any]]:
 def _check_db_providers(app_handle: Any) -> Dict[str, Dict[str, Any]]:
     """Check which providers are configured in database."""
     try:
-        from .. import db
-        
-        sess = db.session(app_handle)
-        try:
+        with db.db_session(app_handle) as sess:
             settings = db.get_all_provider_settings(sess)
             return settings
-        finally:
-            sess.close()
     except Exception as e:
         print(f"[ModelFactory] Warning: Failed to check DB providers: {e}")
         return {}
@@ -477,19 +467,8 @@ def _fetch_google_models(api_key: str) -> list[Dict[str, str]]:
                 # Filter only chat-capable Gemini entries if needed
                 if model_id:
                     models.append({"id": model_id, "name": display})
-            # Provide a stable fallback order if API returns none
-            if not models:
-                models = [
-                    {"id": "gemini-2.0-flash", "name": "gemini-2.0-flash"},
-                    {"id": "gemini-2.0-flash-lite", "name": "gemini-2.0-flash-lite"},
-                    {"id": "gemini-2.5-pro-exp-03-25", "name": "gemini-2.5-pro-exp-03-25"},
-                ]
+
             return models
     except Exception as e:
         print(f"[ModelFactory] Failed to fetch Google models: {e}")
-    # Fallback static list
-    return [
-        {"id": "gemini-2.0-flash", "name": "gemini-2.0-flash"},
-        {"id": "gemini-2.0-flash-lite", "name": "gemini-2.0-flash-lite"},
-        {"id": "gemini-2.5-pro-exp-03-25", "name": "gemini-2.5-pro-exp-03-25"},
-    ]
+    return []

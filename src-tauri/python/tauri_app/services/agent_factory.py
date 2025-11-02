@@ -64,7 +64,7 @@ def create_agent_for_chat(
     
     # Create agent instance
     # NOTE: We do NOT use Agno's database or history management
-    # We handle all persistence through our SQLAlchemy DB
+    # All persistence is handled through our SQLAlchemy DB
     agent = Agent(
         name=name,
         model=model,
@@ -72,7 +72,8 @@ def create_agent_for_chat(
         description=description,
         instructions=instructions if instructions else None,
         markdown=True,  # Enable markdown formatting
-        debug_mode=True,  # Temporary for debugging tool calls
+        stream_intermediate_steps=True,
+        #debug_mode=True  # Temporary for debugging tool calls
     )
     
     return agent

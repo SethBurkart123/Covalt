@@ -168,7 +168,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
           </LayoutGroup>
           <ModelSelector selectedModel={selectedModel} setSelectedModel={setSelectedModel} models={models} />
           <LayoutGroup>
-            <Button
+            {/* <Button
               type="button"
               variant="secondary"
               className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium h-9"
@@ -176,7 +176,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(({
             >
               <Search className="size-4" />
               Deep research
-            </Button>
+            </Button> */}
             <Button
               type="button"
               variant="secondary"

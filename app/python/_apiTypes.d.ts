@@ -94,12 +94,14 @@ export type Modelid6 = (string | null)
 export type Chatid2 = (string | null)
 export type Messageid1 = string
 export type Chatid3 = string
+export type Modelid7 = (string | null)
 export type Messageid2 = string
 export type Chatid4 = string
-export type Modelid7 = (string | null)
+export type Modelid8 = (string | null)
 export type Messageid3 = string
 export type Newcontent = string
 export type Chatid5 = string
+export type Modelid9 = (string | null)
 export type Messageid4 = string
 export type Siblingid = string
 export type Chatid6 = string
@@ -377,13 +379,14 @@ export interface ContinueMessageRequest {
 messageId: Messageid1
 chatId: Chatid3
 channel: JavaScriptChannelIdChatEvent
+modelId?: Modelid7
 [k: string]: unknown
 }
 export interface RetryMessageRequest {
 messageId: Messageid2
 chatId: Chatid4
 channel: JavaScriptChannelIdChatEvent
-modelId?: Modelid7
+modelId?: Modelid8
 [k: string]: unknown
 }
 export interface EditUserMessageRequest {
@@ -391,6 +394,7 @@ messageId: Messageid3
 newContent: Newcontent
 chatId: Chatid5
 channel: JavaScriptChannelIdChatEvent
+modelId?: Modelid9
 [k: string]: unknown
 }
 export interface SwitchToSiblingRequest {

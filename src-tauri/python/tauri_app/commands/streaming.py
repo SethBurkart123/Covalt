@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from pytauri import AppHandle
 from pytauri.ipc import Channel, JavaScriptChannelId
 from pytauri.webview import WebviewWindow
-from agno.agent import RunEvent, Message
+from agno.agent import Agent, RunEvent, Message
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
@@ -223,53 +223,46 @@ def convert_to_agno_messages(chat_msg: ChatMessage) -> List[Message]:
     return []
 
 
+def load_initial_content(app_handle: AppHandle, msg_id: str) -> tuple[List[Dict[str, Any]], int]:
+    """Load existing message content for continuation."""
+    try:
+        with db.db_session(app_handle) as sess:
+            message = sess.get(db.Message, msg_id)
+            if not message or not message.content:
+                return [], 0
+            
+            raw = message.content.strip()
+            blocks = json.loads(raw) if raw.startswith('[') else [{"type": "text", "content": raw}]
+            
+            while blocks and blocks[-1].get("type") == "error":
+                blocks.pop()
+            
+            tool_count = sum(1 for b in blocks if b.get("type") == "tool_call")
+            return blocks, tool_count
+    except Exception as e:
+        print(f"[stream] Warning loading initial content: {e}")
+        return [], 0
+
+
 async def handle_content_stream(
     app_handle: AppHandle,
-    agent,
+    agent: Agent,
     messages: List[ChatMessage],
     assistant_msg_id: str,
     ch: Channel[ChatEvent],
 ):
-    """Process agent stream and emit events."""
     agno_messages = []
     for msg in messages:
         agno_messages.extend(convert_to_agno_messages(msg))
 
-    response_stream = agent.arun(input=agno_messages, stream=True, stream_intermediate_steps=True)
+    response_stream = agent.arun(input=agno_messages, stream=True, stream_events=True)
 
-    # Initialize content blocks with any existing message content so we append
-    content_blocks: List[Dict[str, Any]] = []
+    content_blocks, tool_counter = load_initial_content(app_handle, assistant_msg_id)
     current_text = ""
-    tool_counter = 0
-
-    # Load existing assistant message content (for continue) and trim trailing error
-    try:
-        with db.db_session(app_handle) as sess:
-            message = sess.get(db.Message, assistant_msg_id)
-            if message and message.content:
-                raw = message.content.strip()
-                initial_blocks: List[Dict[str, Any]] = []
-                if raw.startswith('['):
-                    try:
-                        initial_blocks = json.loads(raw)
-                    except Exception:
-                        # If parsing fails, treat as legacy text
-                        initial_blocks = [{"type": "text", "content": message.content}]
-                else:
-                    # Legacy/plain text
-                    initial_blocks = [{"type": "text", "content": message.content}]
-
-                # Remove trailing error blocks so continuation starts from valid content
-                while initial_blocks and isinstance(initial_blocks[-1], dict) and initial_blocks[-1].get("type") == "error":
-                    initial_blocks.pop()
-
-                content_blocks.extend(initial_blocks)
-                # Initialize tool counter to number of existing tool_call blocks
-                tool_counter = sum(1 for b in content_blocks if isinstance(b, dict) and b.get("type") == "tool_call")
-    except Exception as e:
-        print(f"[stream] Warning loading initial content for {assistant_msg_id}: {e}")
+    current_reasoning = ""
     had_error = False
     run_id = None
+    tool_id_map: dict[str, str] = {}
     
     def flush_text():
         nonlocal current_text
@@ -277,59 +270,78 @@ async def handle_content_stream(
             content_blocks.append({"type": "text", "content": current_text})
             current_text = ""
     
-    def save_current_state():
-        """Save current content blocks state to database."""
-        # Build temporary blocks including any unflushed text
-        temp_blocks = content_blocks.copy()
+    def flush_reasoning():
+        nonlocal current_reasoning
+        if current_reasoning:
+            content_blocks.append({"type": "reasoning", "content": current_reasoning, "isCompleted": True})
+            current_reasoning = ""
+    
+    def save_state():
+        temp = content_blocks.copy()
         if current_text:
-            temp_blocks.append({"type": "text", "content": current_text})
-        return json.dumps(temp_blocks)
+            temp.append({"type": "text", "content": current_text})
+        if current_reasoning:
+            temp.append({"type": "reasoning", "content": current_reasoning, "isCompleted": False})
+        return json.dumps(temp)
+    
+    def save_final():
+        return json.dumps(content_blocks)
     
     async for chunk in response_stream:
-        # Capture run_id from first event
-        if not run_id and hasattr(chunk, 'run_id') and chunk.run_id:
+        if not run_id and chunk.run_id:
             run_id = chunk.run_id
             _active_runs[assistant_msg_id] = (run_id, agent)
-            print(f"[stream] Captured run_id {run_id} for message {assistant_msg_id}")
+            print(f"[stream] Captured run_id {run_id}")
         
         if chunk.event == RunEvent.run_cancelled:
-            print(f"[stream] Run cancelled: {chunk.run_id}")
             flush_text()
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_current_state())
-            
-            # Mark as complete and clean up
+            flush_reasoning()
+            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
             with db.db_session(app_handle) as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
-            
             if assistant_msg_id in _active_runs:
                 del _active_runs[assistant_msg_id]
-            
             ch.send_model(ChatEvent(event="RunCancelled"))
             return
         
         if chunk.event == RunEvent.run_content:
+            if chunk.reasoning_content:
+                if current_text and not current_reasoning:
+                    flush_text()
+                current_reasoning += chunk.reasoning_content
+                ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=chunk.reasoning_content))
+                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
+            
             if chunk.content:
+                if current_reasoning and not current_text:
+                    flush_reasoning()
                 current_text += chunk.content
                 ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
-                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_current_state())
+                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
         
         elif chunk.event == RunEvent.tool_call_started:
+            flush_text()
+            flush_reasoning()
             tool_id = f"{assistant_msg_id}-tool-{tool_counter}"
-            ch.send_model(ChatEvent(
-                event="ToolCallStarted",
-                tool={
-                    "id": tool_id,
-                    "toolName": chunk.tool.tool_name,
-                    "toolArgs": chunk.tool.tool_args,
-                    "isCompleted": False,
-                }
-            ))
+            tool_counter += 1
+
+            tool_key = f"{chunk.tool.tool_name}:{str(chunk.tool.tool_args)}"
+            tool_id_map[tool_key] = tool_id
+            ch.send_model(ChatEvent(event="ToolCallStarted", tool={
+                "id": tool_id,
+                "toolName": chunk.tool.tool_name,
+                "toolArgs": chunk.tool.tool_args,
+                "isCompleted": False,
+            }))
         
         elif chunk.event == RunEvent.tool_call_completed:
             flush_text()
-            tool_id = f"{assistant_msg_id}-tool-{tool_counter}"
-            tool_counter += 1
-            
+            flush_reasoning()
+            # Look up the tool_id from when it started
+            tool_key = f"{chunk.tool.tool_name}:{str(chunk.tool.tool_args)}"
+            tool_id = tool_id_map.get(tool_key, f"{assistant_msg_id}-tool-{tool_counter - 1}")
+            # Clean up the mapping now that we've used it
+            tool_id_map.pop(tool_key, None)
             tool_block = {
                 "type": "tool_call",
                 "id": tool_id,
@@ -341,29 +353,43 @@ async def handle_content_stream(
             content_blocks.append(tool_block)
             ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
         
+        elif chunk.event == RunEvent.reasoning_started:
+            flush_text()
+            ch.send_model(ChatEvent(event="ReasoningStarted"))
+        
+        elif chunk.event == RunEvent.reasoning_step:
+            if chunk.reasoning_content:
+                if current_text:
+                    flush_text()
+                current_reasoning += chunk.reasoning_content
+                ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=chunk.reasoning_content))
+                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
+        
+        elif chunk.event == RunEvent.reasoning_completed:
+            flush_reasoning()
+            ch.send_model(ChatEvent(event="ReasoningCompleted"))
+        
         elif chunk.event == RunEvent.run_completed:
             flush_text()
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, json.dumps(content_blocks))
+            flush_reasoning()
+            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
             with db.db_session(app_handle) as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
             ch.send_model(ChatEvent(event="RunCompleted"))
         
         elif chunk.event == RunEvent.run_error:
-            print(f"[stream] RunError: {chunk.error.message}")
             flush_text()
-            
-            error_block = {
+            flush_reasoning()
+            content_blocks.append({
                 "type": "error",
-                "content": str(chunk.error.message) if hasattr(chunk.error, 'message') else str(chunk),
+                "content": str(chunk.error.message if hasattr(chunk.error, 'message') else chunk),
                 "timestamp": datetime.utcnow().isoformat()
-            }
-            content_blocks.append(error_block)
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, json.dumps(content_blocks))
+            })
+            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
             ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
             had_error = True
             return
     
-    # Clean up run tracking
     if assistant_msg_id in _active_runs:
         del _active_runs[assistant_msg_id]
     

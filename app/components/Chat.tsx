@@ -29,6 +29,17 @@ async function processMessageStream(
     }
   };
 
+  const flushReasoningBlock = () => {
+    if (currentReasoningBlock) {
+      contentBlocks.push({
+        type: "reasoning",
+        content: currentReasoningBlock,
+        isCompleted: true
+      });
+      currentReasoningBlock = "";
+    }
+  };
+
   const scheduleUpdate = () => {
     requestAnimationFrame(() => {
       const content = [...contentBlocks];
@@ -41,7 +52,6 @@ async function processMessageStream(
         content.push({ type: "reasoning", content: currentReasoningBlock, isCompleted: false });
       }
       if (content.length === 0) {
-        // ensure at least an empty text block to prevent flicker
         content.push({ type: "text", content: "" });
       }
       onUpdate(content);
@@ -72,8 +82,6 @@ async function processMessageStream(
           try {
             const parsed = JSON.parse(data);
 
-            console.log('parsed: ', parsed);
-
             if (currentEvent === "RunStarted" && parsed.sessionId && onSessionId) {
               onSessionId(parsed.sessionId);
               scheduleUpdate();
@@ -82,7 +90,9 @@ async function processMessageStream(
               onMessageId(parsed.content);
             }
             else if (currentEvent === "RunContent" && parsed.content) {
-              // If we just seeded blocks and the last block is text, merge into streaming text
+              if (currentReasoningBlock && !currentTextBlock) {
+                flushReasoningBlock();
+              }
               if (
                 currentTextBlock === "" &&
                 contentBlocks.length > 0 &&
@@ -108,22 +118,19 @@ async function processMessageStream(
               scheduleUpdate();
             }
             else if (currentEvent === "ReasoningStep" && parsed.reasoningContent) {
+              if (currentTextBlock && !currentReasoningBlock) {
+                flushTextBlock();
+              }
               currentReasoningBlock += parsed.reasoningContent;
               scheduleUpdate();
             }
             else if (currentEvent === "ReasoningCompleted") {
-              if (currentReasoningBlock) {
-                contentBlocks.push({
-                  type: "reasoning",
-                  content: currentReasoningBlock,
-                  isCompleted: true
-                });
-                currentReasoningBlock = "";
-              }
+              flushReasoningBlock();
               scheduleUpdate();
             }
             else if (currentEvent === "ToolCallStarted") {
               flushTextBlock();
+              flushReasoningBlock();
               if (parsed.tool) {
                 contentBlocks.push({
                   type: "tool_call",
@@ -147,16 +154,8 @@ async function processMessageStream(
             }
             else if (currentEvent === "RunCompleted" || currentEvent === "RunError") {
               flushTextBlock();
-              if (currentReasoningBlock) {
-                contentBlocks.push({
-                  type: "reasoning",
-                  content: currentReasoningBlock,
-                  isCompleted: true
-                });
-                currentReasoningBlock = "";
-              }
+              flushReasoningBlock();
               if (currentEvent === "RunError") {
-                console.log('Error: ', parsed)
                 const errText = typeof parsed.error === 'string' ? parsed.error
                   : (typeof parsed.content === 'string' ? parsed.content : 'An error occurred.');
                 contentBlocks.push({ type: "error", content: errText });
@@ -243,6 +242,7 @@ export function useChatInput() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prevChatIdRef = useRef<string | null>(null);
 
   // Helper: stream a response and handle all the state updates
   const streamAction = async (
@@ -292,14 +292,26 @@ export function useChatInput() {
     setCanSendMessage(lastMessage.isComplete !== false);
   }, [messages]);
 
-  // Abort stream and clear input when switching chats
+  // Abort stream and clear input when switching between different existing chats
   useEffect(() => {
-    if (abortControllerRef.current) {
+    const prevChatId = prevChatIdRef.current;
+    
+    // Only abort if we're switching between different existing chats
+    // Don't abort when transitioning from empty to a new chat (initialization)
+    const isSwitchingChats = prevChatId && chatId && prevChatId !== chatId;
+    
+    if (isSwitchingChats && abortControllerRef.current) {
       try { abortControllerRef.current.abort(); } catch {}
       abortControllerRef.current = null;
       setIsLoading(false);
     }
-    setInput("");
+    
+    if (isSwitchingChats) {
+      setInput("");
+    }
+    
+    // Update ref for next comparison
+    prevChatIdRef.current = chatId || null;
   }, [chatId]);
 
   // Load messages when chatId changes or reload is triggered
@@ -388,17 +400,6 @@ export function useChatInput() {
         throw new Error(`Failed to stream chat: ${response.statusText}`);
       }
 
-      // Trigger title generation in background (only for first message)
-      const isFirstMessage = newMessages.length === 1 && newMessages[0].role === "user";
-      if (isFirstMessage && sessionId) {
-        // Call title generation independently - it will resolve whenever ready
-        api.generateChatTitle(sessionId).then(() => {
-          refreshChats();
-        }).catch((err) => {
-          console.error("Failed to generate title:", err);
-        });
-      }
-
       // Stream with live updates
       await processMessageStream(
         response,
@@ -481,7 +482,7 @@ export function useChatInput() {
     const modelUsed = message?.modelUsed;
 
     try {
-      const response = await api.continueMessage(messageId, chatId);
+      const response = await api.continueMessage(messageId, chatId, selectedModel || undefined);
       await streamAction(
         response,
         (content) => setMessages(prev =>
@@ -490,13 +491,15 @@ export function useChatInput() {
       );
       
       // Track model usage for recent models
-      if (modelUsed) {
+      if (selectedModel) {
+        addRecentModel(selectedModel);
+      } else if (modelUsed) {
         addRecentModel(modelUsed);
       }
     } catch (error) {
       console.error('Failed to continue message:', error);
     }
-  }, [chatId, messages]);
+  }, [chatId, messages, selectedModel]);
 
   const handleRetry = useCallback(async (messageId: string) => {
     if (!chatId) return;
@@ -586,7 +589,7 @@ export function useChatInput() {
     setEditingMessageId(null);
 
     try {
-      const response = await api.editUserMessage(messageId, newContent, chatId);
+      const response = await api.editUserMessage(messageId, newContent, chatId, selectedModel || undefined);
       await streamAction(
         response,
         (content) => setMessages(prev => {
@@ -595,10 +598,15 @@ export function useChatInput() {
           return updated;
         })
       );
+      
+      // Track model usage for recent models
+      if (selectedModel) {
+        addRecentModel(selectedModel);
+      }
     } catch (error) {
       console.error('Failed to edit message:', error);
     }
-  }, [chatId, editingDraft, editingMessageId]);
+  }, [chatId, editingDraft, editingMessageId, selectedModel]);
 
   const handleNavigate = useCallback(async (messageId: string, siblingId: string) => {
     if (!chatId) return;
