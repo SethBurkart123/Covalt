@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MoreVertical, PlusIcon, Pencil, Trash2, Settings } from "lucide-react";
+import { MoreVertical, PlusIcon, Pencil, Trash2, Settings, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "./ui/button";
 
 /**
  * Sidebar that shows all stored chats and offers
@@ -192,11 +193,21 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
-        <div className="flex justify-between items-center w-full">
-          <span className="flex min-w-0 items-center gap-3">
-            Hi
-          </span>
+      <SidebarFooter className="relative before:content-[''] before:absolute before:top-0 before:left-0 before:h-16 before:-translate-y-full before:w-full before:bg-gradient-to-b before:from-transparent before:to-background">
+        <SidebarMenu className="space-y-2">
+          <SidebarMenuItem>
+            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/settings')}>
+              <Wrench className="size-4" />
+              Tools
+            </button>
+            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/settings')}>
+              <Settings className="size-4" />
+              Settings
+            </button>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        {/* <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <button
@@ -207,7 +218,7 @@ export function AppSidebar({
               <Settings className="size-4" />
             </button>
           </div>
-        </div>
+        </div> */}
       </SidebarFooter>
     </Sidebar>
   );

@@ -3,7 +3,7 @@
 import React from 'react';
 import { Boxes, Settings, Cog } from 'lucide-react';
 
-type TabKey = 'providers';
+export type TabKey = 'general' | 'providers' | 'appearance';
 
 interface SettingsSidebarProps {
   activeTab: TabKey;
@@ -28,7 +28,7 @@ const SIDEBAR_ITEMS = [
   }
 ];
 
-export default function SettingsSidebar({ activeTab }: SettingsSidebarProps) {
+export default function SettingsSidebar({ activeTab, onChangeTab }: SettingsSidebarProps) {
   return (
     <aside className="w-60">
       <nav className="px-2 space-y-1">
@@ -38,6 +38,8 @@ export default function SettingsSidebar({ activeTab }: SettingsSidebarProps) {
             icon={item.icon}
             label={item.label}
             active={activeTab === item.active}
+            onClick={() => onChangeTab?.(item.active as TabKey)}
+            clickable={!!onChangeTab}
           />
         ))}
       </nav>
@@ -45,10 +47,25 @@ export default function SettingsSidebar({ activeTab }: SettingsSidebarProps) {
   );
 }
 
-function SidebarItem({ icon, label, active }: { icon: React.ReactNode; label: string; active?: boolean }) {
+function SidebarItem({ 
+  icon, 
+  label, 
+  active, 
+  onClick,
+  clickable 
+}: { 
+  icon: React.ReactNode; 
+  label: string; 
+  active?: boolean;
+  onClick?: () => void;
+  clickable?: boolean;
+}) {
   return (
     <div
-      className={`px-4 py-2.5 text-sm flex items-center gap-2 cursor-default select-none rounded-lg ${
+      onClick={onClick}
+      className={`px-4 py-2.5 text-sm flex items-center gap-2 select-none rounded-lg transition-colors ${
+        clickable ? 'cursor-pointer' : 'cursor-default'
+      } ${
         active
           ? 'text-foreground bg-muted/60'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
