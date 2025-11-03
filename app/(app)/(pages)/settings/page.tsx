@@ -5,6 +5,7 @@ import { usePageTitle } from '@/contexts/page-title-context';
 import SettingsSidebar, { type TabKey } from './SettingsSidebar';
 import ProvidersPanel from './providers/ProvidersPanel';
 import AutoTitlePanel from './AutoTitlePanel';
+import ModelSettingsPanel from './ModelSettingsPanel';
 import ThemeToggle from '@/components/ThemeToggle';
 
 export default function SettingsPage() {
@@ -19,8 +20,9 @@ export default function SettingsPage() {
     switch (activeTab) {
       case 'general':
         return (
-          <div>
+          <div className="space-y-8">
             <AutoTitlePanel />
+            <ModelSettingsPanel />
           </div>
         );
       case 'providers':

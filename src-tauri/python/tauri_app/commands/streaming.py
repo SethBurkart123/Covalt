@@ -255,6 +255,22 @@ async def handle_content_stream(
     for msg in messages:
         agno_messages.extend(convert_to_agno_messages(msg))
 
+    # Check if we should parse think tags for this model
+    parse_think_tags = False
+    try:
+        with db.db_session(app_handle) as sess:
+            msg = sess.get(db.Message, assistant_msg_id)
+            if msg and msg.model_used:
+                # Parse provider:model_id format
+                parts = msg.model_used.split(':', 1)
+                if len(parts) == 2:
+                    provider, model_id = parts
+                    model_settings = db.get_model_settings(sess, provider, model_id)
+                    if model_settings:
+                        parse_think_tags = model_settings.parse_think_tags
+    except Exception as e:
+        print(f"[stream] Warning: Failed to check parse_think_tags: {e}")
+
     response_stream = agent.arun(input=agno_messages, stream=True, stream_events=True)
 
     content_blocks, tool_counter = load_initial_content(app_handle, assistant_msg_id)
@@ -263,6 +279,10 @@ async def handle_content_stream(
     had_error = False
     run_id = None
     tool_id_map: dict[str, str] = {}
+    
+    # State for parsing think tags
+    think_tag_buffer = ""
+    inside_think_tag = False
     
     def flush_text():
         nonlocal current_text
@@ -275,6 +295,87 @@ async def handle_content_stream(
         if current_reasoning:
             content_blocks.append({"type": "reasoning", "content": current_reasoning, "isCompleted": True})
             current_reasoning = ""
+    
+    def flush_think_tag_buffer():
+        """Flush any remaining content in the think tag buffer."""
+        nonlocal think_tag_buffer, inside_think_tag, current_text, current_reasoning
+        
+        if not parse_think_tags or not think_tag_buffer:
+            return
+        
+        if inside_think_tag:
+            # If we're still inside a think tag, treat remaining buffer as reasoning
+            current_reasoning += think_tag_buffer
+            flush_reasoning()
+        else:
+            # Otherwise treat it as text
+            current_text += think_tag_buffer
+        
+        think_tag_buffer = ""
+        inside_think_tag = False
+    
+    def process_content_with_think_tags(content: str):
+        """Parse content and handle <think> tags if enabled."""
+        nonlocal current_text, current_reasoning, think_tag_buffer, inside_think_tag
+        
+        if not parse_think_tags:
+            # Not parsing, just add to current text
+            current_text += content
+            return
+        
+        # Process character by character to handle streaming
+        think_tag_buffer += content
+        
+        while True:
+            if not inside_think_tag:
+                # Look for opening tag
+                open_idx = think_tag_buffer.find('<think>')
+                if open_idx == -1:
+                    # No opening tag, emit everything except last 6 chars (in case partial tag)
+                    if len(think_tag_buffer) > 6:
+                        text_chunk = think_tag_buffer[:-6]
+                        current_text += text_chunk
+                        ch.send_model(ChatEvent(event="RunContent", content=text_chunk))
+                        think_tag_buffer = think_tag_buffer[-6:]
+                    break
+                else:
+                    # Found opening tag
+                    if open_idx > 0:
+                        # Emit text before tag
+                        text_chunk = think_tag_buffer[:open_idx]
+                        current_text += text_chunk
+                        ch.send_model(ChatEvent(event="RunContent", content=text_chunk))
+                    think_tag_buffer = think_tag_buffer[open_idx + 7:]  # Skip '<think>'
+                    inside_think_tag = True
+                    
+                    # Flush any pending text and start reasoning
+                    if current_text:
+                        flush_text()
+                    ch.send_model(ChatEvent(event="ReasoningStarted"))
+            else:
+                # Look for closing tag
+                close_idx = think_tag_buffer.find('</think>')
+                if close_idx == -1:
+                    # No closing tag yet, emit everything except last 8 chars (in case partial tag)
+                    if len(think_tag_buffer) > 8:
+                        reasoning_chunk = think_tag_buffer[:-8]
+                        current_reasoning += reasoning_chunk
+                        ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=reasoning_chunk))
+                        think_tag_buffer = think_tag_buffer[-8:]
+                    break
+                else:
+                    # Found closing tag
+                    if close_idx > 0:
+                        # Emit reasoning content before tag
+                        reasoning_chunk = think_tag_buffer[:close_idx]
+                        current_reasoning += reasoning_chunk
+                        ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=reasoning_chunk))
+                    think_tag_buffer = think_tag_buffer[close_idx + 8:]  # Skip '</think>'
+                    inside_think_tag = False
+                    
+                    # Flush reasoning and complete it
+                    flush_reasoning()
+                    ch.send_model(ChatEvent(event="ReasoningCompleted"))
     
     def save_state():
         temp = content_blocks.copy()
@@ -294,6 +395,7 @@ async def handle_content_stream(
             print(f"[stream] Captured run_id {run_id}")
         
         if chunk.event == RunEvent.run_cancelled:
+            flush_think_tag_buffer()
             flush_text()
             flush_reasoning()
             await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
@@ -313,10 +415,15 @@ async def handle_content_stream(
                 await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
             
             if chunk.content:
-                if current_reasoning and not current_text:
+                if current_reasoning and not current_text and not parse_think_tags:
                     flush_reasoning()
-                current_text += chunk.content
-                ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
+                
+                if parse_think_tags:
+                    process_content_with_think_tags(chunk.content)
+                else:
+                    current_text += chunk.content
+                    ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
+                
                 await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
         
         elif chunk.event == RunEvent.tool_call_started:
@@ -370,6 +477,7 @@ async def handle_content_stream(
             ch.send_model(ChatEvent(event="ReasoningCompleted"))
         
         elif chunk.event == RunEvent.run_completed:
+            flush_think_tag_buffer()
             flush_text()
             flush_reasoning()
             await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
@@ -378,6 +486,7 @@ async def handle_content_stream(
             ch.send_model(ChatEvent(event="RunCompleted"))
         
         elif chunk.event == RunEvent.run_error:
+            flush_think_tag_buffer()
             flush_text()
             flush_reasoning()
             content_blocks.append({

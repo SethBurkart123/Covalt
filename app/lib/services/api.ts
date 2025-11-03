@@ -286,6 +286,10 @@ class ApiService {
   async generateChatTitle(chatId: string): Promise<{ title: string | null }> {
     return invoke<{ title: string | null }>('generate_chat_title', { id: chatId });
   }
+
+  async respondToThinkingTagPrompt(provider: string, modelId: string, accepted: boolean): Promise<void> {
+    return invoke<void>('respond_to_thinking_tag_prompt', { provider, modelId, accepted });
+  }
 }
 
 export const api = ApiService.getInstance();

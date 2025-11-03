@@ -17,6 +17,7 @@ from .models import (
     Message,
     ProviderSettings,
     UserSettings,
+    Model,
 )
 
 # Chat operations
@@ -47,6 +48,15 @@ from .providers import (
     save_provider_settings,
 )
 
+# Model operations
+from .model_ops import (
+    get_model_settings,
+    get_all_model_settings,
+    save_model_settings,
+    upsert_model_settings,
+    get_reasoning_from_model,
+)
+
 # User settings operations
 from .settings import (
     get_user_setting,
@@ -74,6 +84,7 @@ __all__ = [
     "Message",
     "ProviderSettings",
     "UserSettings",
+    "Model",
     # Chats
     "list_chats",
     "get_chat_messages",
@@ -96,6 +107,12 @@ __all__ = [
     "get_provider_settings",
     "get_all_provider_settings",
     "save_provider_settings",
+    # Model Operations
+    "get_model_settings",
+    "get_all_model_settings",
+    "save_model_settings",
+    "upsert_model_settings",
+    "get_reasoning_from_model",
     # Settings
     "get_user_setting",
     "set_user_setting",

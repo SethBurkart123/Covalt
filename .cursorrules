@@ -14,19 +14,8 @@ Take inspiration from tinygrad - keep it minimal, functional, and beautiful:
 - **Choose clear names** - `ensure_chat_initialized()` beats `init_chat_stuff()`
 - **Clean flows** - the main function should read like a story, details go in helpers
 
-### Python Zen
-```python
-# Instead of this mess:
-sess = db.session(app)
-try:
-    do_something(sess)
-finally:
-    sess.close()
-
-# Write this beauty:
-with db.db_session(app) as sess:
-    do_something(sess)
-```
+### Extra Notes
+- You do not need to generate the api client as it gets auto generated with the dev server running in the background.
 
 ### The Golden Rule
 **If it feels messy, it probably is!** Refactor with joy. Future you will high-five present you.

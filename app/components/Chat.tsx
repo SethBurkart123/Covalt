@@ -12,7 +12,8 @@ async function processMessageStream(
   response: Response,
   onUpdate: (content: any[]) => void,
   onSessionId?: (sessionId: string) => void,
-  onMessageId?: (messageId: string) => void
+  onMessageId?: (messageId: string) => void,
+  onThinkTagDetected?: () => void
 ): Promise<void> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
@@ -21,6 +22,7 @@ async function processMessageStream(
   const contentBlocks: any[] = [];
   let currentTextBlock = "";
   let currentReasoningBlock = "";
+  let thinkTagDetected = false;
 
   const flushTextBlock = () => {
     if (currentTextBlock) {
@@ -104,6 +106,13 @@ async function processMessageStream(
                 }
               }
               currentTextBlock += parsed.content;
+              
+              // Detect thinking tags
+              if (!thinkTagDetected && currentTextBlock.includes('<think>')) {
+                thinkTagDetected = true;
+                onThinkTagDetected?.();
+              }
+              
               scheduleUpdate();
             }
             else if (currentEvent === "SeedBlocks" && Array.isArray(parsed.blocks)) {
@@ -224,7 +233,7 @@ export default function Chat({
   );
 }
 
-export function useChatInput() {
+export function useChatInput(onThinkTagDetected?: () => void) {
   const {
     chatId,
     selectedModel,
@@ -266,7 +275,8 @@ export function useChatInput() {
         (messageId) => {
           streamingMessageIdRef.current = messageId;
           onBackendMessageId?.(messageId);
-        }
+        },
+        onThinkTagDetected
       );
 
       streamingDone = true;
@@ -438,7 +448,8 @@ export function useChatInput() {
           // Capture assistant message ID from backend
           assistantMessageId = messageId;
           streamingMessageIdRef.current = messageId;
-        }
+        },
+        onThinkTagDetected
       );
 
       // Reload authoritative state from backend

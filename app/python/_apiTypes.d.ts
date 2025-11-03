@@ -35,6 +35,20 @@ export type Prompt1 = string
 export type Modelmode1 = string
 export type Provider4 = string
 export type Modelid2 = string
+export type Provider5 = string
+export type Modelid3 = string
+export type Parsethinktags = boolean
+export type Supports = boolean
+export type Isuseroverride = boolean
+export type Prompted = boolean
+export type Declined = boolean
+export type Models1 = ModelSettingsInfo[]
+export type Provider6 = string
+export type Modelid4 = string
+export type Parsethinktags1 = boolean
+export type Provider7 = string
+export type Modelid5 = string
+export type Accepted = boolean
 export type Id = (string | null)
 export type Title = string
 export type Id1 = string
@@ -62,8 +76,8 @@ export type Updatedat = (string | null)
 export type Id4 = (string | null)
 export type Title1 = (string | null)
 export type Model1 = (string | null)
-export type Provider5 = string
-export type Modelid3 = string
+export type Provider8 = string
+export type Modelid6 = string
 export type Toolids2 = string[]
 export type Instructions = string[]
 export type Name1 = (string | null)
@@ -75,33 +89,33 @@ export type Id6 = string
 export type Chatid = string
 export type Toolids3 = string[]
 export type Chatid1 = string
-export type Provider6 = string
-export type Modelid4 = string
+export type Provider9 = string
+export type Modelid7 = string
 export type Id7 = string
 export type Name2 = (string | null)
 export type Description1 = (string | null)
 export type Category = (string | null)
 export type Tools = ToolInfo[]
 export type Toolids4 = string[]
-export type Provider7 = string
-export type Modelid5 = string
+export type Provider10 = string
+export type Modelid8 = string
 export type Messageid = string
 export type JavaScriptChannelIdChatEvent = string
 export type Messages1 = {
 [k: string]: unknown
 }[]
-export type Modelid6 = (string | null)
+export type Modelid9 = (string | null)
 export type Chatid2 = (string | null)
 export type Messageid1 = string
 export type Chatid3 = string
-export type Modelid7 = (string | null)
+export type Modelid10 = (string | null)
 export type Messageid2 = string
 export type Chatid4 = string
-export type Modelid8 = (string | null)
+export type Modelid11 = (string | null)
 export type Messageid3 = string
 export type Newcontent = string
 export type Chatid5 = string
-export type Modelid9 = (string | null)
+export type Modelid12 = (string | null)
 export type Messageid4 = string
 export type Siblingid = string
 export type Chatid6 = string
@@ -149,6 +163,18 @@ output: AutoTitleSettings
 }
 save_auto_title_settings: {
 input: SaveAutoTitleSettingsInput
+output: RootModelNoneType
+}
+get_model_settings: {
+input: void | undefined
+output: AllModelSettingsResponse
+}
+save_model_settings: {
+input: SaveModelSettingsInput
+output: RootModelNoneType
+}
+respond_to_thinking_tag_prompt: {
+input: RespondToThinkingTagPromptInput
 output: RootModelNoneType
 }
 get_all_chats: {
@@ -272,6 +298,35 @@ modelMode: Modelmode1
 provider: Provider4
 modelId: Modelid2
 }
+export interface AllModelSettingsResponse {
+models: Models1
+}
+export interface ModelSettingsInfo {
+provider: Provider5
+modelId: Modelid3
+parseThinkTags: Parsethinktags
+reasoning: ReasoningInfo
+thinkingTagPrompted?: (ThinkingTagPromptInfo | null)
+}
+export interface ReasoningInfo {
+supports: Supports
+isUserOverride: Isuseroverride
+}
+export interface ThinkingTagPromptInfo {
+prompted: Prompted
+declined: Declined
+}
+export interface SaveModelSettingsInput {
+provider: Provider6
+modelId: Modelid4
+parseThinkTags?: Parsethinktags1
+reasoning?: (ReasoningInfo | null)
+}
+export interface RespondToThinkingTagPromptInput {
+provider: Provider7
+modelId: Modelid5
+accepted: Accepted
+}
 export interface AllChatsData {
 chats: Chats
 }
@@ -320,8 +375,8 @@ model?: Model1
 agentConfig?: (AgentConfig | null)
 }
 export interface AgentConfig {
-provider?: Provider5
-modelId?: Modelid3
+provider?: Provider8
+modelId?: Modelid6
 toolIds?: Toolids2
 instructions?: Instructions
 name?: Name1
@@ -344,8 +399,8 @@ toolIds: Toolids3
 }
 export interface UpdateChatModelInput {
 chatId: Chatid1
-provider: Provider6
-modelId: Modelid4
+provider: Provider9
+modelId: Modelid7
 }
 export interface AvailableToolsResponse {
 tools: Tools
@@ -358,8 +413,8 @@ category?: Category
 }
 export interface ChatAgentConfigResponse {
 toolIds: Toolids4
-provider: Provider7
-modelId: Modelid5
+provider: Provider10
+modelId: Modelid8
 }
 export interface CancelRunRequest {
 messageId: Messageid
@@ -371,7 +426,7 @@ export interface RootModelDict {
 export interface StreamChatRequest {
 channel: JavaScriptChannelIdChatEvent
 messages: Messages1
-modelId?: Modelid6
+modelId?: Modelid9
 chatId?: Chatid2
 [k: string]: unknown
 }
@@ -379,14 +434,14 @@ export interface ContinueMessageRequest {
 messageId: Messageid1
 chatId: Chatid3
 channel: JavaScriptChannelIdChatEvent
-modelId?: Modelid7
+modelId?: Modelid10
 [k: string]: unknown
 }
 export interface RetryMessageRequest {
 messageId: Messageid2
 chatId: Chatid4
 channel: JavaScriptChannelIdChatEvent
-modelId?: Modelid8
+modelId?: Modelid11
 [k: string]: unknown
 }
 export interface EditUserMessageRequest {
@@ -394,7 +449,7 @@ messageId: Messageid3
 newContent: Newcontent
 chatId: Chatid5
 channel: JavaScriptChannelIdChatEvent
-modelId?: Modelid9
+modelId?: Modelid12
 [k: string]: unknown
 }
 export interface SwitchToSiblingRequest {

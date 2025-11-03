@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import ChatInputForm from "@/components/ChatInputForm";
+import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
 import { useChat } from "@/contexts/chat-context";
 import { useChatInput } from "@/components/Chat";
+import { api } from "@/lib/services/api";
+import { getModelSettings } from "@/python/apiClient";
 
 // Keep Chat itself dynamically imported as in the page to avoid SSR issues
 const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
@@ -16,6 +19,91 @@ const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
  */
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models } = useChat();
+  const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
+  const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] = useState(false);
+  const [modelSettings, setModelSettings] = useState<any>(null);
+
+  // Load model settings
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await getModelSettings();
+        setModelSettings(settings);
+      } catch (error) {
+        console.error('Failed to load model settings:', error);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  // Callback for when thinking tags are detected during streaming
+  const handleThinkTagDetected = useCallback(() => {
+    if (hasCheckedThinkingPrompt) return;
+    
+    // Parse the current model
+    const [provider, modelId] = selectedModel?.split(':') || [];
+    if (!provider || !modelId || !modelSettings) return;
+    
+    // Find the model settings
+    const setting = modelSettings.models?.find(
+      (m: any) => m.provider === provider && m.modelId === modelId
+    );
+    
+    // Check if we should show the prompt
+    const alreadyParsing = setting?.parseThinkTags === true;
+    const alreadyPrompted = setting?.thinkingTagPrompted?.prompted === true;
+    
+    if (!alreadyParsing && !alreadyPrompted) {
+      setShowThinkingPrompt(true);
+    }
+    
+    setHasCheckedThinkingPrompt(true);
+  }, [hasCheckedThinkingPrompt, selectedModel, modelSettings]);
+
+  // Reset the prompt check when switching models or chats
+  useEffect(() => {
+    setHasCheckedThinkingPrompt(false);
+    setShowThinkingPrompt(false);
+  }, [selectedModel]);
+
+  // Handle user accepting the prompt
+  const handleAcceptThinkingPrompt = useCallback(async () => {
+    const [provider, modelId] = selectedModel?.split(':') || [];
+    if (!provider || !modelId) return;
+    
+    try {
+      await api.respondToThinkingTagPrompt(provider, modelId, true);
+      setShowThinkingPrompt(false);
+      
+      // Reload model settings
+      const settings = await getModelSettings();
+      setModelSettings(settings);
+    } catch (error) {
+      console.error('Failed to accept thinking tag prompt:', error);
+    }
+  }, [selectedModel]);
+
+  // Handle user declining the prompt
+  const handleDeclineThinkingPrompt = useCallback(async () => {
+    const [provider, modelId] = selectedModel?.split(':') || [];
+    if (!provider || !modelId) return;
+    
+    try {
+      await api.respondToThinkingTagPrompt(provider, modelId, false);
+      setShowThinkingPrompt(false);
+      
+      // Reload model settings
+      const settings = await getModelSettings();
+      setModelSettings(settings);
+    } catch (error) {
+      console.error('Failed to decline thinking tag prompt:', error);
+    }
+  }, [selectedModel]);
+
+  // Handle dismissing the prompt without responding
+  const handleDismissThinkingPrompt = useCallback(() => {
+    setShowThinkingPrompt(false);
+  }, []);
 
   // Own streaming + input state locally inside this subtree
   const { 
@@ -37,7 +125,7 @@ export default function ChatPanel() {
     handleEditSubmit,
     handleNavigate,
     messageSiblings,
-  } = useChatInput();
+  } = useChatInput(handleThinkTagDetected);
 
   // Provide stable callback wrappers so siblings like ChatInputForm
   // don't re-render on every token just because handler identity changes.
@@ -186,6 +274,13 @@ export default function ChatPanel() {
           onStop={handleStop}
         />
       </div>
+      {showThinkingPrompt && (
+        <ThinkingTagPrompt
+          onAccept={handleAcceptThinkingPrompt}
+          onDecline={handleDeclineThinkingPrompt}
+          onDismiss={handleDismissThinkingPrompt}
+        />
+      )}
     </>
   );
 }

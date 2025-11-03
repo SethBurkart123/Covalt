@@ -58,3 +58,12 @@ class UserSettings(Base):
     
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Model(Base):
+    __tablename__ = "models"
+    
+    provider: Mapped[str] = mapped_column(String, primary_key=True)
+    model_id: Mapped[str] = mapped_column(String, primary_key=True)
+    parse_think_tags: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

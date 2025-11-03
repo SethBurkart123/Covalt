@@ -16,6 +16,11 @@ from ..models.chat import (
     SetDefaultToolsInput,
     AutoTitleSettings,
     SaveAutoTitleSettingsInput,
+    AllModelSettingsResponse,
+    ModelSettingsInfo,
+    SaveModelSettingsInput,
+    ReasoningInfo,
+    ThinkingTagPromptInfo,
 )
 from ..services.model_factory import (
     get_available_models as get_models_from_factory,
@@ -199,5 +204,112 @@ async def save_auto_title_settings(body: SaveAutoTitleSettingsInput, app_handle:
             "model_id": body.modelId,
         }
         db.save_auto_title_settings(sess, settings)
+    
+    return None
+
+
+@commands.command()
+async def get_model_settings(app_handle: AppHandle) -> AllModelSettingsResponse:
+    """
+    Get all model settings including reasoning capabilities.
+    
+    Returns:
+        List of model settings with reasoning support flags
+    """
+    with db.db_session(app_handle) as sess:
+        models = db.get_all_model_settings(sess)
+    
+    result = []
+    for model in models:
+        reasoning = db.get_reasoning_from_model(model)
+        
+        # Get thinkingTagPrompted from extra
+        from ..db.model_ops import _parse_extra
+        extra = _parse_extra(model.extra)
+        thinking_tag_prompted = extra.get("thinkingTagPrompted", {})
+        
+        result.append(
+            ModelSettingsInfo(
+                provider=model.provider,
+                modelId=model.model_id,
+                parseThinkTags=model.parse_think_tags,
+                reasoning=ReasoningInfo(
+                    supports=reasoning.get("supports", False),
+                    isUserOverride=reasoning.get("isUserOverride", False),
+                ),
+                thinkingTagPrompted=ThinkingTagPromptInfo(
+                    prompted=thinking_tag_prompted.get("prompted", False),
+                    declined=thinking_tag_prompted.get("declined", False),
+                ) if thinking_tag_prompted else None,
+            )
+        )
+    
+    return AllModelSettingsResponse(models=result)
+
+
+@commands.command()
+async def save_model_settings(body: SaveModelSettingsInput, app_handle: AppHandle) -> None:
+    """
+    Save or update model settings (including reasoning support).
+    
+    Args:
+        body: Model settings to save
+        app_handle: Tauri app handle
+    """
+    with db.db_session(app_handle) as sess:
+        reasoning_dict = None
+        if body.reasoning:
+            reasoning_dict = {
+                "supports": body.reasoning.supports,
+                "isUserOverride": body.reasoning.isUserOverride,
+            }
+        
+        db.save_model_settings(
+            sess,
+            provider=body.provider,
+            model_id=body.modelId,
+            parse_think_tags=body.parseThinkTags,
+            reasoning=reasoning_dict,
+        )
+    
+    return None
+
+
+class RespondToThinkingTagPromptInput(_BaseModel):
+    provider: str
+    modelId: str
+    accepted: bool
+
+
+@commands.command()
+async def respond_to_thinking_tag_prompt(
+    body: RespondToThinkingTagPromptInput, 
+    app_handle: AppHandle
+) -> None:
+    """
+    Handle user response to thinking tag detection prompt.
+    
+    If accepted, enables parse_think_tags.
+    If declined, stores thinkingTagPrompted: { prompted: true, declined: true } in extra.
+    
+    Args:
+        body: User's response
+        app_handle: Tauri app handle
+    """
+    with db.db_session(app_handle) as sess:
+        extra_update = {
+            "thinkingTagPrompted": {
+                "prompted": True,
+                "declined": not body.accepted,
+            }
+        }
+        
+        db.save_model_settings(
+            sess,
+            provider=body.provider,
+            model_id=body.modelId,
+            parse_think_tags=body.accepted,
+            extra=extra_update,
+        )
     
     return None

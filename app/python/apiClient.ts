@@ -118,6 +118,50 @@ export async function saveAutoTitleSettings(
     return await pyInvoke("save_auto_title_settings", body, options);
 }
 
+/**
+ * Get all model settings including reasoning capabilities.
+ *
+ * Returns:
+ *     List of model settings with reasoning support flags
+ */
+export async function getModelSettings(
+    body: Commands["get_model_settings"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["get_model_settings"]["output"]> {
+    return await pyInvoke("get_model_settings", body, options);
+}
+
+/**
+ * Save or update model settings (including reasoning support).
+ *
+ * Args:
+ *     body: Model settings to save
+ *     app_handle: Tauri app handle
+ */
+export async function saveModelSettings(
+    body: Commands["save_model_settings"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["save_model_settings"]["output"]> {
+    return await pyInvoke("save_model_settings", body, options);
+}
+
+/**
+ * Handle user response to thinking tag detection prompt.
+ *
+ * If accepted, enables parse_think_tags.
+ * If declined, stores thinkingTagPrompted: { prompted: true, declined: true } in extra.
+ *
+ * Args:
+ *     body: User's response
+ *     app_handle: Tauri app handle
+ */
+export async function respondToThinkingTagPrompt(
+    body: Commands["respond_to_thinking_tag_prompt"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["respond_to_thinking_tag_prompt"]["output"]> {
+    return await pyInvoke("respond_to_thinking_tag_prompt", body, options);
+}
+
 export async function getAllChats(
     body: Commands["get_all_chats"]["input"],
     options?: InvokeOptions

@@ -235,13 +235,24 @@ def _get_google_model(model_id: str, app_handle: Any = None, **kwargs: Any) -> A
             "Google API key not configured. Set it in Settings (or enable Vertex AI in extras)."
         )
 
+    # Check if model supports reasoning
+    supports_reasoning = False
+    try:
+        with db.db_session(app_handle) as sess:
+            model = db.get_model_settings(sess, "google", model_id)
+            if model:
+                reasoning = db.get_reasoning_from_model(model)
+                supports_reasoning = reasoning.get("supports", False)
+    except Exception as e:
+        print(f"[ModelFactory] Warning: Failed to check reasoning support for {model_id}: {e}")
+
     return Gemini(
         id=model_id,
         api_key=api_key,
         vertexai=use_vertex,
         project_id=project_id,
         location=location,
-        include_thoughts=True,
+        include_thoughts=supports_reasoning,
         **kwargs,
     )
 
@@ -418,6 +429,24 @@ def get_available_models(app_handle: Any = None) -> list[Dict[str, Any]]:
                 api_key = config.get("api_key")
                 if api_key:
                     provider_models = _fetch_google_models(api_key)
+                    
+                    # Store reasoning capability in DB for Google models
+                    for model_info in provider_models:
+                        supports_reasoning = model_info.get("supports_reasoning", False)
+                        if supports_reasoning:
+                            try:
+                                with db.db_session(app_handle) as sess:
+                                    db.upsert_model_settings(
+                                        sess,
+                                        provider="google",
+                                        model_id=model_info["id"],
+                                        reasoning={
+                                            "supports": supports_reasoning,
+                                            "isUserOverride": False,
+                                        },
+                                    )
+                            except Exception as e:
+                                print(f"[ModelFactory] Warning: Failed to save model metadata for {model_info['id']}: {e}")
         
         except Exception as e:
             print(f"[ModelFactory] Error fetching models for {provider}: {e}")
@@ -451,7 +480,7 @@ def _check_db_providers(app_handle: Any) -> Dict[str, Dict[str, Any]]:
         return {}
 
 
-def _fetch_google_models(api_key: str) -> list[Dict[str, str]]:
+def _fetch_google_models(api_key: str) -> list[Dict[str, Any]]:
     """Fetch available models from Google AI Studio (Generative Language API)."""
     try:
         # v1beta returns list of models; using query param for API key
@@ -464,9 +493,14 @@ def _fetch_google_models(api_key: str) -> list[Dict[str, str]]:
                 raw_name = m.get("name", "")  # e.g., "models/gemini-2.0-flash"
                 model_id = raw_name.split("/")[-1] if raw_name else m.get("baseModelId") or ""
                 display = m.get("displayName") or model_id
-                # Filter only chat-capable Gemini entries if needed
+                supports_thinking = m.get("thinking", False)
+                
                 if model_id:
-                    models.append({"id": model_id, "name": display})
+                    models.append({
+                        "id": model_id,
+                        "name": display,
+                        "supports_reasoning": supports_thinking,
+                    })
 
             return models
     except Exception as e:

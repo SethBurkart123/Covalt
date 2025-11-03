@@ -114,6 +114,84 @@ def run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
     except Exception as e:
         print(f"[db] Migration warning for provider_settings table: {e}")
     
+    # Migration: Create models table or migrate from model_settings
+    try:
+        with engine.connect() as conn:
+            # Check if models table exists
+            result = conn.execute(
+                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name='models'")
+            )
+            models_table_exists = result.fetchone()
+            
+            # Check if old model_settings table exists
+            result = conn.execute(
+                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name='model_settings'")
+            )
+            old_table_exists = result.fetchone()
+            
+            if not models_table_exists:
+                if old_table_exists:
+                    # Migrate from old table structure
+                    print("[db] Running migration: Migrating model_settings to models table")
+                    
+                    # Create new models table
+                    conn.execute(
+                        sqlalchemy.text("""
+                            CREATE TABLE models (
+                                provider TEXT NOT NULL,
+                                model_id TEXT NOT NULL,
+                                parse_think_tags INTEGER DEFAULT 0 NOT NULL,
+                                extra TEXT,
+                                PRIMARY KEY (provider, model_id)
+                            )
+                        """)
+                    )
+                    
+                    # Migrate data: move reasoning fields to extra JSON
+                    conn.execute(
+                        sqlalchemy.text("""
+                            INSERT INTO models (provider, model_id, parse_think_tags, extra)
+                            SELECT 
+                                provider,
+                                model_id,
+                                0 as parse_think_tags,
+                                CASE 
+                                    WHEN supports_reasoning = 1 OR is_user_override = 1 THEN
+                                        json_object(
+                                            'reasoning', json_object(
+                                                'supports', supports_reasoning,
+                                                'isUserOverride', is_user_override
+                                            )
+                                        )
+                                    ELSE NULL
+                                END as extra
+                            FROM model_settings
+                        """)
+                    )
+                    
+                    # Drop old table
+                    conn.execute(sqlalchemy.text("DROP TABLE model_settings"))
+                    conn.commit()
+                    print("[db] Successfully migrated model_settings to models table")
+                else:
+                    # Create new table from scratch
+                    print("[db] Running migration: Creating models table")
+                    conn.execute(
+                        sqlalchemy.text("""
+                            CREATE TABLE models (
+                                provider TEXT NOT NULL,
+                                model_id TEXT NOT NULL,
+                                parse_think_tags INTEGER DEFAULT 0 NOT NULL,
+                                extra TEXT,
+                                PRIMARY KEY (provider, model_id)
+                            )
+                        """)
+                    )
+                    conn.commit()
+                    print("[db] models table created successfully")
+    except Exception as e:
+        print(f"[db] Migration warning for models table: {e}")
+    
     # Backfill: Set active_leaf_message_id to last message in each chat
     try:
         with engine.connect() as conn:

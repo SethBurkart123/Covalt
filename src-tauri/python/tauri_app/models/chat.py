@@ -176,3 +176,32 @@ class SaveAutoTitleSettingsInput(_BaseModel):
     modelMode: str
     provider: str
     modelId: str
+
+
+class ReasoningInfo(_BaseModel):
+    supports: bool
+    isUserOverride: bool
+
+
+class ThinkingTagPromptInfo(_BaseModel):
+    prompted: bool
+    declined: bool
+
+
+class ModelSettingsInfo(_BaseModel):
+    provider: str
+    modelId: str
+    parseThinkTags: bool
+    reasoning: ReasoningInfo
+    thinkingTagPrompted: Optional[ThinkingTagPromptInfo] = None
+
+
+class AllModelSettingsResponse(_BaseModel):
+    models: List[ModelSettingsInfo]
+
+
+class SaveModelSettingsInput(_BaseModel):
+    provider: str
+    modelId: str
+    parseThinkTags: bool = False
+    reasoning: Optional[ReasoningInfo] = None
