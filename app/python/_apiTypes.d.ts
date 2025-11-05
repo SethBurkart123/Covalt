@@ -64,6 +64,10 @@ export type Toolargs = ({
 } | null)
 export type Toolresult = (string | null)
 export type Iscompleted = (boolean | null)
+export type Renderer = (string | null)
+export type Requiresapproval = (boolean | null)
+export type Approvalid = (string | null)
+export type Approvalstatus = (string | null)
 export type Createdat = (string | null)
 export type Toolcalls = (ToolCall[] | null)
 export type Id3 = string
@@ -100,6 +104,11 @@ export type Tools = ToolInfo[]
 export type Toolids4 = string[]
 export type Provider10 = string
 export type Modelid8 = string
+export type Approvalid1 = string
+export type Approved = boolean
+export type Editedargs = ({
+[k: string]: unknown
+} | null)
 export type Messageid1 = string
 export type JavaScriptChannelIdChatEvent = string
 export type Messages1 = {
@@ -221,6 +230,10 @@ output: ChatAgentConfigResponse
 generate_chat_title: {
 input: ChatId
 output: RootModelDictStrAny
+}
+respond_to_tool_approval: {
+input: RespondToToolApprovalInput
+output: RootModelDict
 }
 cancel_run: {
 input: CancelRunRequest
@@ -367,6 +380,10 @@ toolName?: Toolname
 toolArgs?: Toolargs
 toolResult?: Toolresult
 isCompleted?: Iscompleted
+renderer?: Renderer
+requiresApproval?: Requiresapproval
+approvalId?: Approvalid
+approvalStatus?: Approvalstatus
 [k: string]: unknown
 }
 export interface ToolCall {
@@ -426,6 +443,12 @@ export interface ChatAgentConfigResponse {
 toolIds: Toolids4
 provider: Provider10
 modelId: Modelid8
+}
+export interface RespondToToolApprovalInput {
+approvalId: Approvalid1
+approved: Approved
+editedArgs?: Editedargs
+[k: string]: unknown
 }
 export interface CancelRunRequest {
 messageId: Messageid1

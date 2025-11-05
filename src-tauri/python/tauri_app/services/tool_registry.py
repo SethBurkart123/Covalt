@@ -46,6 +46,20 @@ class ToolRegistry:
             }
         )
         
+        # Register write_artifact tool with approval and markdown rendering
+        self.register_tool(
+            tool_id="write_artifact",
+            tool_factory=self._create_write_artifact_tool,
+            metadata={
+                "name": "Write Artifact",
+                "description": "Create a markdown artifact (requires approval)",
+                "category": "content",
+                "requires_approval": True,
+                "allow_edit": False,
+                "renderer": "markdown",
+            }
+        )
+        
         # Web search will be registered if duckduckgo is available
         try:
             from agno.tools.duckduckgo import DuckDuckGoTools
@@ -181,6 +195,33 @@ class ToolRegistry:
             return f"Echo: {message}"
         
         return echo
+    
+    @staticmethod
+    def _create_write_artifact_tool() -> Any:
+        """Create a write_artifact tool that requires approval and uses markdown rendering."""
+        from agno.tools import tool
+        
+        @tool
+        def write_artifact(title: str, content: str) -> str:
+            """
+            Create a markdown artifact with the given title and content.
+            This tool requires user approval before execution.
+            
+            Args:
+                title: Title of the artifact
+                content: Markdown content of the artifact
+                
+            Returns:
+                The formatted markdown artifact
+            """
+            import time
+            time.sleep(0.5)
+            
+            # Return formatted markdown
+            artifact = f"# {title}\n\n{content}"
+            return artifact
+        
+        return write_artifact
 
 
 # Global singleton instance

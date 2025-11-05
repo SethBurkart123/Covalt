@@ -16,6 +16,7 @@ from agno.agent import Agent, RunEvent, Message
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
+from ..services.hook_manager import get_hook_manager
 from . import commands
 
 from rich import print
@@ -449,6 +450,13 @@ async def handle_content_stream(
             tool_id = tool_id_map.get(tool_key, f"{assistant_msg_id}-tool-{tool_counter - 1}")
             # Clean up the mapping now that we've used it
             tool_id_map.pop(tool_key, None)
+            
+            # Check if tool has renderer metadata
+            renderer = None
+            if hasattr(agent, "_tool_renderer_metadata"):
+                metadata = agent._tool_renderer_metadata.get(tool_key, {})
+                renderer = metadata.get("renderer")
+            
             tool_block = {
                 "type": "tool_call",
                 "id": tool_id,
@@ -457,6 +465,16 @@ async def handle_content_stream(
                 "toolResult": str(chunk.tool.result) if chunk.tool.result is not None else None,
                 "isCompleted": True,
             }
+            
+            # Add renderer metadata if present
+            if renderer:
+                tool_block["renderer"] = renderer
+            
+            # Check if tool required approval and add approval info
+            approval_info = get_hook_manager().get_tool_approval_info(chunk.tool.tool_name, chunk.tool.tool_args)
+            if approval_info:
+                tool_block.update(approval_info)
+            
             content_blocks.append(tool_block)
             ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
         
@@ -616,6 +634,29 @@ class CancelRunRequest(BaseModel):
     messageId: str
 
 
+class RespondToToolApprovalInput(BaseModel):
+    approvalId: str
+    approved: bool
+    editedArgs: Optional[Dict[str, Any]] = None
+
+
+@commands.command()
+async def respond_to_tool_approval(body: RespondToToolApprovalInput, app_handle: AppHandle) -> dict:
+    """
+    Respond to a tool approval request.
+    
+    This unblocks the waiting pre-hook with the user's decision.
+    The approval status will be persisted when the tool completes.
+    """
+    get_hook_manager().set_approval_response(
+        body.approvalId,
+        body.approved,
+        body.editedArgs
+    )
+    
+    return {"success": True}
+
+
 @commands.command()
 async def cancel_run(body: CancelRunRequest, app_handle: AppHandle) -> dict:
     """Cancel an active streaming run. Returns {cancelled: bool}"""
@@ -682,7 +723,7 @@ async def stream_chat(
     ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
     
     try:
-        agent = create_agent_for_chat(chat_id, app_handle)
+        agent = create_agent_for_chat(chat_id, app_handle, channel=ch, assistant_msg_id=assistant_msg_id)
         
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")

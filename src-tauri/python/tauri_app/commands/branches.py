@@ -118,7 +118,7 @@ async def continue_message(
         ch.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle)
+        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=body.messageId)
         
         # Continue streaming into the same message
         await handle_content_stream(
@@ -221,7 +221,7 @@ async def retry_message(
     ch.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle)
+        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=new_msg_id)
         
         # Stream fresh response
         await handle_content_stream(
@@ -345,7 +345,7 @@ async def edit_user_message(
     ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle)
+        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=assistant_msg_id)
         
         # Stream response to edited message
         await handle_content_stream(

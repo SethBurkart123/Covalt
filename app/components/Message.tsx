@@ -233,6 +233,10 @@ export default React.memo(function ChatMessage({
                                   toolArgs={b.toolArgs}
                                   toolResult={b.toolResult}
                                   isCompleted={b.isCompleted}
+                                  renderer={b.renderer}
+                                  requiresApproval={b.requiresApproval}
+                                  approvalId={b.approvalId}
+                                  approvalStatus={b.approvalStatus}
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}

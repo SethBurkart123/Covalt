@@ -284,6 +284,19 @@ export async function generateChatTitle(
 }
 
 /**
+ * Respond to a tool approval request.
+ *
+ * This unblocks the waiting pre-hook with the user's decision.
+ * The approval status will be persisted when the tool completes.
+ */
+export async function respondToToolApproval(
+    body: Commands["respond_to_tool_approval"]["input"],
+    options?: InvokeOptions
+): Promise<Commands["respond_to_tool_approval"]["output"]> {
+    return await pyInvoke("respond_to_tool_approval", body, options);
+}
+
+/**
  * Cancel an active streaming run. Returns {cancelled: bool}
  */
 export async function cancelRun(

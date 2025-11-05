@@ -21,6 +21,10 @@ export type ContentBlock =
       toolArgs: Record<string, any>; 
       toolResult?: string; 
       isCompleted: boolean;
+      renderer?: string;
+      requiresApproval?: boolean;
+      approvalId?: string;
+      approvalStatus?: "pending" | "approved" | "denied";
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string }

@@ -193,7 +193,7 @@ export function AppSidebar({
       <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-full before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
         <SidebarMenu className="space-y-2">
           <SidebarMenuItem>
-            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/settings')}>
+            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/tools')}>
               <Wrench className="size-4" />
               Tools
             </button>

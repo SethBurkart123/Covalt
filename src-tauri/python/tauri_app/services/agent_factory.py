@@ -13,6 +13,7 @@ from pytauri import AppHandle
 from .. import db
 from .model_factory import get_model
 from .tool_registry import get_tool_registry
+from .hook_manager import get_hook_manager
 
 from agno.agent import Agent
 
@@ -20,6 +21,8 @@ def create_agent_for_chat(
     chat_id: str,
     app_handle: AppHandle,
     history_messages: Optional[List[Dict[str, Any]]] = None,
+    channel=None,
+    assistant_msg_id: str = None,
 ) -> Any:
     """
     Create a fresh Agno agent instance for a chat session.
@@ -31,6 +34,8 @@ def create_agent_for_chat(
         chat_id: Chat identifier
         app_handle: Tauri app handle for database access
         history_messages: Optional list of previous messages to include as context
+        channel: Optional channel for sending events (needed for approval gates)
+        assistant_msg_id: Optional assistant message ID (needed for approval gates)
         
     Returns:
         Configured Agno Agent instance
@@ -62,7 +67,25 @@ def create_agent_for_chat(
     tool_registry = get_tool_registry()
     tools = tool_registry.get_tools(tool_ids) if tool_ids else []
     
-    # Create agent instance
+    # Set up hook manager with tool metadata
+    hook_manager = get_hook_manager()
+    for tool_id in tool_ids:
+        metadata = tool_registry._metadata.get(tool_id, {})
+        hook_manager.register_tool_metadata(
+            tool_id=tool_id,
+            requires_approval=metadata.get("requires_approval", False),
+            allow_edit=metadata.get("allow_edit", False),
+            renderer=metadata.get("renderer"),
+        )
+    
+    # Create pre-hook (handles all logic including approval and renderer metadata)
+    pre_hook = hook_manager.create_pre_hook(
+        channel=channel,
+        assistant_msg_id=assistant_msg_id,
+        app_handle=app_handle
+    )
+    
+    # Create agent instance with hooks
     # NOTE: We do NOT use Agno's database or history management
     # All persistence is handled through our SQLAlchemy DB
     agent = Agent(
@@ -73,6 +96,7 @@ def create_agent_for_chat(
         instructions=instructions if instructions else None,
         markdown=True,  # Enable markdown formatting
         stream_intermediate_steps=True,
+        tool_hooks=[pre_hook],  # Single hook that does everything!
         #debug_mode=True  # Temporary for debugging tool calls
     )
     

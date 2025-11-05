@@ -84,6 +84,11 @@ async function processMessageStream(
           try {
             const parsed = JSON.parse(data);
 
+            // === DEBUG LOGGING ===
+            console.log(`%c[EVENT] ${currentEvent}`, 'background: #2563eb; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;');
+            console.log('Event data:', parsed);
+            // === END DEBUG LOGGING ===
+
             if (currentEvent === "RunStarted" && parsed.sessionId && onSessionId) {
               onSessionId(parsed.sessionId);
               scheduleUpdate();
@@ -151,13 +156,72 @@ async function processMessageStream(
                 scheduleUpdate();
               }
             }
+            else if (currentEvent === "ToolApprovalRequired" && parsed.tool) {
+              // Tool requires approval - UPDATE existing tool_call block from ToolCallStarted
+              flushTextBlock();
+              flushReasoningBlock();
+              
+              // Extract message ID prefix from approval ID
+              const approvalId = parsed.tool.approvalId;
+              const messageIdPrefix = approvalId.split('-approval-')[0];
+              
+              // Find tool block with matching message ID prefix
+              const existingBlock = [...contentBlocks].reverse().find(
+                (b: any) => 
+                  b.type === "tool_call" && 
+                  b.id?.startsWith(messageIdPrefix)
+              );
+              
+              if (existingBlock) {
+                // Update existing block with approval metadata
+                existingBlock.requiresApproval = true;
+                existingBlock.approvalId = approvalId;
+                existingBlock.approvalStatus = "pending";
+              } else {
+                // Fallback: create new block if we can't find it (shouldn't happen)
+                console.warn("[ToolApprovalRequired] Couldn't find existing tool block, creating new one");
+                contentBlocks.push({
+                  type: "tool_call",
+                  id: approvalId,
+                  toolName: parsed.tool.toolName,
+                  toolArgs: parsed.tool.toolArgs,
+                  isCompleted: false,
+                  requiresApproval: true,
+                  approvalId: approvalId,
+                  approvalStatus: "pending",
+                });
+              }
+              
+              scheduleUpdate();
+            }
             else if (currentEvent === "ToolCallCompleted" && parsed.tool) {
-              const toolBlock = [...contentBlocks].reverse().find(
+              // Find tool block by ID, or by matching name+args if it's an approval block
+              let toolBlock = [...contentBlocks].reverse().find(
                 (b: any) => b.type === "tool_call" && b.id === parsed.tool.id
               );
+              
+              // If not found by ID, check for approval blocks with matching tool name
+              if (!toolBlock) {
+                toolBlock = [...contentBlocks].reverse().find(
+                  (b: any) => 
+                    b.type === "tool_call" && 
+                    b.requiresApproval && 
+                    b.toolName === parsed.tool.toolName &&
+                    JSON.stringify(b.toolArgs) === JSON.stringify(parsed.tool.toolArgs)
+                );
+              }
+              
               if (toolBlock) {
                 toolBlock.toolResult = parsed.tool.toolResult;
                 toolBlock.isCompleted = true;
+                // Update approval status if it was pending
+                if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
+                  toolBlock.approvalStatus = "approved";
+                }
+                // Add renderer metadata if present
+                if (parsed.tool.renderer) {
+                  toolBlock.renderer = parsed.tool.renderer;
+                }
               }
               scheduleUpdate();
             }
@@ -171,6 +235,12 @@ async function processMessageStream(
               }
               scheduleUpdate();
             }
+
+            // === DEBUG LOGGING (UI STATE) ===
+            console.log('%cContent Blocks After Event:', 'background: #16a34a; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;');
+            console.log(JSON.parse(JSON.stringify(contentBlocks))); // Deep clone for snapshot
+            console.log('---');
+            // === END DEBUG LOGGING ===
           } catch (err) {
             console.error("Failed to parse SSE data:", err);
           }

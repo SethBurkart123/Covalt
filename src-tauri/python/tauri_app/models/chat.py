@@ -27,6 +27,11 @@ class ContentBlock(_BaseModel):
     toolArgs: Optional[Dict[str, Any]] = None
     toolResult: Optional[str] = None
     isCompleted: Optional[bool] = None
+    renderer: Optional[str] = None
+    # For tool approval
+    requiresApproval: Optional[bool] = None
+    approvalId: Optional[str] = None
+    approvalStatus: Optional[str] = None  # "pending", "approved", "denied"
 
 
 class ChatMessage(_BaseModel):
@@ -93,6 +98,12 @@ class ChatEvent(_BaseModel):
     error: Optional[str] = None
     # For seeding existing content blocks on continuation
     blocks: Optional[List[Dict[str, Any]]] = None
+
+
+class ToolApprovalResponse(_BaseModel):
+    approvalId: str
+    approved: bool
+    editedArgs: Optional[Dict[str, Any]] = None
 
 
 class ToggleChatToolsInput(_BaseModel):

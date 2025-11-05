@@ -157,3 +157,4 @@ def save_auto_title_settings(sess: Session, settings: Dict[str, Any]) -> None:
     """
     update_general_settings(sess, {"auto_title": settings})
 
+
