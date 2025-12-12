@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import sqlalchemy
-from typing import Union
-from pytauri import App, AppHandle
-from pytauri.ffi.webview import WebviewWindow
 
 from .core import _get_engine
 
 
-def run_migrations(app: Union[App, AppHandle, WebviewWindow]) -> None:
+def run_migrations() -> None:
     """Run database migrations for schema changes."""
     engine = _get_engine()
     if engine is None:

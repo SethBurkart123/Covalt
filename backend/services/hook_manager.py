@@ -38,7 +38,7 @@ class ToolHookManager:
         """Get metadata for a tool by its name."""
         return self._tool_metadata.get(tool_name, {})
     
-    def create_pre_hook(self, channel=None, assistant_msg_id: str = None, app_handle=None):
+    def create_pre_hook(self, channel=None, assistant_msg_id: str = None):
         """
         Create a pre-hook that handles approval gates and renderer metadata.
         

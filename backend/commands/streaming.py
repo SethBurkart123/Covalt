@@ -8,16 +8,13 @@ from typing import List, Optional, Dict, Any
 import traceback
 
 from pydantic import BaseModel
-from pytauri import AppHandle
-from pytauri.ipc import Channel, JavaScriptChannelId
-from pytauri.webview import WebviewWindow
 from agno.agent import Agent, RunEvent, Message
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.hook_manager import get_hook_manager
-from . import commands
+from zynk import command
 
 from rich import print
 
@@ -35,7 +32,7 @@ def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     return "", model_id
 
 
-def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model_id: Optional[str]) -> str:
+def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
     """
     Create chat and config if needed, and ensure model/provider are up to date.
 
@@ -43,7 +40,7 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
     """
     if not chat_id:
         chat_id = str(uuid.uuid4())
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             now = datetime.utcnow().isoformat()
             db.create_chat(sess, id=chat_id, title="New Chat", model=model_id, createdAt=now, updatedAt=now)
             provider, model = parse_model_id(model_id)
@@ -58,7 +55,7 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
 
     # Existing chat: ensure agent config exists and, if a model_id was provided,
     # update the provider/model to match the current selection.
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             provider, model = parse_model_id(model_id)
@@ -85,9 +82,9 @@ def ensure_chat_initialized(app_handle: AppHandle, chat_id: Optional[str], model
     return chat_id
 
 
-def save_user_msg(app_handle: AppHandle, msg: ChatMessage, chat_id: str, parent_id: Optional[str] = None):
+def save_user_msg(msg: ChatMessage, chat_id: str, parent_id: Optional[str] = None):
     """Save user message to db."""
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         # Get sequence number for siblings
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         
@@ -109,10 +106,10 @@ def save_user_msg(app_handle: AppHandle, msg: ChatMessage, chat_id: str, parent_
         db.set_active_leaf(sess, chat_id, msg.id)
 
 
-def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> str:
+def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     """Create empty assistant message, return id."""
     msg_id = str(uuid.uuid4())
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         # Determine model used from chat's agent config
         model_used: Optional[str] = None
@@ -147,9 +144,9 @@ def init_assistant_msg(app_handle: AppHandle, chat_id: str, parent_id: str) -> s
     return msg_id
 
 
-def save_msg_content(app_handle: AppHandle, msg_id: str, content: str):
+def save_msg_content(msg_id: str, content: str):
     """Update message content."""
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         db.update_message_content(sess, messageId=msg_id, content=content)
 
 
@@ -224,10 +221,10 @@ def convert_to_agno_messages(chat_msg: ChatMessage) -> List[Message]:
     return []
 
 
-def load_initial_content(app_handle: AppHandle, msg_id: str) -> tuple[List[Dict[str, Any]], int]:
+def load_initial_content(msg_id: str) -> tuple[List[Dict[str, Any]], int]:
     """Load existing message content for continuation."""
     try:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             message = sess.get(db.Message, msg_id)
             if not message or not message.content:
                 return [], 0
@@ -246,11 +243,10 @@ def load_initial_content(app_handle: AppHandle, msg_id: str) -> tuple[List[Dict[
 
 
 async def handle_content_stream(
-    app_handle: AppHandle,
     agent: Agent,
     messages: List[ChatMessage],
     assistant_msg_id: str,
-    ch: Channel[ChatEvent],
+    ch: Any,  # Channel type - keeping flexible for now
 ):
     agno_messages = []
     for msg in messages:
@@ -259,7 +255,7 @@ async def handle_content_stream(
     # Check if we should parse think tags for this model
     parse_think_tags = False
     try:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             msg = sess.get(db.Message, assistant_msg_id)
             if msg and msg.model_used:
                 # Parse provider:model_id format
@@ -274,7 +270,7 @@ async def handle_content_stream(
 
     response_stream = agent.arun(input=agno_messages, stream=True, stream_events=True)
 
-    content_blocks, tool_counter = load_initial_content(app_handle, assistant_msg_id)
+    content_blocks, tool_counter = load_initial_content(assistant_msg_id)
     current_text = ""
     current_reasoning = ""
     had_error = False
@@ -413,7 +409,7 @@ async def handle_content_stream(
                     flush_text()
                 current_reasoning += chunk.reasoning_content
                 ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=chunk.reasoning_content))
-                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
             
             if chunk.content:
                 if current_reasoning and not current_text and not parse_think_tags:
@@ -425,7 +421,7 @@ async def handle_content_stream(
                     current_text += chunk.content
                     ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
                 
-                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
         
         elif chunk.event == RunEvent.tool_call_started:
             flush_text()
@@ -488,7 +484,7 @@ async def handle_content_stream(
                     flush_text()
                 current_reasoning += chunk.reasoning_content
                 ch.send_model(ChatEvent(event="ReasoningStep", reasoningContent=chunk.reasoning_content))
-                await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_state())
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
         
         elif chunk.event == RunEvent.reasoning_completed:
             flush_reasoning()
@@ -512,7 +508,7 @@ async def handle_content_stream(
                 "content": str(chunk.error.message if hasattr(chunk.error, 'message') else chunk),
                 "timestamp": datetime.utcnow().isoformat()
             })
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
+            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
             ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
             had_error = True
             return
@@ -521,14 +517,14 @@ async def handle_content_stream(
         del _active_runs[assistant_msg_id]
     
     if not had_error:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             message = sess.get(db.Message, assistant_msg_id)
             if message and not message.is_complete:
                 db.mark_message_complete(sess, assistant_msg_id)
 
 
 class StreamChatRequest(BaseModel):
-    channel: JavaScriptChannelId[ChatEvent]
+    channel: Any  # Channel type - keeping flexible for now
     messages: List[Dict[str, Any]]
     modelId: Optional[str] = None
     chatId: Optional[str] = None
@@ -581,13 +577,13 @@ def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
     return blocks if blocks else [{"type": "text", "content": ""}]
 
 
-def reprocess_message_with_think_tags(app_handle: AppHandle, message_id: str) -> bool:
+def reprocess_message_with_think_tags(message_id: str) -> bool:
     """
     Re-process a message's content to parse <think> tags.
     Returns True if message was updated, False otherwise.
     """
     try:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             msg = sess.get(db.Message, message_id)
             if not msg:
                 print(f"[reprocess] Message {message_id} not found")
@@ -640,8 +636,8 @@ class RespondToToolApprovalInput(BaseModel):
     editedArgs: Optional[Dict[str, Any]] = None
 
 
-@commands.command()
-async def respond_to_tool_approval(body: RespondToToolApprovalInput, app_handle: AppHandle) -> dict:
+@command
+async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
     """
     Respond to a tool approval request.
     
@@ -657,8 +653,8 @@ async def respond_to_tool_approval(body: RespondToToolApprovalInput, app_handle:
     return {"success": True}
 
 
-@commands.command()
-async def cancel_run(body: CancelRunRequest, app_handle: AppHandle) -> dict:
+@command
+async def cancel_run(body: CancelRunRequest) -> dict:
     """Cancel an active streaming run. Returns {cancelled: bool}"""
     message_id = body.messageId
     
@@ -673,7 +669,7 @@ async def cancel_run(body: CancelRunRequest, app_handle: AppHandle) -> dict:
         agent.cancel_run(run_id)
         
         # Mark message as complete in database
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             db.mark_message_complete(sess, message_id)
         
         # Clean up tracking
@@ -686,13 +682,12 @@ async def cancel_run(body: CancelRunRequest, app_handle: AppHandle) -> dict:
         return {"cancelled": False}
 
 
-@commands.command()
+@command
 async def stream_chat(
     body: StreamChatRequest,
-    webview_window: WebviewWindow,
-    app_handle: AppHandle,
 ) -> None:
-    ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
+    # For zynk, channel is passed directly in body
+    ch = body.channel
     messages: List[ChatMessage] = [
         ChatMessage(
             id=m.get("id"),
@@ -704,32 +699,31 @@ async def stream_chat(
         for m in body.messages
     ]
     
-    chat_id = ensure_chat_initialized(app_handle, body.chatId, body.modelId)
+    chat_id = ensure_chat_initialized(body.chatId, body.modelId)
     
     # Get the current active leaf to use as parent
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
         parent_id = chat.active_leaf_message_id if chat else None
     
     if messages and messages[-1].role == "user":
-        save_user_msg(app_handle, messages[-1], chat_id, parent_id)
+        save_user_msg(messages[-1], chat_id, parent_id)
         # Update parent_id to the newly saved user message
         parent_id = messages[-1].id
     
     ch.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
     
-    assistant_msg_id = init_assistant_msg(app_handle, chat_id, parent_id)
+    assistant_msg_id = init_assistant_msg(chat_id, parent_id)
     
     ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
     
     try:
-        agent = create_agent_for_chat(chat_id, app_handle, channel=ch, assistant_msg_id=assistant_msg_id)
+        agent = create_agent_for_chat(chat_id, channel=ch, assistant_msg_id=assistant_msg_id)
         
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
         
         await handle_content_stream(
-            app_handle,
             agent,
             messages,
             assistant_msg_id,
@@ -749,7 +743,7 @@ async def stream_chat(
 
         # Preserve any existing content and append the error block
         try:
-            with db.db_session(app_handle) as sess:
+            with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
                 blocks: List[Dict[str, Any]] = []
                 if message and message.content:
@@ -765,6 +759,6 @@ async def stream_chat(
                 db.update_message_content(sess, messageId=assistant_msg_id, content=json.dumps(blocks))
         except Exception as e2:
             print(f"[stream] Failed to append error block, falling back: {e2}")
-            save_msg_content(app_handle, assistant_msg_id, json.dumps([error_block]))
+            save_msg_content(assistant_msg_id, json.dumps([error_block]))
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
         # Note: message stays is_complete=False so user can retry/continue

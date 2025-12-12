@@ -6,7 +6,6 @@ from .core import (
     session,
     db_session,
     get_db_path,
-    get_resource_dir,
     set_db_path,
 )
 
@@ -76,7 +75,6 @@ __all__ = [
     "session",
     "db_session",
     "get_db_path",
-    "get_resource_dir",
     "set_db_path",
     # Models
     "Base",

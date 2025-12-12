@@ -4,7 +4,7 @@ from datetime import datetime
 import uuid
 from typing import Any, Dict
 
-from pytauri import AppHandle
+from zynk import command
 
 from .. import db
 from ..models.chat import (
@@ -23,14 +23,12 @@ from ..models.chat import (
 from ..services.agent_factory import update_agent_tools, update_agent_model
 from ..services.tool_registry import get_tool_registry
 from ..services.title_generator import generate_title_for_chat
-from . import commands
 
 
-@commands.command()
-async def get_all_chats(app_handle: AppHandle) -> AllChatsData:
+@command
+async def get_all_chats() -> AllChatsData:
     chats: Dict[str, ChatData] = {}
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         for r in db.list_chats(sess):
             chat = ChatData(
                 id=r.id,
@@ -41,13 +39,11 @@ async def get_all_chats(app_handle: AppHandle) -> AllChatsData:
                 messages=[],  # do not load heavy messages list here
             )
             chats[chat.id or "unknown"] = chat
-    finally:
-        sess.close()
     return AllChatsData(chats=chats)
 
 
-@commands.command()
-async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
+@command
+async def create_chat(body: CreateChatInput) -> ChatData:
     now = datetime.utcnow().isoformat()
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
@@ -67,8 +63,7 @@ async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
         # Use default config
         agent_config = db.get_default_agent_config()
     
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         db.create_chat(
             sess,
             id=chatId,
@@ -79,8 +74,6 @@ async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
         )
         # Set agent config
         db.update_chat_agent_config(sess, chatId=chatId, config=agent_config)
-    finally:
-        sess.close()
     return ChatData(
         id=chatId,
         title=title,
@@ -91,11 +84,10 @@ async def create_chat(body: CreateChatInput, app_handle: AppHandle) -> ChatData:
     )
 
 
-@commands.command()
-async def update_chat(body: UpdateChatInput, app_handle: AppHandle) -> ChatData:
+@command
+async def update_chat(body: UpdateChatInput) -> ChatData:
     now = datetime.utcnow().isoformat()
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         db.update_chat(
             sess,
             id=body.id,
@@ -117,58 +109,48 @@ async def update_chat(body: UpdateChatInput, app_handle: AppHandle) -> ChatData:
             updatedAt=chatRow.updatedAt,
             messages=[],
         )
-    finally:
-        sess.close()
 
 
-@commands.command()
-async def delete_chat(body: ChatId, app_handle: AppHandle) -> None:
-    sess = db.session(app_handle)
-    try:
+@command
+async def delete_chat(body: ChatId) -> None:
+    with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
-    finally:
-        sess.close()
     return None
 
 
-@commands.command()
-async def get_chat(body: ChatId, app_handle: AppHandle) -> Dict[str, Any]:
-    sess = db.session(app_handle)
-    try:
+@command
+async def get_chat(body: ChatId) -> Dict[str, Any]:
+    with db.db_session() as sess:
         msgs = db.get_chat_messages(sess, chatId=body.id)
-    finally:
-        sess.close()
     return {"id": body.id, "messages": msgs}
 
 
-@commands.command()
-async def toggle_chat_tools(body: ToggleChatToolsInput, app_handle: AppHandle) -> None:
+@command
+async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
     """
     Update active tools for a chat session.
     
     Args:
         body: Contains chatId and list of tool IDs to activate
-        app_handle: Tauri app handle
     """
-    update_agent_tools(body.chatId, body.toolIds, app_handle)
+    update_agent_tools(body.chatId, body.toolIds)
     return None
 
 
-@commands.command()
-async def update_chat_model(body: UpdateChatModelInput, app_handle: AppHandle) -> None:
+@command
+async def update_chat_model(body: UpdateChatModelInput) -> None:
     """
     Switch the model/provider for a chat session.
     
     Args:
         body: Contains chatId, provider, and modelId
-        app_handle: Tauri app handle
     """
-    update_agent_model(body.chatId, body.provider, body.modelId, app_handle)
+    update_agent_model(body.chatId, body.provider, body.modelId)
     return None
 
 
-@commands.command()
-async def get_available_tools(app_handle: AppHandle) -> AvailableToolsResponse:
+@command
+async def get_available_tools() -> AvailableToolsResponse:
     """
     Get list of all available tools.
     
@@ -191,26 +173,22 @@ async def get_available_tools(app_handle: AppHandle) -> AvailableToolsResponse:
     return AvailableToolsResponse(tools=tools)
 
 
-@commands.command()
-async def get_chat_agent_config(body: ChatId, app_handle: AppHandle) -> ChatAgentConfigResponse:
+@command
+async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
     """
     Get agent configuration for a chat (tools, provider, model).
     
     Args:
         body: Contains chatId
-        app_handle: Tauri app handle
         
     Returns:
         Chat's agent configuration
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, body.id)
         if not config:
             # No config yet, return defaults
             config = db.get_default_agent_config()
-    finally:
-        sess.close()
     
     return ChatAgentConfigResponse(
         toolIds=config.get("tool_ids", []),
@@ -219,21 +197,20 @@ async def get_chat_agent_config(body: ChatId, app_handle: AppHandle) -> ChatAgen
     )
 
 
-@commands.command()
-async def generate_chat_title(body: ChatId, app_handle: AppHandle) -> Dict[str, Any]:
+@command
+async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
     """
     Generate and update title for a chat based on its first message.
     
     Args:
         body: Contains chatId
-        app_handle: Tauri app handle
         
     Returns:
         Dict with the new title or None if generation failed
     """
-    title = generate_title_for_chat(body.id, app_handle)
+    title = generate_title_for_chat(body.id)
     if title:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             db.update_chat(sess, id=body.id, title=title)
         return {"title": title}
     return {"title": None}

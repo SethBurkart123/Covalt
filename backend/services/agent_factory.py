@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pytauri import AppHandle
-
 from .. import db
 from .model_factory import get_model
 from .tool_registry import get_tool_registry
@@ -19,7 +17,6 @@ from agno.agent import Agent
 
 def create_agent_for_chat(
     chat_id: str,
-    app_handle: AppHandle,
     history_messages: Optional[List[Dict[str, Any]]] = None,
     channel=None,
     assistant_msg_id: str = None,
@@ -32,7 +29,6 @@ def create_agent_for_chat(
     
     Args:
         chat_id: Chat identifier
-        app_handle: Tauri app handle for database access
         history_messages: Optional list of previous messages to include as context
         channel: Optional channel for sending events (needed for approval gates)
         assistant_msg_id: Optional assistant message ID (needed for approval gates)
@@ -45,7 +41,7 @@ def create_agent_for_chat(
     """
     
     # Load agent configuration from database
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             # Use default config if not set
@@ -61,7 +57,7 @@ def create_agent_for_chat(
     description = config.get("description", "You are a helpful AI assistant.")
     
     # Get model instance
-    model = get_model(provider, model_id, app_handle)
+    model = get_model(provider, model_id)
     
     # Get tool instances
     tool_registry = get_tool_registry()
@@ -82,7 +78,6 @@ def create_agent_for_chat(
     pre_hook = hook_manager.create_pre_hook(
         channel=channel,
         assistant_msg_id=assistant_msg_id,
-        app_handle=app_handle
     )
     
     # Create agent instance with hooks
@@ -106,7 +101,6 @@ def create_agent_for_chat(
 def update_agent_tools(
     chat_id: str,
     tool_ids: List[str],
-    app_handle: AppHandle,
 ) -> None:
     """
     Update active tools for a chat session.
@@ -117,9 +111,8 @@ def update_agent_tools(
     Args:
         chat_id: Chat identifier
         tool_ids: List of tool IDs to activate
-        app_handle: Tauri app handle for database access
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             config = db.get_default_agent_config()
@@ -132,7 +125,6 @@ def update_agent_model(
     chat_id: str,
     provider: str,
     model_id: str,
-    app_handle: AppHandle,
 ) -> None:
     """
     Update model for a chat session.
@@ -144,9 +136,8 @@ def update_agent_model(
         chat_id: Chat identifier
         provider: Model provider (openai, anthropic, groq, ollama)
         model_id: Model identifier
-        app_handle: Tauri app handle for database access
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             config = db.get_default_agent_config()
