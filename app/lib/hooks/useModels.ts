@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getAvailableModels } from '@/python/apiClient';
+import { getAvailableModels } from '@/python/api';
 import type { ModelInfo } from '@/lib/types/chat';
 
 export function useModels() {
@@ -11,7 +11,7 @@ export function useModels() {
     // Load available models from backend
     const loadModels = async () => {
       try {
-        const response = await getAvailableModels(undefined);
+        const response = await getAvailableModels();
         const availableModels = response.models;
         setModels(availableModels);
 

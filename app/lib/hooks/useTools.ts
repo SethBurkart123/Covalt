@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getAvailableTools, toggleChatTools, setDefaultTools, getDefaultTools } from '@/python/apiClient';
+import { getAvailableTools, toggleChatTools, setDefaultTools, getDefaultTools, getChatAgentConfig } from '@/python/api';
 import type { ToolInfo } from '@/lib/types/chat';
-import { getChatAgentConfig } from '@/python/apiClient';
 
 export function useTools(chatId: string) {
   const [availableTools, setAvailableTools] = useState<ToolInfo[]>([]);
@@ -12,7 +11,7 @@ export function useTools(chatId: string) {
   useEffect(() => {
     const loadTools = async () => {
       try {
-        const response = await getAvailableTools(undefined);
+        const response = await getAvailableTools();
         setAvailableTools(response.tools);
       } catch (error) {
         console.error('Failed to load available tools:', error);
@@ -35,7 +34,7 @@ export function useTools(chatId: string) {
         } else {
           // Load this chat's specific tools from its agent_config
           try {
-            const config = await getChatAgentConfig({ id: chatId });
+            const config = await getChatAgentConfig({ body: { id: chatId } });
             setActiveToolIds(config.toolIds || []);
           } catch (error) {
             console.error('Failed to load chat config:', error);
@@ -66,11 +65,11 @@ export function useTools(chatId: string) {
     try {
       // Save to current chat if one exists
       if (chatId) {
-        await toggleChatTools({ chatId, toolIds: newActiveToolIds }, undefined);
+        await toggleChatTools({ body: { chatId, toolIds: newActiveToolIds } });
       }
 
       // Always save as defaults for future chats
-      await setDefaultTools({ toolIds: newActiveToolIds }, undefined);
+      await setDefaultTools({ body: { toolIds: newActiveToolIds } });
     } catch (error) {
       console.error('Failed to toggle tool:', error);
       // Revert on error

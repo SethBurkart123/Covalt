@@ -82,8 +82,8 @@ async def get_provider_settings() -> AllProvidersResponse:
         providers.append(
             ProviderConfig(
                 provider=provider,
-                api_key=config.get("api_key"),
-                base_url=config.get("base_url"),
+                apiKey=config.get("api_key"),
+                baseUrl=config.get("base_url"),
                 extra=_safe_parse_json(config.get("extra")),
                 enabled=config.get("enabled", True),
             )
@@ -104,8 +104,8 @@ async def save_provider_settings(body: SaveProviderConfigInput) -> None:
         db.save_provider_settings(
             sess,
             provider=body.provider,
-            api_key=body.api_key,
-            base_url=body.base_url,
+            api_key=body.apiKey,
+            base_url=body.baseUrl,
             extra=body.extra,
             enabled=body.enabled,
         )

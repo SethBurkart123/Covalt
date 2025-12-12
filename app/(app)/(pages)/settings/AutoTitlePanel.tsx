@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react';
-import { getAutoTitleSettings, saveAutoTitleSettings } from '@/python/apiClient';
+import { getAutoTitleSettings, saveAutoTitleSettings } from '@/python/api';
 import ModelSelector from '@/components/ModelSelector';
 import { useModels } from '@/lib/hooks/useModels';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -41,7 +41,7 @@ export default function AutoTitlePanel() {
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      const response = await getAutoTitleSettings(undefined);
+      const response = await getAutoTitleSettings();
       setSettings({
         enabled: response.enabled || false,
         prompt: response.prompt || "",
@@ -60,16 +60,15 @@ export default function AutoTitlePanel() {
     setSaving(true);
     setSaved(false);
     try {
-      await saveAutoTitleSettings(
-        {
+      await saveAutoTitleSettings({
+        body: {
           enabled: settings.enabled,
           prompt: settings.prompt,
           modelMode: settings.modelMode,
           provider: settings.provider,
           modelId: settings.modelId,
         },
-        undefined
-      );
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } catch (e) {

@@ -395,8 +395,8 @@ async def handle_content_stream(
             flush_think_tag_buffer()
             flush_text()
             flush_reasoning()
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
-            with db.db_session(app_handle) as sess:
+            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+            with db.db_session() as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
             if assistant_msg_id in _active_runs:
                 del _active_runs[assistant_msg_id]
@@ -494,8 +494,8 @@ async def handle_content_stream(
             flush_think_tag_buffer()
             flush_text()
             flush_reasoning()
-            await asyncio.to_thread(save_msg_content, app_handle, assistant_msg_id, save_final())
-            with db.db_session(app_handle) as sess:
+            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+            with db.db_session() as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
             ch.send_model(ChatEvent(event="RunCompleted"))
         

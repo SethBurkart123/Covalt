@@ -1,8 +1,34 @@
 import type { AllChatsData, ChatData, Message, MessageSibling } from '@/lib/types/chat';
+import { 
+  initBridge, 
+  getAllChats as zynkGetAllChats,
+  getChat as zynkGetChat,
+  createChat as zynkCreateChat,
+  deleteChat as zynkDeleteChat,
+  updateChat as zynkUpdateChat,
+  switchToSibling as zynkSwitchToSibling,
+  getMessageSiblings as zynkGetMessageSiblings,
+  cancelRun as zynkCancelRun,
+  generateChatTitle as zynkGenerateChatTitle,
+  respondToThinkingTagPrompt as zynkRespondToThinkingTagPrompt,
+  reprocessMessageThinkTags as zynkReprocessMessageThinkTags,
+} from '@/python/api';
+import { createChannel } from '@/python/_internal';
+import type { BridgeError } from '@/python/_internal';
 
-async function invoke<T = any>(cmd: string, body?: any): Promise<T> {
-  const { pyInvoke } = await import('tauri-plugin-pytauri-api');
-  return pyInvoke(cmd, body as any) as Promise<T>;
+// Initialize the bridge - call this once at app startup
+// The backend runs on port 8000 as configured in backend/main.py
+initBridge('http://127.0.0.1:8000');
+
+// Type for streaming chat events from the backend
+interface StreamingChatEvent {
+  event: string;
+  content?: string;
+  sessionId?: string;
+  reasoningContent?: string;
+  tool?: any;
+  blocks?: any[];
+  error?: string;
 }
 
 class ApiService {
@@ -18,23 +44,23 @@ class ApiService {
   }
 
   async getAllChats(): Promise<AllChatsData> {
-    return invoke<AllChatsData>('get_all_chats');
+    return zynkGetAllChats();
   }
 
   async getChat(chatId: string): Promise<{ id: string; messages: Message[] }> {
-    return invoke<{ id: string; messages: Message[] }>('get_chat', { id: chatId });
+    return zynkGetChat({ body: { id: chatId } }) as Promise<{ id: string; messages: Message[] }>;
   }
 
   async createChat(title?: string, model?: string, chatId?: string): Promise<ChatData> {
-    return invoke<ChatData>('create_chat', { id: chatId, title, model });
+    return zynkCreateChat({ body: { id: chatId, title, model } });
   }
 
   async deleteChat(chatId: string): Promise<void> {
-    return invoke<void>('delete_chat', { id: chatId });
+    return zynkDeleteChat({ body: { id: chatId } });
   }
 
   async renameChat(chatId: string, title: string): Promise<ChatData> {
-    return invoke<ChatData>('update_chat', { id: chatId, title });
+    return zynkUpdateChat({ body: { id: chatId, title } });
   }
 
   async streamChat(
@@ -42,29 +68,34 @@ class ApiService {
     modelId: string,
     chatId?: string,
   ): Promise<Response> {
-    // Bridge PyTauri Channel events into an SSE-compatible ReadableStream
+    // Use zynk's createChannel for streaming - it returns a BridgeChannel
     const encoder = new TextEncoder();
-    const { Channel } = await import('@tauri-apps/api/core');
-    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
 
     const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
+      start: (controller) => {
         const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const chatChannel = new Channel((evt: { 
-          event: string; 
-          content?: string; 
-          sessionId?: string;
-          reasoningContent?: string;
-          tool?: any;
-          blocks?: any[];
-          error?: string;
-        }) => {
-          const { event, ...rest } = evt || ({} as any);
+        // Create a zynk channel for streaming
+        const channel = createChannel<StreamingChatEvent>('stream_chat', {
+          body: {
+            messages: messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt
+            })),
+            modelId: modelId,
+            chatId: chatId,
+          }
+        });
+
+        // Subscribe to channel events
+        channel.subscribe((evt: StreamingChatEvent) => {
+          const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
           
           if (rest.sessionId) data.sessionId = rest.sessionId;
@@ -78,25 +109,20 @@ class ApiService {
           
           if (event === 'RunCompleted' || event === 'RunError') {
             controller.close();
+            channel.close();
           }
         });
 
-        try {
-          // Pass channel and payload data in the body object
-          await pyInvoke('stream_chat', {
-            channel: chatChannel.toJSON(),
-            messages: messages.map((m) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              createdAt: m.createdAt
-            })),
-            modelId: modelId,
-            chatId: chatId,
-          });
-        } catch (err) {
-          controller.error(err);
-        }
+        // Handle channel close
+        channel.onClose(() => {
+          controller.close();
+        });
+
+        // Handle channel errors
+        channel.onError((error: BridgeError) => {
+          sendEvent('RunError', { error: error.message });
+          controller.close();
+        });
       },
       cancel: () => {},
     });
@@ -112,18 +138,24 @@ class ApiService {
 
   async continueMessage(messageId: string, chatId: string, modelId?: string): Promise<Response> {
     const encoder = new TextEncoder();
-    const { Channel } = await import('@tauri-apps/api/core');
-    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
 
     const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
+      start: (controller) => {
         const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const chatChannel = new Channel((evt: any) => {
+        const channel = createChannel<StreamingChatEvent>('continue_message', {
+          body: {
+            messageId,
+            chatId,
+            modelId,
+          }
+        });
+
+        channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
           
@@ -138,19 +170,18 @@ class ApiService {
           
           if (event === 'RunCompleted' || event === 'RunError') {
             controller.close();
+            channel.close();
           }
         });
 
-        try {
-          await pyInvoke('continue_message', {
-            channel: chatChannel.toJSON(),
-            messageId,
-            chatId,
-            modelId,
-          });
-        } catch (err) {
-          controller.error(err);
-        }
+        channel.onClose(() => {
+          controller.close();
+        });
+
+        channel.onError((error: BridgeError) => {
+          sendEvent('RunError', { error: error.message });
+          controller.close();
+        });
       },
       cancel: () => {},
     });
@@ -166,18 +197,24 @@ class ApiService {
 
   async retryMessage(messageId: string, chatId: string, modelId?: string): Promise<Response> {
     const encoder = new TextEncoder();
-    const { Channel } = await import('@tauri-apps/api/core');
-    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
 
     const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
+      start: (controller) => {
         const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const chatChannel = new Channel((evt: any) => {
+        const channel = createChannel<StreamingChatEvent>('retry_message', {
+          body: {
+            messageId,
+            chatId,
+            modelId,
+          }
+        });
+
+        channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
           
@@ -191,19 +228,18 @@ class ApiService {
           
           if (event === 'RunCompleted' || event === 'RunError') {
             controller.close();
+            channel.close();
           }
         });
 
-        try {
-          await pyInvoke('retry_message', {
-            channel: chatChannel.toJSON(),
-            messageId,
-            chatId,
-            modelId,
-          });
-        } catch (err) {
-          controller.error(err);
-        }
+        channel.onClose(() => {
+          controller.close();
+        });
+
+        channel.onError((error: BridgeError) => {
+          sendEvent('RunError', { error: error.message });
+          controller.close();
+        });
       },
       cancel: () => {},
     });
@@ -219,18 +255,25 @@ class ApiService {
 
   async editUserMessage(messageId: string, newContent: string, chatId: string, modelId?: string): Promise<Response> {
     const encoder = new TextEncoder();
-    const { Channel } = await import('@tauri-apps/api/core');
-    const { pyInvoke } = await import('tauri-plugin-pytauri-api');
 
     const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
+      start: (controller) => {
         const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const chatChannel = new Channel((evt: any) => {
+        const channel = createChannel<StreamingChatEvent>('edit_user_message', {
+          body: {
+            messageId,
+            newContent,
+            chatId,
+            modelId,
+          }
+        });
+
+        channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
           
@@ -244,20 +287,18 @@ class ApiService {
           
           if (event === 'RunCompleted' || event === 'RunError') {
             controller.close();
+            channel.close();
           }
         });
 
-        try {
-          await pyInvoke('edit_user_message', {
-            channel: chatChannel.toJSON(),
-            messageId,
-            newContent,
-            chatId,
-            modelId,
-          });
-        } catch (err) {
-          controller.error(err);
-        }
+        channel.onClose(() => {
+          controller.close();
+        });
+
+        channel.onError((error: BridgeError) => {
+          sendEvent('RunError', { error: error.message });
+          controller.close();
+        });
       },
       cancel: () => {},
     });
@@ -272,27 +313,27 @@ class ApiService {
   }
 
   async switchToSibling(messageId: string, siblingId: string, chatId: string): Promise<void> {
-    return invoke<void>('switch_to_sibling', { messageId, siblingId, chatId });
+    return zynkSwitchToSibling({ body: { messageId, siblingId, chatId } });
   }
 
   async getMessageSiblings(messageId: string): Promise<MessageSibling[]> {
-    return invoke<MessageSibling[]>('get_message_siblings', { messageId });
+    return zynkGetMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>;
   }
 
   async cancelRun(messageId: string): Promise<{ cancelled: boolean }> {
-    return invoke<{ cancelled: boolean }>('cancel_run', { messageId });
+    return zynkCancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>;
   }
 
   async generateChatTitle(chatId: string): Promise<{ title: string | null }> {
-    return invoke<{ title: string | null }>('generate_chat_title', { id: chatId });
+    return zynkGenerateChatTitle({ body: { id: chatId } }) as Promise<{ title: string | null }>;
   }
 
   async respondToThinkingTagPrompt(provider: string, modelId: string, accepted: boolean): Promise<void> {
-    return invoke<void>('respond_to_thinking_tag_prompt', { provider, modelId, accepted });
+    return zynkRespondToThinkingTagPrompt({ body: { provider, modelId, accepted } });
   }
 
   async reprocessMessageThinkTags(messageId: string): Promise<{ success: boolean }> {
-    return invoke<{ success: boolean }>('reprocess_message_think_tags', { messageId });
+    return zynkReprocessMessageThinkTags({ body: { messageId } }) as Promise<{ success: boolean }>;
   }
 }
 

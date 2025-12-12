@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
 import { PROVIDERS, ProviderConfig, PROVIDER_MAP } from './ProviderRegistry';
-import { getProviderSettings, saveProviderSettings } from '@/python/apiClient';
+import { getProviderSettings, saveProviderSettings } from '@/python/api';
 
 export default function ProvidersPanel() {
   const [search, setSearch] = useState('');
@@ -21,7 +21,7 @@ export default function ProvidersPanel() {
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      const response = await getProviderSettings(undefined);
+      const response = await getProviderSettings();
       const map: Record<string, ProviderConfig> = {};
 
       (response?.providers || []).forEach((p: any) => {
@@ -134,16 +134,15 @@ export default function ProvidersPanel() {
         }
       }
 
-      await saveProviderSettings(
-        {
+      await saveProviderSettings({
+        body: {
           provider: key,
           apiKey: cfg.apiKey || undefined,
           baseUrl: cfg.baseUrl || undefined,
           extra,
           enabled: cfg.enabled,
         } as any,
-        undefined
-      );
+      });
       setSaved((s) => ({ ...s, [key]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
     } catch (e) {
