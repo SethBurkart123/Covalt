@@ -1,25 +1,23 @@
 from __future__ import annotations
 
 from typing import Optional
-from pytauri import AppHandle
 from agno.agent import Agent
 
 from .. import db
 
 
-def generate_title_for_chat(chat_id: str, app_handle: AppHandle) -> Optional[str]:
+def generate_title_for_chat(chat_id: str) -> Optional[str]:
     """
     Generate a title for a chat based on its first user message.
     
     Args:
         chat_id: Chat identifier
-        app_handle: Tauri app handle
         
     Returns:
         Generated title string or None if disabled/failed
     """
     try:
-        with db.db_session(app_handle) as sess:
+        with db.db_session() as sess:
             settings = db.get_auto_title_settings(sess)
             
             if not settings.get("enabled", True):
@@ -64,7 +62,7 @@ def generate_title_for_chat(chat_id: str, app_handle: AppHandle) -> Optional[str
                 model_id = settings.get("model_id", "gpt-4o-mini")
         
         from .model_factory import get_model
-        model = get_model(provider, model_id, app_handle)
+        model = get_model(provider, model_id)
         
         agent = Agent(
             model=model,

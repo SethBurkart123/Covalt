@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 from contextlib import contextmanager
 
-from pytauri import App, AppHandle, Manager
-from pytauri.ffi.webview import WebviewWindow
-from pytauri.path import PathResolver
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from .models import Base
-
+from ..config import get_db_path as _get_db_path
 
 _engine = None
 _Session = None
@@ -19,25 +16,22 @@ _db_path_override: Optional[Path] = None
 
 
 def set_db_path(path: Path) -> None:
+    """Override default database path."""
     global _db_path_override
     path.parent.mkdir(parents=True, exist_ok=True)
     _db_path_override = path
 
 
-def get_db_path(app: Union[App, AppHandle, WebviewWindow]) -> Path:
-    # Fallback if not set via init_database
-    return _db_path_override or (get_resource_dir(app) / "app.db")
+def get_db_path() -> Path:
+    """Get current database path."""
+    return _db_path_override or _get_db_path()
 
 
-def get_resource_dir(manager: Union[App, AppHandle, WebviewWindow]) -> Path:
-    path_resolver: PathResolver = Manager.path(manager)
-    return path_resolver.resource_dir()
-
-
-def _ensure_engine(app: Union[App, AppHandle, WebviewWindow]):
+def _ensure_engine():
+    """Initialize database engine if not already created."""
     global _engine, _Session
     if _engine is None:
-        db_path = get_db_path(app)
+        db_path = get_db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
         _engine = create_engine(
             f"sqlite:///{db_path}",
@@ -52,24 +46,25 @@ def _get_engine():
     return _engine
 
 
-def init_database(app: Union[App, AppHandle, WebviewWindow]) -> Path:
+def init_database() -> Path:
     """Ensure the database engine and schema exist. Returns DB path."""
-    _ensure_engine(app)
+    _ensure_engine()
     from .migrations import run_migrations
-    run_migrations(app)
-    return get_db_path(app)
+    run_migrations()
+    return get_db_path()
 
 
-def session(app: Union[App, AppHandle, WebviewWindow]) -> Session:
-    _ensure_engine(app)
+def session() -> Session:
+    """Create a new database session."""
+    _ensure_engine()
     assert _Session is not None
     return _Session()
 
 
 @contextmanager
-def db_session(app: Union[App, AppHandle, WebviewWindow]):
+def db_session():
     """Context manager for database sessions - handles cleanup automatically."""
-    sess = session(app)
+    sess = session()
     try:
         yield sess
     finally:

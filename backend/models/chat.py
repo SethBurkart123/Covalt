@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
-from pydantic import Field, ConfigDict
-
-from ..types import _BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class ToolCall(_BaseModel):
+class ToolCall(BaseModel):
     id: str
     toolName: str
     toolArgs: Dict[str, Any]
@@ -14,7 +12,7 @@ class ToolCall(_BaseModel):
     isCompleted: Optional[bool] = None
 
 
-class ContentBlock(_BaseModel):
+class ContentBlock(BaseModel):
     # Allow extra fields on content blocks so we can attach
     # metadata like timestamps or tracebacks to error blocks
     model_config = ConfigDict(extra="allow")
@@ -34,7 +32,7 @@ class ContentBlock(_BaseModel):
     approvalStatus: Optional[str] = None  # "pending", "approved", "denied"
 
 
-class ChatMessage(_BaseModel):
+class ChatMessage(BaseModel):
     id: str
     role: str
     content: Union[str, List[ContentBlock]]  # Support both formats
@@ -42,7 +40,7 @@ class ChatMessage(_BaseModel):
     toolCalls: Optional[List[ToolCall]] = None  # Deprecated, for migration
 
 
-class ChatData(_BaseModel):
+class ChatData(BaseModel):
     id: Optional[str] = None
     title: str
     messages: List[ChatMessage] = Field(default_factory=list)
@@ -51,11 +49,11 @@ class ChatData(_BaseModel):
     updatedAt: Optional[str] = None
 
 
-class AllChatsData(_BaseModel):
+class AllChatsData(BaseModel):
     chats: Dict[str, ChatData]
 
 
-class AgentConfig(_BaseModel):
+class AgentConfig(BaseModel):
     provider: str = "openai"
     modelId: str = "gpt-4o-mini"
     toolIds: List[str] = Field(default_factory=list)
@@ -64,30 +62,30 @@ class AgentConfig(_BaseModel):
     description: Optional[str] = None
 
 
-class CreateChatInput(_BaseModel):
+class CreateChatInput(BaseModel):
     id: Optional[str] = None
     title: Optional[str] = None
     model: Optional[str] = None
     agentConfig: Optional[AgentConfig] = None
 
 
-class UpdateChatInput(_BaseModel):
+class UpdateChatInput(BaseModel):
     id: str
     title: Optional[str] = None
     model: Optional[str] = None
 
 
-class ChatId(_BaseModel):
+class ChatId(BaseModel):
     id: str
 
 
-class ChatStreamRequest(_BaseModel):
+class ChatStreamRequest(BaseModel):
     messages: List[ChatMessage]
     modelId: str
     chatId: Optional[str] = None
 
 
-class ChatEvent(_BaseModel):
+class ChatEvent(BaseModel):
     # Discriminator field for event name
     event: str
     # Optional fields
@@ -100,46 +98,46 @@ class ChatEvent(_BaseModel):
     blocks: Optional[List[Dict[str, Any]]] = None
 
 
-class ToolApprovalResponse(_BaseModel):
+class ToolApprovalResponse(BaseModel):
     approvalId: str
     approved: bool
     editedArgs: Optional[Dict[str, Any]] = None
 
 
-class ToggleChatToolsInput(_BaseModel):
+class ToggleChatToolsInput(BaseModel):
     chatId: str
     toolIds: List[str]
 
 
-class UpdateChatModelInput(_BaseModel):
+class UpdateChatModelInput(BaseModel):
     chatId: str
     provider: str
     modelId: str
 
 
-class ToolInfo(_BaseModel):
+class ToolInfo(BaseModel):
     id: str
     name: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
 
 
-class AvailableToolsResponse(_BaseModel):
+class AvailableToolsResponse(BaseModel):
     tools: List[ToolInfo]
 
 
-class ModelInfo(_BaseModel):
+class ModelInfo(BaseModel):
     provider: str
     modelId: str
     displayName: str
     isDefault: bool = False
 
 
-class AvailableModelsResponse(_BaseModel):
+class AvailableModelsResponse(BaseModel):
     models: List[ModelInfo]
 
 
-class ProviderConfig(_BaseModel):
+class ProviderConfig(BaseModel):
     provider: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
@@ -147,7 +145,7 @@ class ProviderConfig(_BaseModel):
     enabled: bool = True
 
 
-class SaveProviderConfigInput(_BaseModel):
+class SaveProviderConfigInput(BaseModel):
     provider: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
@@ -155,25 +153,25 @@ class SaveProviderConfigInput(_BaseModel):
     enabled: bool = True
 
 
-class AllProvidersResponse(_BaseModel):
+class AllProvidersResponse(BaseModel):
     providers: List[ProviderConfig]
 
 
-class DefaultToolsResponse(_BaseModel):
+class DefaultToolsResponse(BaseModel):
     toolIds: List[str]
 
 
-class SetDefaultToolsInput(_BaseModel):
+class SetDefaultToolsInput(BaseModel):
     toolIds: List[str]
 
 
-class ChatAgentConfigResponse(_BaseModel):
+class ChatAgentConfigResponse(BaseModel):
     toolIds: List[str]
     provider: str
     modelId: str
 
 
-class AutoTitleSettings(_BaseModel):
+class AutoTitleSettings(BaseModel):
     enabled: bool = True
     prompt: str = "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else."
     modelMode: str = "current"  # "current" or "specific"
@@ -181,7 +179,7 @@ class AutoTitleSettings(_BaseModel):
     modelId: str = "gpt-4o-mini"
 
 
-class SaveAutoTitleSettingsInput(_BaseModel):
+class SaveAutoTitleSettingsInput(BaseModel):
     enabled: bool
     prompt: str
     modelMode: str
@@ -189,17 +187,17 @@ class SaveAutoTitleSettingsInput(_BaseModel):
     modelId: str
 
 
-class ReasoningInfo(_BaseModel):
+class ReasoningInfo(BaseModel):
     supports: bool
     isUserOverride: bool
 
 
-class ThinkingTagPromptInfo(_BaseModel):
+class ThinkingTagPromptInfo(BaseModel):
     prompted: bool
     declined: bool
 
 
-class ModelSettingsInfo(_BaseModel):
+class ModelSettingsInfo(BaseModel):
     provider: str
     modelId: str
     parseThinkTags: bool
@@ -207,11 +205,11 @@ class ModelSettingsInfo(_BaseModel):
     thinkingTagPrompted: Optional[ThinkingTagPromptInfo] = None
 
 
-class AllModelSettingsResponse(_BaseModel):
+class AllModelSettingsResponse(BaseModel):
     models: List[ModelSettingsInfo]
 
 
-class SaveModelSettingsInput(_BaseModel):
+class SaveModelSettingsInput(BaseModel):
     provider: str
     modelId: str
     parseThinkTags: bool = False

@@ -1,32 +1,28 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from pydantic import BaseModel
-from typing import Optional
-from pytauri import AppHandle
-from pytauri.ipc import Channel, JavaScriptChannelId
-from pytauri.webview import WebviewWindow
+from zynk import command
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from .streaming import handle_content_stream, parse_model_id
-from . import commands
 
 
 class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    channel: JavaScriptChannelId[ChatEvent]
+    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
 class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    channel: JavaScriptChannelId[ChatEvent]
+    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
@@ -34,7 +30,7 @@ class EditUserMessageRequest(BaseModel):
     messageId: str
     newContent: str
     chatId: str
-    channel: JavaScriptChannelId[ChatEvent]
+    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
@@ -54,18 +50,16 @@ class MessageSiblingInfo(BaseModel):
     isActive: bool
 
 
-@commands.command()
+@command
 async def continue_message(
     body: ContinueMessageRequest,
-    webview_window: WebviewWindow,
-    app_handle: AppHandle,
 ) -> None:
     """Continue incomplete assistant message from where it stopped."""
-    ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
+    ch = body.channel
     
     existing_blocks: List[Dict[str, Any]] = []
 
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
             # Load existing config and merge model changes (preserve tools!)
@@ -118,11 +112,10 @@ async def continue_message(
         ch.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=body.messageId)
+        agent = create_agent_for_chat(body.chatId, channel=ch, assistant_msg_id=body.messageId)
         
         # Continue streaming into the same message
         await handle_content_stream(
-            app_handle,
             agent,
             chat_messages,
             body.messageId,  # Same message ID - append content
@@ -133,7 +126,7 @@ async def continue_message(
         print(f"[continue_message] Error: {e}")
         # Persist error to the message so reload shows it
         try:
-            with db.db_session(app_handle) as sess:
+            with db.db_session() as sess:
                 message = sess.get(db.Message, body.messageId)
                 blocks: List[Dict[str, Any]] = []
                 if message and message.content:
@@ -155,16 +148,14 @@ async def continue_message(
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
-@commands.command()
+@command
 async def retry_message(
     body: RetryMessageRequest,
-    webview_window: WebviewWindow,
-    app_handle: AppHandle,
 ) -> None:
     """Create sibling message and retry generation."""
-    ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
+    ch = body.channel
     
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
             # Load existing config and merge model changes (preserve tools!)
@@ -221,11 +212,10 @@ async def retry_message(
     ch.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=new_msg_id)
+        agent = create_agent_for_chat(body.chatId, channel=ch, assistant_msg_id=new_msg_id)
         
         # Stream fresh response
         await handle_content_stream(
-            app_handle,
             agent,
             chat_messages,
             new_msg_id,
@@ -236,7 +226,7 @@ async def retry_message(
         print(f"[retry_message] Error: {e}")
         # Persist error to the new assistant message
         try:
-            with db.db_session(app_handle) as sess:
+            with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
                 blocks: List[Dict[str, Any]] = []
                 if message and message.content:
@@ -258,16 +248,14 @@ async def retry_message(
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
-@commands.command()
+@command
 async def edit_user_message(
     body: EditUserMessageRequest,
-    webview_window: WebviewWindow,
-    app_handle: AppHandle,
 ) -> None:
     """Edit user message by creating sibling with new content."""
-    ch: Channel[ChatEvent] = body.channel.channel_on(webview_window.as_ref_webview())
+    ch = body.channel
     
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
             # Load existing config and merge model changes (preserve tools!)
@@ -345,11 +333,10 @@ async def edit_user_message(
     ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
     
     try:
-        agent = create_agent_for_chat(body.chatId, app_handle, channel=ch, assistant_msg_id=assistant_msg_id)
+        agent = create_agent_for_chat(body.chatId, channel=ch, assistant_msg_id=assistant_msg_id)
         
         # Stream response to edited message
         await handle_content_stream(
-            app_handle,
             agent,
             chat_messages,
             assistant_msg_id,
@@ -360,7 +347,7 @@ async def edit_user_message(
         print(f"[edit_user_message] Error: {e}")
         # Persist error to the assistant message
         try:
-            with db.db_session(app_handle) as sess:
+            with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
                 blocks: List[Dict[str, Any]] = []
                 if message and message.content:
@@ -382,13 +369,12 @@ async def edit_user_message(
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
-@commands.command()
+@command
 async def switch_to_sibling(
     body: SwitchToSiblingRequest,
-    app_handle: AppHandle,
 ) -> None:
     """Switch active branch to different sibling."""
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         # Get the leaf descendant of the sibling
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
 
@@ -396,13 +382,12 @@ async def switch_to_sibling(
         db.set_active_leaf(sess, body.chatId, leaf_id)
 
 
-@commands.command()
+@command
 async def get_message_siblings(
     body: GetMessageSiblingsRequest,
-    app_handle: AppHandle,
 ) -> List[MessageSiblingInfo]:
     """Get all sibling messages for navigation UI."""
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         message = sess.get(db.Message, body.messageId)
         if not message:
             return []

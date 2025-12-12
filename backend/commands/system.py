@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sys
 
-from pytauri import AppHandle
+from zynk import command
+from pydantic import BaseModel
 
 from .. import db
-from ..types import _BaseModel
 from ..models.chat import (
     AvailableModelsResponse,
     ModelInfo,
@@ -25,36 +25,35 @@ from ..models.chat import (
 from ..services.model_factory import (
     get_available_models as get_models_from_factory,
 )
-from . import commands
 
 
-class Person(_BaseModel):
+class Person(BaseModel):
     name: str
 
 
-class Greeting(_BaseModel):
+class Greeting(BaseModel):
     message: str
 
 
-@commands.command()
+@command
 async def greet(body: Person) -> Greeting:
     return Greeting(message=f"Hello, {body.name}! You've been greeted from Python: {sys.version}!")
 
 
-@commands.command()
+@command
 async def get_version() -> str:
     return sys.version
 
 
-@commands.command()
-async def get_available_models(app_handle: AppHandle) -> AvailableModelsResponse:
+@command
+async def get_available_models() -> AvailableModelsResponse:
     """
     Get list of available models based on configured providers.
     
     Returns:
         List of available models with provider, modelId, displayName, and isDefault
     """
-    models_data = get_models_from_factory(app_handle)
+    models_data = get_models_from_factory()
     models = [
         ModelInfo(
             provider=m["provider"],
@@ -67,19 +66,16 @@ async def get_available_models(app_handle: AppHandle) -> AvailableModelsResponse
     return AvailableModelsResponse(models=models)
 
 
-@commands.command()
-async def get_provider_settings(app_handle: AppHandle) -> AllProvidersResponse:
+@command
+async def get_provider_settings() -> AllProvidersResponse:
     """
     Get all configured provider settings.
     
     Returns:
         List of provider configurations
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         db_settings = db.get_all_provider_settings(sess)
-    finally:
-        sess.close()
 
     providers = []
     for provider, config in db_settings.items():
@@ -96,17 +92,15 @@ async def get_provider_settings(app_handle: AppHandle) -> AllProvidersResponse:
     return AllProvidersResponse(providers=providers)
 
 
-@commands.command()
-async def save_provider_settings(body: SaveProviderConfigInput, app_handle: AppHandle) -> None:
+@command
+async def save_provider_settings(body: SaveProviderConfigInput) -> None:
     """
     Save or update provider settings.
     
     Args:
         body: Provider configuration to save
-        app_handle: Tauri app handle
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         db.save_provider_settings(
             sess,
             provider=body.provider,
@@ -115,8 +109,6 @@ async def save_provider_settings(body: SaveProviderConfigInput, app_handle: AppH
             extra=body.extra,
             enabled=body.enabled,
         )
-    finally:
-        sess.close()
     
     return None
 
@@ -131,50 +123,43 @@ def _safe_parse_json(value: str | None):
         return None
 
 
-@commands.command()
-async def get_default_tools(app_handle: AppHandle) -> DefaultToolsResponse:
+@command
+async def get_default_tools() -> DefaultToolsResponse:
     """
     Get default tool IDs for new chats.
     
     Returns:
         List of default tool IDs
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         tool_ids = db.get_default_tool_ids(sess)
-    finally:
-        sess.close()
     
     return DefaultToolsResponse(toolIds=tool_ids)
 
 
-@commands.command()
-async def set_default_tools(body: SetDefaultToolsInput, app_handle: AppHandle) -> None:
+@command
+async def set_default_tools(body: SetDefaultToolsInput) -> None:
     """
     Set default tool IDs for new chats.
     
     Args:
         body: Contains list of tool IDs to set as defaults
-        app_handle: Tauri app handle
     """
-    sess = db.session(app_handle)
-    try:
+    with db.db_session() as sess:
         db.set_default_tool_ids(sess, body.toolIds)
-    finally:
-        sess.close()
     
     return None
 
 
-@commands.command()
-async def get_auto_title_settings(app_handle: AppHandle) -> AutoTitleSettings:
+@command
+async def get_auto_title_settings() -> AutoTitleSettings:
     """
     Get auto-title generation settings.
     
     Returns:
         Auto-title settings including enabled, prompt, and model configuration
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         settings = db.get_auto_title_settings(sess)
     
     return AutoTitleSettings(
@@ -186,16 +171,15 @@ async def get_auto_title_settings(app_handle: AppHandle) -> AutoTitleSettings:
     )
 
 
-@commands.command()
-async def save_auto_title_settings(body: SaveAutoTitleSettingsInput, app_handle: AppHandle) -> None:
+@command
+async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
     """
     Save auto-title generation settings.
     
     Args:
         body: Auto-title settings to save
-        app_handle: Tauri app handle
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         settings = {
             "enabled": body.enabled,
             "prompt": body.prompt,
@@ -208,15 +192,15 @@ async def save_auto_title_settings(body: SaveAutoTitleSettingsInput, app_handle:
     return None
 
 
-@commands.command()
-async def get_model_settings(app_handle: AppHandle) -> AllModelSettingsResponse:
+@command
+async def get_model_settings() -> AllModelSettingsResponse:
     """
     Get all model settings including reasoning capabilities.
     
     Returns:
         List of model settings with reasoning support flags
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         models = db.get_all_model_settings(sess)
     
     result = []
@@ -247,16 +231,15 @@ async def get_model_settings(app_handle: AppHandle) -> AllModelSettingsResponse:
     return AllModelSettingsResponse(models=result)
 
 
-@commands.command()
-async def save_model_settings(body: SaveModelSettingsInput, app_handle: AppHandle) -> None:
+@command
+async def save_model_settings(body: SaveModelSettingsInput) -> None:
     """
     Save or update model settings (including reasoning support).
     
     Args:
         body: Model settings to save
-        app_handle: Tauri app handle
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         reasoning_dict = None
         if body.reasoning:
             reasoning_dict = {
@@ -275,34 +258,32 @@ async def save_model_settings(body: SaveModelSettingsInput, app_handle: AppHandl
     return None
 
 
-class RespondToThinkingTagPromptInput(_BaseModel):
+class RespondToThinkingTagPromptInput(BaseModel):
     provider: str
     modelId: str
     accepted: bool
 
 
-class ReprocessMessageRequest(_BaseModel):
+class ReprocessMessageRequest(BaseModel):
     messageId: str
 
 
-@commands.command()
+@command
 async def reprocess_message_think_tags(
     body: ReprocessMessageRequest,
-    app_handle: AppHandle
 ) -> dict:
     """
     Re-process a message to parse <think> tags from its content.
     Returns {success: bool}
     """
     from ..commands.streaming import reprocess_message_with_think_tags
-    success = reprocess_message_with_think_tags(app_handle, body.messageId)
+    success = reprocess_message_with_think_tags(body.messageId)
     return {"success": success}
 
 
-@commands.command()
+@command
 async def respond_to_thinking_tag_prompt(
     body: RespondToThinkingTagPromptInput, 
-    app_handle: AppHandle
 ) -> None:
     """
     Handle user response to thinking tag detection prompt.
@@ -312,9 +293,8 @@ async def respond_to_thinking_tag_prompt(
     
     Args:
         body: User's response
-        app_handle: Tauri app handle
     """
-    with db.db_session(app_handle) as sess:
+    with db.db_session() as sess:
         extra_update = {
             "thinkingTagPrompted": {
                 "prompted": True,

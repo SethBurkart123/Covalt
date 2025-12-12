@@ -18,4 +18,5 @@ dependencies = [
     "docker>=7.1.0",
     "google-genai>=1.47.0",
     "zynk>=0.1.0",
+    "ollama>=0.6.1",
 ]
