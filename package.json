@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "backend": "uv run backend/main.py",
+    "backend": "uv run python -m backend.main",
     "dev": "concurrently \"bun run backend\" \"bun run dev:frontend\"",
     "dev:frontend": "next dev --turbopack",
     "build": "next build",
