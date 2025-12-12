@@ -1,17 +1,17 @@
 import type { AllChatsData, ChatData, Message, MessageSibling } from '@/lib/types/chat';
 import { 
   initBridge, 
-  getAllChats as zynkGetAllChats,
-  getChat as zynkGetChat,
-  createChat as zynkCreateChat,
-  deleteChat as zynkDeleteChat,
-  updateChat as zynkUpdateChat,
-  switchToSibling as zynkSwitchToSibling,
-  getMessageSiblings as zynkGetMessageSiblings,
-  cancelRun as zynkCancelRun,
-  generateChatTitle as zynkGenerateChatTitle,
-  respondToThinkingTagPrompt as zynkRespondToThinkingTagPrompt,
-  reprocessMessageThinkTags as zynkReprocessMessageThinkTags,
+  getAllChats,
+  getChat,
+  createChat,
+  deleteChat,
+  updateChat,
+  switchToSibling,
+  getMessageSiblings,
+  cancelRun,
+  generateChatTitle,
+  respondToThinkingTagPrompt,
+  reprocessMessageThinkTags,
 } from '@/python/api';
 import { createChannel } from '@/python/_internal';
 import type { BridgeError } from '@/python/_internal';
@@ -44,23 +44,23 @@ class ApiService {
   }
 
   async getAllChats(): Promise<AllChatsData> {
-    return zynkGetAllChats();
+    return getAllChats();
   }
 
   async getChat(chatId: string): Promise<{ id: string; messages: Message[] }> {
-    return zynkGetChat({ body: { id: chatId } }) as Promise<{ id: string; messages: Message[] }>;
+    return getChat({ body: { id: chatId } }) as Promise<{ id: string; messages: Message[] }>;
   }
 
   async createChat(title?: string, model?: string, chatId?: string): Promise<ChatData> {
-    return zynkCreateChat({ body: { id: chatId, title, model } });
+    return createChat({ body: { id: chatId, title, model } });
   }
 
   async deleteChat(chatId: string): Promise<void> {
-    return zynkDeleteChat({ body: { id: chatId } });
+    return deleteChat({ body: { id: chatId } });
   }
 
   async renameChat(chatId: string, title: string): Promise<ChatData> {
-    return zynkUpdateChat({ body: { id: chatId, title } });
+    return updateChat({ body: { id: chatId, title } });
   }
 
   async streamChat(
@@ -313,27 +313,27 @@ class ApiService {
   }
 
   async switchToSibling(messageId: string, siblingId: string, chatId: string): Promise<void> {
-    return zynkSwitchToSibling({ body: { messageId, siblingId, chatId } });
+    return switchToSibling({ body: { messageId, siblingId, chatId } });
   }
 
   async getMessageSiblings(messageId: string): Promise<MessageSibling[]> {
-    return zynkGetMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>;
+    return getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>;
   }
 
   async cancelRun(messageId: string): Promise<{ cancelled: boolean }> {
-    return zynkCancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>;
+    return cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>;
   }
 
   async generateChatTitle(chatId: string): Promise<{ title: string | null }> {
-    return zynkGenerateChatTitle({ body: { id: chatId } }) as Promise<{ title: string | null }>;
+    return generateChatTitle({ body: { id: chatId } }) as Promise<{ title: string | null }>;
   }
 
   async respondToThinkingTagPrompt(provider: string, modelId: string, accepted: boolean): Promise<void> {
-    return zynkRespondToThinkingTagPrompt({ body: { provider, modelId, accepted } });
+    return respondToThinkingTagPrompt({ body: { provider, modelId, accepted } });
   }
 
   async reprocessMessageThinkTags(messageId: string): Promise<{ success: boolean }> {
-    return zynkReprocessMessageThinkTags({ body: { messageId } }) as Promise<{ success: boolean }>;
+    return reprocessMessageThinkTags({ body: { messageId } }) as Promise<{ success: boolean }>;
   }
 }
 
