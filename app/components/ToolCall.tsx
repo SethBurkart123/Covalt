@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Check, X, Wrench } from "lucide-react";
-import { respondToToolApproval } from "@/python/apiClient";
+import { respondToToolApproval } from "@/python/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ToolCallProps {
@@ -59,9 +59,11 @@ export default function ToolCall({
     setIsProcessing(true);
     try {
       await respondToToolApproval({
-        approvalId,
-        approved: true,
-        editedArgs: undefined,
+        body: {
+          approvalId,
+          approved: true,
+          editedArgs: undefined,
+        },
       });
       setApprovalStatus("approved");
       setTimeout(() => setIsOpen(false), 300);
@@ -76,9 +78,11 @@ export default function ToolCall({
     setIsProcessing(true);
     try {
       await respondToToolApproval({
-        approvalId,
-        approved: false,
-        editedArgs: undefined,
+        body: {
+          approvalId,
+          approved: false,
+          editedArgs: undefined,
+        },
       });
       setApprovalStatus("denied");
       setTimeout(() => setIsOpen(false), 300);

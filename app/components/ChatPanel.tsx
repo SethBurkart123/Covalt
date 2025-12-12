@@ -7,7 +7,7 @@ import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
 import { useChat } from "@/contexts/chat-context";
 import { useChatInput } from "@/components/Chat";
 import { api } from "@/lib/services/api";
-import { getModelSettings } from "@/python/apiClient";
+import { getModelSettings } from "@/python/api";
 
 // Keep Chat itself dynamically imported as in the page to avoid SSR issues
 const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });

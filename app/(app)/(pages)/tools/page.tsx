@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Wrench, Loader2 } from "lucide-react";
-import { getAvailableTools } from "@/python/apiClient";
+import { getAvailableTools } from "@/python/api";
 import type { ToolInfo } from "@/lib/types/chat";
 
 export default function ToolsPage() {
@@ -12,7 +12,7 @@ export default function ToolsPage() {
   useEffect(() => {
     const loadTools = async () => {
       try {
-        const response = await getAvailableTools(undefined);
+        const response = await getAvailableTools();
         setTools(response.tools);
       } catch (error) {
         console.error("Failed to load tools:", error);

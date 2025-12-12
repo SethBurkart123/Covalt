@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.10"
 dependencies = [
-    "pytauri == 0.8.*",
     "pydantic == 2.*",
     "anyio == 4.*",
     "SQLAlchemy >= 2, < 3",
@@ -20,3 +19,6 @@ dependencies = [
     "zynk>=0.1.0",
     "ollama>=0.6.1",
 ]
+
+[tool.uv.sources]
+zynk = { path = "../zync" }

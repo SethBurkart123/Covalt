@@ -139,16 +139,16 @@ class AvailableModelsResponse(BaseModel):
 
 class ProviderConfig(BaseModel):
     provider: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    apiKey: Optional[str] = None
+    baseUrl: Optional[str] = None
     extra: Optional[Any] = None
     enabled: bool = True
 
 
 class SaveProviderConfigInput(BaseModel):
     provider: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    apiKey: Optional[str] = None
+    baseUrl: Optional[str] = None
     extra: Optional[Any] = None
     enabled: bool = True
 

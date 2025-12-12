@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { getModelSettings, saveModelSettings, getAvailableModels } from '@/python/apiClient';
-import type { ModelSettingsInfo, ReasoningInfo } from '@/python/_apiTypes';
+import { getModelSettings, saveModelSettings, getAvailableModels } from '@/python/api';
+import type { ModelSettingsInfo, ReasoningInfo } from '@/python/api';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
@@ -50,12 +50,14 @@ export default function ModelSettingsPanel() {
     
     try {
       await saveModelSettings({
-        provider,
-        modelId,
-        parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
-        reasoning: {
-          supports: !currentReasoning.supports,
-          isUserOverride: true,
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
+          reasoning: {
+            supports: !currentReasoning.supports,
+            isUserOverride: true,
+          },
         },
       });
       
@@ -74,10 +76,12 @@ export default function ModelSettingsPanel() {
     try {
       const setting = getModelSetting(provider, modelId);
       await saveModelSettings({
-        provider,
-        modelId,
-        parseThinkTags: !currentValue,
-        reasoning: setting?.reasoning,
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: !currentValue,
+          reasoning: setting?.reasoning,
+        },
       });
       
       loadSettings();
