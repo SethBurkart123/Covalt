@@ -7,7 +7,6 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ThinkingCallProps {
   content: string;
-  isCompleted: boolean;
   active?: boolean;
   startAt?: number;
   finalElapsedMs?: number;
@@ -25,7 +24,6 @@ function formatMs(ms: number): string {
 
 export default function ThinkingCall({
   content,
-  isCompleted,
   active = false,
   startAt,
   finalElapsedMs,

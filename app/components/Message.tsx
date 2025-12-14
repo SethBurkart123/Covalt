@@ -248,7 +248,6 @@ export default React.memo(function ChatMessage({
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
                                   content={b.content}
-                                  isCompleted={b.isCompleted}
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}
