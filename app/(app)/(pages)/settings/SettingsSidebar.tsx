@@ -1,9 +1,9 @@
 "use client";
 
-import React from 'react';
-import { Boxes, Settings, Cog } from 'lucide-react';
+import React from "react";
+import { Boxes, Settings, Cog } from "lucide-react";
 
-export type TabKey = 'general' | 'providers' | 'appearance';
+export type TabKey = "general" | "providers" | "appearance";
 
 interface SettingsSidebarProps {
   activeTab: TabKey;
@@ -13,22 +13,25 @@ interface SettingsSidebarProps {
 const SIDEBAR_ITEMS = [
   {
     icon: <Settings size={16} />,
-    label: 'General',
-    active: 'general',
+    label: "General",
+    active: "general",
   },
   {
     icon: <Boxes size={16} />,
-    label: 'Providers',
-    active: 'providers',
+    label: "Providers",
+    active: "providers",
   },
   {
     icon: <Cog size={16} />,
-    label: 'Appearance',
-    active: 'appearance',
-  }
+    label: "Appearance",
+    active: "appearance",
+  },
 ];
 
-export default function SettingsSidebar({ activeTab, onChangeTab }: SettingsSidebarProps) {
+export default function SettingsSidebar({
+  activeTab,
+  onChangeTab,
+}: SettingsSidebarProps) {
   return (
     <aside className="w-60">
       <nav className="px-2 space-y-1">
@@ -47,15 +50,15 @@ export default function SettingsSidebar({ activeTab, onChangeTab }: SettingsSide
   );
 }
 
-function SidebarItem({ 
-  icon, 
-  label, 
-  active, 
+function SidebarItem({
+  icon,
+  label,
+  active,
   onClick,
-  clickable 
-}: { 
-  icon: React.ReactNode; 
-  label: string; 
+  clickable,
+}: {
+  icon: React.ReactNode;
+  label: string;
   active?: boolean;
   onClick?: () => void;
   clickable?: boolean;
@@ -64,11 +67,11 @@ function SidebarItem({
     <div
       onClick={onClick}
       className={`px-4 py-2.5 text-sm flex items-center gap-2 select-none rounded-lg transition-colors ${
-        clickable ? 'cursor-pointer' : 'cursor-default'
+        clickable ? "cursor-pointer" : "cursor-default"
       } ${
         active
-          ? 'text-foreground bg-muted/60'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+          ? "text-foreground bg-muted/60"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
       }`}
     >
       <span className="text-muted-foreground">{icon}</span>
@@ -76,4 +79,3 @@ function SidebarItem({
     </div>
   );
 }
-

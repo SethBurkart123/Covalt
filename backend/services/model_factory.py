@@ -4,41 +4,43 @@ Model Factory for multi-provider support.
 Provides abstraction layer to instantiate models from different providers
 (OpenAI, Anthropic, Groq, Ollama, vLLM, LM Studio, OpenAI-compatible) dynamically based on configuration.
 """
+
 from __future__ import annotations
+
 import json
 from typing import Any, Dict, Optional
+
 import requests
-
-from .. import db
-
+from agno.models.anthropic import Claude
+from agno.models.google import Gemini
+from agno.models.groq import Groq
+from agno.models.lmstudio import LMStudio
+from agno.models.ollama import Ollama
 from agno.models.openai import OpenAIChat
 from agno.models.openai.like import OpenAILike
-from agno.models.anthropic import Claude
-from agno.models.groq import Groq
-from agno.models.ollama import Ollama
 from agno.models.vllm import VLLM
-from agno.models.google import Gemini
-from agno.models.lmstudio import LMStudio
+
+from .. import db
 
 
 def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
     """
     Factory function to instantiate models from different providers.
-    
+
     Args:
         provider: Model provider name (openai, anthropic, groq, ollama, vllm, lmstudio, openai_like)
         model_id: Specific model identifier (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
         **kwargs: Additional model configuration (temperature, max_tokens, etc.)
-    
+
     Returns:
         Configured model instance
-        
+
     Raises:
         ValueError: If provider is not supported
         RuntimeError: If required API keys are missing
     """
     provider = provider.lower().strip()
-    
+
     if provider == "openai":
         return _get_openai_model(model_id, **kwargs)
     elif provider == "anthropic":
@@ -65,13 +67,13 @@ def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
 def _get_api_key_for_provider(provider: str) -> tuple[str | None, str | None]:
     """
     Get API key and base URL for a provider from database.
-    
+
     Returns:
         Tuple of (api_key, base_url)
     """
     api_key = None
     base_url = None
-    
+
     try:
         with db.db_session() as sess:
             settings = db.get_provider_settings(sess, provider)
@@ -79,108 +81,79 @@ def _get_api_key_for_provider(provider: str) -> tuple[str | None, str | None]:
                 api_key = settings.get("api_key")
                 base_url = settings.get("base_url")
     except Exception as e:
-        print(f"[ModelFactory] Warning: Failed to check DB for {provider} settings: {e}")
-    
+        print(
+            f"[ModelFactory] Warning: Failed to check DB for {provider} settings: {e}"
+        )
+
     return api_key, base_url
 
 
 def _get_openai_model(model_id: str, **kwargs: Any) -> Any:
     """Create OpenAI model instance."""
     api_key, base_url = _get_api_key_for_provider("openai")
-    
+
     if not api_key:
-        raise RuntimeError(
-            "OpenAI API key not found. Please configure it in Settings."
-        )
-    
-    return OpenAIChat(
-        id=model_id,
-        api_key=api_key,
-        base_url=base_url,
-        **kwargs
-    )
+        raise RuntimeError("OpenAI API key not found. Please configure it in Settings.")
+
+    return OpenAIChat(id=model_id, api_key=api_key, base_url=base_url, **kwargs)
 
 
 def _get_anthropic_model(model_id: str, **kwargs: Any) -> Any:
     """Create Anthropic Claude model instance."""
     api_key, _ = _get_api_key_for_provider("anthropic")
-    
+
     if not api_key:
         raise RuntimeError(
             "Anthropic API key not found. Please configure it in Settings."
         )
-    
-    return Claude(
-        id=model_id,
-        api_key=api_key,
-        **kwargs
-    )
+
+    return Claude(id=model_id, api_key=api_key, **kwargs)
 
 
 def _get_groq_model(model_id: str, **kwargs: Any) -> Any:
     """Create Groq model instance."""
     api_key, _ = _get_api_key_for_provider("groq")
-    
+
     if not api_key:
-        raise RuntimeError(
-            "Groq API key not found. Please configure it in Settings."
-        )
-    
-    return Groq(
-        id=model_id,
-        api_key=api_key,
-        **kwargs
-    )
+        raise RuntimeError("Groq API key not found. Please configure it in Settings.")
+
+    return Groq(id=model_id, api_key=api_key, **kwargs)
 
 
 def _get_ollama_model(model_id: str, **kwargs: Any) -> Any:
     """Create Ollama model instance (local)."""
     _, host = _get_api_key_for_provider("ollama")
-    
+
     if not host:
         raise RuntimeError(
             "Ollama host not configured. Please configure it in Settings."
         )
-    
-    return Ollama(
-        id=model_id,
-        host=host,
-        **kwargs
-    )
+
+    return Ollama(id=model_id, host=host, **kwargs)
 
 
 def _get_vllm_model(model_id: str, **kwargs: Any) -> Any:
     """Create vLLM model instance (OpenAI-compatible local server)."""
     api_key, base_url = _get_api_key_for_provider("vllm")
-    
+
     if not base_url:
         raise RuntimeError(
             "vLLM base URL not configured. Please configure it in Settings."
         )
 
-    return VLLM(
-        id=model_id,
-        api_key=api_key,
-        base_url=base_url,
-        **kwargs
-    )
+    return VLLM(id=model_id, api_key=api_key, base_url=base_url, **kwargs)
 
 
 def _get_lmstudio_model(model_id: str, **kwargs: Any) -> Any:
     """Create LM Studio model instance (OpenAI-compatible local server)."""
     api_key, base_url = _get_api_key_for_provider("lmstudio")
-    
+
     if not base_url:
         raise RuntimeError(
             "LM Studio base URL not configured. Please configure it in Settings."
         )
 
-    return LMStudio(
-        id=model_id,
-        api_key=api_key,
-        base_url=base_url,
-        **kwargs
-    )
+    return LMStudio(id=model_id, api_key=api_key, base_url=base_url, **kwargs)
 
 
 def _get_openai_like_model(model_id: str, **kwargs: Any) -> Any:
@@ -192,19 +165,14 @@ def _get_openai_like_model(model_id: str, **kwargs: Any) -> Any:
             "Please configure it in Settings."
         )
 
-    return OpenAILike(
-        id=model_id,
-        api_key=api_key,
-        base_url=base_url,
-        **kwargs
-    )
+    return OpenAILike(id=model_id, api_key=api_key, base_url=base_url, **kwargs)
 
 
 def _get_google_model(model_id: str, **kwargs: Any) -> Any:
     """Create Google Gemini model instance (Google AI Studio or Vertex AI)."""
     # Pull config from DB only
     api_key, _ = _get_api_key_for_provider("google")
-    
+
     # Load 'extra' from DB if present (JSON string)
     extra_raw = None
     try:
@@ -240,7 +208,9 @@ def _get_google_model(model_id: str, **kwargs: Any) -> Any:
                 reasoning = db.get_reasoning_from_model(model)
                 supports_reasoning = reasoning.get("supports", False)
     except Exception as e:
-        print(f"[ModelFactory] Warning: Failed to check reasoning support for {model_id}: {e}")
+        print(
+            f"[ModelFactory] Warning: Failed to check reasoning support for {model_id}: {e}"
+        )
 
     return Gemini(
         id=model_id,
@@ -266,17 +236,20 @@ def list_supported_providers() -> list[str]:
         "openai_like",
     ]
 
-def _fetch_openai_models(api_key: str, base_url: Optional[str] = None) -> list[Dict[str, str]]:
+
+def _fetch_openai_models(
+    api_key: str, base_url: Optional[str] = None
+) -> list[Dict[str, str]]:
     """Fetch available models from OpenAI API."""
     try:
-        base = base_url or 'https://api.openai.com'
-        base = base.rstrip('/')
-        
-        if base.endswith('/v1'):
+        base = base_url or "https://api.openai.com"
+        base = base.rstrip("/")
+
+        if base.endswith("/v1"):
             url = f"{base}/models"
         else:
             url = f"{base}/v1/models"
-        
+
         headers = {"Authorization": f"Bearer {api_key}"}
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
@@ -333,10 +306,7 @@ def _fetch_anthropic_models(api_key: str) -> list[Dict[str, str]]:
     """Fetch available models from Anthropic API."""
     try:
         url = "https://api.anthropic.com/v1/models"
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01"
-        }
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
@@ -354,54 +324,54 @@ def _fetch_anthropic_models(api_key: str) -> list[Dict[str, str]]:
 def get_available_models() -> list[Dict[str, Any]]:
     """
     Get list of available models based on configured providers.
-    
+
     Dynamically fetches models from provider APIs.
-    
+
     Returns:
         List of model info dicts with provider, modelId, displayName, isDefault
     """
     models: list[Dict[str, Any]] = []
     default_provider = None
     default_model = None
-    
+
     all_providers = _check_db_providers()
-    
+
     # Fetch models dynamically for each configured provider
     for provider, config in all_providers.items():
         if not config.get("enabled", True):
             continue
-        
+
         provider_models = []
-        
+
         try:
             if provider == "openai":
                 api_key = config.get("api_key")
                 base_url = config.get("base_url")
                 if api_key:
                     provider_models = _fetch_openai_models(api_key, base_url)
-            
+
             elif provider == "anthropic":
                 api_key = config.get("api_key")
                 if api_key:
                     provider_models = _fetch_anthropic_models(api_key)
-            
+
             elif provider == "groq":
                 api_key = config.get("api_key")
                 if api_key:
                     provider_models = _fetch_groq_models(api_key)
-            
+
             elif provider == "ollama":
                 host = config.get("base_url")
                 if host:
                     provider_models = _fetch_ollama_models(host)
-            
+
             elif provider == "vllm":
                 # vLLM exposes OpenAI-compatible /v1/models
                 base_url = config.get("base_url")
                 if base_url:
                     api_key = config.get("api_key")
                     provider_models = _fetch_openai_models(api_key or "", base_url)
-            
+
             elif provider == "lmstudio":
                 # LM Studio exposes OpenAI-compatible /v1/models
                 base_url = config.get("base_url")
@@ -414,12 +384,12 @@ def get_available_models() -> list[Dict[str, Any]]:
                 api_key = config.get("api_key")
                 if base_url:
                     provider_models = _fetch_openai_models(api_key or "", base_url)
-            
+
             elif provider in ("google", "gemini", "google_ai_studio"):
                 api_key = config.get("api_key")
                 if api_key:
                     provider_models = _fetch_google_models(api_key)
-                    
+
                     # Store reasoning capability in DB for Google models
                     for model_info in provider_models:
                         supports_reasoning = model_info.get("supports_reasoning", False)
@@ -436,26 +406,30 @@ def get_available_models() -> list[Dict[str, Any]]:
                                         },
                                     )
                             except Exception as e:
-                                print(f"[ModelFactory] Warning: Failed to save model metadata for {model_info['id']}: {e}")
-        
+                                print(
+                                    f"[ModelFactory] Warning: Failed to save model metadata for {model_info['id']}: {e}"
+                                )
+
         except Exception as e:
             print(f"[ModelFactory] Error fetching models for {provider}: {e}")
             continue
-        
+
         # Add fetched models to list
         for model_info in provider_models:
-            is_default = (default_provider is None and default_model is None)
+            is_default = default_provider is None and default_model is None
             if is_default:
                 default_provider = provider
                 default_model = model_info["id"]
-                
-            models.append({
-                "provider": provider,
-                "modelId": model_info["id"],
-                "displayName": model_info["name"],
-                "isDefault": is_default,
-            })
-    
+
+            models.append(
+                {
+                    "provider": provider,
+                    "modelId": model_info["id"],
+                    "displayName": model_info["name"],
+                    "isDefault": is_default,
+                }
+            )
+
     return models
 
 
@@ -481,16 +455,20 @@ def _fetch_google_models(api_key: str) -> list[Dict[str, Any]]:
             models = []
             for m in data.get("models", []):
                 raw_name = m.get("name", "")  # e.g., "models/gemini-2.0-flash"
-                model_id = raw_name.split("/")[-1] if raw_name else m.get("baseModelId") or ""
+                model_id = (
+                    raw_name.split("/")[-1] if raw_name else m.get("baseModelId") or ""
+                )
                 display = m.get("displayName") or model_id
                 supports_thinking = m.get("thinking", False)
-                
+
                 if model_id:
-                    models.append({
-                        "id": model_id,
-                        "name": display,
-                        "supports_reasoning": supports_thinking,
-                    })
+                    models.append(
+                        {
+                            "id": model_id,
+                            "name": display,
+                            "supports_reasoning": supports_thinking,
+                        }
+                    )
 
             return models
     except Exception as e:

@@ -12,14 +12,14 @@ export interface ToolInfo {
   category?: string | null;
 }
 
-export type ContentBlock = 
+export type ContentBlock =
   | { type: "text"; content: string }
-  | { 
-      type: "tool_call"; 
-      id: string; 
-      toolName: string; 
-      toolArgs: Record<string, any>; 
-      toolResult?: string; 
+  | {
+      type: "tool_call";
+      id: string;
+      toolName: string;
+      toolArgs: Record<string, any>;
+      toolResult?: string;
       isCompleted: boolean;
       renderer?: string;
       requiresApproval?: boolean;
@@ -27,11 +27,11 @@ export type ContentBlock =
       approvalStatus?: "pending" | "approved" | "denied";
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
-  | { type: "error"; content: string }
+  | { type: "error"; content: string };
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: ContentBlock[] | string;
   createdAt?: string;
   parentMessageId?: string | null;
@@ -74,7 +74,7 @@ export interface ChatContextType {
   chatId: string;
   chatTitle: string;
   chatIds: string[];
-  chatsData: AllChatsData['chats'];
+  chatsData: AllChatsData["chats"];
   startNewChat: () => void;
   switchChat: (id: string) => void;
   deleteChat: (id: string) => Promise<void>;

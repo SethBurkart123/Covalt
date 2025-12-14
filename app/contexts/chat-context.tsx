@@ -11,7 +11,9 @@ const ChatContext = React.createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
-  const [allChatsData, setAllChatsData] = React.useState<AllChatsData>({ chats: {} });
+  const [allChatsData, setAllChatsData] = React.useState<AllChatsData>({
+    chats: {},
+  });
   const [currentChatId, setCurrentChatId] = React.useState("");
   const [isLoaded, setIsLoaded] = React.useState(false);
 
@@ -41,24 +43,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    const chatIdFromUrl = searchParams.get('chatId');
-    
+    const chatIdFromUrl = searchParams.get("chatId");
+
     if (chatIdFromUrl && chatIdFromUrl !== currentChatId) {
       setCurrentChatId(chatIdFromUrl);
     } else if (!chatIdFromUrl && currentChatId) {
-      setCurrentChatId('');
+      setCurrentChatId("");
     }
   }, [searchParams, currentChatId]);
 
   const chatIds = React.useMemo(
-    () => Object.keys(allChatsData.chats).sort((a, b) => {
-      const chatA = allChatsData.chats[a];
-      const chatB = allChatsData.chats[b];
-      const timeA = new Date(chatA.updatedAt || chatA.createdAt || 0).getTime();
-      const timeB = new Date(chatB.updatedAt || chatB.createdAt || 0).getTime();
-      return timeB - timeA;
-    }),
-    [allChatsData]
+    () =>
+      Object.keys(allChatsData.chats).sort((a, b) => {
+        const chatA = allChatsData.chats[a];
+        const chatB = allChatsData.chats[b];
+        const timeA = new Date(
+          chatA.updatedAt || chatA.createdAt || 0,
+        ).getTime();
+        const timeB = new Date(
+          chatB.updatedAt || chatB.createdAt || 0,
+        ).getTime();
+        return timeB - timeA;
+      }),
+    [allChatsData],
   );
 
   const chatTitle = React.useMemo(() => {
@@ -101,18 +108,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       refreshChats,
       selectedModel,
       models,
-    ]
+    ],
   );
 
   if (!isLoaded) {
     return null;
   }
 
-  return (
-    <ChatContext.Provider value={value}>
-      {children}
-    </ChatContext.Provider>
-  );
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
 
 export function useChat() {

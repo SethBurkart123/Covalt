@@ -9,11 +9,15 @@ type ThemeContextType = {
   setTheme: (theme: Theme, x?: number, y?: number) => void;
 };
 
-const ThemeContext = React.createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = React.createContext<ThemeContextType | undefined>(
+  undefined,
+);
 
 function getSystemPreference(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -22,7 +26,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       // Check localStorage first
       const stored = localStorage.getItem("theme") as Theme | null;
-      if (stored && (stored === "light" || stored === "dark" || stored === "system")) {
+      if (
+        stored &&
+        (stored === "light" || stored === "dark" || stored === "system")
+      ) {
         return stored;
       }
     }
@@ -30,17 +37,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   });
 
   // Track resolved theme (the actual light/dark value being applied)
-  const [resolvedTheme, setResolvedTheme] = React.useState<"light" | "dark">(() => {
-    if (theme === "system") {
-      return getSystemPreference();
-    }
-    return theme;
-  });
+  const [resolvedTheme, setResolvedTheme] = React.useState<"light" | "dark">(
+    () => {
+      if (theme === "system") {
+        return getSystemPreference();
+      }
+      return theme;
+    },
+  );
 
-  const setTheme = React.useCallback((newTheme: Theme, x?: number, y?: number) => {
-    // Skip transition if View Transitions API is not supported
-    setThemeState(newTheme);
-  }, []);
+  const setTheme = React.useCallback(
+    (newTheme: Theme, x?: number, y?: number) => {
+      // Skip transition if View Transitions API is not supported
+      setThemeState(newTheme);
+    },
+    [],
+  );
 
   // Resolve theme based on system preference when theme is "system"
   React.useEffect(() => {
@@ -95,10 +107,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       theme,
       setTheme,
     }),
-    [theme, setTheme]
+    [theme, setTheme],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

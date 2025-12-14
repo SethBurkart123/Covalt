@@ -1,29 +1,29 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import ProviderSettings
-import json
 
 
 def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
     """
     Get settings for a specific provider.
-    
+
     Args:
         sess: Database session
         provider: Provider name (openai, anthropic, groq, ollama)
-        
+
     Returns:
         Provider settings dict or None if not found
     """
     settings: Optional[ProviderSettings] = sess.get(ProviderSettings, provider)
     if not settings:
         return None
-    
+
     return {
         "provider": settings.provider,
         "api_key": settings.api_key,
@@ -36,16 +36,16 @@ def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, An
 def get_all_provider_settings(sess: Session) -> Dict[str, Dict[str, Any]]:
     """
     Get all provider settings.
-    
+
     Args:
         sess: Database session
-        
+
     Returns:
         Dict mapping provider name to settings dict
     """
     stmt = select(ProviderSettings)
     rows = list(sess.scalars(stmt))
-    
+
     result = {}
     for row in rows:
         result[row.provider] = {
@@ -69,7 +69,7 @@ def save_provider_settings(
 ) -> None:
     """
     Save or update provider settings.
-    
+
     Args:
         sess: Database session
         provider: Provider name (openai, anthropic, groq, ollama)
@@ -78,7 +78,7 @@ def save_provider_settings(
         enabled: Whether the provider is enabled
     """
     settings: Optional[ProviderSettings] = sess.get(ProviderSettings, provider)
-    
+
     if settings:
         # Update existing
         if api_key is not None:
@@ -114,5 +114,5 @@ def save_provider_settings(
             enabled=enabled,
         )
         sess.add(settings)
-    
+
     sess.commit()

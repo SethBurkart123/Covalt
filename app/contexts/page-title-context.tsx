@@ -8,16 +8,13 @@ type PageTitleContextType = {
 };
 
 const PageTitleContext = createContext<PageTitleContextType | undefined>(
-  undefined
+  undefined,
 );
 
 export function PageTitleProvider({ children }: { children: React.ReactNode }) {
   const [title, setTitle] = useState<string>("New Chat");
 
-  const value = useMemo(
-    () => ({ title, setTitle }),
-    [title]
-  );
+  const value = useMemo(() => ({ title, setTitle }), [title]);
 
   return (
     <PageTitleContext.Provider value={value}>
@@ -28,7 +25,7 @@ export function PageTitleProvider({ children }: { children: React.ReactNode }) {
 
 export function usePageTitle() {
   const ctx = useContext(PageTitleContext);
-  if (!ctx) throw new Error("usePageTitle must be used within PageTitleProvider");
+  if (!ctx)
+    throw new Error("usePageTitle must be used within PageTitleProvider");
   return ctx;
 }
-

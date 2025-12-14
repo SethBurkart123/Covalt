@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
 import json
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,12 +14,14 @@ def get_model_settings(sess: Session, provider: str, model_id: str) -> Optional[
     return sess.get(Model, {"provider": provider, "model_id": model_id})
 
 
-def get_all_model_settings(sess: Session, provider: Optional[str] = None) -> List[Model]:
+def get_all_model_settings(
+    sess: Session, provider: Optional[str] = None
+) -> List[Model]:
     """Get all model settings, optionally filtered by provider. Returns list of ORM objects."""
     stmt = select(Model)
     if provider:
         stmt = stmt.where(Model.provider == provider)
-    
+
     return list(sess.scalars(stmt))
 
 
@@ -67,13 +69,13 @@ def save_model_settings(
 ) -> None:
     """
     Save or update model settings.
-    
+
     Args:
         reasoning: Dict with 'supports' and 'isUserOverride' keys
         extra: Dict to merge into extra field (use None to skip updating extra)
     """
     model = sess.get(Model, {"provider": provider, "model_id": model_id})
-    
+
     if model:
         model.parse_think_tags = parse_think_tags
         if reasoning is not None:
@@ -93,7 +95,7 @@ def save_model_settings(
             extra_json = _serialize_extra(extra_dict)
         elif extra is not None:
             extra_json = _serialize_extra(extra)
-        
+
         model = Model(
             provider=provider,
             model_id=model_id,
@@ -101,7 +103,7 @@ def save_model_settings(
             extra=extra_json if extra_json else None,
         )
         sess.add(model)
-    
+
     sess.commit()
 
 
@@ -119,13 +121,13 @@ def upsert_model_settings(
     This allows auto-detected data to be updated without clobbering user preferences.
     """
     model = sess.get(Model, {"provider": provider, "model_id": model_id})
-    
+
     if model:
         current_reasoning = _get_reasoning_from_extra(model.extra)
         if current_reasoning.get("isUserOverride", False):
             # Don't touch user overrides
             return
-    
+
     save_model_settings(
         sess,
         provider=provider,
@@ -134,4 +136,3 @@ def upsert_model_settings(
         reasoning=reasoning,
         extra=extra,
     )
-

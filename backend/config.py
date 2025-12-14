@@ -1,5 +1,6 @@
-from pathlib import Path
 import os
+from pathlib import Path
+
 
 def get_db_directory() -> Path:
     """Get database directory based on environment."""
@@ -15,11 +16,11 @@ def get_db_directory() -> Path:
         else:
             # Fallback
             db_dir = Path.home() / ".agno"
-    
+
     db_dir.mkdir(parents=True, exist_ok=True)
     return db_dir
+
 
 def get_db_path() -> Path:
     """Get full path to database file."""
     return get_db_directory() / "app.db"
-

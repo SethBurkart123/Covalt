@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Card } from '@/components/ui/card';
-import { ChevronDown, Loader2, Sparkles } from 'lucide-react';
-import { getAutoTitleSettings, saveAutoTitleSettings } from '@/python/api';
-import ModelSelector from '@/components/ModelSelector';
-import { useModels } from '@/lib/hooks/useModels';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { getAutoTitleSettings, saveAutoTitleSettings } from "@/python/api";
+import ModelSelector from "@/components/ModelSelector";
+import { useModels } from "@/lib/hooks/useModels";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface AutoTitleSettings {
   enabled: boolean;
@@ -26,7 +26,8 @@ export default function AutoTitlePanel() {
   const [saved, setSaved] = useState(false);
   const [settings, setSettings] = useState<AutoTitleSettings>({
     enabled: true,
-    prompt: "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else.",
+    prompt:
+      "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else.",
     modelMode: "current",
     provider: "openai",
     modelId: "gpt-4o-mini",
@@ -50,7 +51,7 @@ export default function AutoTitlePanel() {
         modelId: response.modelId || "",
       });
     } catch (e) {
-      console.error('Failed to load auto-title settings', e);
+      console.error("Failed to load auto-title settings", e);
     } finally {
       setIsLoading(false);
     }
@@ -72,7 +73,7 @@ export default function AutoTitlePanel() {
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } catch (e) {
-      console.error('Failed to save auto-title settings', e);
+      console.error("Failed to save auto-title settings", e);
     } finally {
       setSaving(false);
     }
@@ -81,7 +82,7 @@ export default function AutoTitlePanel() {
   const selectedModelKey = `${settings.provider}:${settings.modelId}`;
 
   const handleModelChange = (modelKey: string) => {
-    const [provider, modelId] = modelKey.split(':', 2);
+    const [provider, modelId] = modelKey.split(":", 2);
     setSettings((prev) => ({
       ...prev,
       provider: provider || prev.provider,
@@ -122,7 +123,10 @@ export default function AutoTitlePanel() {
               </div>
             </div>
           </div>
-          <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <motion.div
+            animate={{ rotate: isOpen ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
             <ChevronDown size={16} className="text-muted-foreground" />
           </motion.div>
         </button>
@@ -131,9 +135,9 @@ export default function AutoTitlePanel() {
           {isOpen && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 270, damping: 30 }}
+              transition={{ type: "spring", stiffness: 270, damping: 30 }}
               className="overflow-hidden"
             >
               <div className="px-2 border-t border-border/60 pt-4 space-y-4 mt-2">
@@ -142,7 +146,9 @@ export default function AutoTitlePanel() {
                     type="checkbox"
                     id="auto-title-enabled"
                     checked={settings.enabled}
-                    onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                    onChange={(e) =>
+                      setSettings({ ...settings, enabled: e.target.checked })
+                    }
                     className="h-4 w-4 rounded border-gray-300"
                   />
                   <Label htmlFor="auto-title-enabled" className="font-medium">
@@ -153,16 +159,24 @@ export default function AutoTitlePanel() {
                 {settings.enabled && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="title-prompt">Title Generation Prompt</Label>
+                      <Label htmlFor="title-prompt">
+                        Title Generation Prompt
+                      </Label>
                       <textarea
                         id="title-prompt"
                         value={settings.prompt}
-                        onChange={(e) => setSettings({ ...settings, prompt: e.target.value })}
+                        onChange={(e) =>
+                          setSettings({ ...settings, prompt: e.target.value })
+                        }
                         className="w-full min-h-[100px] p-2 text-sm rounded-md border border-input bg-background"
                         placeholder="Enter the prompt for generating titles..."
                       />
                       <p className="text-xs text-muted-foreground">
-                        Tip: Use <code className="px-1 py-0.5 bg-muted rounded">{"{{ message }}"}</code> as a placeholder for the user's first message
+                        Tip: Use{" "}
+                        <code className="px-1 py-0.5 bg-muted rounded">
+                          {"{{ message }}"}
+                        </code>{" "}
+                        as a placeholder for the user's first message
                       </p>
                     </div>
 
@@ -171,18 +185,30 @@ export default function AutoTitlePanel() {
                       <RadioGroup
                         value={settings.modelMode}
                         onValueChange={(value) =>
-                          setSettings({ ...settings, modelMode: value as "current" | "specific" })
+                          setSettings({
+                            ...settings,
+                            modelMode: value as "current" | "specific",
+                          })
                         }
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="current" id="model-current" />
-                          <Label htmlFor="model-current" className="font-normal cursor-pointer">
+                          <Label
+                            htmlFor="model-current"
+                            className="font-normal cursor-pointer"
+                          >
                             Use Current Chat Model
                           </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="specific" id="model-specific" />
-                          <Label htmlFor="model-specific" className="font-normal cursor-pointer">
+                          <RadioGroupItem
+                            value="specific"
+                            id="model-specific"
+                          />
+                          <Label
+                            htmlFor="model-specific"
+                            className="font-normal cursor-pointer"
+                          >
                             Use Specific Model
                           </Label>
                         </div>
@@ -202,8 +228,12 @@ export default function AutoTitlePanel() {
                 )}
 
                 <div className="flex items-center justify-end pt-1">
-                  <Button variant="secondary" onClick={handleSave} disabled={saving}>
-                    {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+                  <Button
+                    variant="secondary"
+                    onClick={handleSave}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving…" : saved ? "Saved" : "Save"}
                   </Button>
                 </div>
               </div>
@@ -214,4 +244,3 @@ export default function AutoTitlePanel() {
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
 import uuid
+from datetime import datetime
 from typing import Any, Dict
 
 from zynk import command
@@ -9,20 +9,19 @@ from zynk import command
 from .. import db
 from ..models.chat import (
     AllChatsData,
+    AvailableToolsResponse,
+    ChatAgentConfigResponse,
     ChatData,
     ChatId,
     CreateChatInput,
-    UpdateChatInput,
     ToggleChatToolsInput,
-    UpdateChatModelInput,
     ToolInfo,
-    AvailableToolsResponse,
-    ChatAgentConfigResponse,
+    UpdateChatInput,
+    UpdateChatModelInput,
 )
-
-from ..services.agent_factory import update_agent_tools, update_agent_model
-from ..services.tool_registry import get_tool_registry
+from ..services.agent_factory import update_agent_model, update_agent_tools
 from ..services.title_generator import generate_title_for_chat
+from ..services.tool_registry import get_tool_registry
 
 
 @command
@@ -47,7 +46,7 @@ async def create_chat(body: CreateChatInput) -> ChatData:
     now = datetime.utcnow().isoformat()
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
-    
+
     # Handle agent config
     agent_config = None
     if body.agentConfig:
@@ -62,7 +61,7 @@ async def create_chat(body: CreateChatInput) -> ChatData:
     else:
         # Use default config
         agent_config = db.get_default_agent_config()
-    
+
     with db.db_session() as sess:
         db.create_chat(
             sess,
@@ -129,7 +128,7 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
     """
     Update active tools for a chat session.
-    
+
     Args:
         body: Contains chatId and list of tool IDs to activate
     """
@@ -141,7 +140,7 @@ async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
 async def update_chat_model(body: UpdateChatModelInput) -> None:
     """
     Switch the model/provider for a chat session.
-    
+
     Args:
         body: Contains chatId, provider, and modelId
     """
@@ -153,13 +152,13 @@ async def update_chat_model(body: UpdateChatModelInput) -> None:
 async def get_available_tools() -> AvailableToolsResponse:
     """
     Get list of all available tools.
-    
+
     Returns:
         List of tool information (id, name, description, category)
     """
     tool_registry = get_tool_registry()
     tools_data = tool_registry.list_available_tools()
-    
+
     tools = [
         ToolInfo(
             id=tool["id"],
@@ -169,7 +168,7 @@ async def get_available_tools() -> AvailableToolsResponse:
         )
         for tool in tools_data
     ]
-    
+
     return AvailableToolsResponse(tools=tools)
 
 
@@ -177,10 +176,10 @@ async def get_available_tools() -> AvailableToolsResponse:
 async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
     """
     Get agent configuration for a chat (tools, provider, model).
-    
+
     Args:
         body: Contains chatId
-        
+
     Returns:
         Chat's agent configuration
     """
@@ -189,7 +188,7 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
         if not config:
             # No config yet, return defaults
             config = db.get_default_agent_config()
-    
+
     return ChatAgentConfigResponse(
         toolIds=config.get("tool_ids", []),
         provider=config.get("provider", "openai"),
@@ -201,10 +200,10 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
 async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
     """
     Generate and update title for a chat based on its first message.
-    
+
     Args:
         body: Contains chatId
-        
+
     Returns:
         Dict with the new title or None if generation failed
     """
@@ -214,4 +213,3 @@ async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
             db.update_chat(sess, id=body.id, title=title)
         return {"title": title}
     return {"title": None}
-

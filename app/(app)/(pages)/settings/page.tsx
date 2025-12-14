@@ -1,33 +1,33 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { usePageTitle } from '@/contexts/page-title-context';
-import SettingsSidebar, { type TabKey } from './SettingsSidebar';
-import ProvidersPanel from './providers/ProvidersPanel';
-import AutoTitlePanel from './AutoTitlePanel';
-import ModelSettingsPanel from './ModelSettingsPanel';
-import ThemeToggle from '@/components/ThemeToggle';
+import React, { useEffect, useState } from "react";
+import { usePageTitle } from "@/contexts/page-title-context";
+import SettingsSidebar, { type TabKey } from "./SettingsSidebar";
+import ProvidersPanel from "./providers/ProvidersPanel";
+import AutoTitlePanel from "./AutoTitlePanel";
+import ModelSettingsPanel from "./ModelSettingsPanel";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function SettingsPage() {
   const { setTitle } = usePageTitle();
-  const [activeTab, setActiveTab] = useState<TabKey>('providers');
+  const [activeTab, setActiveTab] = useState<TabKey>("providers");
 
   useEffect(() => {
-    setTitle('Settings');
+    setTitle("Settings");
   }, [setTitle]);
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'general':
+      case "general":
         return (
           <div className="space-y-8">
             <AutoTitlePanel />
             <ModelSettingsPanel />
           </div>
         );
-      case 'providers':
+      case "providers":
         return <ProvidersPanel />;
-      case 'appearance':
+      case "appearance":
         return (
           <div className="py-8">
             <ThemeToggle />
@@ -49,4 +49,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

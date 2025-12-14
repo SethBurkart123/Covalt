@@ -2,24 +2,25 @@ from __future__ import annotations
 
 import sys
 
-from zynk import command
 from pydantic import BaseModel
+
+from zynk import command
 
 from .. import db
 from ..models.chat import (
-    AvailableModelsResponse,
-    ModelInfo,
-    AllProvidersResponse,
-    ProviderConfig,
-    SaveProviderConfigInput,
-    DefaultToolsResponse,
-    SetDefaultToolsInput,
-    AutoTitleSettings,
-    SaveAutoTitleSettingsInput,
     AllModelSettingsResponse,
+    AllProvidersResponse,
+    AutoTitleSettings,
+    AvailableModelsResponse,
+    DefaultToolsResponse,
+    ModelInfo,
     ModelSettingsInfo,
-    SaveModelSettingsInput,
+    ProviderConfig,
     ReasoningInfo,
+    SaveAutoTitleSettingsInput,
+    SaveModelSettingsInput,
+    SaveProviderConfigInput,
+    SetDefaultToolsInput,
     ThinkingTagPromptInfo,
 )
 from ..services.model_factory import (
@@ -37,7 +38,9 @@ class Greeting(BaseModel):
 
 @command
 async def greet(body: Person) -> Greeting:
-    return Greeting(message=f"Hello, {body.name}! You've been greeted from Python: {sys.version}!")
+    return Greeting(
+        message=f"Hello, {body.name}! You've been greeted from Python: {sys.version}!"
+    )
 
 
 @command
@@ -49,7 +52,7 @@ async def get_version() -> str:
 async def get_available_models() -> AvailableModelsResponse:
     """
     Get list of available models based on configured providers.
-    
+
     Returns:
         List of available models with provider, modelId, displayName, and isDefault
     """
@@ -70,7 +73,7 @@ async def get_available_models() -> AvailableModelsResponse:
 async def get_provider_settings() -> AllProvidersResponse:
     """
     Get all configured provider settings.
-    
+
     Returns:
         List of provider configurations
     """
@@ -96,7 +99,7 @@ async def get_provider_settings() -> AllProvidersResponse:
 async def save_provider_settings(body: SaveProviderConfigInput) -> None:
     """
     Save or update provider settings.
-    
+
     Args:
         body: Provider configuration to save
     """
@@ -109,7 +112,7 @@ async def save_provider_settings(body: SaveProviderConfigInput) -> None:
             extra=body.extra,
             enabled=body.enabled,
         )
-    
+
     return None
 
 
@@ -118,6 +121,7 @@ def _safe_parse_json(value: str | None):
         return None
     try:
         import json
+
         return json.loads(value)
     except Exception:
         return None
@@ -127,13 +131,13 @@ def _safe_parse_json(value: str | None):
 async def get_default_tools() -> DefaultToolsResponse:
     """
     Get default tool IDs for new chats.
-    
+
     Returns:
         List of default tool IDs
     """
     with db.db_session() as sess:
         tool_ids = db.get_default_tool_ids(sess)
-    
+
     return DefaultToolsResponse(toolIds=tool_ids)
 
 
@@ -141,13 +145,13 @@ async def get_default_tools() -> DefaultToolsResponse:
 async def set_default_tools(body: SetDefaultToolsInput) -> None:
     """
     Set default tool IDs for new chats.
-    
+
     Args:
         body: Contains list of tool IDs to set as defaults
     """
     with db.db_session() as sess:
         db.set_default_tool_ids(sess, body.toolIds)
-    
+
     return None
 
 
@@ -155,16 +159,19 @@ async def set_default_tools(body: SetDefaultToolsInput) -> None:
 async def get_auto_title_settings() -> AutoTitleSettings:
     """
     Get auto-title generation settings.
-    
+
     Returns:
         Auto-title settings including enabled, prompt, and model configuration
     """
     with db.db_session() as sess:
         settings = db.get_auto_title_settings(sess)
-    
+
     return AutoTitleSettings(
         enabled=settings.get("enabled", True),
-        prompt=settings.get("prompt", "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else."),
+        prompt=settings.get(
+            "prompt",
+            "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else.",
+        ),
         modelMode=settings.get("model_mode", "current"),
         provider=settings.get("provider", "openai"),
         modelId=settings.get("model_id", "gpt-4o-mini"),
@@ -175,7 +182,7 @@ async def get_auto_title_settings() -> AutoTitleSettings:
 async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
     """
     Save auto-title generation settings.
-    
+
     Args:
         body: Auto-title settings to save
     """
@@ -188,7 +195,7 @@ async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
             "model_id": body.modelId,
         }
         db.save_auto_title_settings(sess, settings)
-    
+
     return None
 
 
@@ -196,22 +203,23 @@ async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
 async def get_model_settings() -> AllModelSettingsResponse:
     """
     Get all model settings including reasoning capabilities.
-    
+
     Returns:
         List of model settings with reasoning support flags
     """
     with db.db_session() as sess:
         models = db.get_all_model_settings(sess)
-    
+
     result = []
     for model in models:
         reasoning = db.get_reasoning_from_model(model)
-        
+
         # Get thinkingTagPrompted from extra
         from ..db.model_ops import _parse_extra
+
         extra = _parse_extra(model.extra)
         thinking_tag_prompted = extra.get("thinkingTagPrompted", {})
-        
+
         result.append(
             ModelSettingsInfo(
                 provider=model.provider,
@@ -224,10 +232,12 @@ async def get_model_settings() -> AllModelSettingsResponse:
                 thinkingTagPrompted=ThinkingTagPromptInfo(
                     prompted=thinking_tag_prompted.get("prompted", False),
                     declined=thinking_tag_prompted.get("declined", False),
-                ) if thinking_tag_prompted else None,
+                )
+                if thinking_tag_prompted
+                else None,
             )
         )
-    
+
     return AllModelSettingsResponse(models=result)
 
 
@@ -235,7 +245,7 @@ async def get_model_settings() -> AllModelSettingsResponse:
 async def save_model_settings(body: SaveModelSettingsInput) -> None:
     """
     Save or update model settings (including reasoning support).
-    
+
     Args:
         body: Model settings to save
     """
@@ -246,7 +256,7 @@ async def save_model_settings(body: SaveModelSettingsInput) -> None:
                 "supports": body.reasoning.supports,
                 "isUserOverride": body.reasoning.isUserOverride,
             }
-        
+
         db.save_model_settings(
             sess,
             provider=body.provider,
@@ -254,7 +264,7 @@ async def save_model_settings(body: SaveModelSettingsInput) -> None:
             parse_think_tags=body.parseThinkTags,
             reasoning=reasoning_dict,
         )
-    
+
     return None
 
 
@@ -277,20 +287,21 @@ async def reprocess_message_think_tags(
     Returns {success: bool}
     """
     from ..commands.streaming import reprocess_message_with_think_tags
+
     success = reprocess_message_with_think_tags(body.messageId)
     return {"success": success}
 
 
 @command
 async def respond_to_thinking_tag_prompt(
-    body: RespondToThinkingTagPromptInput, 
+    body: RespondToThinkingTagPromptInput,
 ) -> None:
     """
     Handle user response to thinking tag detection prompt.
-    
+
     If accepted, enables parse_think_tags and reprocesses the current message.
     If declined, stores thinkingTagPrompted: { prompted: true, declined: true } in extra.
-    
+
     Args:
         body: User's response
     """
@@ -301,7 +312,7 @@ async def respond_to_thinking_tag_prompt(
                 "declined": not body.accepted,
             }
         }
-        
+
         db.save_model_settings(
             sess,
             provider=body.provider,
@@ -309,5 +320,5 @@ async def respond_to_thinking_tag_prompt(
             parse_think_tags=body.accepted,
             extra=extra_update,
         )
-    
+
     return None

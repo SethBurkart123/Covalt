@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
-from contextlib import contextmanager
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base
 from ..config import get_db_path as _get_db_path
+from .models import Base
 
 _engine = None
 _Session = None
@@ -50,6 +50,7 @@ def init_database() -> Path:
     """Ensure the database engine and schema exist. Returns DB path."""
     _ensure_engine()
     from .migrations import run_migrations
+
     run_migrations()
     return get_db_path()
 
@@ -69,4 +70,3 @@ def db_session():
         yield sess
     finally:
         sess.close()
-
