@@ -4,7 +4,7 @@ import json
 from typing import Dict, List, Any, Optional
 
 from pydantic import BaseModel
-from zynk import command
+from zynk import command, Channel
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
@@ -15,14 +15,12 @@ from .streaming import handle_content_stream, parse_model_id
 class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
 class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
@@ -30,7 +28,6 @@ class EditUserMessageRequest(BaseModel):
     messageId: str
     newContent: str
     chatId: str
-    channel: Any  # Channel type - keeping flexible for now
     modelId: Optional[str] = None
 
 
@@ -52,10 +49,11 @@ class MessageSiblingInfo(BaseModel):
 
 @command
 async def continue_message(
+    channel: Channel,
     body: ContinueMessageRequest,
 ) -> None:
     """Continue incomplete assistant message from where it stopped."""
-    ch = body.channel
+    ch = channel
     
     existing_blocks: List[Dict[str, Any]] = []
 
@@ -150,10 +148,11 @@ async def continue_message(
 
 @command
 async def retry_message(
+    channel: Channel,
     body: RetryMessageRequest,
 ) -> None:
     """Create sibling message and retry generation."""
-    ch = body.channel
+    ch = channel
     
     with db.db_session() as sess:
         if body.modelId:
@@ -250,10 +249,11 @@ async def retry_message(
 
 @command
 async def edit_user_message(
+    channel: Channel,
     body: EditUserMessageRequest,
 ) -> None:
     """Edit user message by creating sibling with new content."""
-    ch = body.channel
+    ch = channel
     
     with db.db_session() as sess:
         if body.modelId:

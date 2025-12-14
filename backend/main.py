@@ -16,6 +16,7 @@ def main() -> int:
     app = Bridge(
         generate_ts=str(output_dir / "api.ts"),
         port=8000,
+        debug=False  # Set to True for verbose logging
     )
     
     # Run in dev mode (hot-reload enabled)

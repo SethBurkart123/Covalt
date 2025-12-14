@@ -39,3 +39,4 @@ target/
 *.db-journal
 
 bun.lock
+zynk

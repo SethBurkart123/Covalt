@@ -69,65 +69,87 @@ export function createChannel<T>(command: string, args: unknown): BridgeChannel<
     const baseUrl = getBaseUrl();
     const url = `${baseUrl}/channel/${command}`;
 
-    let eventSource: EventSource | null = null;
+    let abortController: AbortController | null = new AbortController();
     let messageCallback: ((data: T) => void) | null = null;
     let errorCallback: ((error: BridgeError) => void) | null = null;
     let closeCallback: (() => void) | null = null;
 
-    // Start the SSE connection
-    const startConnection = async () => {
-        // First, initiate the channel via POST
-        const initResponse = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(args),
-        });
+    const startStream = async () => {
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(args),
+                signal: abortController?.signal,
+            });
 
-        if (!initResponse.ok) {
-            const data = await initResponse.json();
-            if (errorCallback) {
-                errorCallback({
-                    code: data.code || "CHANNEL_INIT_ERROR",
-                    message: data.message || "Failed to initialize channel",
+            if (!response.ok) {
+                const data = await response.json();
+                errorCallback?.({
+                    code: data.code || "CHANNEL_ERROR",
+                    message: data.message || "Failed to start channel",
                     details: data.details,
                 });
+                return;
             }
-            return;
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+                errorCallback?.({ code: "NO_STREAM", message: "Response has no body" });
+                return;
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const events = buffer.split("\n\n");
+                buffer = events.pop() || "";
+
+                for (const eventBlock of events) {
+                    if (!eventBlock.trim()) continue;
+
+                    let eventType = "message";
+                    let eventData = "";
+
+                    for (const line of eventBlock.split("\n")) {
+                        if (line.startsWith("event: ")) {
+                            eventType = line.slice(7);
+                        } else if (line.startsWith("data: ")) {
+                            eventData = line.slice(6);
+                        }
+                    }
+
+                    if (eventType === "error") {
+                        const parsed = JSON.parse(eventData);
+                        errorCallback?.({
+                            code: "STREAM_ERROR",
+                            message: parsed.error || "Stream error",
+                        });
+                    } else if (eventType === "close") {
+                        closeCallback?.();
+                    } else if (eventData) {
+                        const parsed = JSON.parse(eventData);
+                        messageCallback?.({ event: eventType, ...parsed } as T);
+                    }
+                }
+            }
+
+            closeCallback?.();
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === "AbortError") return;
+            errorCallback?.({
+                code: "STREAM_ERROR",
+                message: err instanceof Error ? err.message : "Unknown error",
+            });
         }
-
-        const { channelId } = await initResponse.json();
-
-        // Now connect to SSE endpoint
-        eventSource = new EventSource(`${baseUrl}/channel/stream/${channelId}`);
-
-        eventSource.addEventListener("message", (event) => {
-            if (messageCallback) {
-                const data = JSON.parse(event.data);
-                messageCallback(data as T);
-            }
-        });
-
-        eventSource.addEventListener("error", () => {
-            if (errorCallback) {
-                errorCallback({
-                    code: "CHANNEL_ERROR",
-                    message: "Channel connection error",
-                });
-            }
-        });
-
-        eventSource.addEventListener("close", () => {
-            if (closeCallback) {
-                closeCallback();
-            }
-            eventSource?.close();
-        });
     };
 
-    // Start connection immediately
-    startConnection();
+    startStream();
 
     return {
         subscribe(callback: (data: T) => void): void {
@@ -140,10 +162,8 @@ export function createChannel<T>(command: string, args: unknown): BridgeChannel<
             closeCallback = callback;
         },
         close(): void {
-            eventSource?.close();
-            if (closeCallback) {
-                closeCallback();
-            }
+            abortController?.abort();
+            abortController = null;
         },
     };
 }
