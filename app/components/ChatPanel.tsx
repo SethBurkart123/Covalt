@@ -1,22 +1,14 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import ChatInputForm from "@/components/ChatInputForm";
+import ChatMessageList from "@/components/ChatMessageList";
 import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
 import { useChat } from "@/contexts/chat-context";
-import { useChatInput } from "@/components/Chat";
+import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { api } from "@/lib/services/api";
 import { getModelSettings } from "@/python/api";
 
-// Keep Chat itself dynamically imported as in the page to avoid SSR issues
-const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
-
-/**
- * ChatPanel isolates the frequently-updating streaming state
- * so the rest of the page (sidebar/header) doesn't re-render
- * on every token.
- */
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
@@ -24,12 +16,10 @@ export default function ChatPanel() {
     useState(false);
   const [modelSettings, setModelSettings] = useState<any>(null);
 
-  // Load model settings
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settings = await getModelSettings();
-        setModelSettings(settings);
+        setModelSettings(await getModelSettings());
       } catch (error) {
         console.error("Failed to load model settings:", error);
       }
@@ -37,37 +27,31 @@ export default function ChatPanel() {
     loadSettings();
   }, []);
 
-  // Callback for when thinking tags are detected during streaming
   const handleThinkTagDetected = useCallback(() => {
     if (hasCheckedThinkingPrompt) return;
 
-    // Parse the current model
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId || !modelSettings) return;
 
-    // Find the model settings
     const setting = modelSettings.models?.find(
       (m: any) => m.provider === provider && m.modelId === modelId,
     );
 
-    // Check if we should show the prompt
-    const alreadyParsing = setting?.parseThinkTags === true;
-    const alreadyPrompted = setting?.thinkingTagPrompted?.prompted === true;
-
-    if (!alreadyParsing && !alreadyPrompted) {
+    if (
+      setting?.parseThinkTags !== true &&
+      setting?.thinkingTagPrompted?.prompted !== true
+    ) {
       setShowThinkingPrompt(true);
     }
 
     setHasCheckedThinkingPrompt(true);
   }, [hasCheckedThinkingPrompt, selectedModel, modelSettings]);
 
-  // Reset the prompt check when switching models or chats
   useEffect(() => {
     setHasCheckedThinkingPrompt(false);
     setShowThinkingPrompt(false);
   }, [selectedModel]);
 
-  // Own streaming + input state locally inside this subtree
   const {
     input,
     handleInputChange,
@@ -91,36 +75,28 @@ export default function ChatPanel() {
     triggerReload,
   } = useChatInput(handleThinkTagDetected);
 
-  // Handle user accepting the prompt
   const handleAcceptThinkingPrompt = useCallback(async () => {
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId) return;
 
     try {
-      // Enable think tag parsing in DB - this affects future streaming immediately
       await api.respondToThinkingTagPrompt(provider, modelId, true);
       setShowThinkingPrompt(false);
 
-      // Get the message to reprocess
       const messageId =
         streamingMessageIdRef.current ||
         messages.filter((m) => m.role === "assistant").pop()?.id;
 
       if (messageId && chatId) {
         if (!isLoading && streamingMessageIdRef.current) {
-          // Stream is complete, reprocess immediately
           console.log(`Reprocessing message ${messageId} to parse think tags`);
-          const result = await api.reprocessMessageThinkTags(messageId);
-          if (result.success) {
-            // Reload messages to show parsed version
+          if ((await api.reprocessMessageThinkTags(messageId)).success) {
             triggerReload();
           }
         }
       }
 
-      // Reload model settings
-      const settings = await getModelSettings();
-      setModelSettings(settings);
+      setModelSettings(await getModelSettings());
     } catch (error) {
       console.error("Failed to accept thinking tag prompt:", error);
     }
@@ -133,7 +109,6 @@ export default function ChatPanel() {
     triggerReload,
   ]);
 
-  // Handle user declining the prompt
   const handleDeclineThinkingPrompt = useCallback(async () => {
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId) return;
@@ -141,22 +116,16 @@ export default function ChatPanel() {
     try {
       await api.respondToThinkingTagPrompt(provider, modelId, false);
       setShowThinkingPrompt(false);
-
-      // Reload model settings
-      const settings = await getModelSettings();
-      setModelSettings(settings);
+      setModelSettings(await getModelSettings());
     } catch (error) {
       console.error("Failed to decline thinking tag prompt:", error);
     }
   }, [selectedModel]);
 
-  // Handle dismissing the prompt without responding
   const handleDismissThinkingPrompt = useCallback(() => {
     setShowThinkingPrompt(false);
   }, []);
 
-  // Provide stable callback wrappers so siblings like ChatInputForm
-  // don't re-render on every token just because handler identity changes.
   const submitRef = useRef(handleSubmit);
   const changeRef = useRef(handleInputChange);
   useEffect(() => {
@@ -180,8 +149,6 @@ export default function ChatPanel() {
     [],
   );
 
-  // Stable getModelName so it doesn't force re-renders
-  // Model IDs are shown directly; no extra metadata
   const getModelName = useCallback((id: string) => id, []);
 
   useEffect(() => {
@@ -198,25 +165,18 @@ export default function ChatPanel() {
     };
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Skip during IME composition
       if (isComposing || e.isComposing) return;
 
       const activeElement = document.activeElement;
-
-      // Don't trigger if an input/textarea/contentEditable is focused
       const isInputFocused =
         activeElement?.tagName === "INPUT" ||
         activeElement?.tagName === "TEXTAREA" ||
         activeElement?.getAttribute("contenteditable") === "true";
 
-      // Don't trigger if text is selected
       const selection = window.getSelection();
       const hasSelection = selection && selection.toString().trim().length > 0;
-
-      // Don't trigger if modifiers are pressed (keyboard shortcuts)
       const hasModifiers = e.metaKey || e.ctrlKey || e.altKey;
 
-      // Don't trigger for special keys
       const specialKeys = [
         "Escape",
         "Tab",
@@ -247,55 +207,37 @@ export default function ChatPanel() {
         "PrintScreen",
         "ScrollLock",
         "Pause",
-        "Pause",
       ];
-      const isSpecialKey = specialKeys.includes(e.key);
+      const isPrintableKey =
+        e.key.length === 1 && !specialKeys.includes(e.key);
 
-      // Only trigger for single printable characters
-      const isPrintableKey = e.key.length === 1 && !isSpecialKey;
-
-      // Check if chat input is already focused
-      const isChatInputFocused = activeElement === inputRef.current;
-
-      // Skip if any exclusion condition is met
       if (
         isInputFocused ||
         hasSelection ||
         hasModifiers ||
         !isPrintableKey ||
-        isChatInputFocused
+        activeElement === inputRef.current
       ) {
         return;
       }
 
-      // Focus the textarea and simulate typing
       const textarea = inputRef.current;
       if (!textarea) return;
 
       e.preventDefault();
       e.stopPropagation();
-
-      // Focus the textarea first to ensure selection properties are available
       textarea.focus();
 
-      // Get cursor position (will be at end if not previously focused)
       const start = textarea.selectionStart ?? input.length;
       const end = textarea.selectionEnd ?? input.length;
-      const currentValue = input;
-      const newValue =
-        currentValue.slice(0, start) + e.key + currentValue.slice(end);
+      const newValue = input.slice(0, start) + e.key + input.slice(end);
 
-      // Update input value
-      const syntheticEvent = {
+      handleInputChange({
         target: { value: newValue },
-      } as React.ChangeEvent<HTMLTextAreaElement>;
+      } as React.ChangeEvent<HTMLTextAreaElement>);
 
-      handleInputChange(syntheticEvent);
-
-      // Set cursor position after the inserted character
       requestAnimationFrame(() => {
-        const newPosition = start + 1;
-        textarea.setSelectionRange(newPosition, newPosition);
+        textarea.setSelectionRange(start + 1, start + 1);
       });
     };
 
@@ -314,8 +256,8 @@ export default function ChatPanel() {
     <>
       <div className="overflow-y-scroll flex-1">
         <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
-        <div className="flex flex-col">
-          <Chat
+        <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
+          <ChatMessageList
             messages={messages}
             isLoading={isLoading}
             messageSiblings={messageSiblings}
@@ -328,6 +270,7 @@ export default function ChatPanel() {
             onEditCancel={handleEditCancel}
             onEditSubmit={handleEditSubmit}
             onNavigate={handleNavigate}
+            actionLoading={null}
           />
         </div>
       </div>
