@@ -16,9 +16,9 @@ dependencies = [
     "requests >= 2.31.0",
     "docker>=7.1.0",
     "google-genai>=1.47.0",
-    "zynk>=0.1.0",
     "ollama>=0.6.1",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "pydantic>=2.0.0",
+    "rich>=14.2.0",
 ]
-
-[tool.uv.sources]
-zynk = { path = "../zync" }

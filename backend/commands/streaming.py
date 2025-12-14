@@ -14,7 +14,7 @@ from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.hook_manager import get_hook_manager
-from zynk import command
+from zynk import command, Channel
 
 from rich import print
 
@@ -524,7 +524,6 @@ async def handle_content_stream(
 
 
 class StreamChatRequest(BaseModel):
-    channel: Any  # Channel type - keeping flexible for now
     messages: List[Dict[str, Any]]
     modelId: Optional[str] = None
     chatId: Optional[str] = None
@@ -684,10 +683,10 @@ async def cancel_run(body: CancelRunRequest) -> dict:
 
 @command
 async def stream_chat(
+    channel: Channel,
     body: StreamChatRequest,
 ) -> None:
-    # For zynk, channel is passed directly in body
-    ch = body.channel
+    ch = channel
     messages: List[ChatMessage] = [
         ChatMessage(
             id=m.get("id"),
