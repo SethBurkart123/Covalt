@@ -63,24 +63,34 @@ export default function ThinkingCall({
       <div className="relative" data-thinkingcall>
         <div
           className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
-          style={{ top: isFirst ? "2.2rem" : "0", bottom: isLast ? "calc(100% - 0.7rem)" : "0" }}
+          style={{
+            top: isFirst ? "2.2rem" : "0",
+            bottom: isLast ? "calc(100% - 0.7rem)" : "0",
+          }}
         />
 
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-border/30 transition-colors relative ${active ? 'shimmer' : ''}`}
+          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-border/30 transition-colors relative ${active ? "shimmer" : ""}`}
         >
           <div className="flex items-center gap-2">
             <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
               <Brain size={16} className="text-muted-foreground" />
             </div>
-            <span className="text-sm font-mono text-foreground ml-2">Thinking</span>
+            <span className="text-sm font-mono text-foreground ml-2">
+              Thinking
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {rightTimer && (
-              <span className="text-xs text-muted-foreground tabular-nums">{rightTimer}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {rightTimer}
+              </span>
             )}
-            <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <motion.div
+              animate={{ rotate: isOpen ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
               <ChevronDown size={16} className="text-muted-foreground" />
             </motion.div>
           </div>
@@ -110,7 +120,7 @@ export default function ThinkingCall({
       <div className="border border-border rounded-lg overflow-hidden bg-card">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors ${active ? 'shimmer' : ''}`}
+          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors ${active ? "shimmer" : ""}`}
         >
           <div className="flex items-center gap-2">
             <Brain size={16} className="text-muted-foreground" />
@@ -118,9 +128,14 @@ export default function ThinkingCall({
           </div>
           <div className="flex items-center gap-2">
             {rightTimer && (
-              <span className="text-xs text-muted-foreground tabular-nums">{rightTimer}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {rightTimer}
+              </span>
             )}
-            <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <motion.div
+              animate={{ rotate: isOpen ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
               <ChevronDown size={16} className="text-muted-foreground" />
             </motion.div>
           </div>

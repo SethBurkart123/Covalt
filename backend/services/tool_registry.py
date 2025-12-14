@@ -4,6 +4,7 @@ Tool Registry for managing available tools.
 Provides centralized registry for tools that can be dynamically
 activated/deactivated for agents at runtime.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
@@ -12,16 +13,16 @@ from typing import Any, Callable, Dict, List, Optional
 class ToolRegistry:
     """
     Centralized registry for managing available tools.
-    
+
     Tools are registered as factory functions that return tool instances
     or decorated functions. This allows lazy instantiation and configuration.
     """
-    
+
     def __init__(self) -> None:
         self._tools: Dict[str, Callable[[], Any]] = {}
         self._metadata: Dict[str, Dict[str, Any]] = {}
         self._register_default_tools()
-    
+
     def _register_default_tools(self) -> None:
         """Register built-in tools."""
         # Register basic calculator tool
@@ -32,9 +33,9 @@ class ToolRegistry:
                 "name": "Calculator",
                 "description": "Perform basic mathematical calculations",
                 "category": "utility",
-            }
+            },
         )
-        
+
         # Register echo tool for testing
         self.register_tool(
             tool_id="echo",
@@ -43,9 +44,9 @@ class ToolRegistry:
                 "name": "Echo",
                 "description": "Echo back the input (for testing)",
                 "category": "utility",
-            }
+            },
         )
-        
+
         # Register write_artifact tool with approval and markdown rendering
         self.register_tool(
             tool_id="write_artifact",
@@ -57,12 +58,13 @@ class ToolRegistry:
                 "requires_approval": True,
                 "allow_edit": False,
                 "renderer": "markdown",
-            }
+            },
         )
-        
+
         # Web search will be registered if duckduckgo is available
         try:
             from agno.tools.duckduckgo import DuckDuckGoTools
+
             self.register_tool(
                 tool_id="web_search",
                 tool_factory=lambda: DuckDuckGoTools(),
@@ -70,11 +72,11 @@ class ToolRegistry:
                     "name": "Web Search",
                     "description": "Search the web using DuckDuckGo",
                     "category": "search",
-                }
+                },
             )
         except ImportError:
             pass
-    
+
     def register_tool(
         self,
         tool_id: str,
@@ -83,7 +85,7 @@ class ToolRegistry:
     ) -> None:
         """
         Register a tool with the registry.
-        
+
         Args:
             tool_id: Unique identifier for the tool
             tool_factory: Callable that returns tool instance
@@ -91,14 +93,14 @@ class ToolRegistry:
         """
         self._tools[tool_id] = tool_factory
         self._metadata[tool_id] = metadata or {}
-    
+
     def get_tools(self, tool_ids: List[str]) -> List[Any]:
         """
         Get tool instances for given IDs.
-        
+
         Args:
             tool_ids: List of tool identifiers
-            
+
         Returns:
             List of instantiated tool objects
         """
@@ -111,11 +113,11 @@ class ToolRegistry:
                 except Exception as e:
                     print(f"[ToolRegistry] Failed to instantiate tool '{tid}': {e}")
         return tools
-    
+
     def list_available_tools(self) -> List[Dict[str, Any]]:
         """
         Return all available tools with their metadata.
-        
+
         Returns:
             List of dicts with tool_id and metadata
         """
@@ -126,33 +128,34 @@ class ToolRegistry:
             }
             for tool_id in self._tools.keys()
         ]
-    
+
     def has_tool(self, tool_id: str) -> bool:
         """Check if a tool is registered."""
         return tool_id in self._tools
-    
+
     # Built-in tool factory methods
-    
+
     @staticmethod
     def _create_calculator_tool() -> Any:
         """Create a simple calculator tool."""
         from agno.tools import tool
-        
+
         @tool
         def calculate(expression: str) -> str:
             """
             Evaluate a mathematical expression.
-            
+
             Args:
                 expression: Math expression to evaluate (e.g., "2 + 2", "10 * 5")
-                
+
             Returns:
                 Result of the calculation
             """
 
             import time
+
             time.sleep(1)
-            
+
             try:
                 # Safe eval using only basic operations
                 # Remove dangerous builtins
@@ -168,59 +171,61 @@ class ToolRegistry:
                 return f"Result: {result}"
             except Exception as e:
                 return f"Error: {str(e)}"
-        
+
         return calculate
-    
+
     @staticmethod
     def _create_echo_tool() -> Any:
         """Create a simple echo tool for testing."""
         from agno.tools import tool
-        
+
         @tool
         def echo(message: str) -> str:
             """
             Echo back the input message.
-            
+
             Args:
                 message: Message to echo back
-                
+
             Returns:
                 The same message
             """
 
             # Delay 10 seconds
             import time
+
             time.sleep(1)
 
             return f"Echo: {message}"
-        
+
         return echo
-    
+
     @staticmethod
     def _create_write_artifact_tool() -> Any:
         """Create a write_artifact tool that requires approval and uses markdown rendering."""
         from agno.tools import tool
-        
+
         @tool
         def write_artifact(title: str, content: str) -> str:
             """
             Create a markdown artifact with the given title and content.
             This tool requires user approval before execution.
-            
+
             Args:
                 title: Title of the artifact
                 content: Markdown content of the artifact
-                
+
             Returns:
                 The formatted markdown artifact
             """
             import time
+
             time.sleep(0.5)
-            
+
             # Return formatted markdown
             artifact = f"# {title}\n\n{content}"
             return artifact
-        
+
         return write_artifact
 
 
@@ -234,4 +239,3 @@ def get_tool_registry() -> ToolRegistry:
     if _tool_registry is None:
         _tool_registry = ToolRegistry()
     return _tool_registry
-

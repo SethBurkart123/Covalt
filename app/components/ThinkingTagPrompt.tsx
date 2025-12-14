@@ -16,8 +16,8 @@ interface ThinkingTagPromptProps {
   onDismiss: () => void;
 }
 
-export default function ThinkingTagPrompt({ 
-  onAccept, 
+export default function ThinkingTagPrompt({
+  onAccept,
   onDecline,
   onDismiss,
 }: ThinkingTagPromptProps) {
@@ -29,8 +29,12 @@ export default function ThinkingTagPrompt({
             <div className="flex-1">
               <ItemTitle>Thinking tags detected 🤔</ItemTitle>
               <ItemDescription>
-                We noticed this model uses <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;think&gt;</code> tags. 
-                Would you like us to automatically parse and display them for you?
+                We noticed this model uses{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                  &lt;think&gt;
+                </code>{" "}
+                tags. Would you like us to automatically parse and display them
+                for you?
               </ItemDescription>
             </div>
             <Button
@@ -52,11 +56,7 @@ export default function ThinkingTagPrompt({
           >
             No thanks
           </Button>
-          <Button
-            size="sm"
-            onClick={onAccept}
-            className="flex-1"
-          >
+          <Button size="sm" onClick={onAccept} className="flex-1">
             Yes, parse them
           </Button>
         </ItemActions>
@@ -64,4 +64,3 @@ export default function ThinkingTagPrompt({
     </div>
   );
 }
-

@@ -1,11 +1,11 @@
 "use client";
 
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2 } from 'lucide-react';
-import clsx from 'clsx';
-import { useTools } from '@/lib/hooks/useTools';
-import type { ToolInfo } from '@/lib/types/chat';
+import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Loader2 } from "lucide-react";
+import clsx from "clsx";
+import { useTools } from "@/lib/hooks/useTools";
+import type { ToolInfo } from "@/lib/types/chat";
 
 interface ToolSelectorProps {
   isOpen: boolean;
@@ -14,13 +14,14 @@ interface ToolSelectorProps {
 }
 
 export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
-  const { availableTools, activeToolIds, toggleTool, isLoading } = useTools(chatId);
+  const { availableTools, activeToolIds, toggleTool, isLoading } =
+    useTools(chatId);
 
   // Group tools by category
   const toolsByCategory = React.useMemo(() => {
     const grouped: Record<string, ToolInfo[]> = {};
     availableTools.forEach((tool) => {
-      const category = tool.category || 'Other';
+      const category = tool.category || "Other";
       if (!grouped[category]) {
         grouped[category] = [];
       }
@@ -30,9 +31,9 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
   }, [availableTools]);
 
   const categoryIcons: Record<string, string> = {
-    utility: '🔧',
-    search: '🔍',
-    other: '📦',
+    utility: "🔧",
+    search: "🔍",
+    other: "📦",
   };
 
   return (
@@ -40,18 +41,15 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={onClose}
-          />
+          <div className="fixed inset-0 z-40" onClick={onClose} />
 
           {/* Popover */}
           <motion.div
             className="fixed bottom-20 left-1/2 z-50 w-[320px] rounded-2xl border bg-card shadow-lg"
-            initial={{ opacity: 0, y: 20, scale: 0.95, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-            exit={{ opacity: 0, y: 20, scale: 0.95, x: '-50%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            initial={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+            exit={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
@@ -80,7 +78,9 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
                   <div key={category} className="mb-4 last:mb-0">
                     {/* Category Header */}
                     <div className="mb-2 flex items-center gap-2 px-2">
-                      <span className="text-base">{categoryIcons[category.toLowerCase()] || '📦'}</span>
+                      <span className="text-base">
+                        {categoryIcons[category.toLowerCase()] || "📦"}
+                      </span>
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         {category}
                       </span>
@@ -94,9 +94,9 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
                           <motion.button
                             key={tool.id}
                             className={clsx(
-                              'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
-                              'hover:bg-muted',
-                              isActive && 'bg-muted/50'
+                              "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                              "hover:bg-muted",
+                              isActive && "bg-muted/50",
                             )}
                             onClick={() => toggleTool(tool.id)}
                             whileTap={{ scale: 0.98 }}
@@ -104,10 +104,10 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
                             {/* Checkbox */}
                             <div
                               className={clsx(
-                                'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-all',
+                                "mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-all",
                                 isActive
-                                  ? 'border-primary bg-primary'
-                                  : 'border-muted-foreground/30'
+                                  ? "border-primary bg-primary"
+                                  : "border-muted-foreground/30",
                               )}
                             >
                               {isActive && (
@@ -117,7 +117,11 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
                                   initial={{ scale: 0, opacity: 0 }}
                                   animate={{ scale: 1, opacity: 1 }}
                                   exit={{ scale: 0, opacity: 0 }}
-                                  transition={{ type: 'spring', damping: 15, stiffness: 300 }}
+                                  transition={{
+                                    type: "spring",
+                                    damping: 15,
+                                    stiffness: 300,
+                                  }}
                                 >
                                   <path
                                     fill="currentColor"
@@ -129,10 +133,14 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
 
                             {/* Tool Info */}
                             <div className="flex-1 min-w-0">
-                              <div className={clsx(
-                                'text-sm font-medium',
-                                isActive ? 'text-foreground' : 'text-foreground/80'
-                              )}>
+                              <div
+                                className={clsx(
+                                  "text-sm font-medium",
+                                  isActive
+                                    ? "text-foreground"
+                                    : "text-foreground/80",
+                                )}
+                              >
                                 {tool.name || tool.id}
                               </div>
                               {tool.description && (
@@ -155,4 +163,3 @@ export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
     </AnimatePresence>
   );
 }
-

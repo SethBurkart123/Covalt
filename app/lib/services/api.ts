@@ -1,6 +1,11 @@
-import type { AllChatsData, ChatData, Message, MessageSibling } from '@/lib/types/chat';
-import { 
-  initBridge, 
+import type {
+  AllChatsData,
+  ChatData,
+  Message,
+  MessageSibling,
+} from "@/lib/types/chat";
+import {
+  initBridge,
   getAllChats,
   getChat,
   createChat,
@@ -12,13 +17,13 @@ import {
   generateChatTitle,
   respondToThinkingTagPrompt,
   reprocessMessageThinkTags,
-} from '@/python/api';
-import { createChannel } from '@/python/_internal';
-import type { BridgeError } from '@/python/_internal';
+} from "@/python/api";
+import { createChannel } from "@/python/_internal";
+import type { BridgeError } from "@/python/_internal";
 
 // Initialize the bridge - call this once at app startup
 // The backend runs on port 8000 as configured in backend/main.py
-initBridge('http://127.0.0.1:8000');
+initBridge("http://127.0.0.1:8000");
 
 // Type for streaming chat events from the backend
 interface StreamingChatEvent {
@@ -33,7 +38,7 @@ interface StreamingChatEvent {
 
 class ApiService {
   private static instance: ApiService;
-  
+
   private constructor() {}
 
   static getInstance(): ApiService {
@@ -48,10 +53,17 @@ class ApiService {
   }
 
   async getChat(chatId: string): Promise<{ id: string; messages: Message[] }> {
-    return getChat({ body: { id: chatId } }) as Promise<{ id: string; messages: Message[] }>;
+    return getChat({ body: { id: chatId } }) as Promise<{
+      id: string;
+      messages: Message[];
+    }>;
   }
 
-  async createChat(title?: string, model?: string, chatId?: string): Promise<ChatData> {
+  async createChat(
+    title?: string,
+    model?: string,
+    chatId?: string,
+  ): Promise<ChatData> {
     return createChat({ body: { id: chatId, title, model } });
   }
 
@@ -73,41 +85,43 @@ class ApiService {
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const enqueueLine = (line: string) =>
+          controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
         // Create a zynk channel for streaming
-        const channel = createChannel<StreamingChatEvent>('stream_chat', {
+        const channel = createChannel<StreamingChatEvent>("stream_chat", {
           body: {
             messages: messages.map((m) => ({
               id: m.id,
               role: m.role,
               content: m.content,
-              createdAt: m.createdAt
+              createdAt: m.createdAt,
             })),
             modelId: modelId,
             chatId: chatId,
-          }
+          },
         });
 
         // Subscribe to channel events
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
-          
+
           if (rest.sessionId) data.sessionId = rest.sessionId;
-          if (typeof rest.content === 'string') data.content = rest.content;
-          if (typeof rest.error === 'string') data.error = rest.error;
-          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (typeof rest.content === "string") data.content = rest.content;
+          if (typeof rest.error === "string") data.error = rest.error;
+          if (typeof rest.reasoningContent === "string")
+            data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
           if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
-          
-          sendEvent(event || 'RunContent', data);
-          
-          if (event === 'RunCompleted' || event === 'RunError') {
+
+          sendEvent(event || "RunContent", data);
+
+          if (event === "RunCompleted" || event === "RunError") {
             controller.close();
             channel.close();
           }
@@ -120,7 +134,7 @@ class ApiService {
 
         // Handle channel errors
         channel.onError((error: BridgeError) => {
-          sendEvent('RunError', { error: error.message });
+          sendEvent("RunError", { error: error.message });
           controller.close();
         });
       },
@@ -129,46 +143,52 @@ class ApiService {
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
       },
     });
   }
 
-  async continueMessage(messageId: string, chatId: string, modelId?: string): Promise<Response> {
+  async continueMessage(
+    messageId: string,
+    chatId: string,
+    modelId?: string,
+  ): Promise<Response> {
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const enqueueLine = (line: string) =>
+          controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const channel = createChannel<StreamingChatEvent>('continue_message', {
+        const channel = createChannel<StreamingChatEvent>("continue_message", {
           body: {
             messageId,
             chatId,
             modelId,
-          }
+          },
         });
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
-          
+
           if (rest.sessionId) data.sessionId = rest.sessionId;
-          if (typeof rest.content === 'string') data.content = rest.content;
-          if (typeof rest.error === 'string') data.error = rest.error;
-          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (typeof rest.content === "string") data.content = rest.content;
+          if (typeof rest.error === "string") data.error = rest.error;
+          if (typeof rest.reasoningContent === "string")
+            data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
           if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
-          
-          sendEvent(event || 'RunContent', data);
-          
-          if (event === 'RunCompleted' || event === 'RunError') {
+
+          sendEvent(event || "RunContent", data);
+
+          if (event === "RunCompleted" || event === "RunError") {
             controller.close();
             channel.close();
           }
@@ -179,7 +199,7 @@ class ApiService {
         });
 
         channel.onError((error: BridgeError) => {
-          sendEvent('RunError', { error: error.message });
+          sendEvent("RunError", { error: error.message });
           controller.close();
         });
       },
@@ -188,45 +208,51 @@ class ApiService {
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
       },
     });
   }
 
-  async retryMessage(messageId: string, chatId: string, modelId?: string): Promise<Response> {
+  async retryMessage(
+    messageId: string,
+    chatId: string,
+    modelId?: string,
+  ): Promise<Response> {
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const enqueueLine = (line: string) =>
+          controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const channel = createChannel<StreamingChatEvent>('retry_message', {
+        const channel = createChannel<StreamingChatEvent>("retry_message", {
           body: {
             messageId,
             chatId,
             modelId,
-          }
+          },
         });
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
-          
+
           if (rest.sessionId) data.sessionId = rest.sessionId;
-          if (typeof rest.content === 'string') data.content = rest.content;
-          if (typeof rest.error === 'string') data.error = rest.error;
-          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (typeof rest.content === "string") data.content = rest.content;
+          if (typeof rest.error === "string") data.error = rest.error;
+          if (typeof rest.reasoningContent === "string")
+            data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
-          
-          sendEvent(event || 'RunContent', data);
-          
-          if (event === 'RunCompleted' || event === 'RunError') {
+
+          sendEvent(event || "RunContent", data);
+
+          if (event === "RunCompleted" || event === "RunError") {
             controller.close();
             channel.close();
           }
@@ -237,7 +263,7 @@ class ApiService {
         });
 
         channel.onError((error: BridgeError) => {
-          sendEvent('RunError', { error: error.message });
+          sendEvent("RunError", { error: error.message });
           controller.close();
         });
       },
@@ -246,46 +272,53 @@ class ApiService {
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
       },
     });
   }
 
-  async editUserMessage(messageId: string, newContent: string, chatId: string, modelId?: string): Promise<Response> {
+  async editUserMessage(
+    messageId: string,
+    newContent: string,
+    chatId: string,
+    modelId?: string,
+  ): Promise<Response> {
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const enqueueLine = (line: string) => controller.enqueue(encoder.encode(line));
+        const enqueueLine = (line: string) =>
+          controller.enqueue(encoder.encode(line));
         const sendEvent = (event: string, data: Record<string, any>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        const channel = createChannel<StreamingChatEvent>('edit_user_message', {
+        const channel = createChannel<StreamingChatEvent>("edit_user_message", {
           body: {
             messageId,
             newContent,
             chatId,
             modelId,
-          }
+          },
         });
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
           const data: Record<string, any> = {};
-          
+
           if (rest.sessionId) data.sessionId = rest.sessionId;
-          if (typeof rest.content === 'string') data.content = rest.content;
-          if (typeof rest.error === 'string') data.error = rest.error;
-          if (typeof rest.reasoningContent === 'string') data.reasoningContent = rest.reasoningContent;
+          if (typeof rest.content === "string") data.content = rest.content;
+          if (typeof rest.error === "string") data.error = rest.error;
+          if (typeof rest.reasoningContent === "string")
+            data.reasoningContent = rest.reasoningContent;
           if (rest.tool) data.tool = rest.tool;
-          
-          sendEvent(event || 'RunContent', data);
-          
-          if (event === 'RunCompleted' || event === 'RunError') {
+
+          sendEvent(event || "RunContent", data);
+
+          if (event === "RunCompleted" || event === "RunError") {
             controller.close();
             channel.close();
           }
@@ -296,7 +329,7 @@ class ApiService {
         });
 
         channel.onError((error: BridgeError) => {
-          sendEvent('RunError', { error: error.message });
+          sendEvent("RunError", { error: error.message });
           controller.close();
         });
       },
@@ -305,35 +338,55 @@ class ApiService {
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
       },
     });
   }
 
-  async switchToSibling(messageId: string, siblingId: string, chatId: string): Promise<void> {
+  async switchToSibling(
+    messageId: string,
+    siblingId: string,
+    chatId: string,
+  ): Promise<void> {
     return switchToSibling({ body: { messageId, siblingId, chatId } });
   }
 
   async getMessageSiblings(messageId: string): Promise<MessageSibling[]> {
-    return getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>;
+    return getMessageSiblings({ body: { messageId } }) as Promise<
+      MessageSibling[]
+    >;
   }
 
   async cancelRun(messageId: string): Promise<{ cancelled: boolean }> {
-    return cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>;
+    return cancelRun({ body: { messageId } }) as Promise<{
+      cancelled: boolean;
+    }>;
   }
 
   async generateChatTitle(chatId: string): Promise<{ title: string | null }> {
-    return generateChatTitle({ body: { id: chatId } }) as Promise<{ title: string | null }>;
+    return generateChatTitle({ body: { id: chatId } }) as Promise<{
+      title: string | null;
+    }>;
   }
 
-  async respondToThinkingTagPrompt(provider: string, modelId: string, accepted: boolean): Promise<void> {
-    return respondToThinkingTagPrompt({ body: { provider, modelId, accepted } });
+  async respondToThinkingTagPrompt(
+    provider: string,
+    modelId: string,
+    accepted: boolean,
+  ): Promise<void> {
+    return respondToThinkingTagPrompt({
+      body: { provider, modelId, accepted },
+    });
   }
 
-  async reprocessMessageThinkTags(messageId: string): Promise<{ success: boolean }> {
-    return reprocessMessageThinkTags({ body: { messageId } }) as Promise<{ success: boolean }>;
+  async reprocessMessageThinkTags(
+    messageId: string,
+  ): Promise<{ success: boolean }> {
+    return reprocessMessageThinkTags({ body: { messageId } }) as Promise<{
+      success: boolean;
+    }>;
   }
 }
 

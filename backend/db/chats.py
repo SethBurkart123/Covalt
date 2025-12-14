@@ -13,7 +13,9 @@ from .models import Chat, Message
 
 
 def list_chats(sess: Session) -> List[Chat]:
-    stmt = select(Chat).order_by(Chat.updatedAt.desc().nulls_last(), Chat.createdAt.desc().nulls_last())
+    stmt = select(Chat).order_by(
+        Chat.updatedAt.desc().nulls_last(), Chat.createdAt.desc().nulls_last()
+    )
     return list(sess.scalars(stmt))
 
 
@@ -23,25 +25,29 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.active_leaf_message_id:
         # Fallback: return all messages in creation order (for old chats)
-        stmt = select(Message).where(Message.chatId == chatId).order_by(Message.createdAt.asc().nulls_last())
+        stmt = (
+            select(Message)
+            .where(Message.chatId == chatId)
+            .order_by(Message.createdAt.asc().nulls_last())
+        )
         rows = list(sess.scalars(stmt))
     else:
         # Use the active branch path
         rows = get_message_path(sess, chat.active_leaf_message_id)
-    
+
     messages: List[Dict[str, Any]] = []
     for r in rows:
         toolCalls = json.loads(r.toolCalls) if r.toolCalls else None
-        
+
         # Parse content if it's a JSON array (structured content blocks)
         content = r.content
-        if content and content.strip().startswith('['):
+        if content and content.strip().startswith("["):
             try:
                 content = json.loads(content)
             except Exception:
                 # If parsing fails, keep as string (legacy format)
                 pass
-        
+
         messages.append(
             {
                 "id": r.id,
@@ -150,19 +156,21 @@ def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
     """Walk up from leaf to root, return ordered list (root first)."""
     path = []
     current_id = leaf_id
-    
+
     while current_id:
         message = sess.get(Message, current_id)
         if not message:
             break
         path.append(message)
         current_id = message.parent_message_id
-    
+
     # Reverse to get root-to-leaf order
     return list(reversed(path))
 
 
-def get_message_children(sess: Session, parent_id: Optional[str], chat_id: str) -> List[Message]:
+def get_message_children(
+    sess: Session, parent_id: Optional[str], chat_id: str
+) -> List[Message]:
     """Get all child messages of a parent within a specific chat, ordered by sequence."""
     stmt = (
         select(Message)
@@ -173,7 +181,9 @@ def get_message_children(sess: Session, parent_id: Optional[str], chat_id: str) 
     return list(sess.scalars(stmt))
 
 
-def get_next_sibling_sequence(sess: Session, parent_id: Optional[str], chat_id: str) -> int:
+def get_next_sibling_sequence(
+    sess: Session, parent_id: Optional[str], chat_id: str
+) -> int:
     """Get next sequence number for siblings with same parent in the same chat."""
     stmt = (
         select(sqlalchemy.func.max(Message.sequence))
@@ -233,7 +243,7 @@ def create_branch_message(
     )
     sess.add(message)
     sess.commit()
-    
+
     return message_id
 
 
@@ -264,14 +274,14 @@ def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
 def get_chat_agent_config(sess: Session, chatId: str) -> Optional[Dict[str, Any]]:
     """
     Get agent configuration for a chat.
-    
+
     Returns:
         Agent config dict or None if not set
     """
     chat: Optional[Chat] = sess.get(Chat, chatId)
     if not chat or not chat.agent_config:
         return None
-    
+
     try:
         return json.loads(chat.agent_config)
     except Exception:
@@ -286,7 +296,7 @@ def update_chat_agent_config(
 ) -> None:
     """
     Update agent configuration for a chat.
-    
+
     Args:
         sess: Database session
         chatId: Chat identifier
@@ -295,7 +305,7 @@ def update_chat_agent_config(
     chat: Optional[Chat] = sess.get(Chat, chatId)
     if not chat:
         return
-    
+
     chat.agent_config = json.dumps(config)
     sess.commit()
 
@@ -303,7 +313,7 @@ def update_chat_agent_config(
 def get_default_agent_config() -> Dict[str, Any]:
     """
     Get default agent configuration for new chats.
-    
+
     Returns:
         Default config with openai provider and no tools
     """
@@ -313,5 +323,3 @@ def get_default_agent_config() -> Dict[str, Any]:
         "tool_ids": [],
         "instructions": [],
     }
-
-

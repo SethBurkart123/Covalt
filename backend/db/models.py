@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, String, Text, ForeignKey, Integer
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from typing import List, Optional
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -29,7 +30,9 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    chatId: Mapped[str] = mapped_column(String, ForeignKey("chats.id", ondelete="CASCADE"))
+    chatId: Mapped[str] = mapped_column(
+        String, ForeignKey("chats.id", ondelete="CASCADE")
+    )
     role: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     createdAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -44,7 +47,7 @@ class Message(Base):
 
 class ProviderSettings(Base):
     __tablename__ = "provider_settings"
-    
+
     provider: Mapped[str] = mapped_column(String, primary_key=True)
     api_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     base_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -55,15 +58,17 @@ class ProviderSettings(Base):
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
-    
+
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class Model(Base):
     __tablename__ = "models"
-    
+
     provider: Mapped[str] = mapped_column(String, primary_key=True)
     model_id: Mapped[str] = mapped_column(String, primary_key=True)
-    parse_think_tags: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    parse_think_tags: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

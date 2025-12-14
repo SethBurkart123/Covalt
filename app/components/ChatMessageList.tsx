@@ -18,9 +18,9 @@ interface ChatMessageListProps {
   actionLoading?: string | null;
 }
 
-const ChatMessageList: React.FC<ChatMessageListProps> = ({ 
-  messages, 
-  isLoading, 
+const ChatMessageList: React.FC<ChatMessageListProps> = ({
+  messages,
+  isLoading,
   messageSiblings,
   onContinue,
   onRetry,
@@ -42,7 +42,8 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     const bottomElement = endOfMessagesRef.current;
     if (!bottomElement) return;
 
-    const scrollContainer = bottomElement.parentElement?.parentElement?.parentElement;
+    const scrollContainer =
+      bottomElement.parentElement?.parentElement?.parentElement;
     if (!scrollContainer) return;
 
     scrollContainerRef.current = scrollContainer;
@@ -55,14 +56,14 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
       {
         root: scrollContainer,
         threshold: 0,
-        rootMargin: '100px',
-      }
+        rootMargin: "100px",
+      },
     );
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      
+
       if (distanceFromBottom > 70) {
         // console.log('not at bottom');
         isAtBottomRef.current = false;
@@ -73,32 +74,40 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     };
 
     observer.observe(bottomElement);
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       observer.disconnect();
-      scrollContainer.removeEventListener('scroll', handleScroll);
+      scrollContainer.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
   useEffect(() => {
-    const userJustSentMessage = 
+    const userJustSentMessage =
       messages.length > prevMessagesLengthRef.current &&
-      messages[messages.length - 1]?.role === 'user';
-    
+      messages[messages.length - 1]?.role === "user";
+
     prevMessagesLengthRef.current = messages.length;
 
     if (userJustSentMessage && endOfMessagesRef.current) {
-      endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      endOfMessagesRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
       isAtBottomRef.current = true;
     } else if (isAtBottomRef.current && endOfMessagesRef.current) {
       // console.log('scrolling to bottom');
-      endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      endOfMessagesRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
     }
   }, [messages, isLoading]);
 
-  const filteredMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
-  
+  const filteredMessages = messages.filter(
+    (m) => m.role === "user" || m.role === "assistant",
+  );
+
   // Find the last assistant message index
   const lastAssistantIndex = filteredMessages.reduce((lastIdx, m, idx) => {
     return m.role === "assistant" ? idx : lastIdx;
@@ -107,50 +116,74 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   return (
     <>
       {filteredMessages.map((m, index) => {
-          const siblings = messageSiblings[m.id] || [];
-          const isStreamingMessage = isLoading && index === filteredMessages.length - 1 && m.role === "assistant";
-          const isLastAssistantMessage = !isLoading && index === lastAssistantIndex && m.role === "assistant";
-          
-          // Inline editor for user message being edited
-          if (m.role === 'user' && editingMessageId && m.id === editingMessageId) {
-            return (
-              <div key={m.id} className="flex w-full justify-end group/message">
-                <div className="relative mb-2 max-w-[50rem] w-full">
-                  <UserMessageEditor
-                    value={editingDraft}
-                    onChange={(val) => setEditingDraft && setEditingDraft(val)}
-                    onCancel={onEditCancel}
-                    onSubmit={onEditSubmit}
-                  />
-                </div>
-              </div>
-            );
-          }
+        const siblings = messageSiblings[m.id] || [];
+        const isStreamingMessage =
+          isLoading &&
+          index === filteredMessages.length - 1 &&
+          m.role === "assistant";
+        const isLastAssistantMessage =
+          !isLoading && index === lastAssistantIndex && m.role === "assistant";
 
+        // Inline editor for user message being edited
+        if (
+          m.role === "user" &&
+          editingMessageId &&
+          m.id === editingMessageId
+        ) {
           return (
-            <div key={m.id}>
-              <ChatMessage
-                role={m.role as "user" | "assistant"}
-                content={m.content}
-                isStreaming={isStreamingMessage}
-                message={m}
-                siblings={siblings}
-                onContinue={m.role === 'assistant' && onContinue ? () => onContinue(m.id) : undefined}
-                onRetry={m.role === 'assistant' && onRetry ? () => onRetry(m.id) : undefined}
-                onEdit={m.role === 'user' && onEditStart ? () => onEditStart(m.id) : undefined}
-                onNavigate={onNavigate ? (siblingId) => onNavigate(m.id, siblingId) : undefined}
-                isLoading={actionLoading === m.id}
-                isLastAssistantMessage={isLastAssistantMessage}
-              />
+            <div key={m.id} className="flex w-full justify-end group/message">
+              <div className="relative mb-2 max-w-[50rem] w-full">
+                <UserMessageEditor
+                  value={editingDraft}
+                  onChange={(val) => setEditingDraft && setEditingDraft(val)}
+                  onCancel={onEditCancel}
+                  onSubmit={onEditSubmit}
+                />
+              </div>
             </div>
           );
-        })}
+        }
+
+        return (
+          <div key={m.id}>
+            <ChatMessage
+              role={m.role as "user" | "assistant"}
+              content={m.content}
+              isStreaming={isStreamingMessage}
+              message={m}
+              siblings={siblings}
+              onContinue={
+                m.role === "assistant" && onContinue
+                  ? () => onContinue(m.id)
+                  : undefined
+              }
+              onRetry={
+                m.role === "assistant" && onRetry
+                  ? () => onRetry(m.id)
+                  : undefined
+              }
+              onEdit={
+                m.role === "user" && onEditStart
+                  ? () => onEditStart(m.id)
+                  : undefined
+              }
+              onNavigate={
+                onNavigate
+                  ? (siblingId) => onNavigate(m.id, siblingId)
+                  : undefined
+              }
+              isLoading={actionLoading === m.id}
+              isLastAssistantMessage={isLastAssistantMessage}
+            />
+          </div>
+        );
+      })}
       <div ref={endOfMessagesRef} className="h-8 -mt-" />
     </>
   );
 };
 
-export default React.memo(ChatMessageList); 
+export default React.memo(ChatMessageList);
 
 // Editor component for inline user message editing
 function UserMessageEditor({
@@ -174,7 +207,7 @@ function UserMessageEditor({
     ta.select();
 
     const adjust = () => {
-      ta.style.height = 'auto';
+      ta.style.height = "auto";
       ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
     };
     adjust();
@@ -183,15 +216,18 @@ function UserMessageEditor({
     return () => ro.disconnect();
   }, []);
 
-  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      onSubmit && onSubmit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onCancel && onCancel();
-    }
-  }, [onSubmit, onCancel]);
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        onSubmit && onSubmit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel && onCancel();
+      }
+    },
+    [onSubmit, onCancel],
+  );
 
   return (
     <div className="rounded-3xl bg-muted text-muted-foreground p-3">

@@ -1,8 +1,20 @@
-import { ChevronLeft, ChevronRight, RotateCcw, Play, Edit2, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import type { Message, MessageSibling } from '@/lib/types/chat';
+import {
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Play,
+  Edit2,
+  Copy,
+  Check,
+} from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import type { Message, MessageSibling } from "@/lib/types/chat";
 
 interface MessageActionsProps {
   message: Message;
@@ -24,13 +36,15 @@ export function MessageActions({
   isLoading = false,
 }: MessageActionsProps) {
   const [copied, setCopied] = useState(false);
-  const currentIndex = siblings.findIndex(s => s.id === message.id);
+  const currentIndex = siblings.findIndex((s) => s.id === message.id);
   const hasPrevSibling = currentIndex > 0;
   const hasNextSibling = currentIndex < siblings.length - 1;
   const showSiblingNav = siblings.length > 1;
-  const modelLabel = (message.role === 'assistant' && typeof (message as any).modelUsed === 'string')
-    ? (message as any).modelUsed
-    : undefined;
+  const modelLabel =
+    message.role === "assistant" &&
+    typeof (message as any).modelUsed === "string"
+      ? (message as any).modelUsed
+      : undefined;
 
   const handlePrevious = () => {
     if (hasPrevSibling && onNavigate) {
@@ -45,24 +59,24 @@ export function MessageActions({
   };
 
   const handleCopy = async () => {
-    let textToCopy = '';
-    
-    if (typeof message.content === 'string') {
+    let textToCopy = "";
+
+    if (typeof message.content === "string") {
       textToCopy = message.content;
     } else if (Array.isArray(message.content)) {
       // Extract text from content blocks
       textToCopy = message.content
-        .filter(block => block.type === 'text')
-        .map(block => block.content)
-        .join('\n\n');
+        .filter((block) => block.type === "text")
+        .map((block) => block.content)
+        .join("\n\n");
     }
-    
+
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error("Failed to copy:", err);
     }
   };
 
@@ -77,14 +91,18 @@ export function MessageActions({
             onClick={handleCopy}
             className="h-7 w-7 p-0"
           >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? (
+              <Check className="size-3.5" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{copied ? 'Copied!' : 'Copy message'}</TooltipContent>
+        <TooltipContent>{copied ? "Copied!" : "Copy message"}</TooltipContent>
       </Tooltip>
 
       {/* Continue button for any assistant message */}
-      {message.role === 'assistant' && onContinue && (
+      {message.role === "assistant" && onContinue && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -102,7 +120,7 @@ export function MessageActions({
       )}
 
       {/* Retry button for assistant messages */}
-      {message.role === 'assistant' && onRetry && (
+      {message.role === "assistant" && onRetry && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -120,7 +138,7 @@ export function MessageActions({
       )}
 
       {/* Edit button for user messages */}
-      {message.role === 'user' && onEdit && (
+      {message.role === "user" && onEdit && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -174,7 +192,7 @@ export function MessageActions({
         </div>
       )}
 
-      {message.role === 'assistant' && modelLabel && (
+      {message.role === "assistant" && modelLabel && (
         <span className="text-[11px] text-muted-foreground px-1.5">
           {modelLabel}
         </span>

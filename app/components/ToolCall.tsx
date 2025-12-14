@@ -50,9 +50,13 @@ export default function ToolCall({
   isFirst = false,
   isLast = false,
 }: ToolCallProps) {
-  const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus || "pending");
+  const [approvalStatus, setApprovalStatus] = useState(
+    initialApprovalStatus || "pending",
+  );
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
+  const [isOpen, setIsOpen] = useState(
+    requiresApproval && approvalStatus === "pending",
+  );
 
   const handleApprove = async () => {
     if (!approvalId || isProcessing) return;
@@ -116,7 +120,9 @@ export default function ToolCall({
             <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
               <Wrench size={16} className="text-muted-foreground" />
             </div>
-            <span className="text-sm font-mono text-foreground ml-2">{toolName}</span>
+            <span className="text-sm font-mono text-foreground ml-2">
+              {toolName}
+            </span>
             {approvalStatus === "denied" && (
               <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
                 Denied
@@ -142,7 +148,9 @@ export default function ToolCall({
               transition={{ type: "spring", stiffness: 270, damping: 30 }}
               className="overflow-hidden"
             >
-              <div className={`px-4 pb-3 space-y-3 ${isLast ? "border-t border-border" : ""} pt-3 pl-9`}>
+              <div
+                className={`px-4 pb-3 space-y-3 ${isLast ? "border-t border-border" : ""} pt-3 pl-9`}
+              >
                 <div>
                   <div className="text-xs font-medium text-muted-foreground mb-2">
                     Arguments
@@ -171,12 +179,14 @@ export default function ToolCall({
                   </div>
                 )}
 
-                {requiresApproval && approvalStatus === "approved" && !isCompleted && (
-                  <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
-                    <Check size={14} />
-                    <span>Approved - executing...</span>
-                  </div>
-                )}
+                {requiresApproval &&
+                  approvalStatus === "approved" &&
+                  !isCompleted && (
+                    <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                      <Check size={14} />
+                      <span>Approved - executing...</span>
+                    </div>
+                  )}
 
                 {requiresApproval && approvalStatus === "denied" && (
                   <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
@@ -197,7 +207,9 @@ export default function ToolCall({
                     ) : (
                       <pre className="w-full text-xs bg-muted p-2 rounded overflow-x-auto !mt-1 !mb-0 max-h-64 overflow-y-auto">
                         <code className="!bg-transparent">
-                          {typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult, null, 2)}
+                          {typeof toolResult === "string"
+                            ? toolResult
+                            : JSON.stringify(toolResult, null, 2)}
                         </code>
                       </pre>
                     )}
@@ -222,7 +234,9 @@ export default function ToolCall({
         >
           <div className="flex items-center gap-2">
             <Wrench size={16} className="text-muted-foreground" />
-            <span className="text-sm font-mono text-foreground">{toolName}</span>
+            <span className="text-sm font-mono text-foreground">
+              {toolName}
+            </span>
             {approvalStatus === "denied" && (
               <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
                 Denied
@@ -277,12 +291,14 @@ export default function ToolCall({
                   </div>
                 )}
 
-                {requiresApproval && approvalStatus === "approved" && !isCompleted && (
-                  <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
-                    <Check size={14} />
-                    <span>Approved - executing...</span>
-                  </div>
-                )}
+                {requiresApproval &&
+                  approvalStatus === "approved" &&
+                  !isCompleted && (
+                    <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                      <Check size={14} />
+                      <span>Approved - executing...</span>
+                    </div>
+                  )}
 
                 {requiresApproval && approvalStatus === "denied" && (
                   <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
@@ -303,7 +319,9 @@ export default function ToolCall({
                     ) : (
                       <pre className="w-full text-xs bg-muted p-2 rounded overflow-x-auto !mt-1 !mb-0 max-h-64 overflow-y-auto">
                         <code className="!bg-transparent">
-                          {typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult, null, 2)}
+                          {typeof toolResult === "string"
+                            ? toolResult
+                            : JSON.stringify(toolResult, null, 2)}
                         </code>
                       </pre>
                     )}

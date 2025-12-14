@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { MoreVertical, PlusIcon, Pencil, Trash2, Settings, Wrench } from "lucide-react";
+import {
+  MoreVertical,
+  PlusIcon,
+  Pencil,
+  Trash2,
+  Settings,
+  Wrench,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -26,9 +33,7 @@ import {
  * Sidebar that shows all stored chats and offers
  * a "New Chat" button. Uses the central ChatContext for data.
  */
-export function AppSidebar({
-  ...props
-}: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter();
   const {
     chatId: currentChatId,
@@ -38,8 +43,8 @@ export function AppSidebar({
     switchChat,
     deleteChat,
     renameChat,
-   } = useChat();
-   
+  } = useChat();
+
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
 
@@ -48,7 +53,7 @@ export function AppSidebar({
       try {
         await renameChat(id, editTitle.trim());
       } catch (error) {
-        console.error('Failed to rename chat:', error);
+        console.error("Failed to rename chat:", error);
       }
     }
     // Always exit editing mode after confirm/blur
@@ -57,13 +62,12 @@ export function AppSidebar({
   };
 
   const handleRenameCancel = () => {
-      setEditingId(null);
-      setEditTitle("");
+    setEditingId(null);
+    setEditTitle("");
   };
 
   // chatIds are already sorted newest first from context
   const orderedChatIds = chatIds;
-
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -79,7 +83,9 @@ export function AppSidebar({
                   <PlusIcon className="size-4" />
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none text-left">
-                  <span className="font-medium text-sidebar-foreground">New Chat</span>
+                  <span className="font-medium text-sidebar-foreground">
+                    New Chat
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     Start fresh
                   </span>
@@ -94,7 +100,8 @@ export function AppSidebar({
         <SidebarMenu className="gap-1 px-2 flex flex-col">
           {orderedChatIds.map((id: string) => {
             const isActive = currentChatId === id;
-            const title = chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
+            const title =
+              chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
 
             return (
               <SidebarMenuItem key={id}>
@@ -106,11 +113,11 @@ export function AppSidebar({
                       onChange={(e) => setEditTitle(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleRenameConfirm(id);
+                          e.preventDefault();
+                          handleRenameConfirm(id);
                         }
                         if (e.key === "Escape") {
-                            handleRenameCancel();
+                          handleRenameCancel();
                         }
                       }}
                       onBlur={() => handleRenameConfirm(id)}
@@ -125,9 +132,9 @@ export function AppSidebar({
                         className={clsx(
                           "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
                           isActive
-                           ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
-                           : "hover:bg-muted/50",
-                          "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
+                            : "hover:bg-muted/50",
+                          "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                         )}
                         title={title}
                       >
@@ -140,14 +147,19 @@ export function AppSidebar({
                               onClick={(e) => e.stopPropagation()}
                               className={clsx(
                                 "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                                isActive ? "text-sidebar-accent-foreground" : "text-muted-foreground"
+                                isActive
+                                  ? "text-sidebar-accent-foreground"
+                                  : "text-muted-foreground",
                               )}
                               aria-label={`Chat options for ${title}`}
                             >
                               <MoreVertical className="size-4" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuContent
+                            align="end"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <DropdownMenuItem
                               onClick={() => {
                                 setEditingId(id);
@@ -162,7 +174,10 @@ export function AppSidebar({
                                 try {
                                   await deleteChat(id);
                                 } catch (error) {
-                                  console.error('Failed to delete chat:', error);
+                                  console.error(
+                                    "Failed to delete chat:",
+                                    error,
+                                  );
                                 }
                               }}
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
@@ -193,11 +208,17 @@ export function AppSidebar({
       <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-full before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
         <SidebarMenu className="space-y-2">
           <SidebarMenuItem>
-            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/tools')}>
+            <button
+              className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={() => router.push("/tools")}
+            >
               <Wrench className="size-4" />
               Tools
             </button>
-            <button className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={() => router.push('/settings')}>
+            <button
+              className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={() => router.push("/settings")}
+            >
               <Settings className="size-4" />
               Settings
             </button>
