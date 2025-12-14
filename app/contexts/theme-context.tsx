@@ -47,14 +47,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setTheme = React.useCallback(
-    (newTheme: Theme, x?: number, y?: number) => {
-      // Skip transition if View Transitions API is not supported
+    (newTheme: Theme) => {
       setThemeState(newTheme);
     },
     [],
   );
 
-  // Resolve theme based on system preference when theme is "system"
   React.useEffect(() => {
     if (theme === "system") {
       const resolved = getSystemPreference();

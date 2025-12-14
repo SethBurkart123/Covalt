@@ -2,7 +2,7 @@
 name = "app"  
 version = "0.1.0"
 description = "Add your description here"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "pydantic == 2.*",
     "anyio == 4.*",
@@ -21,4 +21,9 @@ dependencies = [
     "uvicorn[standard]>=0.23.0",
     "pydantic>=2.0.0",
     "rich>=14.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "nuitka>=2.8.9",
 ]
