@@ -47,7 +47,7 @@ class ToolRegistry:
             },
         )
 
-        # Register write_artifact tool with approval and markdown rendering
+        # Register write_artifact tool with approval
         self.register_tool(
             tool_id="write_artifact",
             tool_factory=self._create_write_artifact_tool,
@@ -55,9 +55,6 @@ class ToolRegistry:
                 "name": "Write Artifact",
                 "description": "Create a markdown artifact (requires approval)",
                 "category": "content",
-                "requires_approval": True,
-                "allow_edit": False,
-                "renderer": "markdown",
             },
         )
 
@@ -205,7 +202,7 @@ class ToolRegistry:
         """Create a write_artifact tool that requires approval and uses markdown rendering."""
         from agno.tools import tool
 
-        @tool
+        @tool(requires_confirmation=True)
         def write_artifact(title: str, content: str) -> str:
             """
             Create a markdown artifact with the given title and content.

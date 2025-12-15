@@ -9,17 +9,35 @@ from typing import Any, Dict, List, Optional
 
 from agno.agent import Agent, Message, RunEvent
 from pydantic import BaseModel
-from rich import print
+from rich.logging import RichHandler
 
 from zynk import Channel, command
 
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
-from ..services.hook_manager import get_hook_manager
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(rich_tracebacks=True)]
+)
+logger = logging.getLogger(__name__)
 
 # Global storage for active run IDs by message ID
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
+
+# Global storage for pending HITL approval responses
+# Maps run_id -> asyncio.Event for signaling when approval is received
+_approval_events: Dict[str, asyncio.Event] = {}
+# Maps run_id -> approval response dict {approved: bool, tool_decisions: {tool_call_id: bool}}
+_approval_responses: Dict[str, Dict[str, Any]] = {}
+
+# Global storage for pending approval responses
+_approval_responses: Dict[str, Dict[str, Any]] = {}  # approval_id -> {approved: bool, edited_args: dict}
 
 
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
@@ -298,7 +316,6 @@ async def handle_content_stream(
     current_reasoning = ""
     had_error = False
     run_id = None
-    tool_id_map: dict[str, str] = {}
 
     # State for parsing think tags
     think_tag_buffer = ""
@@ -428,164 +445,198 @@ async def handle_content_stream(
     def save_final():
         return json.dumps(content_blocks)
 
-    async for chunk in response_stream:
-        if not run_id and chunk.run_id:
-            run_id = chunk.run_id
-            _active_runs[assistant_msg_id] = (run_id, agent)
-            print(f"[stream] Captured run_id {run_id}")
+    while True:
+        async for chunk in response_stream:
+            if not run_id and chunk.run_id:
+                run_id = chunk.run_id
+                _active_runs[assistant_msg_id] = (run_id, agent)
+                print(f"[stream] Captured run_id {run_id}")
 
-        if chunk.event == RunEvent.run_cancelled:
-            flush_think_tag_buffer()
-            flush_text()
-            flush_reasoning()
-            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-            with db.db_session() as sess:
-                db.mark_message_complete(sess, assistant_msg_id)
-            if assistant_msg_id in _active_runs:
-                del _active_runs[assistant_msg_id]
-            ch.send_model(ChatEvent(event="RunCancelled"))
-            return
+            if chunk.event == RunEvent.run_cancelled:
+                flush_think_tag_buffer()
+                flush_text()
+                flush_reasoning()
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                with db.db_session() as sess:
+                    db.mark_message_complete(sess, assistant_msg_id)
+                if assistant_msg_id in _active_runs:
+                    del _active_runs[assistant_msg_id]
+                ch.send_model(ChatEvent(event="RunCancelled"))
+                return
 
-        if chunk.event == RunEvent.run_content:
-            if chunk.reasoning_content:
-                if current_text and not current_reasoning:
-                    flush_text()
-                current_reasoning += chunk.reasoning_content
+            if chunk.event == RunEvent.run_content:
+                if chunk.reasoning_content:
+                    if current_text and not current_reasoning:
+                        flush_text()
+                    current_reasoning += chunk.reasoning_content
+                    ch.send_model(
+                        ChatEvent(
+                            event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                        )
+                    )
+                    await asyncio.to_thread(
+                        save_msg_content, assistant_msg_id, save_state()
+                    )
+
+                if chunk.content:
+                    if current_reasoning and not current_text and not parse_think_tags:
+                        flush_reasoning()
+
+                    if parse_think_tags:
+                        process_content_with_think_tags(chunk.content)
+                    else:
+                        current_text += chunk.content
+                        ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
+
+                    await asyncio.to_thread(
+                        save_msg_content, assistant_msg_id, save_state()
+                    )
+
+            elif chunk.event == RunEvent.tool_call_started:
+                flush_text()
+                flush_reasoning()
+
                 ch.send_model(
                     ChatEvent(
-                        event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                        event="ToolCallStarted",
+                        tool={
+                            "id": chunk.tool.tool_call_id,
+                            "toolName": chunk.tool.tool_name,
+                            "toolArgs": chunk.tool.tool_args,
+                            "isCompleted": False,
+                        },
                     )
                 )
-                await asyncio.to_thread(
-                    save_msg_content, assistant_msg_id, save_state()
-                )
 
-            if chunk.content:
-                if current_reasoning and not current_text and not parse_think_tags:
-                    flush_reasoning()
+            elif chunk.event == RunEvent.tool_call_completed:
+                flush_text()
+                flush_reasoning()
 
-                if parse_think_tags:
-                    process_content_with_think_tags(chunk.content)
-                else:
-                    current_text += chunk.content
-                    ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
-
-                await asyncio.to_thread(
-                    save_msg_content, assistant_msg_id, save_state()
-                )
-
-        elif chunk.event == RunEvent.tool_call_started:
-            flush_text()
-            flush_reasoning()
-            tool_id = f"{assistant_msg_id}-tool-{tool_counter}"
-            tool_counter += 1
-
-            tool_key = f"{chunk.tool.tool_name}:{str(chunk.tool.tool_args)}"
-            tool_id_map[tool_key] = tool_id
-            ch.send_model(
-                ChatEvent(
-                    event="ToolCallStarted",
-                    tool={
-                        "id": tool_id,
-                        "toolName": chunk.tool.tool_name,
-                        "toolArgs": chunk.tool.tool_args,
-                        "isCompleted": False,
-                    },
-                )
-            )
-
-        elif chunk.event == RunEvent.tool_call_completed:
-            flush_text()
-            flush_reasoning()
-            # Look up the tool_id from when it started
-            tool_key = f"{chunk.tool.tool_name}:{str(chunk.tool.tool_args)}"
-            tool_id = tool_id_map.get(
-                tool_key, f"{assistant_msg_id}-tool-{tool_counter - 1}"
-            )
-            # Clean up the mapping now that we've used it
-            tool_id_map.pop(tool_key, None)
-
-            # Check if tool has renderer metadata
-            renderer = None
-            if hasattr(agent, "_tool_renderer_metadata"):
-                metadata = agent._tool_renderer_metadata.get(tool_key, {})
-                renderer = metadata.get("renderer")
-
-            tool_block = {
-                "type": "tool_call",
-                "id": tool_id,
-                "toolName": chunk.tool.tool_name,
-                "toolArgs": chunk.tool.tool_args,
-                "toolResult": str(chunk.tool.result)
-                if chunk.tool.result is not None
-                else None,
-                "isCompleted": True,
-            }
-
-            # Add renderer metadata if present
-            if renderer:
-                tool_block["renderer"] = renderer
-
-            # Check if tool required approval and add approval info
-            approval_info = get_hook_manager().get_tool_approval_info(
-                chunk.tool.tool_name, chunk.tool.tool_args
-            )
-            if approval_info:
-                tool_block.update(approval_info)
-
-            content_blocks.append(tool_block)
-            ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
-
-        elif chunk.event == RunEvent.reasoning_started:
-            flush_text()
-            ch.send_model(ChatEvent(event="ReasoningStarted"))
-
-        elif chunk.event == RunEvent.reasoning_step:
-            if chunk.reasoning_content:
-                if current_text:
-                    flush_text()
-                current_reasoning += chunk.reasoning_content
-                ch.send_model(
-                    ChatEvent(
-                        event="ReasoningStep", reasoningContent=chunk.reasoning_content
-                    )
-                )
-                await asyncio.to_thread(
-                    save_msg_content, assistant_msg_id, save_state()
-                )
-
-        elif chunk.event == RunEvent.reasoning_completed:
-            flush_reasoning()
-            ch.send_model(ChatEvent(event="ReasoningCompleted"))
-
-        elif chunk.event == RunEvent.run_completed:
-            flush_think_tag_buffer()
-            flush_text()
-            flush_reasoning()
-            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-            with db.db_session() as sess:
-                db.mark_message_complete(sess, assistant_msg_id)
-            ch.send_model(ChatEvent(event="RunCompleted"))
-
-        elif chunk.event == RunEvent.run_error:
-            flush_think_tag_buffer()
-            flush_text()
-            flush_reasoning()
-            content_blocks.append(
-                {
-                    "type": "error",
-                    "content": str(
-                        chunk.error.message
-                        if hasattr(chunk.error, "message")
-                        else chunk
-                    ),
-                    "timestamp": datetime.utcnow().isoformat(),
+                tool_block = {
+                    "type": "tool_call",
+                    "id": chunk.tool.tool_call_id,
+                    "toolName": chunk.tool.tool_name,
+                    "toolArgs": chunk.tool.tool_args,
+                    "toolResult": str(chunk.tool.result)
+                    if chunk.tool.result is not None
+                    else None,
+                    "isCompleted": True,
                 }
-            )
-            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-            ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
-            had_error = True
-            return
+
+                content_blocks.append(tool_block)
+                ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
+
+            elif chunk.event == RunEvent.reasoning_started:
+                flush_text()
+                ch.send_model(ChatEvent(event="ReasoningStarted"))
+
+            elif chunk.event == RunEvent.reasoning_step:
+                if chunk.reasoning_content:
+                    if current_text:
+                        flush_text()
+                    current_reasoning += chunk.reasoning_content
+                    ch.send_model(
+                        ChatEvent(
+                            event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                        )
+                    )
+                    await asyncio.to_thread(
+                        save_msg_content, assistant_msg_id, save_state()
+                    )
+
+            elif chunk.event == RunEvent.reasoning_completed:
+                flush_reasoning()
+                ch.send_model(ChatEvent(event="ReasoningCompleted"))
+
+            elif chunk.event == RunEvent.run_completed:
+                flush_think_tag_buffer()
+                flush_text()
+                flush_reasoning()
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                with db.db_session() as sess:
+                    db.mark_message_complete(sess, assistant_msg_id)
+                ch.send_model(ChatEvent(event="RunCompleted"))
+                return
+
+            elif chunk.event == RunEvent.run_error:
+                flush_think_tag_buffer()
+                flush_text()
+                flush_reasoning()
+                content_blocks.append(
+                    {
+                        "type": "error",
+                        "content": str(
+                            chunk.error.message
+                            if hasattr(chunk.error, "message")
+                            else chunk
+                        ),
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
+                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
+                had_error = True
+                return
+
+            elif chunk.event == RunEvent.run_paused:
+                # Human-In-The-Loop
+                if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
+                    tools_info = []
+                    for tool in chunk.tools_requiring_confirmation:
+                        tools_info.append({
+                            "id": tool.tool_call_id,
+                            "toolName": tool.tool_name,
+                            "toolArgs": tool.tool_args,
+                        })
+
+                    ch.send_model(
+                        ChatEvent(
+                            event="ToolApprovalRequired",
+                            tool={
+                                "runId": run_id,
+                                "tools": tools_info,
+                            },
+                        )
+                    )
+
+                    approval_event = asyncio.Event()
+                    _approval_events[run_id] = approval_event
+
+                    # Wait for approval response (with 5 minute timeout)
+                    # TODO: make this timeout configurable
+                    try:
+                        await asyncio.wait_for(approval_event.wait(), timeout=300)
+                    except asyncio.TimeoutError:
+                        for tool in chunk.tools_requiring_confirmation:
+                            tool.confirmed = False
+                    else:
+                        # Got approval response
+                        response = _approval_responses.get(run_id, {})
+                        tool_decisions = response.get("tool_decisions", {})
+                        default_approved = response.get("approved", False)
+
+                        for tool in chunk.tools_requiring_confirmation:
+                            tool_id = getattr(tool, "tool_call_id", None)
+                            # Check individual tool decision, fall back to default
+                            tool.confirmed = tool_decisions.get(tool_id, default_approved)
+
+                    # Clean up
+                    _approval_events.pop(run_id, None)
+                    _approval_responses.pop(run_id, None)
+
+                    logger.info(f"[stream] Continuing run {run_id} with updated tools: {chunk.tools}")
+
+                    response_stream = agent.acontinue_run(
+                        run_id=run_id,
+                        updated_tools=chunk.tools,
+                        stream=True,
+                        stream_events=True,
+                    )
+                    break
+
+        else:
+            # this should never happen, but if it does, we need to break out of the loop
+            break
 
     if assistant_msg_id in _active_runs:
         del _active_runs[assistant_msg_id]
@@ -667,7 +718,7 @@ def reprocess_message_with_think_tags(message_id: str) -> bool:
         with db.db_session() as sess:
             msg = sess.get(db.Message, message_id)
             if not msg:
-                print(f"[reprocess] Message {message_id} not found")
+                logger.info(f"[reprocess] Message {message_id} not found")
                 return False
 
             # Parse the current content
@@ -685,12 +736,12 @@ def reprocess_message_with_think_tags(message_id: str) -> bool:
             elif isinstance(current_content, str):
                 text_content = current_content
             else:
-                print(f"[reprocess] Unknown content format for message {message_id}")
+                logger.info(f"[reprocess] Unknown content format for message {message_id}")
                 return False
 
             # Check if there are any think tags
             if "<think>" not in text_content:
-                print(f"[reprocess] No think tags found in message {message_id}")
+                logger.info(f"[reprocess] No think tags found in message {message_id}")
                 return False
 
             # Parse and update
@@ -698,13 +749,13 @@ def reprocess_message_with_think_tags(message_id: str) -> bool:
             msg.content = json.dumps(new_blocks)
             sess.commit()
 
-            print(
+            logger.info(
                 f"[reprocess] Successfully parsed think tags for message {message_id}"
             )
             return True
 
     except Exception as e:
-        print(f"[reprocess] Error reprocessing message {message_id}: {e}")
+        logger.info(f"[reprocess] Error reprocessing message {message_id}: {e}")
         traceback.print_exc()
         return False
 
@@ -714,22 +765,30 @@ class CancelRunRequest(BaseModel):
 
 
 class RespondToToolApprovalInput(BaseModel):
-    approvalId: str
+    runId: str
     approved: bool
-    editedArgs: Optional[Dict[str, Any]] = None
+    toolDecisions: Optional[Dict[str, bool]] = None  # tool_call_id -> approved
 
 
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
     """
-    Respond to a tool approval request.
+    Respond to a tool approval request using Agno's native HITL API.
 
-    This unblocks the waiting pre-hook with the user's decision.
-    The approval status will be persisted when the tool completes.
+    This stores the approval response and signals the waiting streaming handler
+    to continue the run with updated tool confirmations.
     """
-    get_hook_manager().set_approval_response(
-        body.approvalId, body.approved, body.editedArgs
-    )
+    run_id = body.runId
+
+    # Store the approval response
+    _approval_responses[run_id] = {
+        "approved": body.approved,
+        "tool_decisions": body.toolDecisions or {},
+    }
+
+    # Signal the waiting event if it exists
+    if run_id in _approval_events:
+        _approval_events[run_id].set()
 
     return {"success": True}
 
@@ -740,13 +799,13 @@ async def cancel_run(body: CancelRunRequest) -> dict:
     message_id = body.messageId
 
     if message_id not in _active_runs:
-        print(f"[cancel_run] No active run found for message {message_id}")
+        logger.info(f"[cancel_run] No active run found for message {message_id}")
         return {"cancelled": False}
 
     run_id, agent = _active_runs[message_id]
 
     try:
-        print(f"[cancel_run] Cancelling run {run_id} for message {message_id}")
+        logger.info(f"[cancel_run] Cancelling run {run_id} for message {message_id}")
         agent.cancel_run(run_id)
 
         # Mark message as complete in database
@@ -756,10 +815,10 @@ async def cancel_run(body: CancelRunRequest) -> dict:
         # Clean up tracking
         del _active_runs[message_id]
 
-        print(f"[cancel_run] Successfully cancelled run {run_id}")
+        logger.info(f"[cancel_run] Successfully cancelled run {run_id}")
         return {"cancelled": True}
     except Exception as e:
-        print(f"[cancel_run] Error cancelling run: {e}")
+        logger.info(f"[cancel_run] Error cancelling run: {e}")
         return {"cancelled": False}
 
 
@@ -814,7 +873,7 @@ async def stream_chat(
         )
 
     except Exception as e:
-        print(f"[stream] Error: {e}")
+        logger.info(f"[stream] Error: {e}")
         print(traceback.format_exc())
 
         error_block = {
@@ -843,7 +902,7 @@ async def stream_chat(
                     sess, messageId=assistant_msg_id, content=json.dumps(blocks)
                 )
         except Exception as e2:
-            print(f"[stream] Failed to append error block, falling back: {e2}")
+            logger.info(f"[stream] Failed to append error block, falling back: {e2}")
             save_msg_content(assistant_msg_id, json.dumps([error_block]))
         ch.send_model(ChatEvent(event="RunError", content=str(e)))
         # Note: message stays is_complete=False so user can retry/continue

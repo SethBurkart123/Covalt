@@ -93,61 +93,49 @@ function handleToolCallStarted(state: StreamState, tool: any): void {
   flushReasoningBlock(state);
 
   if (tool) {
+    const existingBlock = state.contentBlocks.find(
+      (b) => b.type === "tool_call" && b.id === tool.id,
+    );
+
+    if (existingBlock) {
+      existingBlock.isCompleted = false;
+    } else {
+      state.contentBlocks.push({
+        type: "tool_call",
+        id: tool.id,
+        toolName: tool.toolName,
+        toolArgs: tool.toolArgs,
+        isCompleted: false,
+      });
+    }
+  }
+}
+
+function handleToolApprovalRequired(state: StreamState, toolData: any): void {
+  flushTextBlock(state);
+  flushReasoningBlock(state);
+
+  const { runId, tools } = toolData;
+
+  for (const tool of tools) {
     state.contentBlocks.push({
       type: "tool_call",
       id: tool.id,
       toolName: tool.toolName,
       toolArgs: tool.toolArgs,
       isCompleted: false,
-    });
-  }
-}
-
-function handleToolApprovalRequired(state: StreamState, tool: any): void {
-  flushTextBlock(state);
-  flushReasoningBlock(state);
-
-  const approvalId = tool.approvalId;
-  const messageIdPrefix = approvalId.split("-approval-")[0];
-
-  const existingBlock = [...state.contentBlocks]
-    .reverse()
-    .find((b) => b.type === "tool_call" && b.id?.startsWith(messageIdPrefix));
-
-  if (existingBlock) {
-    existingBlock.requiresApproval = true;
-    existingBlock.approvalId = approvalId;
-    existingBlock.approvalStatus = "pending";
-  } else {
-    state.contentBlocks.push({
-      type: "tool_call",
-      id: approvalId,
-      toolName: tool.toolName,
-      toolArgs: tool.toolArgs,
-      isCompleted: false,
       requiresApproval: true,
-      approvalId: approvalId,
+      runId: runId,
+      toolCallId: tool.id,
       approvalStatus: "pending",
     });
   }
 }
 
 function handleToolCallCompleted(state: StreamState, tool: any): void {
-  let toolBlock = [...state.contentBlocks]
-    .reverse()
-    .find((b) => b.type === "tool_call" && b.id === tool.id);
-
-  if (!toolBlock) {
-    toolBlock = [...state.contentBlocks]
-      .reverse()
-      .find(
-        (b) =>
-          b.type === "tool_call" &&
-          b.requiresApproval &&
-          b.toolName === tool.toolName &&
-          JSON.stringify(b.toolArgs) === JSON.stringify(tool.toolArgs),
-      );
-  }
+  const toolBlock = state.contentBlocks.find(
+    (b) => b.type === "tool_call" && b.id === tool.id,
+  );
 
   if (toolBlock) {
     toolBlock.toolResult = tool.toolResult;

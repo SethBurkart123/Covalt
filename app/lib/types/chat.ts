@@ -23,7 +23,8 @@ export type ContentBlock =
       isCompleted: boolean;
       renderer?: string;
       requiresApproval?: boolean;
-      approvalId?: string;
+      runId?: string;
+      toolCallId?: string;
       approvalStatus?: "pending" | "approved" | "denied";
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
