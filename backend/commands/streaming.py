@@ -27,18 +27,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global storage for active run IDs by message ID
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
 
-# Global storage for pending HITL approval responses
 # Maps run_id -> asyncio.Event for signaling when approval is received
 _approval_events: Dict[str, asyncio.Event] = {}
-# Maps run_id -> approval response dict {approved: bool, tool_decisions: {tool_call_id: bool}}
-_approval_responses: Dict[str, Dict[str, Any]] = {}
 
 # Global storage for pending approval responses
 _approval_responses: Dict[str, Dict[str, Any]] = {}  # approval_id -> {approved: bool, edited_args: dict}
 
+class StreamChatRequest(BaseModel):
+    messages: List[Dict[str, Any]]
+    modelId: Optional[str] = None
+    chatId: Optional[str] = None
 
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     """Parse 'provider:model' format."""
@@ -258,13 +258,13 @@ def convert_to_agno_messages(chat_msg: ChatMessage) -> List[Message]:
     return []
 
 
-def load_initial_content(msg_id: str) -> tuple[List[Dict[str, Any]], int]:
+def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
     """Load existing message content for continuation."""
     try:
         with db.db_session() as sess:
             message = sess.get(db.Message, msg_id)
             if not message or not message.content:
-                return [], 0
+                return []
 
             raw = message.content.strip()
             blocks = (
@@ -276,11 +276,10 @@ def load_initial_content(msg_id: str) -> tuple[List[Dict[str, Any]], int]:
             while blocks and blocks[-1].get("type") == "error":
                 blocks.pop()
 
-            tool_count = sum(1 for b in blocks if b.get("type") == "tool_call")
-            return blocks, tool_count
+            return blocks
     except Exception as e:
-        print(f"[stream] Warning loading initial content: {e}")
-        return [], 0
+        logger.info(f"[stream] Warning loading initial content: {e}")
+        return []
 
 
 async def handle_content_stream(
@@ -307,11 +306,11 @@ async def handle_content_stream(
                     if model_settings:
                         parse_think_tags = model_settings.parse_think_tags
     except Exception as e:
-        print(f"[stream] Warning: Failed to check parse_think_tags: {e}")
+        logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
 
     response_stream = agent.arun(input=agno_messages, stream=True, stream_events=True)
 
-    content_blocks, tool_counter = load_initial_content(assistant_msg_id)
+    content_blocks = load_initial_content(assistant_msg_id)
     current_text = ""
     current_reasoning = ""
     had_error = False
@@ -450,7 +449,7 @@ async def handle_content_stream(
             if not run_id and chunk.run_id:
                 run_id = chunk.run_id
                 _active_runs[assistant_msg_id] = (run_id, agent)
-                print(f"[stream] Captured run_id {run_id}")
+                logger.info(f"[stream] Captured run_id {run_id}")
 
             if chunk.event == RunEvent.run_cancelled:
                 flush_think_tag_buffer()
@@ -646,12 +645,6 @@ async def handle_content_stream(
             message = sess.get(db.Message, assistant_msg_id)
             if message and not message.is_complete:
                 db.mark_message_complete(sess, assistant_msg_id)
-
-
-class StreamChatRequest(BaseModel):
-    messages: List[Dict[str, Any]]
-    modelId: Optional[str] = None
-    chatId: Optional[str] = None
 
 
 def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
@@ -874,7 +867,6 @@ async def stream_chat(
 
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
-        print(traceback.format_exc())
 
         error_block = {
             "type": "error",

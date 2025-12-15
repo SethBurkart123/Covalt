@@ -109,7 +109,7 @@ const InlineCode = memo(({ node, className, children, ...props }: any) => {
 });
 
 // Main Renderer Component with progressive rendering always on
-export function MarkdownRenderer({ 
+function MarkdownRendererInner({ 
   content, 
   fontSize = "1rem",
   animateContent = false
@@ -174,3 +174,5 @@ export function MarkdownRenderer({
     </div>
   );
 }
+
+export const MarkdownRenderer = memo(MarkdownRendererInner);

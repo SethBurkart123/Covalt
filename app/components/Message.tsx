@@ -24,7 +24,7 @@ export interface ChatMessageProps {
   isLastAssistantMessage?: boolean;
 }
 
-export default React.memo(function ChatMessage({
+function ChatMessage({
   role,
   content,
   isStreaming,
@@ -311,4 +311,29 @@ export default React.memo(function ChatMessage({
       </div>
     </div>
   );
-});
+}
+
+// Custom comparison function to prevent unnecessary re-renders
+function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
+  // If streaming status changed, re-render
+  if (prevProps.isStreaming !== nextProps.isStreaming) {
+    return false;
+  }
+  
+  // If this message is currently streaming, always re-render to show updates
+  if (nextProps.isStreaming) {
+    return false;
+  }
+  
+  // If not streaming, compare other props
+  return (
+    prevProps.role === nextProps.role &&
+    prevProps.content === nextProps.content &&
+    prevProps.message?.id === nextProps.message?.id &&
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
+    prevProps.siblings?.length === nextProps.siblings?.length
+  );
+}
+
+export default React.memo(ChatMessage, arePropsEqual);

@@ -1,6 +1,6 @@
 import React, { KeyboardEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, MoreHorizontal, ArrowUp, Square } from "lucide-react";
+import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
 import { motion, LayoutGroup } from "framer-motion";
 import type { ModelInfo } from "@/lib/types/chat";
