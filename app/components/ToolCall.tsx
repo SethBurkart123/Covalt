@@ -13,7 +13,8 @@ interface ToolCallProps {
   isCompleted: boolean;
   renderer?: string;
   requiresApproval?: boolean;
-  approvalId?: string;
+  runId?: string;
+  toolCallId?: string;
   approvalStatus?: "pending" | "approved" | "denied";
   isGrouped?: boolean;
   isFirst?: boolean;
@@ -44,7 +45,8 @@ export default function ToolCall({
   isCompleted,
   renderer,
   requiresApproval = false,
-  approvalId,
+  runId,
+  toolCallId,
   approvalStatus: initialApprovalStatus,
   isGrouped = false,
   isFirst = false,
@@ -59,14 +61,14 @@ export default function ToolCall({
   );
 
   const handleApprove = async () => {
-    if (!approvalId || isProcessing) return;
+    if (!runId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
     try {
       await respondToToolApproval({
         body: {
-          approvalId,
+          runId,
           approved: true,
-          editedArgs: undefined,
+          toolDecisions: { [toolCallId]: true },
         },
       });
       setApprovalStatus("approved");
@@ -78,14 +80,14 @@ export default function ToolCall({
   };
 
   const handleDeny = async () => {
-    if (!approvalId || isProcessing) return;
+    if (!runId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
     try {
       await respondToToolApproval({
         body: {
-          approvalId,
+          runId,
           approved: false,
-          editedArgs: undefined,
+          toolDecisions: { [toolCallId]: false },
         },
       });
       setApprovalStatus("denied");

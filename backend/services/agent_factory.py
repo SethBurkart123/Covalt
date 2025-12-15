@@ -10,11 +10,14 @@ from __future__ import annotations
 from typing import Any, List
 
 from agno.agent import Agent
+from agno.db.in_memory import InMemoryDb
 
 from .. import db
-from .hook_manager import get_hook_manager
 from .model_factory import get_model
 from .tool_registry import get_tool_registry
+
+# Shared in-memory database for all agents (required for HITL continuation)
+_agent_db = InMemoryDb()
 
 
 def create_agent_for_chat(
@@ -58,32 +61,17 @@ def create_agent_for_chat(
     description = config.get("description", "You are a helpful AI assistant.")
 
     # Get model instance
+    if not model_id:
+        raise RuntimeError("Model ID is required in agent configuration")
     model = get_model(provider, model_id)
 
     # Get tool instances
     tool_registry = get_tool_registry()
     tools = tool_registry.get_tools(tool_ids) if tool_ids else []
 
-    # Set up hook manager with tool metadata
-    hook_manager = get_hook_manager()
-    for tool_id in tool_ids:
-        metadata = tool_registry._metadata.get(tool_id, {})
-        hook_manager.register_tool_metadata(
-            tool_id=tool_id,
-            requires_approval=metadata.get("requires_approval", False),
-            allow_edit=metadata.get("allow_edit", False),
-            renderer=metadata.get("renderer"),
-        )
-
-    # Create pre-hook (handles all logic including approval and renderer metadata)
-    pre_hook = hook_manager.create_pre_hook(
-        channel=channel,
-        assistant_msg_id=assistant_msg_id,
-    )
-
-    # Create agent instance with hooks
-    # NOTE: We do NOT use Agno's database or history management
-    # All persistence is handled through our SQLAlchemy DB
+    # Create agent instance
+    # NOTE: We use Agno's InMemoryDb for run state tracking (required for HITL)
+    # but our own SQLAlchemy DB for message persistence
     agent = Agent(
         name=name,
         model=model,
@@ -92,7 +80,7 @@ def create_agent_for_chat(
         instructions=instructions if instructions else None,
         markdown=True,  # Enable markdown formatting
         stream_intermediate_steps=True,
-        tool_hooks=[pre_hook],  # Single hook that does everything!
+        db=_agent_db,  # Required for HITL acontinue_run() to find paused runs
         # debug_mode=True  # Temporary for debugging tool calls
     )
 
