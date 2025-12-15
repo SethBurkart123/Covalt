@@ -18,7 +18,6 @@ interface ChatMessageListProps {
   actionLoading?: string | null;
 }
 
-// Memoized message row component to prevent unnecessary re-renders
 interface MessageRowProps {
   message: Message;
   siblings: MessageSibling[];
@@ -42,7 +41,6 @@ const MessageRow = React.memo(function MessageRow({
   onEditStart,
   onNavigate,
 }: MessageRowProps) {
-  // Create stable callbacks that capture the message ID
   const handleContinue = useCallback(() => {
     onContinue?.(message.id);
   }, [onContinue, message.id]);
@@ -77,7 +75,6 @@ const MessageRow = React.memo(function MessageRow({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison - only re-render if relevant props change
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content === nextProps.message.content &&
@@ -85,7 +82,7 @@ const MessageRow = React.memo(function MessageRow({
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.siblings.length === nextProps.siblings.length &&
-    // Compare callback references - they should be stable from parent
+
     prevProps.onContinue === nextProps.onContinue &&
     prevProps.onRetry === nextProps.onRetry &&
     prevProps.onEditStart === nextProps.onEditStart &&
