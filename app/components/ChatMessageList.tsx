@@ -18,6 +18,81 @@ interface ChatMessageListProps {
   actionLoading?: string | null;
 }
 
+// Memoized message row component to prevent unnecessary re-renders
+interface MessageRowProps {
+  message: Message;
+  siblings: MessageSibling[];
+  isStreaming: boolean;
+  isLastAssistantMessage: boolean;
+  isLoading: boolean;
+  onContinue?: (messageId: string) => void;
+  onRetry?: (messageId: string) => void;
+  onEditStart?: (messageId: string) => void;
+  onNavigate?: (messageId: string, siblingId: string) => void;
+}
+
+const MessageRow = React.memo(function MessageRow({
+  message,
+  siblings,
+  isStreaming,
+  isLastAssistantMessage,
+  isLoading,
+  onContinue,
+  onRetry,
+  onEditStart,
+  onNavigate,
+}: MessageRowProps) {
+  // Create stable callbacks that capture the message ID
+  const handleContinue = useCallback(() => {
+    onContinue?.(message.id);
+  }, [onContinue, message.id]);
+
+  const handleRetry = useCallback(() => {
+    onRetry?.(message.id);
+  }, [onRetry, message.id]);
+
+  const handleEdit = useCallback(() => {
+    onEditStart?.(message.id);
+  }, [onEditStart, message.id]);
+
+  const handleNavigate = useCallback((siblingId: string) => {
+    onNavigate?.(message.id, siblingId);
+  }, [onNavigate, message.id]);
+
+  return (
+    <div>
+      <ChatMessage
+        role={message.role as "user" | "assistant"}
+        content={message.content}
+        isStreaming={isStreaming}
+        message={message}
+        siblings={siblings}
+        onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
+        onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
+        onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
+        onNavigate={onNavigate ? handleNavigate : undefined}
+        isLoading={isLoading}
+        isLastAssistantMessage={isLastAssistantMessage}
+      />
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if relevant props change
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.siblings.length === nextProps.siblings.length &&
+    // Compare callback references - they should be stable from parent
+    prevProps.onContinue === nextProps.onContinue &&
+    prevProps.onRetry === nextProps.onRetry &&
+    prevProps.onEditStart === nextProps.onEditStart &&
+    prevProps.onNavigate === nextProps.onNavigate
+  );
+});
+
 const ChatMessageList: React.FC<ChatMessageListProps> = ({
   messages,
   isLoading,
@@ -145,37 +220,18 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
         }
 
         return (
-          <div key={m.id}>
-            <ChatMessage
-              role={m.role as "user" | "assistant"}
-              content={m.content}
-              isStreaming={isStreamingMessage}
-              message={m}
-              siblings={siblings}
-              onContinue={
-                m.role === "assistant" && onContinue
-                  ? () => onContinue(m.id)
-                  : undefined
-              }
-              onRetry={
-                m.role === "assistant" && onRetry
-                  ? () => onRetry(m.id)
-                  : undefined
-              }
-              onEdit={
-                m.role === "user" && onEditStart
-                  ? () => onEditStart(m.id)
-                  : undefined
-              }
-              onNavigate={
-                onNavigate
-                  ? (siblingId) => onNavigate(m.id, siblingId)
-                  : undefined
-              }
-              isLoading={actionLoading === m.id}
-              isLastAssistantMessage={isLastAssistantMessage}
-            />
-          </div>
+          <MessageRow
+            key={m.id}
+            message={m}
+            siblings={siblings}
+            isStreaming={isStreamingMessage}
+            isLastAssistantMessage={isLastAssistantMessage}
+            isLoading={actionLoading === m.id}
+            onContinue={onContinue}
+            onRetry={onRetry}
+            onEditStart={onEditStart}
+            onNavigate={onNavigate}
+          />
         );
       })}
       <div ref={endOfMessagesRef} className="h-8 -mt-" />
@@ -220,10 +276,10 @@ function UserMessageEditor({
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        onSubmit && onSubmit();
+        onSubmit?.();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        onCancel && onCancel();
+        onCancel?.();
       }
     },
     [onSubmit, onCancel],
