@@ -16,24 +16,64 @@ interface ToolCallProps {
   runId?: string;
   toolCallId?: string;
   approvalStatus?: "pending" | "approved" | "denied" | "timeout";
+  editableArgs?: string[] | boolean;
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
 }
 
-function ArgumentsDisplay({ args }: { args: Record<string, any> }) {
+function ArgumentsDisplay({
+  args,
+  editableArgs,
+  editedValues,
+  onValueChange,
+}: {
+  args: Record<string, any>;
+  editableArgs?: string[] | boolean;
+  editedValues?: Record<string, any>;
+  onValueChange?: (key: string, value: any) => void;
+}) {
+  const isEditable = (key: string) => {
+    if (!editableArgs || !onValueChange) return false;
+    if (editableArgs === true) return true;
+    return Array.isArray(editableArgs) && editableArgs.includes(key);
+  };
+
   return (
     <div className="space-y-2">
-      {Object.entries(args).map(([key, value]) => (
-        <div key={key}>
-          <div className="text-xs font-medium text-muted-foreground mb-1">
-            {key}
+      {Object.entries(args).map(([key, value]) => {
+        const editable = isEditable(key);
+        const displayValue = editedValues?.[key] ?? value;
+        const isMultiline = typeof displayValue === "string" && displayValue.includes("\n");
+
+        return (
+          <div key={key}>
+            <div className="text-xs font-medium text-muted-foreground mb-1">
+              {key} <span className="italic opacity-50">{editable && "(editable)"}</span>
+            </div>
+            {editable && onValueChange ? (
+              isMultiline ? (
+                <textarea
+                  className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[80px]"
+                  value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue, null, 2)}
+                  onChange={(e) => onValueChange(key, e.target.value)}
+                />
+              ) : (
+                <input
+                  type="text"
+                  className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue)}
+                  onChange={(e) => onValueChange(key, e.target.value)}
+                />
+              )
+            ) : (
+              <div className="w-full bg-background/5 text-sm px-3 py-2 rounded border border-border">
+                {typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue, null, 2)}
+              </div>
+            )}
           </div>
-          <div className="w-full text-sm bg-muted px-3 py-2 rounded border border-border">
-            {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -48,6 +88,7 @@ export default function ToolCall({
   runId,
   toolCallId,
   approvalStatus: initialApprovalStatus,
+  editableArgs,
   isGrouped = false,
   isFirst = false,
   isLast = false,
@@ -59,16 +100,28 @@ export default function ToolCall({
   const [isOpen, setIsOpen] = useState(
     requiresApproval && approvalStatus === "pending",
   );
+  const [editedValues, setEditedValues] = useState<Record<string, any>>({});
+
+  const handleValueChange = (key: string, value: any) => {
+    setEditedValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const getEditedArgs = () => {
+    if (Object.keys(editedValues).length === 0) return undefined;
+    return { ...toolArgs, ...editedValues };
+  };
 
   const handleApprove = async () => {
     if (!runId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
     try {
+      const editedArgs = getEditedArgs();
       await respondToToolApproval({
         body: {
           runId,
           approved: true,
           toolDecisions: { [toolCallId]: true },
+          editedArgs: editedArgs ? { [toolCallId]: editedArgs } : undefined,
         },
       });
       setApprovalStatus("approved");
@@ -162,7 +215,12 @@ export default function ToolCall({
                   <div className="text-xs font-medium text-muted-foreground mb-2">
                     Arguments
                   </div>
-                  <ArgumentsDisplay args={toolArgs} />
+                  <ArgumentsDisplay
+                    args={toolArgs}
+                    editableArgs={requiresApproval && approvalStatus === "pending" ? editableArgs : undefined}
+                    editedValues={editedValues}
+                    onValueChange={handleValueChange}
+                  />
                 </div>
 
                 {requiresApproval && approvalStatus === "pending" && (
@@ -286,7 +344,12 @@ export default function ToolCall({
                   <div className="text-xs font-medium text-muted-foreground mb-2">
                     Arguments
                   </div>
-                  <ArgumentsDisplay args={toolArgs} />
+                  <ArgumentsDisplay
+                    args={toolArgs}
+                    editableArgs={requiresApproval && approvalStatus === "pending" ? editableArgs : undefined}
+                    editedValues={editedValues}
+                    onValueChange={handleValueChange}
+                  />
                 </div>
 
                 {requiresApproval && approvalStatus === "pending" && (

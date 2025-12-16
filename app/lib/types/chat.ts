@@ -26,6 +26,7 @@ export type ContentBlock =
       runId?: string;
       toolCallId?: string;
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
+      editableArgs?: string[] | boolean;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string };

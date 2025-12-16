@@ -47,7 +47,6 @@ class ToolRegistry:
             },
         )
 
-        # Register write_artifact tool with approval
         self.register_tool(
             tool_id="write_artifact",
             tool_factory=self._create_write_artifact_tool,
@@ -55,6 +54,8 @@ class ToolRegistry:
                 "name": "Write Artifact",
                 "description": "Create a markdown artifact (requires approval)",
                 "category": "content",
+                "renderer": "markdown",
+                "editableArgs": ["content"],
             },
         )
 
@@ -129,6 +130,11 @@ class ToolRegistry:
     def has_tool(self, tool_id: str) -> bool:
         """Check if a tool is registered."""
         return tool_id in self._tools
+
+    def get_editable_args(self, tool_id: str) -> list[str] | bool | None:
+        """Get editableArgs config for a tool. Returns list of arg names, True for all, or None."""
+        metadata = self._metadata.get(tool_id, {})
+        return metadata.get("editableArgs")
 
     # Built-in tool factory methods
 
