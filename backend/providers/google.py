@@ -3,7 +3,7 @@
 from typing import Any, Dict, List
 import requests
 from agno.models.litellm import LiteLLM
-from . import get_api_key, get_extra_config
+from . import get_api_key, get_extra_config, get_credentials
 from .. import db
 
 # Alternative names for this provider
@@ -74,6 +74,39 @@ def fetch_models() -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"[google] Failed to fetch models: {e}")
         return []
+
+
+def test_connection() -> tuple[bool, str | None]:
+    """
+    Test connection to Google AI Studio API.
+    
+    Returns:
+        (success, error_message) tuple
+    """
+    api_key, _ = get_credentials()
+    
+    if not api_key:
+        return False, "API key not configured"
+    
+    try:
+        response = requests.get(
+            f"https://generativelanguage.googleapis.com/v1/models?key={api_key}",
+            timeout=5
+        )
+        
+        if response.ok:
+            return True, None
+        elif response.status_code == 401 or response.status_code == 403:
+            return False, "Invalid API key"
+        else:
+            return False, f"API returned status {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Request timeout"
+    except requests.exceptions.ConnectionError:
+        return False, "Cannot reach API server"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)[:100]}"
 
 
 def _save_reasoning_metadata(model_id: str):

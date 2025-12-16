@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
 import { PROVIDERS, ProviderConfig, PROVIDER_MAP } from './ProviderRegistry';
-import { getProviderSettings, saveProviderSettings } from '@/python/api';
+import { getProviderSettings, saveProviderSettings, testProvider } from '@/python/api';
 
 export default function ProvidersPanel() {
   const [search, setSearch] = useState('');
@@ -13,6 +13,10 @@ export default function ProvidersPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [connectionStatus, setConnectionStatus] = useState<
+    Record<string, 'idle' | 'testing' | 'success' | 'error'>
+  >({});
+  const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadSettings();
@@ -153,6 +157,36 @@ export default function ProvidersPanel() {
     }
   };
 
+  const handleTestConnection = async (providerKey: string) => {
+    setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'testing' }));
+    setConnectionErrors((prev) => ({ ...prev, [providerKey]: '' }));
+
+    try {
+      const result = await testProvider({ body: { provider: providerKey } });
+
+      if (result.success) {
+        setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'success' }));
+        
+        // Auto-clear success status after 3 seconds
+        setTimeout(() => {
+          setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'idle' }));
+        }, 3000);
+      } else {
+        setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'error' }));
+        setConnectionErrors((prev) => ({ 
+          ...prev, 
+          [providerKey]: result.error || 'Connection failed' 
+        }));
+      }
+    } catch (error) {
+      setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'error' }));
+      setConnectionErrors((prev) => ({ 
+        ...prev, 
+        [providerKey]: error instanceof Error ? error.message : 'Unexpected error' 
+      }));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -186,8 +220,11 @@ export default function ProvidersPanel() {
               configured={isConfigured(def.key)}
               saving={Boolean(saving[def.key])}
               saved={Boolean(saved[def.key])}
+              connectionStatus={connectionStatus[def.key] || 'idle'}
+              connectionError={connectionErrors[def.key]}
               onChange={(field, value) => updateProvider(def.key, field, value)}
               onSave={() => handleSave(def.key)}
+              onTestConnection={() => handleTestConnection(def.key)}
             />
           );
         })}
