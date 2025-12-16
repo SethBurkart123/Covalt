@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -121,11 +121,25 @@ class ToolInfo(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    # Additional fields for MCP tools
+    inputSchema: Optional[Dict[str, Any]] = None
+    renderer: Optional[str] = None
+    editable_args: Optional[List[str]] = None
+    requires_confirmation: Optional[bool] = None
+
+
+class MCPToolsetInfo(BaseModel):
+    """Information about an MCP server (toolset)."""
+
+    id: str  # e.g., "mcp:github"
+    name: str  # e.g., "github"
+    status: Literal["connecting", "connected", "error", "disconnected"]
+    error: Optional[str] = None
+    tools: List[ToolInfo] = Field(default_factory=list)
 
 
 class AvailableToolsResponse(BaseModel):
-    tools: List[ToolInfo]
-
+    tools: List[ToolInfo] = Field(default_factory=list)
 
 class ModelInfo(BaseModel):
     provider: str

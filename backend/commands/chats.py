@@ -14,12 +14,14 @@ from ..models.chat import (
     ChatData,
     ChatId,
     CreateChatInput,
+    MCPToolsetInfo,
     ToggleChatToolsInput,
     ToolInfo,
     UpdateChatInput,
     UpdateChatModelInput,
 )
 from ..services.agent_factory import update_agent_model, update_agent_tools
+from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
 from ..services.tool_registry import get_tool_registry
 
@@ -151,25 +153,66 @@ async def update_chat_model(body: UpdateChatModelInput) -> None:
 @command
 async def get_available_tools() -> AvailableToolsResponse:
     """
-    Get list of all available tools.
+    Get all available tools (builtin and MCP).
 
     Returns:
-        List of tool information (id, name, description, category)
+        Response with:
+        - tools: Flat list of all tools
     """
     tool_registry = get_tool_registry()
-    tools_data = tool_registry.list_available_tools()
+    mcp = await ensure_mcp_initialized()
 
-    tools = [
+    builtin_data = tool_registry.list_builtin_tools()
+    builtin_tools = [
         ToolInfo(
             id=tool["id"],
             name=tool.get("name"),
             description=tool.get("description"),
             category=tool.get("category"),
+            renderer=tool.get("renderer"),
+            editable_args=tool.get("editable_args"),
+            requires_confirmation=tool.get("requires_confirmation"),
         )
-        for tool in tools_data
+        for tool in builtin_data
     ]
 
-    return AvailableToolsResponse(tools=tools)
+    mcp_toolsets = []
+    all_mcp_tools: list[ToolInfo] = []
+
+    for server in mcp.get_servers():
+        server_id = server["id"]
+        tools = [
+            ToolInfo(
+                id=t["id"],
+                name=t["name"],
+                description=t.get("description"),
+                category=f"{server_id}",
+                inputSchema=t.get("inputSchema"),
+                renderer=t.get("renderer"),
+                editable_args=t.get("editable_args"),
+                requires_confirmation=t.get("requires_confirmation", True),
+            )
+            for t in mcp.get_server_tools(server_id)
+        ]
+
+        mcp_toolsets.append(
+            MCPToolsetInfo(
+                id=f"mcp:{server_id}",
+                name=server_id,
+                status=server["status"],
+                error=server.get("error"),
+                tools=tools,
+            )
+        )
+
+        if server["status"] == "connected":
+            all_mcp_tools.extend(tools)
+
+    all_tools = builtin_tools + all_mcp_tools
+
+    return AvailableToolsResponse(
+        tools=all_tools
+    )
 
 
 @command

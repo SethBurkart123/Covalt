@@ -67,7 +67,7 @@ def create_agent_for_chat(
 
     # Get tool instances
     tool_registry = get_tool_registry()
-    tools = tool_registry.get_tools(tool_ids) if tool_ids else []
+    tools = tool_registry.resolve_tool_ids(tool_ids) if tool_ids else []
 
     # Create agent instance
     # NOTE: We use Agno's InMemoryDb for run state tracking (required for HITL)
