@@ -1,12 +1,14 @@
+"""OpenAI Provider - GPT models via OpenAI API"""
+
 from typing import Any, Dict, List
 import requests
 from agno.models.litellm import LiteLLM
-from .. import db
+from . import get_credentials
 
 
 def get_openai_model(model_id: str, **kwargs: Any) -> LiteLLM:
-    """Create OpenAI model using LiteLLM."""
-    api_key, base_url = _get_credentials()
+    """Create an OpenAI model instance."""
+    api_key, base_url = get_credentials()
     
     if not api_key:
         raise RuntimeError("OpenAI API key not configured in Settings.")
@@ -20,39 +22,29 @@ def get_openai_model(model_id: str, **kwargs: Any) -> LiteLLM:
 
 
 def fetch_models() -> List[Dict[str, str]]:
-    """Fetch available OpenAI models."""
-    api_key, base_url = _get_credentials()
+    """Fetch available models from OpenAI API."""
+    api_key, base_url = get_credentials()
+    
     if not api_key:
         return []
     
-    url = _build_models_url(base_url or "https://api.openai.com")
-    return _fetch_openai_compatible(url, api_key)
-
-
-def _get_credentials():
-    """Get API key and base URL from database."""
-    with db.db_session() as sess:
-        settings = db.get_provider_settings(sess, "openai")
-        return (settings.get("api_key"), settings.get("base_url")) if settings else (None, None)
-
-
-def _build_models_url(base: str) -> str:
-    """Build /v1/models URL from base."""
-    base = base.rstrip("/")
-    return f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
-
-
-def _fetch_openai_compatible(url: str, api_key: str) -> List[Dict[str, str]]:
-    """Fetch models from OpenAI-compatible endpoint."""
+    # Build API endpoint URL
+    base = (base_url or "https://api.openai.com").rstrip("/")
+    url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+    
+    # Fetch models
     try:
         response = requests.get(
-            url, 
-            headers={"Authorization": f"Bearer {api_key}"}, 
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
             timeout=5
         )
+        
         if response.ok:
-            return [{"id": m["id"], "name": m["id"]} for m in response.json().get("data", [])]
+            models = response.json().get("data", [])
+            return [{"id": m["id"], "name": m["id"]} for m in models]
+            
     except Exception as e:
         print(f"[openai] Failed to fetch models: {e}")
+    
     return []
-
