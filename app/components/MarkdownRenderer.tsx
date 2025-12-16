@@ -39,6 +39,28 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: any) =>
 
   const [copied, setCopied] = React.useState(false);
   const { theme } = useTheme();
+  const [systemPreference, setSystemPreference] = React.useState<"light" | "dark">(() => 
+    typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  );
+  
+  const resolvedTheme = theme === "system" ? systemPreference : theme;
+  
+  React.useEffect(() => {
+    if (theme !== "system" || typeof window === "undefined") return;
+    
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      setSystemPreference(mediaQuery.matches ? "dark" : "light");
+    };
+    
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleChange);
+      return () => mediaQuery.removeListener(handleChange);
+    }
+  }, [theme]);
   
   const codeString = String(codeElement.props.children || '').replace(/\n$/, '');
   const language = /language-(\w+)/.exec(children.props.className)?.[1];
@@ -73,7 +95,7 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: any) =>
         </pre>
       }>
         <Highlight
-          theme={theme === 'dark' ? themes.gruvboxMaterialDark : themes.gruvboxMaterialLight}
+          theme={resolvedTheme === 'dark' ? themes.gruvboxMaterialDark : themes.gruvboxMaterialLight}
           code={codeString}
           language={language || 'text'}
         >
