@@ -105,7 +105,7 @@ function ChatMessage({
 
   // Always show actions if we have a message (Copy is always available)
   const showActions = !!message;
-
+  
   return (
     <div
       className={clsx(
@@ -287,7 +287,7 @@ function ChatMessage({
           </div>
         )}
         
-        {showActions && isStreaming !== true && (
+        {showActions && (!isStreaming) && (
           <div className={clsx(
             "flex items-center gap-1 transition-opacity duration-200 px-1 pointer-events-auto",
             role === "user" ? "justify-end" : "justify-start",
