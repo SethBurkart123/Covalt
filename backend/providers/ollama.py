@@ -45,3 +45,31 @@ def fetch_models() -> List[Dict[str, str]]:
         print(f"[ollama] Failed to fetch models: {e}")
     
     return []
+
+
+def test_connection() -> tuple[bool, str | None]:
+    """
+    Test connection to Ollama server.
+    
+    Returns:
+        (success, error_message) tuple
+    """
+    host = get_base_url()
+    
+    if not host:
+        return False, "Host URL not configured"
+    
+    try:
+        response = requests.get(f"{host}/api/tags", timeout=5)
+        
+        if response.ok:
+            return True, None
+        else:
+            return False, f"Server returned status {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Connection timeout - server not responding"
+    except requests.exceptions.ConnectionError:
+        return False, "Cannot connect to server"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)[:100]}"

@@ -26,6 +26,7 @@ from ..models.chat import (
 from ..services.model_factory import (
     get_available_models as get_models_from_factory,
 )
+from ..providers import test_provider_connection
 
 
 class Person(BaseModel):
@@ -322,3 +323,33 @@ async def respond_to_thinking_tag_prompt(
         )
 
     return None
+
+
+class TestProviderInput(BaseModel):
+    """Input for testing provider connection."""
+    provider: str
+
+
+class TestProviderResponse(BaseModel):
+    """Response from testing provider connection."""
+    success: bool
+    error: str | None = None
+
+
+@command
+async def test_provider(body: TestProviderInput) -> TestProviderResponse:
+    """
+    Test if a provider connection is valid.
+    
+    Uses each provider's built-in test_connection() function
+    which validates credentials and connectivity.
+    
+    Args:
+        body: Contains provider name to test
+        
+    Returns:
+        Success status and optional error message
+    """
+    
+    success, error = test_provider_connection(body.provider)
+    return TestProviderResponse(success=success, error=error)

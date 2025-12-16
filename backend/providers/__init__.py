@@ -124,11 +124,13 @@ for _, name, _ in pkgutil.iter_modules(__path__):
         # Look for required functions
         get_func = getattr(module, f"get_{name}_model", None)
         fetch_func = getattr(module, "fetch_models", None)
+        test_func = getattr(module, "test_connection", None)
         
         if get_func and fetch_func:
             PROVIDERS[name] = {
                 "get_model": get_func,
-                "fetch_models": fetch_func
+                "fetch_models": fetch_func,
+                "test_connection": test_func
             }
             
             # Register optional aliases
@@ -201,9 +203,41 @@ def _normalize(provider: str) -> str:
     return ALIASES.get(provider, provider)
 
 
+def test_provider_connection(provider: str) -> tuple[bool, str | None]:
+    """
+    Test connection to a provider.
+    
+    Args:
+        provider: Provider name (e.g., 'openai', 'ollama')
+    
+    Returns:
+        (success, error_message) tuple where error is None on success
+    
+    Example:
+        success, error = test_provider_connection("ollama")
+        if not success:
+            print(f"Connection failed: {error}")
+    """
+    provider = _normalize(provider)
+    
+    if provider not in PROVIDERS:
+        return False, f"Unknown provider '{provider}'"
+    
+    test_func = PROVIDERS[provider].get("test_connection")
+    
+    if not test_func:
+        return False, "Provider does not support connection testing"
+    
+    try:
+        return test_func()
+    except Exception as e:
+        return False, f"Test failed: {str(e)[:100]}"
+
+
 __all__ = [
     "get_model",
     "fetch_provider_models",
+    "test_provider_connection",
     "list_providers",
     "get_credentials",
     "get_api_key",

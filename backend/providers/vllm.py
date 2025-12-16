@@ -3,7 +3,7 @@
 from typing import Any, Dict, List
 import requests
 from agno.models.litellm import LiteLLM
-from . import get_credentials
+from . import get_credentials, get_base_url
 
 
 def get_vllm_model(model_id: str, **kwargs: Any) -> LiteLLM:
@@ -54,3 +54,35 @@ def _fetch_from_openai_endpoint(base_url: str, api_key: str) -> List[Dict[str, s
         print(f"[vllm] Failed to fetch models: {e}")
     
     return []
+
+
+def test_connection() -> tuple[bool, str | None]:
+    """
+    Test connection to vLLM server.
+    
+    Returns:
+        (success, error_message) tuple
+    """
+    host = get_base_url()
+    
+    if not host:
+        return False, "Base URL not configured"
+    
+    try:
+        base = host.rstrip("/")
+        url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        
+        response = requests.get(url, timeout=5)
+        
+        # Both 200 and 404 indicate server is running
+        if response.ok or response.status_code == 404:
+            return True, None
+        else:
+            return False, f"Server returned status {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Connection timeout - server not responding"
+    except requests.exceptions.ConnectionError:
+        return False, "Cannot connect to server"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)[:100]}"
