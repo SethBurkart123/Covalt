@@ -3,13 +3,21 @@ Tool Registry for managing available tools.
 
 Provides a unified @tool decorator that wraps agno's @tool while also
 registering tools with a centralized registry for UI display and activation.
+
+Also integrates with MCP servers to provide MCP tools alongside builtin tools.
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import logging
+from typing import TYPE_CHECKING, Any, Callable
 
 from agno.tools import tool as agno_tool
+
+if TYPE_CHECKING:
+    from .mcp_manager import MCPManager
+
+logger = logging.getLogger(__name__)
 
 
 class ToolRegistry:
@@ -45,26 +53,173 @@ class ToolRegistry:
                 tools.append(self._tools[tid])
         return tools
 
-    def list_available_tools(self) -> list[dict[str, Any]]:
-        """
-        Return all available tools with their metadata for UI display.
-        """
-        return [
-            {"id": tool_id, **self._metadata.get(tool_id, {})}
-            for tool_id in self._tools.keys()
-        ]
-
     def has_tool(self, tool_id: str) -> bool:
         """Check if a tool is registered."""
         return tool_id in self._tools
 
     def get_editable_args(self, tool_id: str) -> list[str] | None:
-        """Get editable_args config for a tool."""
+        """
+        Get editable_args config for a tool.
+
+        The tool_id can be in multiple formats:
+        - Builtin: "calculate"
+        - MCP ID: "mcp:github:search_repositories"
+        - MCP Function name: "github_search_repositories" (from agno during execution)
+        """
+        # Check builtin tools first
         metadata = self._metadata.get(tool_id, {})
-        return metadata.get("editable_args")
+        if "editable_args" in metadata:
+            return metadata.get("editable_args")
+
+        # Check MCP tools - ID format (mcp:server:tool)
+        if tool_id.startswith("mcp:"):
+            parsed = self._parse_tool_id(tool_id)
+            if parsed[0] == "mcp_tool":
+                _, server_id, tool_name = parsed
+                if server_id and tool_name:
+                    mcp = get_mcp_manager()
+                    tool_info = next(
+                        (
+                            t
+                            for t in mcp.get_server_tools(server_id)
+                            if t["name"] == tool_name
+                        ),
+                        None,
+                    )
+                    if tool_info:
+                        return tool_info.get("editable_args")
+
+        if "_" in tool_id and not tool_id.startswith("mcp:"):
+            mcp = get_mcp_manager()
+            for server in mcp.get_servers():
+                server_id = server["id"]
+                prefix = f"{server_id}_"
+                if tool_id.startswith(prefix):
+                    tool_name = tool_id[len(prefix) :]
+                    tool_info = next(
+                        (
+                            t
+                            for t in mcp.get_server_tools(server_id)
+                            if t["name"] == tool_name
+                        ),
+                        None,
+                    )
+                    if tool_info:
+                        return tool_info.get("editable_args")
+
+        return None
+
+    def _parse_tool_id(
+        self, tool_id: str
+    ) -> tuple[str, str | None, str | None]:
+        """
+        Parse tool ID into (type, server_id, tool_name).
+
+        Examples:
+            "calculate" → ("builtin", None, "calculate")
+            "mcp:github" → ("mcp_toolset", "github", None)
+            "mcp:github:search" → ("mcp_tool", "github", "search")
+            "-mcp:github:x" → ("blacklist", "github", "x")
+        """
+        # Handle blacklist
+        if tool_id.startswith("-"):
+            inner = tool_id[1:]
+            if inner.startswith("mcp:"):
+                parts = inner.split(":", 2)
+                if len(parts) == 3:
+                    return ("blacklist", parts[1], parts[2])
+            return ("blacklist", None, inner)
+
+        # Handle MCP tools
+        if tool_id.startswith("mcp:"):
+            parts = tool_id.split(":", 2)
+            if len(parts) == 2:
+                # mcp:server_id - whole toolset
+                return ("mcp_toolset", parts[1], None)
+            elif len(parts) == 3:
+                # mcp:server_id:tool_name - specific tool
+                return ("mcp_tool", parts[1], parts[2])
+
+        # Builtin tool
+        return ("builtin", None, tool_id)
+
+    def resolve_tool_ids(self, tool_ids: list[str]) -> list[Any]:
+        """
+        Resolve tool IDs to actual Function objects.
+
+        Handles:
+        - Builtin tools: "calculate" → builtin Function
+        - MCP toolsets: "mcp:github" → all tools from github server
+        - MCP individual: "mcp:github:search" → specific MCP tool
+        - Blacklist: "-mcp:github:create_issue" → exclude from toolset
+
+        Returns list of agno Function objects ready to pass to Agent.
+        """
+        mcp = get_mcp_manager()
+
+        include_builtin: set[str] = set()
+        include_mcp_toolsets: set[str] = set()
+        include_mcp_tools: set[tuple[str, str]] = set()  # (server_id, tool_name)
+        blacklist: set[tuple[str, str]] = set()  # (server_id, tool_name)
+
+        for tool_id in tool_ids:
+            parsed = self._parse_tool_id(tool_id)
+            tool_type, server_id, tool_name = parsed
+
+            if tool_type == "builtin" and tool_name:
+                include_builtin.add(tool_name)
+            elif tool_type == "mcp_toolset" and server_id:
+                include_mcp_toolsets.add(server_id)
+            elif tool_type == "mcp_tool" and server_id and tool_name:
+                include_mcp_tools.add((server_id, tool_name))
+            elif tool_type == "blacklist" and server_id and tool_name:
+                blacklist.add((server_id, tool_name))
+
+        result: list[Any] = []
+
+        for tool_name in include_builtin:
+            if tool_name in self._tools:
+                result.append(self._tools[tool_name])
+
+        for server_id in include_mcp_toolsets:
+            server_tools = mcp.get_server_tools(server_id)
+            for tool_info in server_tools:
+                mcp_tool_name = tool_info["name"]
+                if (server_id, mcp_tool_name) not in blacklist:
+                    fn = mcp.create_tool_function(server_id, mcp_tool_name)
+                    if fn:
+                        result.append(fn)
+
+        added_mcp = {
+            (sid, tool_info["name"])
+            for sid in include_mcp_toolsets
+            for tool_info in mcp.get_server_tools(sid)
+        }
+        for server_id, tool_name in include_mcp_tools:
+            if (server_id, tool_name) not in added_mcp:
+                if (server_id, tool_name) not in blacklist:
+                    fn = mcp.create_tool_function(server_id, tool_name)
+                    if fn:
+                        result.append(fn)
+
+        return result
+
+    def list_builtin_tools(self) -> list[dict[str, Any]]:
+        """Return builtin tools with their metadata for UI display."""
+        return [
+            {"id": tool_id, **self._metadata.get(tool_id, {})}
+            for tool_id in self._tools.keys()
+        ]
 
 
 _tool_registry: ToolRegistry | None = None
+
+
+def get_mcp_manager() -> "MCPManager":
+    """Get the MCP manager (lazy import to avoid circular deps)."""
+    from .mcp_manager import get_mcp_manager as _get_mcp_manager
+
+    return _get_mcp_manager()
 
 
 def get_tool_registry() -> ToolRegistry:
