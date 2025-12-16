@@ -302,12 +302,13 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       const newBaseMessages = baseMessages.slice(0, idx);
       setBaseMessages(newBaseMessages);
 
-      const tempId = crypto.randomUUID();
-      startStreaming(tempId);
+    const tempId = crypto.randomUUID();
+    startStreaming(tempId);
+    setIsLoading(true);
 
-      try {
-        const currentModel = selectedModelRef.current || undefined;
-        const response = await api.retryMessage(messageId, chatId, currentModel);
+    try {
+      const currentModel = selectedModelRef.current || undefined;
+      const response = await api.retryMessage(messageId, chatId, currentModel);
         
         await processMessageStream(response, {
           onUpdate: (content) => {
