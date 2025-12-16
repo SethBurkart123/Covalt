@@ -1,129 +1,56 @@
 """
 Tool Registry for managing available tools.
 
-Provides centralized registry for tools that can be dynamically
-activated/deactivated for agents at runtime.
+Provides a unified @tool decorator that wraps agno's @tool while also
+registering tools with a centralized registry for UI display and activation.
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
+
+from agno.tools import tool as agno_tool
 
 
 class ToolRegistry:
     """
     Centralized registry for managing available tools.
 
-    Tools are registered as factory functions that return tool instances
-    or decorated functions. This allows lazy instantiation and configuration.
+    Tools are registered automatically when decorated with @tool.
+    The registry stores both the wrapped tool function and UI metadata.
     """
 
     def __init__(self) -> None:
-        self._tools: Dict[str, Callable[[], Any]] = {}
-        self._metadata: Dict[str, Dict[str, Any]] = {}
-        self._register_default_tools()
+        self._tools: dict[str, Callable] = {}
+        self._metadata: dict[str, dict[str, Any]] = {}
 
-    def _register_default_tools(self) -> None:
-        """Register built-in tools."""
-        # Register basic calculator tool
-        self.register_tool(
-            tool_id="calculator",
-            tool_factory=self._create_calculator_tool,
-            metadata={
-                "name": "Calculator",
-                "description": "Perform basic mathematical calculations",
-                "category": "utility",
-            },
-        )
-
-        # Register echo tool for testing
-        self.register_tool(
-            tool_id="echo",
-            tool_factory=self._create_echo_tool,
-            metadata={
-                "name": "Echo",
-                "description": "Echo back the input (for testing)",
-                "category": "utility",
-            },
-        )
-
-        self.register_tool(
-            tool_id="write_artifact",
-            tool_factory=self._create_write_artifact_tool,
-            metadata={
-                "name": "Write Artifact",
-                "description": "Create a markdown artifact (requires approval)",
-                "category": "content",
-                "renderer": "markdown",
-                "editableArgs": ["content"],
-            },
-        )
-
-        # Web search will be registered if duckduckgo is available
-        try:
-            from agno.tools.duckduckgo import DuckDuckGoTools
-
-            self.register_tool(
-                tool_id="web_search",
-                tool_factory=lambda: DuckDuckGoTools(),
-                metadata={
-                    "name": "Web Search",
-                    "description": "Search the web using DuckDuckGo",
-                    "category": "search",
-                },
-            )
-        except ImportError:
-            pass
-
-    def register_tool(
-        self,
-        tool_id: str,
-        tool_factory: Callable[[], Any],
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    def register(self, name: str, fn: Any, metadata: dict[str, Any]) -> None:
         """
         Register a tool with the registry.
 
-        Args:
-            tool_id: Unique identifier for the tool
-            tool_factory: Callable that returns tool instance
-            metadata: Optional metadata about the tool (name, description, etc.)
+        Called internally by the @tool decorator.
         """
-        self._tools[tool_id] = tool_factory
-        self._metadata[tool_id] = metadata or {}
+        self._tools[name] = fn
+        self._metadata[name] = metadata
 
-    def get_tools(self, tool_ids: List[str]) -> List[Any]:
+    def get_tools(self, tool_ids: list[str]) -> list[Any]:
         """
         Get tool instances for given IDs.
 
-        Args:
-            tool_ids: List of tool identifiers
-
-        Returns:
-            List of instantiated tool objects
+        Returns the wrapped tool functions ready to pass to an agno Agent.
         """
         tools = []
         for tid in tool_ids:
             if tid in self._tools:
-                try:
-                    tool_instance = self._tools[tid]()
-                    tools.append(tool_instance)
-                except Exception as e:
-                    print(f"[ToolRegistry] Failed to instantiate tool '{tid}': {e}")
+                tools.append(self._tools[tid])
         return tools
 
-    def list_available_tools(self) -> List[Dict[str, Any]]:
+    def list_available_tools(self) -> list[dict[str, Any]]:
         """
-        Return all available tools with their metadata.
-
-        Returns:
-            List of dicts with tool_id and metadata
+        Return all available tools with their metadata for UI display.
         """
         return [
-            {
-                "id": tool_id,
-                **self._metadata.get(tool_id, {}),
-            }
+            {"id": tool_id, **self._metadata.get(tool_id, {})}
             for tool_id in self._tools.keys()
         ]
 
@@ -131,109 +58,13 @@ class ToolRegistry:
         """Check if a tool is registered."""
         return tool_id in self._tools
 
-    def get_editable_args(self, tool_id: str) -> list[str] | bool | None:
-        """Get editableArgs config for a tool. Returns list of arg names, True for all, or None."""
+    def get_editable_args(self, tool_id: str) -> list[str] | None:
+        """Get editable_args config for a tool."""
         metadata = self._metadata.get(tool_id, {})
-        return metadata.get("editableArgs")
-
-    # Built-in tool factory methods
-
-    @staticmethod
-    def _create_calculator_tool() -> Any:
-        """Create a simple calculator tool."""
-        from agno.tools import tool
-
-        @tool
-        def calculate(expression: str) -> str:
-            """
-            Evaluate a mathematical expression.
-
-            Args:
-                expression: Math expression to evaluate (e.g., "2 + 2", "10 * 5")
-
-            Returns:
-                Result of the calculation
-            """
-
-            import time
-
-            time.sleep(1)
-
-            try:
-                # Safe eval using only basic operations
-                # Remove dangerous builtins
-                allowed_names = {
-                    "abs": abs,
-                    "round": round,
-                    "min": min,
-                    "max": max,
-                    "sum": sum,
-                    "pow": pow,
-                }
-                result = eval(expression, {"__builtins__": {}}, allowed_names)
-                return f"Result: {result}"
-            except Exception as e:
-                return f"Error: {str(e)}"
-
-        return calculate
-
-    @staticmethod
-    def _create_echo_tool() -> Any:
-        """Create a simple echo tool for testing."""
-        from agno.tools import tool
-
-        @tool
-        def echo(message: str) -> str:
-            """
-            Echo back the input message.
-
-            Args:
-                message: Message to echo back
-
-            Returns:
-                The same message
-            """
-
-            # Delay 10 seconds
-            import time
-
-            time.sleep(1)
-
-            return f"Echo: {message}"
-
-        return echo
-
-    @staticmethod
-    def _create_write_artifact_tool() -> Any:
-        """Create a write_artifact tool that requires approval and uses markdown rendering."""
-        from agno.tools import tool
-
-        @tool(requires_confirmation=True)
-        def write_artifact(title: str, content: str) -> str:
-            """
-            Create a markdown artifact with the given title and content.
-            This tool requires user approval before execution.
-
-            Args:
-                title: Title of the artifact
-                content: Markdown content of the artifact
-
-            Returns:
-                The formatted markdown artifact
-            """
-            import time
-
-            time.sleep(0.5)
-
-            # Return formatted markdown
-            artifact = f"# {title}\n\n{content}"
-            return artifact
-
-        return write_artifact
+        return metadata.get("editable_args")
 
 
-# Global singleton instance
-_tool_registry: Optional[ToolRegistry] = None
+_tool_registry: ToolRegistry | None = None
 
 
 def get_tool_registry() -> ToolRegistry:
@@ -241,4 +72,103 @@ def get_tool_registry() -> ToolRegistry:
     global _tool_registry
     if _tool_registry is None:
         _tool_registry = ToolRegistry()
+        import backend.services.builtin_tools  # noqa: F401
     return _tool_registry
+
+
+def tool(
+    name: str | None = None,
+    description: str | None = None,
+    category: str = "utility",
+    renderer: str | None = None,
+    editable_args: list[str] | None = None,
+    requires_confirmation: bool = False,
+    stop_after_tool_call: bool = False,
+    cache_results: bool = False,
+    cache_dir: str | None = None,
+    cache_ttl: int | None = None,
+    tool_hooks: list[Callable] | None = None,
+    pre_hook: Callable | None = None,
+    post_hook: Callable | None = None,
+    requires_user_input: bool = False,
+    user_input_fields: list[str] | None = None,
+    external_execution: bool = False,
+) -> Callable[[Callable], Any]:
+    """
+    Unified tool decorator that wraps agno's @tool and registers with the ToolRegistry.
+
+    UI/Registry metadata:
+        name: Display name in UI (defaults to function name titlecased)
+        description: Display description in UI (defaults to docstring first line)
+        category: Tool category for UI grouping
+        renderer: UI renderer type (e.g., "markdown")
+        editable_args: Args editable in UI before execution
+
+    Agno @tool passthrough options:
+        requires_confirmation: Requires user confirmation before execution
+        stop_after_tool_call: Stop the agent run after the tool call
+        cache_results: Cache the tool result
+        cache_dir: Directory to store cache files
+        cache_ttl: Time-to-live for cached results in seconds
+        tool_hooks: List of hooks that wrap the function execution
+        pre_hook: Hook to run before the function is executed
+        post_hook: Hook to run after the function is executed
+        requires_user_input: Requires user input before execution
+        user_input_fields: List of fields that require user input
+        external_execution: Tool will be executed outside of the agent's control
+    """
+
+    def decorator(fn: Callable) -> Any:
+        agno_kwargs: dict[str, Any] = {}
+        if requires_confirmation:
+            agno_kwargs["requires_confirmation"] = requires_confirmation
+        if stop_after_tool_call:
+            agno_kwargs["stop_after_tool_call"] = stop_after_tool_call
+        if cache_results:
+            agno_kwargs["cache_results"] = cache_results
+        if cache_dir is not None:
+            agno_kwargs["cache_dir"] = cache_dir
+        if cache_ttl is not None:
+            agno_kwargs["cache_ttl"] = cache_ttl
+        if tool_hooks is not None:
+            agno_kwargs["tool_hooks"] = tool_hooks
+        if pre_hook is not None:
+            agno_kwargs["pre_hook"] = pre_hook
+        if post_hook is not None:
+            agno_kwargs["post_hook"] = post_hook
+        if requires_user_input:
+            agno_kwargs["requires_user_input"] = requires_user_input
+        if user_input_fields is not None:
+            agno_kwargs["user_input_fields"] = user_input_fields
+        if external_execution:
+            agno_kwargs["external_execution"] = external_execution
+
+        if agno_kwargs:
+            wrapped = agno_tool(**agno_kwargs)(fn)
+        else:
+            wrapped = agno_tool(fn)
+
+        tool_description = description
+        if tool_description is None and fn.__doc__:
+            tool_description = fn.__doc__.strip().split("\n")[0]
+
+        display_name = name if name else fn.__name__.replace("_", " ").title()
+
+        metadata: dict[str, Any] = {
+            "name": display_name,
+            "description": tool_description or "",
+            "category": category,
+        }
+        if renderer is not None:
+            metadata["renderer"] = renderer
+        if editable_args is not None:
+            metadata["editable_args"] = editable_args
+
+        global _tool_registry
+        if _tool_registry is None:
+            _tool_registry = ToolRegistry()
+        _tool_registry.register(fn.__name__, wrapped, metadata)
+
+        return wrapped
+
+    return decorator

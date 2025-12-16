@@ -75,6 +75,7 @@ def save_provider_settings(
         provider: Provider name (openai, anthropic, groq, ollama)
         api_key: API key for the provider
         base_url: Base URL for the provider (optional, for custom endpoints)
+        extra: Extra configuration for the provider (optional, for custom endpoints)
         enabled: Whether the provider is enabled
     """
     settings: Optional[ProviderSettings] = sess.get(ProviderSettings, provider)
