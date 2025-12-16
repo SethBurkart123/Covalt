@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Check, X, Wrench } from "lucide-react";
+import { ChevronDown, Check, X, Wrench, Clock } from "lucide-react";
 import { respondToToolApproval } from "@/python/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -15,7 +15,7 @@ interface ToolCallProps {
   requiresApproval?: boolean;
   runId?: string;
   toolCallId?: string;
-  approvalStatus?: "pending" | "approved" | "denied";
+  approvalStatus?: "pending" | "approved" | "denied" | "timeout";
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
@@ -130,6 +130,11 @@ export default function ToolCall({
                 Denied
               </span>
             )}
+            {approvalStatus === "timeout" && (
+              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                Timed Out
+              </span>
+            )}
           </div>
           {showChevron && (
             <motion.div
@@ -197,6 +202,13 @@ export default function ToolCall({
                   </div>
                 )}
 
+                {requiresApproval && approvalStatus === "timeout" && (
+                  <div className="flex items-center gap-1.5 text-sm text-yellow-600 dark:text-yellow-400">
+                    <Clock size={14} />
+                    <span>Operation timed out</span>
+                  </div>
+                )}
+
                 {isCompleted && toolResult && (
                   <div>
                     <div className="text-xs font-medium text-muted-foreground mb-2">
@@ -242,6 +254,11 @@ export default function ToolCall({
             {approvalStatus === "denied" && (
               <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
                 Denied
+              </span>
+            )}
+            {approvalStatus === "timeout" && (
+              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                Timed Out
               </span>
             )}
           </div>
@@ -306,6 +323,13 @@ export default function ToolCall({
                   <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
                     <X size={14} />
                     <span>Operation was denied</span>
+                  </div>
+                )}
+
+                {requiresApproval && approvalStatus === "timeout" && (
+                  <div className="flex items-center gap-1.5 text-sm text-yellow-600 dark:text-yellow-400">
+                    <Clock size={14} />
+                    <span>Operation timed out</span>
                   </div>
                 )}
 

@@ -47,6 +47,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const streamingMessageIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevChatIdRef = useRef<string | null>(null);
+  const selectedModelRef = useRef<string>(selectedModel);
   
   const messages = useMemo(() => {
     if (streamingContent === null || streamingMessageId === null) {
@@ -171,6 +172,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [chatId, clearStreaming]);
 
   useEffect(() => {
+    selectedModelRef.current = selectedModel;
+  }, [selectedModel]);
+
+  useEffect(() => {
     if (!chatId) {
       setBaseMessages([]);
       clearStreaming();
@@ -276,14 +281,15 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const message = baseMessages.find((m) => m.id === messageId);
       try {
-        const response = await api.continueMessage(messageId, chatId, selectedModel || undefined);
+        const currentModel = selectedModelRef.current || undefined;
+        const response = await api.continueMessage(messageId, chatId, currentModel);
         await streamWithUpdates(response, messageId, true);
         trackModel(message?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
       }
     },
-    [chatId, baseMessages, selectedModel, streamWithUpdates, trackModel],
+    [chatId, baseMessages, streamWithUpdates, trackModel],
   );
 
   const handleRetry = useCallback(
@@ -300,7 +306,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       startStreaming(tempId);
 
       try {
-        const response = await api.retryMessage(messageId, chatId, selectedModel || undefined);
+        const currentModel = selectedModelRef.current || undefined;
+        const response = await api.retryMessage(messageId, chatId, currentModel);
         
         await processMessageStream(response, {
           onUpdate: (content) => {
@@ -325,7 +332,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         clearStreaming();
       }
     },
-    [chatId, baseMessages, selectedModel, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected],
+    [chatId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected],
   );
 
   const handleEdit = useCallback(
@@ -372,7 +379,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     setIsLoading(true);
 
     try {
-      const response = await api.editUserMessage(messageId, newContent, chatId, selectedModel || undefined);
+      const currentModel = selectedModelRef.current || undefined;
+      const response = await api.editUserMessage(messageId, newContent, chatId, currentModel);
       
       await processMessageStream(response, {
         onUpdate: (content) => {
@@ -396,7 +404,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       streamingMessageIdRef.current = null;
       clearStreaming();
     }
-  }, [chatId, editingDraft, editingMessageId, baseMessages, selectedModel, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected]);
+  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected]);
 
   const handleNavigate = useCallback(
     async (messageId: string, siblingId: string) => {

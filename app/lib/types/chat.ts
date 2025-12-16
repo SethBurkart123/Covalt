@@ -25,7 +25,7 @@ export type ContentBlock =
       requiresApproval?: boolean;
       runId?: string;
       toolCallId?: string;
-      approvalStatus?: "pending" | "approved" | "denied";
+      approvalStatus?: "pending" | "approved" | "denied" | "timeout";
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string };
