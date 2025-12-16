@@ -149,6 +149,18 @@ function handleToolCallCompleted(state: StreamState, tool: any): void {
   }
 }
 
+function handleToolApprovalResolved(state: StreamState, tool: any): void {
+  const toolBlock = state.contentBlocks.find(
+    (b) => b.type === "tool_call" && b.id === tool.id,
+  );
+  if (toolBlock) {
+    toolBlock.approvalStatus = tool.approvalStatus;
+    if (tool.approvalStatus === "denied" || tool.approvalStatus === "timeout") {
+      toolBlock.isCompleted = true;
+    }
+  }
+}
+
 function processEvent(
   eventType: string,
   data: any,
@@ -203,6 +215,10 @@ function processEvent(
 
     case "ToolCallCompleted":
       if (data.tool) handleToolCallCompleted(state, data.tool);
+      break;
+
+    case "ToolApprovalResolved":
+      if (data.tool) handleToolApprovalResolved(state, data.tool);
       break;
 
     case "RunCompleted":

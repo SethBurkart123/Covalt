@@ -522,7 +522,19 @@ async def handle_content_stream(
                     "isCompleted": True,
                 }
 
-                content_blocks.append(tool_block)
+                existing_index = next(
+                    (
+                        i
+                        for i, block in enumerate(content_blocks)
+                        if block.get("type") == "tool_call"
+                        and block.get("id") == tool_block["id"]
+                    ),
+                    None,
+                )
+                if existing_index is not None:
+                    content_blocks[existing_index] = tool_block
+                else:
+                    content_blocks.append(tool_block)
                 ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
 
             elif chunk.event == RunEvent.reasoning_started:
@@ -578,52 +590,75 @@ async def handle_content_stream(
                 return
 
             elif chunk.event == RunEvent.run_paused:
-                # Human-In-The-Loop
+                flush_text()
+                flush_reasoning()
+                
                 if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
                     tools_info = []
                     for tool in chunk.tools_requiring_confirmation:
+                        tool_block = {
+                            "type": "tool_call",
+                            "id": tool.tool_call_id,
+                            "toolName": tool.tool_name,
+                            "toolArgs": tool.tool_args,
+                            "isCompleted": False,
+                            "requiresApproval": True,
+                            "approvalStatus": "pending",
+                        }
+                        content_blocks.append(tool_block)
                         tools_info.append({
                             "id": tool.tool_call_id,
                             "toolName": tool.tool_name,
                             "toolArgs": tool.tool_args,
                         })
 
+                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
+
                     ch.send_model(
                         ChatEvent(
                             event="ToolApprovalRequired",
-                            tool={
-                                "runId": run_id,
-                                "tools": tools_info,
-                            },
+                            tool={"runId": run_id, "tools": tools_info},
                         )
                     )
 
                     approval_event = asyncio.Event()
                     _approval_events[run_id] = approval_event
 
-                    # Wait for approval response (with 5 minute timeout)
-                    # TODO: make this timeout configurable
+                    timed_out = False
                     try:
                         await asyncio.wait_for(approval_event.wait(), timeout=300)
                     except asyncio.TimeoutError:
+                        timed_out = True
                         for tool in chunk.tools_requiring_confirmation:
                             tool.confirmed = False
                     else:
-                        # Got approval response
                         response = _approval_responses.get(run_id, {})
                         tool_decisions = response.get("tool_decisions", {})
                         default_approved = response.get("approved", False)
-
                         for tool in chunk.tools_requiring_confirmation:
                             tool_id = getattr(tool, "tool_call_id", None)
-                            # Check individual tool decision, fall back to default
                             tool.confirmed = tool_decisions.get(tool_id, default_approved)
 
-                    # Clean up
                     _approval_events.pop(run_id, None)
                     _approval_responses.pop(run_id, None)
 
-                    logger.info(f"[stream] Continuing run {run_id} with updated tools: {chunk.tools}")
+                    for tool in chunk.tools_requiring_confirmation:
+                        tool_id = tool.tool_call_id
+                        if timed_out:
+                            status = "timeout"
+                        else:
+                            status = "approved" if tool.confirmed else "denied"
+                        for block in content_blocks:
+                            if block.get("type") == "tool_call" and block.get("id") == tool_id:
+                                block["approvalStatus"] = status
+                                if status in ("denied", "timeout"):
+                                    block["isCompleted"] = True
+                        ch.send_model(ChatEvent(
+                            event="ToolApprovalResolved",
+                            tool={"id": tool_id, "approvalStatus": status},
+                        ))
+
+                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
 
                     response_stream = agent.acontinue_run(
                         run_id=run_id,
