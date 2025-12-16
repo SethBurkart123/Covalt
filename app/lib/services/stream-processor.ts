@@ -118,7 +118,7 @@ function handleToolApprovalRequired(state: StreamState, toolData: any): void {
   const { runId, tools } = toolData;
 
   for (const tool of tools) {
-    state.contentBlocks.push({
+    const block: any = {
       type: "tool_call",
       id: tool.id,
       toolName: tool.toolName,
@@ -128,7 +128,11 @@ function handleToolApprovalRequired(state: StreamState, toolData: any): void {
       runId: runId,
       toolCallId: tool.id,
       approvalStatus: "pending",
-    });
+    };
+    if (tool.editableArgs) {
+      block.editableArgs = tool.editableArgs;
+    }
+    state.contentBlocks.push(block);
   }
 }
 
@@ -155,6 +159,9 @@ function handleToolApprovalResolved(state: StreamState, tool: any): void {
   );
   if (toolBlock) {
     toolBlock.approvalStatus = tool.approvalStatus;
+    if (tool.toolArgs) {
+      toolBlock.toolArgs = tool.toolArgs;
+    }
     if (tool.approvalStatus === "denied" || tool.approvalStatus === "timeout") {
       toolBlock.isCompleted = true;
     }

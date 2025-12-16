@@ -238,6 +238,7 @@ function ChatMessage({
                                   runId={b.runId}
                                   toolCallId={b.toolCallId}
                                   approvalStatus={b.approvalStatus}
+                                  editableArgs={b.editableArgs}
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}

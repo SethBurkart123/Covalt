@@ -16,6 +16,7 @@ from zynk import Channel, command
 from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
+from ..services.tool_registry import get_tool_registry
 
 import logging
 
@@ -27,6 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+registry = get_tool_registry()
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
 
 # Maps run_id -> asyncio.Event for signaling when approval is received
@@ -596,6 +598,7 @@ async def handle_content_stream(
                 if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
                     tools_info = []
                     for tool in chunk.tools_requiring_confirmation:
+                        editable_args = registry.get_editable_args(tool.tool_name)
                         tool_block = {
                             "type": "tool_call",
                             "id": tool.tool_call_id,
@@ -606,11 +609,14 @@ async def handle_content_stream(
                             "approvalStatus": "pending",
                         }
                         content_blocks.append(tool_block)
-                        tools_info.append({
+                        tool_info = {
                             "id": tool.tool_call_id,
                             "toolName": tool.tool_name,
                             "toolArgs": tool.tool_args,
-                        })
+                        }
+                        if editable_args:
+                            tool_info["editableArgs"] = editable_args
+                        tools_info.append(tool_info)
 
                     await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
 
@@ -634,10 +640,13 @@ async def handle_content_stream(
                     else:
                         response = _approval_responses.get(run_id, {})
                         tool_decisions = response.get("tool_decisions", {})
+                        edited_args = response.get("edited_args", {})
                         default_approved = response.get("approved", False)
                         for tool in chunk.tools_requiring_confirmation:
                             tool_id = getattr(tool, "tool_call_id", None)
                             tool.confirmed = tool_decisions.get(tool_id, default_approved)
+                            if tool_id and tool_id in edited_args:
+                                tool.tool_args = edited_args[tool_id]
 
                     _approval_events.pop(run_id, None)
                     _approval_responses.pop(run_id, None)
@@ -651,11 +660,12 @@ async def handle_content_stream(
                         for block in content_blocks:
                             if block.get("type") == "tool_call" and block.get("id") == tool_id:
                                 block["approvalStatus"] = status
+                                block["toolArgs"] = tool.tool_args
                                 if status in ("denied", "timeout"):
                                     block["isCompleted"] = True
                         ch.send_model(ChatEvent(
                             event="ToolApprovalResolved",
-                            tool={"id": tool_id, "approvalStatus": status},
+                            tool={"id": tool_id, "approvalStatus": status, "toolArgs": tool.tool_args},
                         ))
 
                     await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
@@ -795,7 +805,8 @@ class CancelRunRequest(BaseModel):
 class RespondToToolApprovalInput(BaseModel):
     runId: str
     approved: bool
-    toolDecisions: Optional[Dict[str, bool]] = None  # tool_call_id -> approved
+    toolDecisions: Optional[Dict[str, bool]] = None
+    editedArgs: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 @command
@@ -808,10 +819,10 @@ async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
     """
     run_id = body.runId
 
-    # Store the approval response
     _approval_responses[run_id] = {
         "approved": body.approved,
         "tool_decisions": body.toolDecisions or {},
+        "edited_args": body.editedArgs or {},
     }
 
     # Signal the waiting event if it exists
