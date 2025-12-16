@@ -1,12 +1,14 @@
+"""Groq Provider - Fast inference with Llama and Mixtral models"""
+
 from typing import Any, Dict, List
 import requests
 from agno.models.litellm import LiteLLM
-from .. import db
+from . import get_api_key
 
 
 def get_groq_model(model_id: str, **kwargs: Any) -> LiteLLM:
-    """Create Groq model using LiteLLM."""
-    api_key = _get_api_key()
+    """Create a Groq model instance."""
+    api_key = get_api_key()
     
     if not api_key:
         raise RuntimeError("Groq API key not configured in Settings.")
@@ -19,8 +21,9 @@ def get_groq_model(model_id: str, **kwargs: Any) -> LiteLLM:
 
 
 def fetch_models() -> List[Dict[str, str]]:
-    """Fetch available Groq models."""
-    api_key = _get_api_key()
+    """Fetch available models from Groq API."""
+    api_key = get_api_key()
+    
     if not api_key:
         return []
     
@@ -30,16 +33,12 @@ def fetch_models() -> List[Dict[str, str]]:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=5
         )
+        
         if response.ok:
-            return [{"id": m["id"], "name": m["id"]} for m in response.json().get("data", [])]
+            models = response.json().get("data", [])
+            return [{"id": m["id"], "name": m["id"]} for m in models]
+            
     except Exception as e:
         print(f"[groq] Failed to fetch models: {e}")
+    
     return []
-
-
-def _get_api_key():
-    """Get API key from database."""
-    with db.db_session() as sess:
-        settings = db.get_provider_settings(sess, "groq")
-        return settings.get("api_key") if settings else None
-

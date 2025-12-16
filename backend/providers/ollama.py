@@ -1,12 +1,14 @@
+"""Ollama Provider - Local models running on Ollama"""
+
 from typing import Any, Dict, List
 import requests
 from agno.models.litellm import LiteLLM
-from .. import db
+from . import get_base_url
 
 
 def get_ollama_model(model_id: str, **kwargs: Any) -> LiteLLM:
-    """Create Ollama model using LiteLLM."""
-    host = _get_host()
+    """Create an Ollama model instance."""
+    host = get_base_url()
     
     if not host:
         raise RuntimeError("Ollama host not configured in Settings.")
@@ -19,27 +21,27 @@ def get_ollama_model(model_id: str, **kwargs: Any) -> LiteLLM:
 
 
 def fetch_models() -> List[Dict[str, str]]:
-    """Fetch available Ollama models."""
-    host = _get_host()
+    """Fetch available models from local Ollama instance."""
+    host = get_base_url()
+    
     if not host:
         return []
     
     try:
         response = requests.get(f"{host}/api/tags", timeout=5)
+        
         if response.ok:
+            models = response.json().get("models", [])
             return [
-                {"id": m["name"], "name": m["name"].split(":")[0].title()}
-                for m in response.json().get("models", [])
+                {
+                    "id": m["name"],
+                    "name": m["name"].split(":")[0].title()  # Clean display name
+                }
+                for m in models
                 if m.get("name")
             ]
+            
     except Exception as e:
         print(f"[ollama] Failed to fetch models: {e}")
+    
     return []
-
-
-def _get_host():
-    """Get host from database."""
-    with db.db_session() as sess:
-        settings = db.get_provider_settings(sess, "ollama")
-        return settings.get("base_url") if settings else None
-
