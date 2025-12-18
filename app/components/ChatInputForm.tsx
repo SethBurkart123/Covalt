@@ -94,8 +94,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
     canSendMessage = true,
     onStop,
   }) => {
-    const [isToolSelectorOpen, setIsToolSelectorOpen] = useState(false);
-
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -118,7 +116,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
 
       adjustHeight();
 
-      // Create a new ResizeObserver
       const resizeObserver = new ResizeObserver(adjustHeight);
       resizeObserver.observe(textarea);
 
@@ -162,16 +159,17 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
         <div className="flex w-full items-center gap-2 pt-2">
           <LayoutGroup>
             <LayoutGroup>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className="h-9 w-9 flex-shrink-0 rounded-full p-2"
-                disabled={isLoading}
-                onClick={() => setIsToolSelectorOpen(!isToolSelectorOpen)}
-              >
-                <Plus className="size-5" />
-              </Button>
+              <ToolSelector>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+                  disabled={isLoading}
+                >
+                  <Plus className="size-5" />
+                </Button>
+              </ToolSelector>
             </LayoutGroup>
             <ModelSelector
               selectedModel={selectedModel}
@@ -227,12 +225,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
             </LayoutGroup>
           </LayoutGroup>
         </div>
-
-        {/* Tool Selector Popover */}
-        <ToolSelector
-          isOpen={isToolSelectorOpen}
-          onClose={() => setIsToolSelectorOpen(false)}
-        />
       </motion.form>
     );
   },

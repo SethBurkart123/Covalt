@@ -1,163 +1,146 @@
 "use client";
 
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Loader2 } from "lucide-react";
-import clsx from "clsx";
+import { Loader2, Wrench } from "lucide-react";
 import { useTools } from "@/contexts/tools-context";
-import type { ToolInfo } from "@/lib/types/chat";
+import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
-interface ToolSelectorProps {
-  isOpen: boolean;
-  onClose: () => void;
+const CATEGORY_ICONS: Record<string, string> = {
+  utility: "🔧",
+  search: "🔍",
+  other: "📦",
+};
+
+function getCategoryIcon(category: string): string {
+  const lower = category.toLowerCase();
+  if (lower in CATEGORY_ICONS) return CATEGORY_ICONS[lower];
+  if (lower.startsWith("mcp:") || lower.includes("server")) return "🔌";
+  return "📦";
 }
 
-export function ToolSelector({ isOpen, onClose }: ToolSelectorProps) {
-  const { availableTools, activeToolIds, toggleTool, isLoading } = useTools();
+function formatCategoryName(category: string): string {
+  if (category.startsWith("mcp:")) {
+    return category.slice(4);
+  }
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
 
-  // Group tools by category
-  const toolsByCategory = React.useMemo(() => {
-    const grouped: Record<string, ToolInfo[]> = {};
-    availableTools.forEach((tool) => {
-      const category = tool.category || "Other";
-      if (!grouped[category]) {
-        grouped[category] = [];
-      }
-      grouped[category].push(tool);
-    });
-    return grouped;
-  }, [availableTools]);
+interface ToolSelectorProps {
+  children: React.ReactNode;
+}
 
-  const categoryIcons: Record<string, string> = {
-    utility: "🔧",
-    search: "🔍",
-    other: "📦",
-  };
+export function ToolSelector({ children }: ToolSelectorProps) {
+  const {
+    toolsByCategory,
+    activeToolIds,
+    toggleTool,
+    toggleToolset,
+    isToolsetActive,
+    isToolsetPartiallyActive,
+    isLoading,
+  } = useTools();
+
+  const categories = Object.keys(toolsByCategory);
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 z-40" onClick={onClose} />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent
+        className="w-64 rounded-xl"
+        align="start"
+        sideOffset={8}
+      >
+        <DropdownMenuLabel className="flex items-center gap-2">
+          <Wrench className="size-4" />
+          Tools
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
 
-          {/* Popover */}
-          <motion.div
-            className="fixed bottom-20 left-1/2 z-50 w-[320px] rounded-2xl border bg-card shadow-lg"
-            initial={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
-            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
-            exit={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <h3 className="text-sm font-semibold">Tools</h3>
-              <button
-                onClick={onClose}
-                className="rounded-lg p-1 hover:bg-muted transition-colors"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No tools available
+          </div>
+        ) : (
+          categories.map((category) => {
+            const tools = toolsByCategory[category];
+            const allActive = isToolsetActive(category);
+            const partiallyActive = isToolsetPartiallyActive(category);
 
-            {/* Tool List */}
-            <div className="max-h-[400px] overflow-y-auto p-2">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : Object.keys(toolsByCategory).length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  No tools available
-                </div>
-              ) : (
-                Object.entries(toolsByCategory).map(([category, tools]) => (
-                  <div key={category} className="mb-4 last:mb-0">
-                    {/* Category Header */}
-                    <div className="mb-2 flex items-center gap-2 px-2">
-                      <span className="text-base">
-                        {categoryIcons[category.toLowerCase()] || "📦"}
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {category}
-                      </span>
-                    </div>
-
-                    {/* Tools in Category */}
-                    <div className="space-y-1">
-                      {tools.map((tool) => {
-                        const isActive = activeToolIds.includes(tool.id);
-                        return (
-                          <motion.button
-                            key={tool.id}
-                            className={clsx(
-                              "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                              "hover:bg-muted",
-                              isActive && "bg-muted/50",
-                            )}
-                            onClick={() => toggleTool(tool.id)}
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            {/* Checkbox */}
-                            <div
-                              className={clsx(
-                                "mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-all",
-                                isActive
-                                  ? "border-primary bg-primary"
-                                  : "border-muted-foreground/30",
-                              )}
-                            >
-                              {isActive && (
-                                <motion.svg
-                                  className="h-3 w-3 text-primary-foreground"
-                                  viewBox="0 0 12 12"
-                                  initial={{ scale: 0, opacity: 0 }}
-                                  animate={{ scale: 1, opacity: 1 }}
-                                  exit={{ scale: 0, opacity: 0 }}
-                                  transition={{
-                                    type: "spring",
-                                    damping: 15,
-                                    stiffness: 300,
-                                  }}
-                                >
-                                  <path
-                                    fill="currentColor"
-                                    d="M10.3 2.3a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.4 0l-2-2a1 1 0 1 1 1.4-1.4L4.6 6.6l4.3-4.3a1 1 0 0 1 1.4 0z"
-                                  />
-                                </motion.svg>
-                              )}
+            return (
+              <DropdownMenuSub key={category}>
+                <DropdownMenuSubTrigger className="gap-2 py-2">
+                  <span className="text-base leading-none">
+                    {getCategoryIcon(category)}
+                  </span>
+                  <span className="flex-1 truncate">
+                    {formatCategoryName(category)}
+                  </span>
+                  <span className="text-xs text-muted-foreground mr-1">
+                    {tools.filter((t) => activeToolIds.includes(t.id)).length}/
+                    {tools.length}
+                  </span>
+                  <Switch
+                    checked={allActive}
+                    data-state={
+                      partiallyActive
+                        ? "indeterminate"
+                        : allActive
+                          ? "checked"
+                          : "unchecked"
+                    }
+                    className={partiallyActive ? "opacity-60" : ""}
+                    onCheckedChange={() => toggleToolset(category)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-72 max-h-80 overflow-y-auto rounded-xl">
+                  {tools.map((tool) => {
+                    const isActive = activeToolIds.includes(tool.id);
+                    return (
+                      <div
+                        key={tool.id}
+                        className="flex items-start gap-3 px-3 py-2.5 hover:bg-accent rounded-md cursor-pointer"
+                        onClick={() => toggleTool(tool.id)}
+                      >
+                        <Switch
+                          checked={isActive}
+                          onCheckedChange={() => toggleTool(tool.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {tool.name || tool.id}
+                          </div>
+                          {tool.description && (
+                            <div className="text-xs text-muted-foreground line-clamp-2">
+                              {tool.description}
                             </div>
-
-                            {/* Tool Info */}
-                            <div className="flex-1 min-w-0">
-                              <div
-                                className={clsx(
-                                  "text-sm font-medium",
-                                  isActive
-                                    ? "text-foreground"
-                                    : "text-foreground/80",
-                                )}
-                              >
-                                {tool.name || tool.id}
-                              </div>
-                              {tool.description && (
-                                <div className="text-xs text-muted-foreground line-clamp-2">
-                                  {tool.description}
-                                </div>
-                              )}
-                            </div>
-                          </motion.button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
