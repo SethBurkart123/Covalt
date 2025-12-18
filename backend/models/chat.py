@@ -84,6 +84,7 @@ class ChatStreamRequest(BaseModel):
     messages: List[ChatMessage]
     modelId: str
     chatId: Optional[str] = None
+    toolIds: List[str] = []
 
 
 class ChatEvent(BaseModel):

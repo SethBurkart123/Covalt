@@ -41,6 +41,7 @@ class StreamChatRequest(BaseModel):
     messages: List[Dict[str, Any]]
     modelId: Optional[str] = None
     chatId: Optional[str] = None
+    toolIds: List[str] = []
 
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     """Parse 'provider:model' format."""
@@ -898,7 +899,10 @@ async def stream_chat(
 
     try:
         agent = create_agent_for_chat(
-            chat_id, channel=ch, assistant_msg_id=assistant_msg_id
+            chat_id,
+            channel=ch,
+            assistant_msg_id=assistant_msg_id,
+            tool_ids=body.toolIds,
         )
 
         if not messages or messages[-1].role != "user":

@@ -5,7 +5,6 @@ import clsx from "clsx";
 import { motion, LayoutGroup } from "framer-motion";
 import type { ModelInfo } from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
-import { useChat } from "@/contexts/chat-context";
 import ModelSelector from "@/components/ModelSelector";
 
 interface ChatInputFormProps {
@@ -95,7 +94,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
     canSendMessage = true,
     onStop,
   }) => {
-    const { chatId } = useChat();
     const [isToolSelectorOpen, setIsToolSelectorOpen] = useState(false);
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -234,7 +232,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
         <ToolSelector
           isOpen={isToolSelectorOpen}
           onClose={() => setIsToolSelectorOpen(false)}
-          chatId={chatId}
         />
       </motion.form>
     );

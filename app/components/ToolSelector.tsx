@@ -4,18 +4,16 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2 } from "lucide-react";
 import clsx from "clsx";
-import { useTools } from "@/lib/hooks/useTools";
+import { useTools } from "@/contexts/tools-context";
 import type { ToolInfo } from "@/lib/types/chat";
 
 interface ToolSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  chatId: string;
 }
 
-export function ToolSelector({ isOpen, onClose, chatId }: ToolSelectorProps) {
-  const { availableTools, activeToolIds, toggleTool, isLoading } =
-    useTools(chatId);
+export function ToolSelector({ isOpen, onClose }: ToolSelectorProps) {
+  const { availableTools, activeToolIds, toggleTool, isLoading } = useTools();
 
   // Group tools by category
   const toolsByCategory = React.useMemo(() => {

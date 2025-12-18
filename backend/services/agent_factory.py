@@ -7,7 +7,7 @@ Manages agent configuration, model selection, and tool activation.
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import List
 
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
@@ -24,7 +24,8 @@ def create_agent_for_chat(
     chat_id: str,
     assistant_msg_id: str,
     channel=None,
-) -> Any:
+    tool_ids: List[str] = [],
+) -> Agent:
     """
     Create a fresh Agno agent instance for a chat session.
 
@@ -33,9 +34,9 @@ def create_agent_for_chat(
 
     Args:
         chat_id: Chat identifier
-        history_messages: Optional list of previous messages to include as context
+        assistant_msg_id: Assistant message ID (needed for approval gates)
         channel: Optional channel for sending events (needed for approval gates)
-        assistant_msg_id: Optional assistant message ID (needed for approval gates)
+        tool_ids: list of tool IDs to use (overrides config if provided)
 
     Returns:
         Configured Agno Agent instance
@@ -55,7 +56,6 @@ def create_agent_for_chat(
     # Extract configuration
     provider = config.get("provider", "openai")
     model_id = config.get("model_id")
-    tool_ids = config.get("tool_ids", [])
     instructions = config.get("instructions", [])
     name = config.get("name", "Assistant")
     description = config.get("description", "You are a helpful AI assistant.")
@@ -78,9 +78,9 @@ def create_agent_for_chat(
         tools=tools if tools else None,
         description=description,
         instructions=instructions if instructions else None,
-        markdown=True,  # Enable markdown formatting
+        markdown=True,
         stream_intermediate_steps=True,
-        db=_agent_db,  # Required for HITL acontinue_run() to find paused runs
+        db=_agent_db,
         # debug_mode=True  # Temporary for debugging tool calls
     )
 
