@@ -17,12 +17,14 @@ class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
     modelId: Optional[str] = None
+    toolIds: List[str] = []
 
 
 class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
     modelId: Optional[str] = None
+    toolIds: List[str] = []
 
 
 class EditUserMessageRequest(BaseModel):
@@ -30,6 +32,7 @@ class EditUserMessageRequest(BaseModel):
     newContent: str
     chatId: str
     modelId: Optional[str] = None
+    toolIds: List[str] = []
 
 
 class SwitchToSiblingRequest(BaseModel):
@@ -116,7 +119,10 @@ async def continue_message(
 
     try:
         agent = create_agent_for_chat(
-            body.chatId, channel=ch, assistant_msg_id=body.messageId
+            body.chatId,
+            channel=ch,
+            assistant_msg_id=body.messageId,
+            tool_ids=body.toolIds,
         )
 
         # Continue streaming into the same message
@@ -223,7 +229,10 @@ async def retry_message(
 
     try:
         agent = create_agent_for_chat(
-            body.chatId, channel=ch, assistant_msg_id=new_msg_id
+            body.chatId,
+            channel=ch,
+            assistant_msg_id=new_msg_id,
+            tool_ids=body.toolIds,
         )
 
         # Stream fresh response
@@ -351,7 +360,10 @@ async def edit_user_message(
 
     try:
         agent = create_agent_for_chat(
-            body.chatId, channel=ch, assistant_msg_id=assistant_msg_id
+            body.chatId,
+            channel=ch,
+            assistant_msg_id=assistant_msg_id,
+            tool_ids=body.toolIds,
         )
 
         # Stream response to edited message

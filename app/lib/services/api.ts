@@ -79,6 +79,7 @@ class ApiService {
     messages: Message[],
     modelId: string,
     chatId?: string,
+    toolIds?: string[],
   ): Promise<Response> {
     // Use zynk's createChannel for streaming - it returns a BridgeChannel
     const encoder = new TextEncoder();
@@ -103,6 +104,7 @@ class ApiService {
             })),
             modelId: modelId,
             chatId: chatId,
+            toolIds: toolIds,
           },
         });
 
@@ -154,6 +156,7 @@ class ApiService {
     messageId: string,
     chatId: string,
     modelId?: string,
+    toolIds?: string[],
   ): Promise<Response> {
     const encoder = new TextEncoder();
 
@@ -171,6 +174,7 @@ class ApiService {
             messageId,
             chatId,
             modelId,
+            toolIds,
           },
         });
 
@@ -219,6 +223,7 @@ class ApiService {
     messageId: string,
     chatId: string,
     modelId?: string,
+    toolIds?: string[],
   ): Promise<Response> {
     const encoder = new TextEncoder();
 
@@ -236,6 +241,7 @@ class ApiService {
             messageId,
             chatId,
             modelId,
+            toolIds,
           },
         });
 
@@ -284,6 +290,7 @@ class ApiService {
     newContent: string,
     chatId: string,
     modelId?: string,
+    toolIds?: string[],
   ): Promise<Response> {
     const encoder = new TextEncoder();
 
@@ -302,6 +309,7 @@ class ApiService {
             newContent,
             chatId,
             modelId,
+            toolIds,
           },
         });
 

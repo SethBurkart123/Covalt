@@ -2,6 +2,7 @@
 
 import React from "react";
 import { ChatProvider } from "@/contexts/chat-context";
+import { ToolsProvider } from "@/contexts/tools-context";
 import { PageTitleProvider, usePageTitle } from "@/contexts/page-title-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -28,7 +29,8 @@ function ShellHeader() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ChatProvider>
-      <PageTitleProvider>
+      <ToolsProvider>
+        <PageTitleProvider>
         <SidebarProvider
           className="flex h-dvh w-full"
           style={
@@ -45,6 +47,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </SidebarInset>
         </SidebarProvider>
       </PageTitleProvider>
+      </ToolsProvider>
     </ChatProvider>
   );
 }

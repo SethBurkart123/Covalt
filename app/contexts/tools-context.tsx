@@ -1,24 +1,40 @@
-import { useState, useEffect, useCallback } from "react";
+"use client";
+
+import * as React from "react";
+import { useChat } from "@/contexts/chat-context";
 import {
   getAvailableTools,
-  toggleChatTools,
   setDefaultTools,
   getDefaultTools,
   getChatAgentConfig,
+  toggleChatTools,
 } from "@/python/api";
 import type { ToolInfo } from "@/lib/types/chat";
 
-export function useTools(chatId: string) {
-  const [availableTools, setAvailableTools] = useState<ToolInfo[]>([]);
-  const [activeToolIds, setActiveToolIds] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+interface ToolsContextType {
+  availableTools: ToolInfo[];
+  activeToolIds: string[];
+  toggleTool: (toolId: string) => void;
+  isLoading: boolean;
+}
+
+const ToolsContext = React.createContext<ToolsContextType | undefined>(
+  undefined
+);
+
+export function ToolsProvider({ children }: { children: React.ReactNode }) {
+  const { chatId } = useChat();
+
+  const [availableTools, setAvailableTools] = React.useState<ToolInfo[]>([]);
+  const [activeToolIds, setActiveToolIds] = React.useState<string[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   // Load available tools on mount
-  useEffect(() => {
+  React.useEffect(() => {
     const loadTools = async () => {
       try {
         const response = await getAvailableTools();
-        setAvailableTools(response.tools);
+        setAvailableTools(response?.tools || []);
       } catch (error) {
         console.error("Failed to load available tools:", error);
         setAvailableTools([]);
@@ -29,7 +45,7 @@ export function useTools(chatId: string) {
   }, []);
 
   // Load active tools for current chat (or defaults for new chat)
-  useEffect(() => {
+  React.useEffect(() => {
     const loadActiveTools = async () => {
       setIsLoading(true);
       try {
@@ -60,7 +76,7 @@ export function useTools(chatId: string) {
     loadActiveTools();
   }, [chatId]);
 
-  const toggleTool = useCallback(
+  const toggleTool = React.useCallback(
     async (toolId: string) => {
       const newActiveToolIds = activeToolIds.includes(toolId)
         ? activeToolIds.filter((id) => id !== toolId)
@@ -70,14 +86,12 @@ export function useTools(chatId: string) {
       setActiveToolIds(newActiveToolIds);
 
       try {
-        // Save to current chat if one exists
         if (chatId) {
           await toggleChatTools({
             body: { chatId, toolIds: newActiveToolIds },
           });
         }
 
-        // Always save as defaults for future chats
         await setDefaultTools({ body: { toolIds: newActiveToolIds } });
       } catch (error) {
         console.error("Failed to toggle tool:", error);
@@ -85,13 +99,28 @@ export function useTools(chatId: string) {
         setActiveToolIds(activeToolIds);
       }
     },
-    [chatId, activeToolIds],
+    [chatId, activeToolIds]
   );
 
-  return {
-    availableTools,
-    activeToolIds,
-    toggleTool,
-    isLoading,
-  };
+  const value = React.useMemo<ToolsContextType>(
+    () => ({
+      availableTools,
+      activeToolIds,
+      toggleTool,
+      isLoading,
+    }),
+    [availableTools, activeToolIds, toggleTool, isLoading]
+  );
+
+  return (
+    <ToolsContext.Provider value={value}>{children}</ToolsContext.Provider>
+  );
+}
+
+export function useTools() {
+  const context = React.useContext(ToolsContext);
+  if (context === undefined) {
+    throw new Error("useTools must be used within a ToolsProvider");
+  }
+  return context;
 }

@@ -258,7 +258,7 @@ def mark_message_complete(sess: Session, message_id: str) -> None:
 def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
     """Get the leaf descendant of a message (for branch switching).
 
-    If message has children, follow the first child down to a leaf.
+    If message has children, follow the last child down to a leaf.
     Otherwise, return the message itself.
     """
     current_id = message_id
@@ -267,8 +267,8 @@ def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
         children = get_message_children(sess, current_id, chat_id)
         if not children:
             return current_id
-        # Follow first child
-        current_id = children[0].id
+        # Follow last child
+        current_id = children[-1].id
 
 
 def get_chat_agent_config(sess: Session, chatId: str) -> Optional[Dict[str, Any]]:

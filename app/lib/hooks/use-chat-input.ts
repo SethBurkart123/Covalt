@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
+import { useTools } from "@/contexts/tools-context";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
 import type { Message, MessageSibling } from "@/lib/types/chat";
@@ -30,6 +31,7 @@ function createErrorMessage(error: unknown): Message {
 
 export function useChatInput(onThinkTagDetected?: () => void) {
   const { chatId, selectedModel, refreshChats } = useChat();
+  const { activeToolIds } = useTools();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState<any[] | null>(null);
@@ -231,7 +233,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       startStreaming(tempId);
 
       try {
-        const response = await api.streamChat(newBaseMessages, selectedModel, chatId || undefined);
+        const response = await api.streamChat(newBaseMessages, selectedModel, chatId || undefined, activeToolIds);
 
         if (!response.ok) {
           throw new Error(`Failed to stream chat: ${response.statusText}`);
@@ -272,7 +274,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         clearStreaming();
       }
     },
-    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, clearStreaming, startStreaming],
+    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, clearStreaming, startStreaming, activeToolIds],
   );
 
   const handleContinue = useCallback(
@@ -282,14 +284,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       const message = baseMessages.find((m) => m.id === messageId);
       try {
         const currentModel = selectedModelRef.current || undefined;
-        const response = await api.continueMessage(messageId, chatId, currentModel);
+        const response = await api.continueMessage(messageId, chatId, currentModel, activeToolIds);
         await streamWithUpdates(response, messageId, true);
         trackModel(message?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
       }
     },
-    [chatId, baseMessages, streamWithUpdates, trackModel],
+    [chatId, baseMessages, streamWithUpdates, trackModel, activeToolIds],
   );
 
   const handleRetry = useCallback(
@@ -308,7 +310,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
     try {
       const currentModel = selectedModelRef.current || undefined;
-      const response = await api.retryMessage(messageId, chatId, currentModel);
+      const response = await api.retryMessage(messageId, chatId, currentModel, activeToolIds);
         
         await processMessageStream(response, {
           onUpdate: (content) => {
@@ -333,7 +335,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         clearStreaming();
       }
     },
-    [chatId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected],
+    [chatId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected, activeToolIds],
   );
 
   const handleEdit = useCallback(
@@ -381,7 +383,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
     try {
       const currentModel = selectedModelRef.current || undefined;
-      const response = await api.editUserMessage(messageId, newContent, chatId, currentModel);
+      const response = await api.editUserMessage(messageId, newContent, chatId, currentModel, activeToolIds);
       
       await processMessageStream(response, {
         onUpdate: (content) => {
