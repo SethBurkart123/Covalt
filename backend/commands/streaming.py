@@ -523,6 +523,7 @@ async def handle_content_stream(
                     if chunk.tool.result is not None
                     else None,
                     "isCompleted": True,
+                    "renderer": registry.get_renderer(chunk.tool.tool_name),
                 }
 
                 existing_index = next(

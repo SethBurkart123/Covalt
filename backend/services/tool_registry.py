@@ -57,6 +57,47 @@ class ToolRegistry:
         """Check if a tool is registered."""
         return tool_id in self._tools
 
+    def _get_mcp_tool_info(self, tool_id: str) -> dict[str, Any] | None:
+        """
+        Get MCP tool info for a tool ID.
+
+        Handles both formats:
+        - MCP ID: "mcp:github:search_repositories"
+        - MCP Function name: "github_search_repositories" (from agno during execution)
+        """
+        if tool_id.startswith("mcp:"):
+            parsed = self._parse_tool_id(tool_id)
+            if parsed[0] == "mcp_tool":
+                _, server_id, tool_name = parsed
+                if server_id and tool_name:
+                    mcp = get_mcp_manager()
+                    return next(
+                        (
+                            t
+                            for t in mcp.get_server_tools(server_id)
+                            if t["name"] == tool_name
+                        ),
+                        None,
+                    )
+
+        if "_" in tool_id and not tool_id.startswith("mcp:"):
+            mcp = get_mcp_manager()
+            for server in mcp.get_servers():
+                server_id = server["id"]
+                prefix = f"{server_id}_"
+                if tool_id.startswith(prefix):
+                    tool_name = tool_id[len(prefix):]
+                    return next(
+                        (
+                            t
+                            for t in mcp.get_server_tools(server_id)
+                            if t["name"] == tool_name
+                        ),
+                        None,
+                    )
+
+        return None
+
     def get_editable_args(self, tool_id: str) -> list[str] | None:
         """
         Get editable_args config for a tool.
@@ -66,46 +107,32 @@ class ToolRegistry:
         - MCP ID: "mcp:github:search_repositories"
         - MCP Function name: "github_search_repositories" (from agno during execution)
         """
-        # Check builtin tools first
         metadata = self._metadata.get(tool_id, {})
         if "editable_args" in metadata:
             return metadata.get("editable_args")
 
-        # Check MCP tools - ID format (mcp:server:tool)
-        if tool_id.startswith("mcp:"):
-            parsed = self._parse_tool_id(tool_id)
-            if parsed[0] == "mcp_tool":
-                _, server_id, tool_name = parsed
-                if server_id and tool_name:
-                    mcp = get_mcp_manager()
-                    tool_info = next(
-                        (
-                            t
-                            for t in mcp.get_server_tools(server_id)
-                            if t["name"] == tool_name
-                        ),
-                        None,
-                    )
-                    if tool_info:
-                        return tool_info.get("editable_args")
+        mcp_tool_info = self._get_mcp_tool_info(tool_id)
+        if mcp_tool_info:
+            return mcp_tool_info.get("editable_args")
 
-        if "_" in tool_id and not tool_id.startswith("mcp:"):
-            mcp = get_mcp_manager()
-            for server in mcp.get_servers():
-                server_id = server["id"]
-                prefix = f"{server_id}_"
-                if tool_id.startswith(prefix):
-                    tool_name = tool_id[len(prefix) :]
-                    tool_info = next(
-                        (
-                            t
-                            for t in mcp.get_server_tools(server_id)
-                            if t["name"] == tool_name
-                        ),
-                        None,
-                    )
-                    if tool_info:
-                        return tool_info.get("editable_args")
+        return None
+
+    def get_renderer(self, tool_id: str) -> str | None:
+        """
+        Get renderer config for a tool.
+
+        The tool_id can be in multiple formats:
+        - Builtin: "calculate"
+        - MCP ID: "mcp:github:search_repositories"
+        - MCP Function name: "github_search_repositories" (from agno during execution)
+        """
+        metadata = self._metadata.get(tool_id, {})
+        if "renderer" in metadata:
+            return metadata.get("renderer")
+
+        mcp_tool_info = self._get_mcp_tool_info(tool_id)
+        if mcp_tool_info:
+            return mcp_tool_info.get("renderer")
 
         return None
 
