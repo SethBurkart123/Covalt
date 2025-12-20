@@ -827,7 +827,6 @@ async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
         "edited_args": body.editedArgs or {},
     }
 
-    # Signal the waiting event if it exists
     if run_id in _approval_events:
         _approval_events[run_id].set()
 

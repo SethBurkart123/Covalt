@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, X, Wrench, Clock } from "lucide-react";
+import { Check, X, Wrench, Clock, FileText } from "lucide-react";
 import { respondToToolApproval } from "@/python/api";
 import {
   Collapsible,
@@ -14,7 +14,7 @@ import { getToolResultRenderer } from "@/lib/tool-renderers";
 
 interface ToolCallProps {
   toolName: string;
-  toolArgs: Record<string, any>;
+  toolArgs: Record<string, unknown>;
   toolResult?: string;
   isCompleted: boolean;
   renderer?: string;
@@ -34,10 +34,10 @@ function ArgumentsDisplay({
   editedValues,
   onValueChange,
 }: {
-  args: Record<string, any>;
+  args: Record<string, unknown>;
   editableArgs?: string[] | boolean;
-  editedValues?: Record<string, any>;
-  onValueChange?: (key: string, value: any) => void;
+  editedValues?: Record<string, unknown>;
+  onValueChange?: (key: string, value: unknown) => void;
 }) {
   const isEditable = (key: string) => {
     if (!editableArgs || !onValueChange) return false;
@@ -84,6 +84,8 @@ function ArgumentsDisplay({
   );
 }
 
+
+
 export default function ToolCall({
   toolName,
   toolArgs,
@@ -102,9 +104,9 @@ export default function ToolCall({
   const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus || "pending");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
-  const [editedValues, setEditedValues] = useState<Record<string, any>>({});
+  const [editedValues, setEditedValues] = useState<Record<string, unknown>>({});
 
-  const handleValueChange = (key: string, value: any) => {
+  const handleValueChange = (key: string, value: unknown) => {
     setEditedValues((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -153,11 +155,43 @@ export default function ToolCall({
     }
   };
 
+  const isMarkdownRenderer = renderer === "markdown";
   const showChevron = !requiresApproval || approvalStatus !== "pending";
   const showShimmer = !isCompleted && approvalStatus !== "pending";
-
   const ResultRenderer = getToolResultRenderer(renderer);
 
+  // For markdown renderer with completed result, use simplified display
+  // Title comes from toolArgs.title
+  if (isMarkdownRenderer && isCompleted && toolResult) {
+    const displayTitle = (toolArgs.title as string) || toolName;
+
+    return (
+      <Collapsible
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        isGrouped={isGrouped}
+        isFirst={isFirst}
+        isLast={isLast}
+        shimmer={false}
+        data-toolcall
+      >
+        <CollapsibleTrigger>
+          <CollapsibleHeader>
+            <CollapsibleIcon icon={FileText} />
+            <span className="text-sm font-medium text-foreground">
+              {displayTitle}
+            </span>
+          </CollapsibleHeader>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <ResultRenderer content={toolResult} />
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  }
+
+  // Default tool call display
   return (
     <Collapsible
       open={isOpen}

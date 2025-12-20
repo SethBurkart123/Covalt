@@ -84,5 +84,4 @@ def write_artifact(title: str, content: str) -> str:
     """
     time.sleep(0.5)
 
-    artifact = f"# {title}\n\n{content}"
-    return artifact
+    return content
