@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react";
+import { useSidebar } from "@/components/ui/sidebar";
 
 export interface Artifact {
   id: string;
@@ -23,8 +24,11 @@ const ArtifactPanelContext = createContext<ArtifactPanelContextValue | null>(nul
 export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
+  const wasSidebarOpenRef = useRef<boolean | null>(null);
 
   const open = useCallback((id: string, title: string, content: ReactNode) => {
+    const isFirstArtifact = artifacts.length === 0;
     setArtifacts((prev) => {
       const existing = prev.find((a) => a.id === id);
       if (existing) {
@@ -33,12 +37,20 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
       return [...prev, { id, title, content }];
     });
     setActiveId(id);
-  }, []);
+    if (isFirstArtifact) {
+      wasSidebarOpenRef.current = sidebarOpen;
+      setSidebarOpen(false);
+    }
+  }, [artifacts.length, sidebarOpen, setSidebarOpen]);
 
   const close = useCallback(() => {
     setArtifacts([]);
     setActiveId(null);
-  }, []);
+    if (wasSidebarOpenRef.current) {
+      setSidebarOpen(true);
+      wasSidebarOpenRef.current = null;
+    }
+  }, [setSidebarOpen]);
 
   const setActive = useCallback((id: string) => {
     setActiveId(id);
@@ -49,12 +61,16 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
       const next = prev.filter((a) => a.id !== id);
       if (next.length === 0) {
         setActiveId(null);
+        if (wasSidebarOpenRef.current) {
+          setSidebarOpen(true);
+          wasSidebarOpenRef.current = null;
+        }
       } else if (activeId === id) {
         setActiveId(next[next.length - 1].id);
       }
       return next;
     });
-  }, [activeId]);
+  }, [activeId, setSidebarOpen]);
 
   return (
     <ArtifactPanelContext.Provider
