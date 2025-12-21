@@ -174,9 +174,9 @@ def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
     return PROVIDERS[provider]["get_model"](model_id, **kwargs)
 
 
-def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
+async def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
     """
-    Fetch all available models from a provider's API.
+    Fetch all available models from a provider's API (async).
     
     Args:
         provider: Provider name
@@ -189,7 +189,7 @@ def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
     if provider not in PROVIDERS:
         return []
     
-    return PROVIDERS[provider]["fetch_models"]()
+    return await PROVIDERS[provider]["fetch_models"]()
 
 
 def list_providers() -> List[str]:
@@ -203,9 +203,9 @@ def _normalize(provider: str) -> str:
     return ALIASES.get(provider, provider)
 
 
-def test_provider_connection(provider: str) -> tuple[bool, str | None]:
+async def test_provider_connection(provider: str) -> tuple[bool, str | None]:
     """
-    Test connection to a provider.
+    Test connection to a provider (async).
     
     Args:
         provider: Provider name (e.g., 'openai', 'ollama')
@@ -214,7 +214,7 @@ def test_provider_connection(provider: str) -> tuple[bool, str | None]:
         (success, error_message) tuple where error is None on success
     
     Example:
-        success, error = test_provider_connection("ollama")
+        success, error = await test_provider_connection("ollama")
         if not success:
             print(f"Connection failed: {error}")
     """
@@ -229,7 +229,7 @@ def test_provider_connection(provider: str) -> tuple[bool, str | None]:
         return False, "Provider does not support connection testing"
     
     try:
-        return test_func()
+        return await test_func()
     except Exception as e:
         return False, f"Test failed: {str(e)[:100]}"
 
