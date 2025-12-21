@@ -61,9 +61,7 @@ class ToolRegistry:
         """
         Get MCP tool info for a tool ID.
 
-        Handles both formats:
-        - MCP ID: "mcp:github:search_repositories"
-        - MCP Function name: "github_search_repositories" (from agno during execution)
+        Handles MCP ID format: "mcp:github:search_repositories"
         """
         if tool_id.startswith("mcp:"):
             parsed = self._parse_tool_id(tool_id)
@@ -71,22 +69,6 @@ class ToolRegistry:
                 _, server_id, tool_name = parsed
                 if server_id and tool_name:
                     mcp = get_mcp_manager()
-                    return next(
-                        (
-                            t
-                            for t in mcp.get_server_tools(server_id)
-                            if t["name"] == tool_name
-                        ),
-                        None,
-                    )
-
-        if "_" in tool_id and not tool_id.startswith("mcp:"):
-            mcp = get_mcp_manager()
-            for server in mcp.get_servers():
-                server_id = server["id"]
-                prefix = f"{server_id}_"
-                if tool_id.startswith(prefix):
-                    tool_name = tool_id[len(prefix):]
                     return next(
                         (
                             t
@@ -105,7 +87,6 @@ class ToolRegistry:
         The tool_id can be in multiple formats:
         - Builtin: "calculate"
         - MCP ID: "mcp:github:search_repositories"
-        - MCP Function name: "github_search_repositories" (from agno during execution)
         """
         metadata = self._metadata.get(tool_id, {})
         if "editable_args" in metadata:
@@ -124,7 +105,6 @@ class ToolRegistry:
         The tool_id can be in multiple formats:
         - Builtin: "calculate"
         - MCP ID: "mcp:github:search_repositories"
-        - MCP Function name: "github_search_repositories" (from agno during execution)
         """
         metadata = self._metadata.get(tool_id, {})
         if "renderer" in metadata:

@@ -447,242 +447,258 @@ async def handle_content_stream(
     def save_final():
         return json.dumps(content_blocks)
 
-    while True:
-        async for chunk in response_stream:
-            if not run_id and chunk.run_id:
-                run_id = chunk.run_id
-                _active_runs[assistant_msg_id] = (run_id, agent)
-                logger.info(f"[stream] Captured run_id {run_id}")
+    try:
+        while True:
+            async for chunk in response_stream:
+                if not run_id and chunk.run_id:
+                    run_id = chunk.run_id
+                    _active_runs[assistant_msg_id] = (run_id, agent)
+                    logger.info(f"[stream] Captured run_id {run_id}")
 
-            if chunk.event == RunEvent.run_cancelled:
-                flush_think_tag_buffer()
-                flush_text()
-                flush_reasoning()
-                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-                with db.db_session() as sess:
-                    db.mark_message_complete(sess, assistant_msg_id)
-                if assistant_msg_id in _active_runs:
-                    del _active_runs[assistant_msg_id]
-                ch.send_model(ChatEvent(event="RunCancelled"))
-                return
+                if chunk.event == RunEvent.run_cancelled:
+                    flush_think_tag_buffer()
+                    flush_text()
+                    flush_reasoning()
+                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                    with db.db_session() as sess:
+                        db.mark_message_complete(sess, assistant_msg_id)
+                    if assistant_msg_id in _active_runs:
+                        del _active_runs[assistant_msg_id]
+                    ch.send_model(ChatEvent(event="RunCancelled"))
+                    return
 
-            if chunk.event == RunEvent.run_content:
-                if chunk.reasoning_content:
-                    if current_text and not current_reasoning:
-                        flush_text()
-                    current_reasoning += chunk.reasoning_content
-                    ch.send_model(
-                        ChatEvent(
-                            event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                if chunk.event == RunEvent.run_content:
+                    if chunk.reasoning_content:
+                        if current_text and not current_reasoning:
+                            flush_text()
+                        current_reasoning += chunk.reasoning_content
+                        ch.send_model(
+                            ChatEvent(
+                                event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                            )
                         )
-                    )
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_state()
-                    )
-
-                if chunk.content:
-                    if current_reasoning and not current_text and not parse_think_tags:
-                        flush_reasoning()
-
-                    if parse_think_tags:
-                        process_content_with_think_tags(chunk.content)
-                    else:
-                        current_text += chunk.content
-                        ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
-
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_state()
-                    )
-
-            elif chunk.event == RunEvent.tool_call_started:
-                flush_text()
-                flush_reasoning()
-
-                ch.send_model(
-                    ChatEvent(
-                        event="ToolCallStarted",
-                        tool={
-                            "id": chunk.tool.tool_call_id,
-                            "toolName": chunk.tool.tool_name,
-                            "toolArgs": chunk.tool.tool_args,
-                            "isCompleted": False,
-                        },
-                    )
-                )
-
-            elif chunk.event == RunEvent.tool_call_completed:
-                flush_text()
-                flush_reasoning()
-
-                tool_block = {
-                    "type": "tool_call",
-                    "id": chunk.tool.tool_call_id,
-                    "toolName": chunk.tool.tool_name,
-                    "toolArgs": chunk.tool.tool_args,
-                    "toolResult": str(chunk.tool.result)
-                    if chunk.tool.result is not None
-                    else None,
-                    "isCompleted": True,
-                    "renderer": registry.get_renderer(chunk.tool.tool_name),
-                }
-
-                existing_index = next(
-                    (
-                        i
-                        for i, block in enumerate(content_blocks)
-                        if block.get("type") == "tool_call"
-                        and block.get("id") == tool_block["id"]
-                    ),
-                    None,
-                )
-                if existing_index is not None:
-                    content_blocks[existing_index] = tool_block
-                else:
-                    content_blocks.append(tool_block)
-                ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
-
-            elif chunk.event == RunEvent.reasoning_started:
-                flush_text()
-                ch.send_model(ChatEvent(event="ReasoningStarted"))
-
-            elif chunk.event == RunEvent.reasoning_step:
-                if chunk.reasoning_content:
-                    if current_text:
-                        flush_text()
-                    current_reasoning += chunk.reasoning_content
-                    ch.send_model(
-                        ChatEvent(
-                            event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                        await asyncio.to_thread(
+                            save_msg_content, assistant_msg_id, save_state()
                         )
-                    )
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_state()
-                    )
 
-            elif chunk.event == RunEvent.reasoning_completed:
-                flush_reasoning()
-                ch.send_model(ChatEvent(event="ReasoningCompleted"))
+                    if chunk.content:
+                        if current_reasoning and not current_text and not parse_think_tags:
+                            flush_reasoning()
 
-            elif chunk.event == RunEvent.run_completed:
-                flush_think_tag_buffer()
-                flush_text()
-                flush_reasoning()
-                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-                with db.db_session() as sess:
-                    db.mark_message_complete(sess, assistant_msg_id)
-                ch.send_model(ChatEvent(event="RunCompleted"))
-                return
-
-            elif chunk.event == RunEvent.run_error:
-                flush_think_tag_buffer()
-                flush_text()
-                flush_reasoning()
-                content_blocks.append(
-                    {
-                        "type": "error",
-                        "content": str(
-                            chunk.error.message
-                            if hasattr(chunk.error, "message")
-                            else chunk
-                        ),
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                )
-                await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-                ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
-                had_error = True
-                return
-
-            elif chunk.event == RunEvent.run_paused:
-                flush_text()
-                flush_reasoning()
-                
-                if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
-                    tools_info = []
-                    for tool in chunk.tools_requiring_confirmation:
-                        editable_args = registry.get_editable_args(tool.tool_name)
-                        tool_block = {
-                            "type": "tool_call",
-                            "id": tool.tool_call_id,
-                            "toolName": tool.tool_name,
-                            "toolArgs": tool.tool_args,
-                            "isCompleted": False,
-                            "requiresApproval": True,
-                            "approvalStatus": "pending",
-                        }
-                        content_blocks.append(tool_block)
-                        tool_info = {
-                            "id": tool.tool_call_id,
-                            "toolName": tool.tool_name,
-                            "toolArgs": tool.tool_args,
-                        }
-                        if editable_args:
-                            tool_info["editableArgs"] = editable_args
-                        tools_info.append(tool_info)
-
-                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
-
-                    ch.send_model(
-                        ChatEvent(
-                            event="ToolApprovalRequired",
-                            tool={"runId": run_id, "tools": tools_info},
-                        )
-                    )
-
-                    approval_event = asyncio.Event()
-                    _approval_events[run_id] = approval_event
-
-                    timed_out = False
-                    try:
-                        await asyncio.wait_for(approval_event.wait(), timeout=300)
-                    except asyncio.TimeoutError:
-                        timed_out = True
-                        for tool in chunk.tools_requiring_confirmation:
-                            tool.confirmed = False
-                    else:
-                        response = _approval_responses.get(run_id, {})
-                        tool_decisions = response.get("tool_decisions", {})
-                        edited_args = response.get("edited_args", {})
-                        default_approved = response.get("approved", False)
-                        for tool in chunk.tools_requiring_confirmation:
-                            tool_id = getattr(tool, "tool_call_id", None)
-                            tool.confirmed = tool_decisions.get(tool_id, default_approved)
-                            if tool_id and tool_id in edited_args:
-                                tool.tool_args = edited_args[tool_id]
-
-                    _approval_events.pop(run_id, None)
-                    _approval_responses.pop(run_id, None)
-
-                    for tool in chunk.tools_requiring_confirmation:
-                        tool_id = tool.tool_call_id
-                        if timed_out:
-                            status = "timeout"
+                        if parse_think_tags:
+                            process_content_with_think_tags(chunk.content)
                         else:
-                            status = "approved" if tool.confirmed else "denied"
-                        for block in content_blocks:
-                            if block.get("type") == "tool_call" and block.get("id") == tool_id:
-                                block["approvalStatus"] = status
-                                block["toolArgs"] = tool.tool_args
-                                if status in ("denied", "timeout"):
-                                    block["isCompleted"] = True
-                        ch.send_model(ChatEvent(
-                            event="ToolApprovalResolved",
-                            tool={"id": tool_id, "approvalStatus": status, "toolArgs": tool.tool_args},
-                        ))
+                            current_text += chunk.content
+                            ch.send_model(ChatEvent(event="RunContent", content=chunk.content))
 
-                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
+                        await asyncio.to_thread(
+                            save_msg_content, assistant_msg_id, save_state()
+                        )
 
-                    response_stream = agent.acontinue_run(
-                        run_id=run_id,
-                        updated_tools=chunk.tools,
-                        stream=True,
-                        stream_events=True,
+                elif chunk.event == RunEvent.tool_call_started:
+                    flush_text()
+                    flush_reasoning()
+
+                    ch.send_model(
+                        ChatEvent(
+                            event="ToolCallStarted",
+                            tool={
+                                "id": chunk.tool.tool_call_id,
+                                "toolName": chunk.tool.tool_name,
+                                "toolArgs": chunk.tool.tool_args,
+                                "isCompleted": False,
+                            },
+                        )
                     )
-                    break
 
-        else:
-            # this should never happen, but if it does, we need to break out of the loop
-            break
+                elif chunk.event == RunEvent.tool_call_completed:
+                    flush_text()
+                    flush_reasoning()
+
+                    tool_block = {
+                        "type": "tool_call",
+                        "id": chunk.tool.tool_call_id,
+                        "toolName": chunk.tool.tool_name,
+                        "toolArgs": chunk.tool.tool_args,
+                        "toolResult": str(chunk.tool.result)
+                        if chunk.tool.result is not None
+                        else None,
+                        "isCompleted": True,
+                        "renderer": registry.get_renderer(chunk.tool.tool_name),
+                    }
+
+                    existing_index = next(
+                        (
+                            i
+                            for i, block in enumerate(content_blocks)
+                            if block.get("type") == "tool_call"
+                            and block.get("id") == tool_block["id"]
+                        ),
+                        None,
+                    )
+                    if existing_index is not None:
+                        content_blocks[existing_index] = tool_block
+                    else:
+                        content_blocks.append(tool_block)
+                    ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
+                    await asyncio.to_thread(
+                        save_msg_content, assistant_msg_id, save_final()
+                    )
+
+                elif chunk.event == RunEvent.reasoning_started:
+                    flush_text()
+                    ch.send_model(ChatEvent(event="ReasoningStarted"))
+
+                elif chunk.event == RunEvent.reasoning_step:
+                    if chunk.reasoning_content:
+                        if current_text:
+                            flush_text()
+                        current_reasoning += chunk.reasoning_content
+                        ch.send_model(
+                            ChatEvent(
+                                event="ReasoningStep", reasoningContent=chunk.reasoning_content
+                            )
+                        )
+                        await asyncio.to_thread(
+                            save_msg_content, assistant_msg_id, save_state()
+                        )
+
+                elif chunk.event == RunEvent.reasoning_completed:
+                    flush_reasoning()
+                    ch.send_model(ChatEvent(event="ReasoningCompleted"))
+
+                elif chunk.event == RunEvent.run_completed:
+                    flush_think_tag_buffer()
+                    flush_text()
+                    flush_reasoning()
+                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                    with db.db_session() as sess:
+                        db.mark_message_complete(sess, assistant_msg_id)
+                    ch.send_model(ChatEvent(event="RunCompleted"))
+                    return
+
+                elif chunk.event == RunEvent.run_error:
+                    flush_think_tag_buffer()
+                    flush_text()
+                    flush_reasoning()
+                    content_blocks.append(
+                        {
+                            "type": "error",
+                            "content": str(
+                                chunk.error.message
+                                if hasattr(chunk.error, "message")
+                                else chunk
+                            ),
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+                    )
+                    await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+                    ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
+                    had_error = True
+                    return
+
+                elif chunk.event == RunEvent.run_paused:
+                    flush_text()
+                    flush_reasoning()
+                    
+                    if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
+                        tools_info = []
+                        for tool in chunk.tools_requiring_confirmation:
+                            editable_args = registry.get_editable_args(tool.tool_name)
+                            tool_block = {
+                                "type": "tool_call",
+                                "id": tool.tool_call_id,
+                                "toolName": tool.tool_name,
+                                "toolArgs": tool.tool_args,
+                                "isCompleted": False,
+                                "requiresApproval": True,
+                                "approvalStatus": "pending",
+                            }
+                            content_blocks.append(tool_block)
+                            tool_info = {
+                                "id": tool.tool_call_id,
+                                "toolName": tool.tool_name,
+                                "toolArgs": tool.tool_args,
+                            }
+                            if editable_args:
+                                tool_info["editableArgs"] = editable_args
+                            tools_info.append(tool_info)
+
+                        await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
+
+                        ch.send_model(
+                            ChatEvent(
+                                event="ToolApprovalRequired",
+                                tool={"runId": run_id, "tools": tools_info},
+                            )
+                        )
+
+                        approval_event = asyncio.Event()
+                        _approval_events[run_id] = approval_event
+
+                        timed_out = False
+                        try:
+                            await asyncio.wait_for(approval_event.wait(), timeout=300)
+                        except asyncio.TimeoutError:
+                            timed_out = True
+                            for tool in chunk.tools_requiring_confirmation:
+                                tool.confirmed = False
+                        else:
+                            response = _approval_responses.get(run_id, {})
+                            tool_decisions = response.get("tool_decisions", {})
+                            edited_args = response.get("edited_args", {})
+                            default_approved = response.get("approved", False)
+                            for tool in chunk.tools_requiring_confirmation:
+                                tool_id = getattr(tool, "tool_call_id", None)
+                                tool.confirmed = tool_decisions.get(tool_id, default_approved)
+                                if tool_id and tool_id in edited_args:
+                                    tool.tool_args = edited_args[tool_id]
+
+                        _approval_events.pop(run_id, None)
+                        _approval_responses.pop(run_id, None)
+
+                        for tool in chunk.tools_requiring_confirmation:
+                            tool_id = tool.tool_call_id
+                            if timed_out:
+                                status = "timeout"
+                            else:
+                                status = "approved" if tool.confirmed else "denied"
+                            for block in content_blocks:
+                                if block.get("type") == "tool_call" and block.get("id") == tool_id:
+                                    block["approvalStatus"] = status
+                                    block["toolArgs"] = tool.tool_args
+                                    if status in ("denied", "timeout"):
+                                        block["isCompleted"] = True
+                            ch.send_model(ChatEvent(
+                                event="ToolApprovalResolved",
+                                tool={"id": tool_id, "approvalStatus": status, "toolArgs": tool.tool_args},
+                            ))
+
+                        await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
+
+                        response_stream = agent.acontinue_run(
+                            run_id=run_id,
+                            updated_tools=chunk.tools,
+                            stream=True,
+                            stream_events=True,
+                        )
+                        break
+
+            else:
+                # this should never happen, but if it does, we need to break out of the loop
+                break
+
+    except Exception:
+        # Save current state (including completed tool calls) before handling error
+        flush_think_tag_buffer()
+        flush_text()
+        flush_reasoning()
+        try:
+            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+        except Exception as save_err:
+            logger.error(f"[stream] Failed to save state on error: {save_err}")
+        # Re-raise to let outer handler add error block
+        raise
 
     if assistant_msg_id in _active_runs:
         del _active_runs[assistant_msg_id]

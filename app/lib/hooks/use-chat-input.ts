@@ -87,7 +87,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
   const reloadMessages = useCallback(async (id: string) => {
     const fullChat = await api.getChat(id);
-    clearStreaming();
     setBaseMessages(fullChat.messages || []);
   }, [clearStreaming]);
 

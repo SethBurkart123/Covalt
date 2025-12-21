@@ -163,7 +163,16 @@ export function DefaultToolCall({
         <CollapsibleHeader>
           <CollapsibleIcon icon={Wrench} />
           <span className="text-sm font-mono text-foreground">
-            {toolName}
+            {toolName.includes(":") ? (
+              <>
+                <span>{toolName.split(":").slice(1).join(":")}</span>
+                <span className="px-2 italic text-muted-foreground align-middle">
+                  {toolName.split(":")[0]}
+                </span>
+              </>
+            ) : (
+              toolName
+            )}
           </span>
           {approvalStatus === "denied" && (
             <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
