@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List
+
 from ..providers import get_model as get_provider_model
 from ..providers import fetch_provider_models, list_providers
 from .. import db
@@ -18,28 +20,46 @@ def list_supported_providers() -> List[str]:
     return list_providers()
 
 
-def get_available_models() -> List[Dict[str, Any]]:
-    """Get all available models from configured providers."""
-    models = []
+async def get_available_models() -> List[Dict[str, Any]]:
+    """Get all available models from configured providers (async, parallel)."""
     configured_providers = _get_configured_providers()
+    enabled = [
+        (provider, config) 
+        for provider, config in configured_providers.items() 
+        if config.get("enabled", True)
+    ]
     
-    for provider, config in configured_providers.items():
-        if not config.get("enabled", True):
-            continue
-        
+    if not enabled:
+        return []
+    
+    async def fetch_one(provider: str) -> List[Dict[str, Any]]:
+        """Fetch models from a single provider, handling errors gracefully."""
         try:
-            provider_models = fetch_provider_models(provider)
-            models.extend([
+            provider_models = await fetch_provider_models(provider)
+            return [
                 {
                     "provider": provider,
                     "modelId": m["id"],
                     "displayName": m["name"],
-                    "isDefault": len(models) == 0  # First model is default
+                    "isDefault": False,
                 }
                 for m in provider_models
-            ])
+            ]
         except Exception as e:
             print(f"[{provider}] Error fetching models: {e}")
+            return []
+    
+    # Fetch all providers in parallel!
+    results = await asyncio.gather(*[fetch_one(p) for p, _ in enabled])
+    
+    # Flatten results
+    models = []
+    for provider_models in results:
+        models.extend(provider_models)
+    
+    # Mark first model as default
+    if models:
+        models[0]["isDefault"] = True
     
     return models
 

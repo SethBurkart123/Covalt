@@ -1,12 +1,11 @@
 """Google Provider - Gemini models via Google AI Studio or Vertex AI"""
 
 from typing import Any, Dict, List
-import requests
+import httpx
 from agno.models.litellm import LiteLLM
 from . import get_api_key, get_extra_config, get_credentials
 from .. import db
 
-# Alternative names for this provider
 ALIASES = ["gemini", "google_ai_studio"]
 
 
@@ -18,7 +17,6 @@ def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
     if not api_key and not extra.get("vertexai"):
         raise RuntimeError("Google API key not configured in Settings.")
     
-    # Configure Vertex AI if enabled
     request_params = None
     if extra.get("vertexai"):
         request_params = {
@@ -34,7 +32,7 @@ def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
     )
 
 
-def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> List[Dict[str, Any]]:
     """Fetch available models from Google AI Studio API."""
     api_key = get_api_key()
     
@@ -42,41 +40,39 @@ def fetch_models() -> List[Dict[str, Any]]:
         return []
     
     try:
-        response = requests.get(
-            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
-            timeout=5
-        )
-        
-        if not response.ok:
-            return []
-        
-        models = []
-        for m in response.json().get("models", []):
-            # Extract model ID from full path
-            model_id = m.get("name", "").split("/")[-1] or m.get("baseModelId", "")
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            )
             
-            if not model_id:
-                continue
+            if not response.is_success:
+                return []
             
-            model_info = {
-                "id": model_id,
-                "name": m.get("displayName", model_id),
-                "supports_reasoning": m.get("thinking", False)
-            }
-            models.append(model_info)
+            models = []
+            for m in response.json().get("models", []):
+                model_id = m.get("name", "").split("/")[-1] or m.get("baseModelId", "")
+                
+                if not model_id:
+                    continue
+                
+                model_info = {
+                    "id": model_id,
+                    "name": m.get("displayName", model_id),
+                    "supports_reasoning": m.get("thinking", False)
+                }
+                models.append(model_info)
+                
+                if model_info["supports_reasoning"]:
+                    _save_reasoning_metadata(model_id)
             
-            # Store reasoning capability in database
-            if model_info["supports_reasoning"]:
-                _save_reasoning_metadata(model_id)
-        
-        return models
-        
+            return models
+            
     except Exception as e:
         print(f"[google] Failed to fetch models: {e}")
         return []
 
 
-def test_connection() -> tuple[bool, str | None]:
+async def test_connection() -> tuple[bool, str | None]:
     """
     Test connection to Google AI Studio API.
     
@@ -89,22 +85,18 @@ def test_connection() -> tuple[bool, str | None]:
         return False, "API key not configured"
     
     try:
-        response = requests.get(
-            f"https://generativelanguage.googleapis.com/v1/models?key={api_key}",
-            timeout=5
-        )
-        
-        if response.ok:
-            return True, None
-        elif response.status_code == 401 or response.status_code == 403:
-            return False, "Invalid API key"
-        else:
-            return False, f"API returned status {response.status_code}"
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(
+                f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
+            )
             
-    except requests.exceptions.Timeout:
-        return False, "Request timeout"
-    except requests.exceptions.ConnectionError:
-        return False, "Cannot reach API server"
+            if response.is_success:
+                return True, None
+            elif response.status_code == 401 or response.status_code == 403:
+                return False, "Invalid API key"
+            else:
+                return False, f"API returned status {response.status_code}"
+                
     except Exception as e:
         return False, f"Connection failed: {str(e)[:100]}"
 

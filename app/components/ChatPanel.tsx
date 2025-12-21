@@ -9,6 +9,9 @@ import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { api } from "@/lib/services/api";
 import { getModelSettings } from "@/python/api";
 import { Header } from "./Header";
+import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
+import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
+import "@/components/tool-renderers";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
@@ -254,57 +257,55 @@ export default function ChatPanel() {
   }, [canSendMessage, input, inputRef, handleInputChange]);
 
   return (
-    <div className="flex flex-row min-h-full">
-      <div className="flex-1 flex flex-col">
-        <Header />
-        <div className="overflow-y-scroll flex-1">
-          <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
-          <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
-            <ChatMessageList
-              messages={messages}
+    <ArtifactPanelProvider>
+      <div className="flex flex-row min-h-full">
+        <div className="flex-1 flex flex-col min-w-0">
+          <Header />
+          <div className="overflow-y-scroll flex-1">
+            <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
+            <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
+              <ChatMessageList
+                messages={messages}
+                isLoading={isLoading}
+                messageSiblings={messageSiblings}
+                onContinue={handleContinue}
+                onRetry={handleRetry}
+                onEditStart={handleEdit}
+                editingMessageId={editingMessageId}
+                editingDraft={editingDraft}
+                setEditingDraft={setEditingDraft}
+                onEditCancel={handleEditCancel}
+                onEditSubmit={handleEditSubmit}
+                onNavigate={handleNavigate}
+                actionLoading={null}
+              />
+            </div>
+          </div>
+          <div className="px-4 pb-4">
+            <ChatInputForm
+              input={input}
+              handleInputChange={stableHandleInputChange}
+              handleSubmit={stableHandleSubmit}
               isLoading={isLoading}
-              messageSiblings={messageSiblings}
-              onContinue={handleContinue}
-              onRetry={handleRetry}
-              onEditStart={handleEdit}
-              editingMessageId={editingMessageId}
-              editingDraft={editingDraft}
-              setEditingDraft={setEditingDraft}
-              onEditCancel={handleEditCancel}
-              onEditSubmit={handleEditSubmit}
-              onNavigate={handleNavigate}
-              actionLoading={null}
+              inputRef={inputRef}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              models={models}
+              getModelName={getModelName}
+              canSendMessage={canSendMessage}
+              onStop={handleStop}
             />
           </div>
+          {showThinkingPrompt && (
+            <ThinkingTagPrompt
+              onAccept={handleAcceptThinkingPrompt}
+              onDecline={handleDeclineThinkingPrompt}
+              onDismiss={handleDismissThinkingPrompt}
+            />
+          )}
         </div>
-        <div className="px-4 pb-4">
-          <ChatInputForm
-            input={input}
-            handleInputChange={stableHandleInputChange}
-            handleSubmit={stableHandleSubmit}
-            isLoading={isLoading}
-            inputRef={inputRef}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            models={models}
-            getModelName={getModelName}
-            canSendMessage={canSendMessage}
-            onStop={handleStop}
-          />
-        </div>
-        {showThinkingPrompt && (
-          <ThinkingTagPrompt
-            onAccept={handleAcceptThinkingPrompt}
-            onDecline={handleDeclineThinkingPrompt}
-            onDismiss={handleDismissThinkingPrompt}
-          />
-        )}
+        <ArtifactPanel />
       </div>
-      <div className="flex-1 py-4 pr-4">
-        <div className="w-full h-full bg-card/30 border border-border rounded-xl">
-
-        </div>
-      </div>
-    </div>
+    </ArtifactPanelProvider>
   );
 }

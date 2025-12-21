@@ -53,11 +53,13 @@ async def get_version() -> str:
 async def get_available_models() -> AvailableModelsResponse:
     """
     Get list of available models based on configured providers.
+    
+    Fetches from all enabled providers in parallel for maximum speed.
 
     Returns:
         List of available models with provider, modelId, displayName, and isDefault
     """
-    models_data = get_models_from_factory()
+    models_data = await get_models_from_factory()
     models = [
         ModelInfo(
             provider=m["provider"],
@@ -351,5 +353,5 @@ async def test_provider(body: TestProviderInput) -> TestProviderResponse:
         Success status and optional error message
     """
     
-    success, error = test_provider_connection(body.provider)
+    success, error = await test_provider_connection(body.provider)
     return TestProviderResponse(success=success, error=error)

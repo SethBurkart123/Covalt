@@ -1,7 +1,7 @@
 """Ollama Provider - Local models running on Ollama"""
 
 from typing import Any, Dict, List
-import requests
+import httpx
 from agno.models.litellm import LiteLLM
 from . import get_base_url
 
@@ -20,7 +20,7 @@ def get_ollama_model(model_id: str, **kwargs: Any) -> LiteLLM:
     )
 
 
-def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> List[Dict[str, str]]:
     """Fetch available models from local Ollama instance."""
     host = get_base_url()
     
@@ -28,26 +28,27 @@ def fetch_models() -> List[Dict[str, str]]:
         return []
     
     try:
-        response = requests.get(f"{host}/api/tags", timeout=5)
-        
-        if response.ok:
-            models = response.json().get("models", [])
-            return [
-                {
-                    "id": m["name"],
-                    "name": m["name"].split(":")[0].title()  # Clean display name
-                }
-                for m in models
-                if m.get("name")
-            ]
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{host}/api/tags")
             
+            if response.is_success:
+                models = response.json().get("models", [])
+                return [
+                    {
+                        "id": m["name"],
+                        "name": m["name"].split(":")[0].title()
+                    }
+                    for m in models
+                    if m.get("name")
+                ]
+                
     except Exception as e:
         print(f"[ollama] Failed to fetch models: {e}")
     
     return []
 
 
-def test_connection() -> tuple[bool, str | None]:
+async def test_connection() -> tuple[bool, str | None]:
     """
     Test connection to Ollama server.
     
@@ -60,16 +61,13 @@ def test_connection() -> tuple[bool, str | None]:
         return False, "Host URL not configured"
     
     try:
-        response = requests.get(f"{host}/api/tags", timeout=5)
-        
-        if response.ok:
-            return True, None
-        else:
-            return False, f"Server returned status {response.status_code}"
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{host}/api/tags")
             
-    except requests.exceptions.Timeout:
-        return False, "Connection timeout - server not responding"
-    except requests.exceptions.ConnectionError:
-        return False, "Cannot connect to server"
+            if response.is_success:
+                return True, None
+            else:
+                return False, f"Server returned status {response.status_code}"
+                
     except Exception as e:
         return False, f"Connection failed: {str(e)[:100]}"

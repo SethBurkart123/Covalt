@@ -82,14 +82,23 @@ interface CollapsibleTriggerProps {
   children: React.ReactNode;
   rightContent?: React.ReactNode;
   className?: string;
+  onClick?: () => void;
 }
 
-function CollapsibleTrigger({ children, rightContent, className }: CollapsibleTriggerProps) {
+function CollapsibleTrigger({ children, rightContent, className, onClick }: CollapsibleTriggerProps) {
   const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible();
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (!disableToggle) {
+      setIsOpen(!isOpen);
+    }
+  };
 
   return (
     <button
-      onClick={() => !disableToggle && setIsOpen(!isOpen)}
+      onClick={handleClick}
       className={cn(
         "w-full px-4 py-3 flex items-center justify-between transition-colors",
         isGrouped ? "hover:bg-border/30" : "hover:bg-muted/50",

@@ -1,3 +1,5 @@
+"use client";
+
 import { usePageTitle } from "@/contexts/page-title-context";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
