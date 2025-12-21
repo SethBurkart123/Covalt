@@ -134,13 +134,30 @@ function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
   if (isGrouped) {
     return (
       <>
-        <div
-          className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
-          style={{
-            top: isFirst ? "2.2rem" : "0",
-            bottom: isLast ? "calc(100% - 0.7rem)" : "0",
-          }}
-        />
+        {
+          (isFirst && isLast) || (isFirst !== isLast) ?
+          <div
+            className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
+            style={{
+              top: isFirst ? "2.2rem" : "0",
+              bottom: isLast ? "calc(100% - 0.7rem)" : "0",
+            }}
+          /> :
+          <>
+            <div
+              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
+              style={{
+                top: "2.2rem",
+              }}
+            />
+            <div
+              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
+              style={{
+                bottom: "calc(100% - 0.7rem)"
+              }}
+            />
+          </>
+        }
         <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
           <Icon size={16} className={cn("text-muted-foreground", className)} />
         </div>
@@ -157,10 +174,8 @@ interface CollapsibleHeaderProps {
 }
 
 function CollapsibleHeader({ children, className }: CollapsibleHeaderProps) {
-  const { isGrouped } = useCollapsible();
-
   return (
-    <div className={cn("flex items-center gap-2", isGrouped && "ml-2", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       {children}
     </div>
   );
