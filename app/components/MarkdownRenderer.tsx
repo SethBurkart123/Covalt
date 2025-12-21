@@ -16,14 +16,14 @@ const MemoizedComponents = {
   h4: memo(({node, ...props}: any) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />),
   p: memo(({node, ...props}: any) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />),
   blockquote: memo(({node, ...props}: any) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />),
-  ul: memo(({node, ...props}: any) => <ul className="!my-1 ml-6 list-disc" {...props} />),
-  ol: memo(({node, ...props}: any) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2" {...props} />),
+  ul: memo(({node, ...props}: any) => <ul className="!my-1 list-disc" {...props} />),
+  ol: memo(({node, ...props}: any) => <ol className="my-6 list-decimal [&>li]:mt-2" {...props} />),
   table: memo(({node, ...props}: any) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>),
   th: memo(({node, ...props}: any) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
   td: memo(({node, ...props}: any) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
-  a: memo(({node, ...props}: any) => <a className="font-medium text-primary underline underline-offset-4" {...props} />),
+  a: memo(({node, ...props}: any) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />),
   pre: memo(({node, ...props}: any) => <pre {...props} />),
-  img: memo(({node, ...props}: any) => <img className="w-full h-auto rounded-lg" {...props} />),
+  img: memo(({node, ...props}: any) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />),
   hr: memo(({node, ...props}: any) => <hr className="!my-8" {...props} />),
   input: memo(({node, className, ...props}: any) => {
     if (props.type === 'checkbox') {
