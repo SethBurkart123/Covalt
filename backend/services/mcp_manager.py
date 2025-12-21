@@ -420,11 +420,11 @@ class MCPManager:
                 return f"Error calling tool: {e}"
 
         # Set function metadata for agno
-        mcp_tool_entrypoint.__name__ = f"{server_id}_{tool_name}"
+        mcp_tool_entrypoint.__name__ = f"{server_id}:{tool_name}"
         mcp_tool_entrypoint.__doc__ = mcp_tool.description
 
         return Function(
-            name=f"{server_id}_{tool_name}",
+            name=f"{server_id}:{tool_name}",
             description=mcp_tool.description,
             parameters=mcp_tool.inputSchema,
             entrypoint=mcp_tool_entrypoint,
