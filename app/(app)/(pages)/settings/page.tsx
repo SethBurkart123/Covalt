@@ -20,7 +20,7 @@ export default function SettingsPage() {
     switch (activeTab) {
       case "general":
         return (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <AutoTitlePanel />
             <ModelSettingsPanel />
           </div>

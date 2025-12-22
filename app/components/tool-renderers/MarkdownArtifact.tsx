@@ -10,7 +10,6 @@ import {
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-import { cn } from "@/lib/utils";
 
 export function MarkdownArtifact({
   toolName,
@@ -22,10 +21,9 @@ export function MarkdownArtifact({
   isFirst = false,
   isLast = false,
 }: ToolCallRendererProps) {
-  const { open, activeId } = useArtifactPanel();
+  const { open } = useArtifactPanel();
   const title = (toolArgs.title as string) || toolName;
   const id = toolCallId || `${toolName}-${title}`;
-  const isActive = activeId === id;
 
   const handleClick = () => {
     if (!isCompleted || !toolResult) return;
@@ -41,7 +39,7 @@ export function MarkdownArtifact({
       disableToggle
       data-toolcall
     >
-      <CollapsibleTrigger onClick={handleClick} className={cn(isActive && "bg-muted/50", "py-4 !rounded-4xl")}>
+      <CollapsibleTrigger onClick={handleClick}>
         <CollapsibleHeader>
           <CollapsibleIcon icon={FileText} />
           <span className="text-sm font-medium text-foreground">
