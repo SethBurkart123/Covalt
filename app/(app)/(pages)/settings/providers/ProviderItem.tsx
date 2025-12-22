@@ -44,7 +44,7 @@ export default function ProviderItem({
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-          <div className="rounded-md bg-muted flex items-center justify-center">
+          <div className="rounded-md flex items-center justify-center">
             <Icon />
           </div>
           <div className="flex-1 min-w-0">
