@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Brain } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
@@ -14,52 +14,65 @@ import {
 interface ThinkingCallProps {
   content: string;
   active?: boolean;
-  startAt?: number;
-  finalElapsedMs?: number;
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
-}
-
-function formatMs(ms: number): string {
-  const secs = Math.max(0, Math.floor((ms / 1000) % 60));
-  const mins = Math.max(0, Math.floor(ms / 60000));
-  if (mins > 0) return `${mins}m ${secs}s`;
-  return `${secs}s`;
+  isCompleted?: boolean;
 }
 
 export default function ThinkingCall({
   content,
   active = false,
-  startAt,
-  finalElapsedMs,
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  isCompleted = false,
 }: ThinkingCallProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [elapsed, setElapsed] = useState<number>(finalElapsedMs || 0);
-  const timerRef = useRef<number | null>(null);
+  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const userInteractedRef = useRef(false);
 
   useEffect(() => {
-    if (active && startAt) {
-      const tick = () => setElapsed(Date.now() - startAt);
-      tick();
-      timerRef.current = window.setInterval(tick, 1000);
-      return () => {
-        if (timerRef.current) window.clearInterval(timerRef.current);
-        timerRef.current = null;
-      };
-    } else if (finalElapsedMs != null) {
-      setElapsed(finalElapsedMs);
+    if (active) {
+      setIsManuallyExpanded(false);
+      userInteractedRef.current = false;
+      setIsClosing(false);
     }
-  }, [active, startAt, finalElapsedMs]);
+  }, [active]);
 
-  const rightTimer = useMemo(() => {
-    if (active) return formatMs(elapsed);
-    if (!active && finalElapsedMs != null) return formatMs(finalElapsedMs);
-    return undefined;
-  }, [active, elapsed, finalElapsedMs]);
+  useEffect(() => {
+    if (active && !userInteractedRef.current) {
+      setIsOpen(true);
+    } else if (!active && isOpen && !isManuallyExpanded && !userInteractedRef.current) {
+      setIsClosing(true);
+      const timer = setTimeout(() => {
+        setIsOpen(false);
+        setIsClosing(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [active, isOpen, isManuallyExpanded]);
+
+  useEffect(() => {
+    if (active && !isManuallyExpanded && contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [content, active, isManuallyExpanded]);
+
+  const handleToggle = () => {
+    userInteractedRef.current = true;
+    
+    if (active && isOpen && !isManuallyExpanded) {
+      setIsManuallyExpanded(true);
+    } else {
+      setIsOpen(!isOpen);
+      if (isOpen) {
+        setIsManuallyExpanded(false);
+      }
+    }
+  };
 
   return (
     <Collapsible
@@ -72,13 +85,8 @@ export default function ThinkingCall({
       data-thinkingcall
     >
       <CollapsibleTrigger
-        rightContent={
-          rightTimer && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {rightTimer}
-            </span>
-          )
-        }
+        onClick={handleToggle}
+        overrideIsOpenPreview={isCompleted ? undefined : isManuallyExpanded}
       >
         <CollapsibleHeader>
           <CollapsibleIcon icon={Brain} />
@@ -86,8 +94,13 @@ export default function ThinkingCall({
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
-      <CollapsibleContent>
-        <MarkdownRenderer content={content} />
+      <CollapsibleContent className={(active || isClosing) && !isManuallyExpanded ? "pt-0" : ""}>
+        <div 
+          ref={contentRef}
+          className={(active || isClosing) && !isManuallyExpanded ? "max-h-48 overflow-y-auto pt-2" : ""}
+        >
+          <MarkdownRenderer content={content} />
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
