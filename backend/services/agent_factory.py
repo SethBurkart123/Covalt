@@ -81,7 +81,7 @@ def create_agent_for_chat(
         markdown=True,
         stream_intermediate_steps=True,
         db=_agent_db,
-        # debug_mode=True  # Temporary for debugging tool calls
+        # debug_mode=True
     )
 
     return agent

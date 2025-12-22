@@ -117,7 +117,7 @@ export default function ModelSelector({
           variant="secondary"
           role="combobox"
           aria-expanded={open}
-          className="flex flex-shrink-0 items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20"
+          className="flex flex-shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20"
         >
           {selectedModelInfo ? (
             <span className="flex min-w-0 items-center gap-1.5">

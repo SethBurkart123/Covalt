@@ -254,6 +254,7 @@ function ChatMessage({
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
+                                  isCompleted={b.isCompleted}
                                 />
                               );
                             }
