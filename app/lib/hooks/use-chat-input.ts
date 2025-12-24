@@ -5,7 +5,7 @@ import { useChat } from "@/contexts/chat-context";
 import { useTools } from "@/contexts/tools-context";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
-import type { Message, MessageSibling } from "@/lib/types/chat";
+import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
 import { addRecentModel } from "@/lib/utils";
 
 function createUserMessage(content: string): Message {
@@ -34,7 +34,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const { activeToolIds } = useTools();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
-  const [streamingContent, setStreamingContent] = useState<any[] | null>(null);
+  const [streamingContent, setStreamingContent] = useState<ContentBlock[] | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   
   const [input, setInput] = useState("");
@@ -88,7 +88,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const reloadMessages = useCallback(async (id: string) => {
     const fullChat = await api.getChat(id);
     setBaseMessages(fullChat.messages || []);
-  }, [clearStreaming]);
+  }, []);
 
   const streamWithUpdates = useCallback(
     async (
@@ -347,8 +347,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         initial = msg.content;
       } else if (Array.isArray(msg.content)) {
         initial = msg.content
-          .filter((b: any) => b?.type === "text" && typeof b.content === "string")
-          .map((b: any) => b.content)
+          .filter((b: ContentBlock) => b?.type === "text" && typeof b.content === "string")
+          .map((b: ContentBlock) => (b as { type: "text"; content: string }).content)
           .join("\n\n");
       }
 
@@ -406,7 +406,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       streamingMessageIdRef.current = null;
       clearStreaming();
     }
-  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected]);
+  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected, activeToolIds]);
 
   const handleNavigate = useCallback(
     async (messageId: string, siblingId: string) => {

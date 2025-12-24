@@ -46,7 +46,7 @@ export function useChatOperations({
       try {
         await api.deleteChat(id);
 
-        const { [id]: deletedChat, ...remainingChats } = allChatsData.chats;
+        const { [id]: _deletedChat, ...remainingChats } = allChatsData.chats;
         const nextData: AllChatsData = {
           ...allChatsData,
           chats: remainingChats,
