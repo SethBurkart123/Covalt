@@ -15,6 +15,18 @@ const nextConfig = {
   devIndicators: false,
   // Configure assetPrefix or else the server won't properly resolve your assets.
   assetPrefix: isProd ? undefined : `http://${internalHost}:3000`,
+  experimental: {
+    outputFileTracingExcludes: {
+      '*': ['./zynk/**/*'],
+    },
+  },
+  webpack: (config: any) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ['**/zynk/**'],
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

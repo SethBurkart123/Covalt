@@ -23,8 +23,8 @@ dependencies = [
     "litellm>=1.80.10",
     "mcp>=1.24.0",
     "httpx>=0.28.1",
-    "zynk",
     "agno>=2.3.20",
+    "zynk",
 ]
 
 [dependency-groups]
