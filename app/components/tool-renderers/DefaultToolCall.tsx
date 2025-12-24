@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, X, Wrench, Clock } from "lucide-react";
+import { Check, X, Wrench } from "lucide-react";
 import { respondToToolApproval } from "@/python/api";
 import {
   Collapsible,
