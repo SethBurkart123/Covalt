@@ -18,7 +18,7 @@ export type ContentBlock =
       type: "tool_call";
       id: string;
       toolName: string;
-      toolArgs: Record<string, any>;
+      toolArgs: Record<string, unknown>;
       toolResult?: string;
       isCompleted: boolean;
       renderer?: string;

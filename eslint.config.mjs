@@ -21,6 +21,13 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
     },
   },
+  {
+    files: ["app/python/api.ts"],
+    rules: {
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

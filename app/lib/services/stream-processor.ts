@@ -1,14 +1,31 @@
 "use client";
 
+import type { ContentBlock } from "@/lib/types/chat";
+
+interface ToolData {
+  id: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  toolResult?: string;
+  renderer?: string;
+  editableArgs?: string[] | boolean;
+  approvalStatus?: string;
+}
+
+interface ToolApprovalData {
+  runId: string;
+  tools: ToolData[];
+}
+
 export interface StreamCallbacks {
-  onUpdate: (content: any[]) => void;
+  onUpdate: (content: ContentBlock[]) => void;
   onSessionId?: (sessionId: string) => void;
   onMessageId?: (messageId: string) => void;
   onThinkTagDetected?: () => void;
 }
 
 interface StreamState {
-  contentBlocks: any[];
+  contentBlocks: ContentBlock[];
   currentTextBlock: string;
   currentReasoningBlock: string;
   thinkTagDetected: boolean;
@@ -41,7 +58,7 @@ function flushReasoningBlock(state: StreamState): void {
   }
 }
 
-function buildCurrentContent(state: StreamState): any[] {
+function buildCurrentContent(state: StreamState): ContentBlock[] {
   const content = [...state.contentBlocks];
 
   if (state.currentTextBlock) {
@@ -61,7 +78,7 @@ function buildCurrentContent(state: StreamState): any[] {
   return content;
 }
 
-function scheduleUpdate(state: StreamState, onUpdate: (content: any[]) => void): void {
+function scheduleUpdate(state: StreamState, onUpdate: (content: ContentBlock[]) => void): void {
   requestAnimationFrame(() => onUpdate(buildCurrentContent(state)));
 }
 
@@ -88,37 +105,39 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
   }
 }
 
-function handleToolCallStarted(state: StreamState, tool: any): void {
+function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
 
   if (tool) {
+    const t = tool as ToolData;
     const existingBlock = state.contentBlocks.find(
-      (b) => b.type === "tool_call" && b.id === tool.id,
+      (b) => b.type === "tool_call" && b.id === t.id,
     );
 
-    if (existingBlock) {
+    if (existingBlock && existingBlock.type === "tool_call") {
       existingBlock.isCompleted = false;
     } else {
       state.contentBlocks.push({
         type: "tool_call",
-        id: tool.id,
-        toolName: tool.toolName,
-        toolArgs: tool.toolArgs,
+        id: t.id,
+        toolName: t.toolName,
+        toolArgs: t.toolArgs,
         isCompleted: false,
       });
     }
   }
 }
 
-function handleToolApprovalRequired(state: StreamState, toolData: any): void {
+function handleToolApprovalRequired(state: StreamState, toolData: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
 
-  const { runId, tools } = toolData;
+  const data = toolData as ToolApprovalData;
+  const { runId, tools } = data;
 
   for (const tool of tools) {
-    const block: any = {
+    const block: ContentBlock = {
       type: "tool_call",
       id: tool.id,
       toolName: tool.toolName,
@@ -128,41 +147,42 @@ function handleToolApprovalRequired(state: StreamState, toolData: any): void {
       runId: runId,
       toolCallId: tool.id,
       approvalStatus: "pending",
+      editableArgs: tool.editableArgs,
     };
-    if (tool.editableArgs) {
-      block.editableArgs = tool.editableArgs;
-    }
     state.contentBlocks.push(block);
   }
 }
 
-function handleToolCallCompleted(state: StreamState, tool: any): void {
+function handleToolCallCompleted(state: StreamState, tool: unknown): void {
+  const t = tool as ToolData;
   const toolBlock = state.contentBlocks.find(
-    (b) => b.type === "tool_call" && b.id === tool.id,
+    (b) => b.type === "tool_call" && b.id === t.id,
   );
 
-  if (toolBlock) {
-    toolBlock.toolResult = tool.toolResult;
+  if (toolBlock && toolBlock.type === "tool_call") {
+    toolBlock.toolResult = t.toolResult;
     toolBlock.isCompleted = true;
     if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
       toolBlock.approvalStatus = "approved";
     }
-    if (tool.renderer) {
-      toolBlock.renderer = tool.renderer;
+    if (t.renderer) {
+      toolBlock.renderer = t.renderer;
     }
   }
 }
 
-function handleToolApprovalResolved(state: StreamState, tool: any): void {
+function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
+  const t = tool as ToolData;
   const toolBlock = state.contentBlocks.find(
-    (b) => b.type === "tool_call" && b.id === tool.id,
+    (b) => b.type === "tool_call" && b.id === t.id,
   );
-  if (toolBlock) {
-    toolBlock.approvalStatus = tool.approvalStatus;
-    if (tool.toolArgs) {
-      toolBlock.toolArgs = tool.toolArgs;
+  
+  if (toolBlock && toolBlock.type === "tool_call") {
+    toolBlock.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
+    if (t.toolArgs) {
+      toolBlock.toolArgs = t.toolArgs;
     }
-    if (tool.approvalStatus === "denied" || tool.approvalStatus === "timeout") {
+    if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
       toolBlock.isCompleted = true;
     }
   }
@@ -170,26 +190,28 @@ function handleToolApprovalResolved(state: StreamState, tool: any): void {
 
 function processEvent(
   eventType: string,
-  data: any,
+  data: unknown,
   state: StreamState,
   callbacks: StreamCallbacks,
 ): void {
+  const d = data as Record<string, unknown>;
+  
   switch (eventType) {
     case "RunStarted":
-      if (data.sessionId) callbacks.onSessionId?.(data.sessionId);
+      if (d.sessionId) callbacks.onSessionId?.(d.sessionId as string);
       break;
 
     case "AssistantMessageId":
-      if (data.content) callbacks.onMessageId?.(data.content);
+      if (d.content) callbacks.onMessageId?.(d.content as string);
       break;
 
     case "RunContent":
-      if (data.content) handleRunContent(state, data.content, callbacks);
+      if (d.content) handleRunContent(state, d.content as string, callbacks);
       break;
 
     case "SeedBlocks":
-      if (Array.isArray(data.blocks)) {
-        state.contentBlocks.splice(0, state.contentBlocks.length, ...data.blocks);
+      if (Array.isArray(d.blocks)) {
+        state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
         state.currentTextBlock = "";
         state.currentReasoningBlock = "";
       }
@@ -200,11 +222,11 @@ function processEvent(
       break;
 
     case "ReasoningStep":
-      if (data.reasoningContent) {
+      if (d.reasoningContent) {
         if (state.currentTextBlock && !state.currentReasoningBlock) {
           flushTextBlock(state);
         }
-        state.currentReasoningBlock += data.reasoningContent;
+        state.currentReasoningBlock += d.reasoningContent as string;
       }
       break;
 
@@ -213,19 +235,19 @@ function processEvent(
       break;
 
     case "ToolCallStarted":
-      handleToolCallStarted(state, data.tool);
+      handleToolCallStarted(state, d.tool);
       break;
 
     case "ToolApprovalRequired":
-      if (data.tool) handleToolApprovalRequired(state, data.tool);
+      if (d.tool) handleToolApprovalRequired(state, d.tool);
       break;
 
     case "ToolCallCompleted":
-      if (data.tool) handleToolCallCompleted(state, data.tool);
+      if (d.tool) handleToolCallCompleted(state, d.tool);
       break;
 
     case "ToolApprovalResolved":
-      if (data.tool) handleToolApprovalResolved(state, data.tool);
+      if (d.tool) handleToolApprovalResolved(state, d.tool);
       break;
 
     case "RunCompleted":
@@ -237,10 +259,10 @@ function processEvent(
       flushTextBlock(state);
       flushReasoningBlock(state);
       const errText =
-        typeof data.error === "string"
-          ? data.error
-          : typeof data.content === "string"
-            ? data.content
+        typeof d.error === "string"
+          ? d.error
+          : typeof d.content === "string"
+            ? d.content
             : "An error occurred.";
       state.contentBlocks.push({ type: "error", content: errText });
       break;
