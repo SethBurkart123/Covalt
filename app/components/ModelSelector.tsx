@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useId, useState, useMemo } from "react";
+import { Fragment, useId, useState, useMemo, useEffect } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,16 @@ export default function ModelSelector({
       refreshModels();
     }
   };
+
+  useEffect(() => {
+    if (!open) return;
+
+    const interval = setInterval(() => {
+      refreshModels();
+    }, 7000);
+
+    return () => clearInterval(interval);
+  }, [open, refreshModels]);
 
   const groupedModels = useMemo(() => {
     const recentModelKeys = getRecentModels();
