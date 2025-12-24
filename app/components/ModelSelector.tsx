@@ -20,6 +20,7 @@ import {
 import type { ModelInfo } from "@/lib/types/chat";
 import { PROVIDER_MAP } from "@/(app)/(pages)/settings/providers/ProviderRegistry";
 import { getRecentModels } from "@/lib/utils";
+import { useChat } from "@/contexts/chat-context";
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -43,6 +44,14 @@ export default function ModelSelector({
 }: ModelSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
+  const { refreshModels } = useChat();
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      refreshModels();
+    }
+  };
 
   const groupedModels = useMemo(() => {
     const recentModelKeys = getRecentModels();
@@ -110,7 +119,7 @@ export default function ModelSelector({
     : null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           id={id}
