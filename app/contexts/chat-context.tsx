@@ -17,7 +17,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [currentChatId, setCurrentChatId] = React.useState("");
   const [isLoaded, setIsLoaded] = React.useState(false);
 
-  const { models, selectedModel, setSelectedModel } = useModels();
+  const { models, selectedModel, setSelectedModel, refreshModels } = useModels();
 
   const operations = useChatOperations({
     allChatsData,
@@ -98,6 +98,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       selectedModel,
       setSelectedModel,
       models,
+      refreshModels,
     }),
     [
       currentChatId,
@@ -108,6 +109,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       refreshChats,
       selectedModel,
       models,
+      refreshModels,
     ],
   );
 

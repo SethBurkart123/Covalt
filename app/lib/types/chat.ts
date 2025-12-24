@@ -85,4 +85,5 @@ export interface ChatContextType {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
+  refreshModels: () => Promise<void>;
 }
