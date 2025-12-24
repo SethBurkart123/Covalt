@@ -1,35 +1,32 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { MessageSquareCode, Brain } from "lucide-react";
 import {
   getModelSettings,
   saveModelSettings,
   getAvailableModels,
 } from "@/python/api";
-import type { ModelSettingsInfo, ReasoningInfo } from "@/python/api";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import type { ModelSettingsInfo } from "@/python/api";
+import { Card } from "@/components/ui/card";
+import ModelChipSelector from "./ModelChipSelector";
+
+type Model = {
+  provider: string;
+  modelId: string;
+  displayName: string;
+};
 
 export default function ModelSettingsPanel() {
   const [modelSettings, setModelSettings] = useState<ModelSettingsInfo[]>([]);
-  const [availableModels, setAvailableModels] = useState<
-    Array<{ provider: string; modelId: string; displayName: string }>
-  >([]);
+  const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    loadSettings();
+    loadInitialData();
   }, []);
 
-  const loadSettings = async () => {
+  const loadInitialData = async () => {
     try {
       setLoading(true);
       const [settings, models] = await Promise.all([
@@ -52,60 +49,12 @@ export default function ModelSettingsPanel() {
     }
   };
 
-  const handleToggleReasoning = async (
-    provider: string,
-    modelId: string,
-    currentReasoning: ReasoningInfo,
-  ) => {
-    const key = `${provider}:${modelId}:reasoning`;
-    setSaving(key);
-
+  const refreshModelSettings = async () => {
     try {
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags:
-            getModelSetting(provider, modelId)?.parseThinkTags ?? false,
-          reasoning: {
-            supports: !currentReasoning.supports,
-            isUserOverride: true,
-          },
-        },
-      });
-
-      loadSettings();
+      const settings = await getModelSettings();
+      setModelSettings(settings.models);
     } catch (error) {
-      console.error("Failed to save model settings:", error);
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleToggleParseThinkTags = async (
-    provider: string,
-    modelId: string,
-    currentValue: boolean,
-  ) => {
-    const key = `${provider}:${modelId}:parse`;
-    setSaving(key);
-
-    try {
-      const setting = getModelSetting(provider, modelId);
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags: !currentValue,
-          reasoning: setting?.reasoning,
-        },
-      });
-
-      loadSettings();
-    } catch (error) {
-      console.error("Failed to save model settings:", error);
-    } finally {
-      setSaving(null);
+      console.error("Failed to refresh model settings:", error);
     }
   };
 
@@ -118,21 +67,191 @@ export default function ModelSettingsPanel() {
     );
   };
 
-  const getDefaultReasoning = (): ReasoningInfo => ({
-    supports: false,
-    isUserOverride: false,
-  });
+  const parseThinkTagsModels = useMemo(() => {
+    return availableModels.filter((model) => {
+      const setting = getModelSetting(model.provider, model.modelId);
+      return setting?.parseThinkTags ?? false;
+    });
+  }, [availableModels, modelSettings]);
 
-  const groupedModels = availableModels.reduce(
-    (acc, model) => {
-      if (!acc[model.provider]) {
-        acc[model.provider] = [];
+  const reasoningModels = useMemo(() => {
+    return availableModels.filter((model) => {
+      const setting = getModelSetting(model.provider, model.modelId);
+      return setting?.reasoning?.supports ?? false;
+    });
+  }, [availableModels, modelSettings]);
+
+  const handleAddParseThinkTags = async (
+    provider: string,
+    modelId: string,
+  ) => {
+    const setting = getModelSetting(provider, modelId);
+    const newSetting: ModelSettingsInfo = {
+      provider,
+      modelId,
+      parseThinkTags: true,
+      reasoning: setting?.reasoning ?? {
+        supports: false,
+        isUserOverride: false,
+      },
+    };
+
+    setModelSettings((prev) => {
+      const existing = prev.find(
+        (m) => m.provider === provider && m.modelId === modelId,
+      );
+      if (existing) {
+        return prev.map((m) =>
+          m.provider === provider && m.modelId === modelId ? newSetting : m,
+        );
       }
-      acc[model.provider].push(model);
-      return acc;
-    },
-    {} as Record<string, typeof availableModels>,
-  );
+      return [...prev, newSetting];
+    });
+
+    try {
+      await saveModelSettings({
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: true,
+          reasoning: setting?.reasoning,
+        },
+      });
+      refreshModelSettings();
+    } catch (error) {
+      console.error("Failed to save model settings:", error);
+      refreshModelSettings();
+    }
+  };
+
+  const handleRemoveParseThinkTags = async (
+    provider: string,
+    modelId: string,
+  ) => {
+    const setting = getModelSetting(provider, modelId);
+    const newSetting: ModelSettingsInfo = {
+      provider,
+      modelId,
+      parseThinkTags: false,
+      reasoning: setting?.reasoning ?? {
+        supports: false,
+        isUserOverride: false,
+      },
+    };
+
+    setModelSettings((prev) => {
+      const existing = prev.find(
+        (m) => m.provider === provider && m.modelId === modelId,
+      );
+      if (existing) {
+        return prev.map((m) =>
+          m.provider === provider && m.modelId === modelId ? newSetting : m,
+        );
+      }
+      return [...prev, newSetting];
+    });
+
+    try {
+      await saveModelSettings({
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: false,
+          reasoning: setting?.reasoning,
+        },
+      });
+      refreshModelSettings();
+    } catch (error) {
+      console.error("Failed to save model settings:", error);
+      refreshModelSettings();
+    }
+  };
+
+  const handleAddReasoning = async (provider: string, modelId: string) => {
+    const setting = getModelSetting(provider, modelId);
+    const newSetting: ModelSettingsInfo = {
+      provider,
+      modelId,
+      parseThinkTags: setting?.parseThinkTags ?? false,
+      reasoning: {
+        supports: true,
+        isUserOverride: true,
+      },
+    };
+
+    setModelSettings((prev) => {
+      const existing = prev.find(
+        (m) => m.provider === provider && m.modelId === modelId,
+      );
+      if (existing) {
+        return prev.map((m) =>
+          m.provider === provider && m.modelId === modelId ? newSetting : m,
+        );
+      }
+      return [...prev, newSetting];
+    });
+
+    try {
+      await saveModelSettings({
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: setting?.parseThinkTags ?? false,
+          reasoning: {
+            supports: true,
+            isUserOverride: true,
+          },
+        },
+      });
+      refreshModelSettings();
+    } catch (error) {
+      console.error("Failed to save model settings:", error);
+      refreshModelSettings();
+    }
+  };
+
+  const handleRemoveReasoning = async (provider: string, modelId: string) => {
+    const setting = getModelSetting(provider, modelId);
+    const newSetting: ModelSettingsInfo = {
+      provider,
+      modelId,
+      parseThinkTags: setting?.parseThinkTags ?? false,
+      reasoning: {
+        supports: false,
+        isUserOverride: true,
+      },
+    };
+
+    setModelSettings((prev) => {
+      const existing = prev.find(
+        (m) => m.provider === provider && m.modelId === modelId,
+      );
+      if (existing) {
+        return prev.map((m) =>
+          m.provider === provider && m.modelId === modelId ? newSetting : m,
+        );
+      }
+      return [...prev, newSetting];
+    });
+
+    try {
+      await saveModelSettings({
+        body: {
+          provider,
+          modelId,
+          parseThinkTags: setting?.parseThinkTags ?? false,
+          reasoning: {
+            supports: false,
+            isUserOverride: true,
+          },
+        },
+      });
+      refreshModelSettings();
+    } catch (error) {
+      console.error("Failed to save model settings:", error);
+      refreshModelSettings();
+    }
+  };
 
   if (loading) {
     return (
@@ -143,124 +262,70 @@ export default function ModelSettingsPanel() {
   }
 
   return (
-    <Card className="border-none shadow-none">
-      <CardHeader className="px-0">
-        <CardTitle>Model Settings</CardTitle>
-        <CardDescription>
-          Configure reasoning capabilities and parsing options for models.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="px-0 space-y-6">
-        {Object.entries(groupedModels).map(([provider, models]) => (
-          <div key={provider} className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground capitalize">
-              {provider === "google" ? "Google AI Studio" : provider}
-            </h3>
-            <div className="space-y-3">
-              {models.map((model) => {
-                const setting = getModelSetting(provider, model.modelId);
-                const parseThinkTags = setting?.parseThinkTags ?? false;
-                const reasoning = setting?.reasoning ?? getDefaultReasoning();
-                const key = `${provider}:${model.modelId}`;
-                const isSavingReasoning = saving === `${key}:reasoning`;
-                const isSavingParse = saving === `${key}:parse`;
-
-                return (
-                  <div
-                    key={key}
-                    className="space-y-2 py-2 px-3 rounded-md hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <Label className="text-sm font-medium">
-                          {model.displayName}
-                        </Label>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {model.modelId}
-                          {reasoning.isUserOverride && (
-                            <span className="ml-2 text-blue-500">
-                              • Manual Override
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pl-4 border-l-2 border-muted">
-                      <div className="flex items-center justify-between">
-                        <Label
-                          htmlFor={`${key}-parse`}
-                          className="text-xs cursor-pointer"
-                        >
-                          Parse think tags
-                        </Label>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            id={`${key}-parse`}
-                            checked={parseThinkTags}
-                            onCheckedChange={() =>
-                              handleToggleParseThinkTags(
-                                provider,
-                                model.modelId,
-                                parseThinkTags,
-                              )
-                            }
-                            disabled={isSavingParse}
-                          />
-                          {isSavingParse && (
-                            <span className="text-xs text-muted-foreground">
-                              Saving...
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-muted-foreground">
-                          Reasoning
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label
-                            htmlFor={`${key}-reasoning`}
-                            className="text-xs cursor-pointer"
-                          >
-                            Supports reasoning
-                          </Label>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              id={`${key}-reasoning`}
-                              checked={reasoning.supports}
-                              onCheckedChange={() =>
-                                handleToggleReasoning(
-                                  provider,
-                                  model.modelId,
-                                  reasoning,
-                                )
-                              }
-                              disabled={isSavingReasoning}
-                            />
-                            {isSavingReasoning && (
-                              <span className="text-xs text-muted-foreground">
-                                Saving...
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+    <div className="space-y-4">
+      <Card className="overflow-hidden border-border/70 py-4 gap-0">
+        <div className="px-4 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-md bg-muted flex items-center justify-center p-2">
+              <MessageSquareCode size={20} className="text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium leading-none flex items-center gap-2">
+                Parse Think Tags
+                {parseThinkTagsModels.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {parseThinkTagsModels.length} model{parseThinkTagsModels.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Extract reasoning from &lt;think&gt; tags in responses
+              </div>
             </div>
           </div>
-        ))}
+          <ModelChipSelector
+            selectedModels={parseThinkTagsModels}
+            availableModels={availableModels}
+            onAdd={handleAddParseThinkTags}
+            onRemove={handleRemoveParseThinkTags}
+          />
+        </div>
+      </Card>
 
-        {availableModels.length === 0 && (
-          <div className="py-8 text-center text-muted-foreground">
-            No models configured yet. Add providers in the Providers tab.
+      <Card className="overflow-hidden border-border/70 py-4 gap-0">
+        <div className="px-4 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-md bg-muted flex items-center justify-center p-2">
+              <Brain size={20} className="text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium leading-none flex items-center gap-2">
+                Reasoning Models
+                {reasoningModels.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {reasoningModels.length} model{reasoningModels.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Mark models that natively output thinking/reasoning content
+              </div>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <ModelChipSelector
+            selectedModels={reasoningModels}
+            availableModels={availableModels}
+            onAdd={handleAddReasoning}
+            onRemove={handleRemoveReasoning}
+          />
+        </div>
+      </Card>
+
+      {availableModels.length === 0 && (
+        <div className="py-8 text-center text-muted-foreground">
+          No models configured yet. Add providers in the Providers tab.
+        </div>
+      )}
+    </div>
   );
 }

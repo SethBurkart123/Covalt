@@ -689,7 +689,6 @@ async def handle_content_stream(
                 break
 
     except Exception:
-        # Save current state (including completed tool calls) before handling error
         flush_think_tag_buffer()
         flush_text()
         flush_reasoning()
@@ -697,8 +696,6 @@ async def handle_content_stream(
             await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
         except Exception as save_err:
             logger.error(f"[stream] Failed to save state on error: {save_err}")
-        # Re-raise to let outer handler add error block
-        raise
 
     if assistant_msg_id in _active_runs:
         del _active_runs[assistant_msg_id]

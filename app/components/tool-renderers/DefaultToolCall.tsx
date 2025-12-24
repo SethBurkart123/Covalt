@@ -221,27 +221,6 @@ export function DefaultToolCall({
           </div>
         )}
 
-        {requiresApproval && approvalStatus === "approved" && !isCompleted && (
-          <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
-            <Check size={14} />
-            <span>Approved - executing...</span>
-          </div>
-        )}
-
-        {requiresApproval && approvalStatus === "denied" && (
-          <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
-            <X size={14} />
-            <span>Operation was denied</span>
-          </div>
-        )}
-
-        {requiresApproval && approvalStatus === "timeout" && (
-          <div className="flex items-center gap-1.5 text-sm text-yellow-600 dark:text-yellow-400">
-            <Clock size={14} />
-            <span>Operation timed out</span>
-          </div>
-        )}
-
         {isCompleted && toolResult && (
           <div>
             <div className="text-xs font-medium text-muted-foreground mb-2">
