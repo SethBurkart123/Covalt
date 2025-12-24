@@ -13,7 +13,7 @@ export default function ToolsPage() {
     const loadTools = async () => {
       try {
         const response = await getAvailableTools();
-        setTools(response.tools);
+        setTools(response.tools ?? []);
       } catch (error) {
         console.error("Failed to load tools:", error);
       } finally {
