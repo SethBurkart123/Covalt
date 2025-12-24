@@ -62,7 +62,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       isComplete: false,
       sequence: 1,
     };
-    return [...baseMessages, streamingMessage];
+    return [...baseMessages.filter(m => m.id !== streamingMessageId), streamingMessage];
   }, [baseMessages, streamingContent, streamingMessageId]);
 
   const clearStreaming = useCallback(() => {

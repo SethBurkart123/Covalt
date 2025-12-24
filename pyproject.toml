@@ -24,7 +24,7 @@ dependencies = [
     "mcp>=1.24.0",
     "httpx>=0.28.1",
     "zynk",
-    "agno>=2.3.19",
+    "agno>=2.3.20",
 ]
 
 [dependency-groups]
@@ -33,5 +33,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-zynk = { git = "https://github.com/sethburkart123/zynk.git" }
-agno = { path = "../agno/libs/agno" }
+zynk = { path = "zynk" }

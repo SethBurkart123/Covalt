@@ -328,11 +328,11 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
       )}
       initial={{ 
         marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width: state === "expanded" ? "calc(100% - var(--sidebar-width))" : "calc(100% - 0.5rem)"
+        width: state === "expanded" ? "calc(100% - var(--sidebar-width) - 0.5rem)" : "calc(100% - 1rem)"
       }}
       animate={{ 
         marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width: state === "expanded" ? "calc(100% - var(--sidebar-width))" : "calc(100% - 0.5rem)"
+        width: state === "expanded" ? "calc(100% - var(--sidebar-width) - 0.5rem)" : "calc(100% - 1rem)"
       }}
       transition={{ 
         ...SIDEBAR_TRANSITION,
