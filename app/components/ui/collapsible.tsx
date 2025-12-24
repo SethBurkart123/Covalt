@@ -83,10 +83,11 @@ interface CollapsibleTriggerProps {
   rightContent?: React.ReactNode;
   className?: string;
   onClick?: () => void;
+  overrideIsOpenPreview?: boolean;
 }
 
-function CollapsibleTrigger({ children, rightContent, className, onClick }: CollapsibleTriggerProps) {
-  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible();
+function CollapsibleTrigger({ children, rightContent, className, onClick, overrideIsOpenPreview }: CollapsibleTriggerProps) {
+  const { isOpen: isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible();
 
   const handleClick = () => {
     if (onClick) {
@@ -112,7 +113,7 @@ function CollapsibleTrigger({ children, rightContent, className, onClick }: Coll
         {rightContent}
         {!disableToggle && (
           <motion.div
-            animate={{ rotate: isOpen ? 180 : 0 }}
+            animate={{ rotate: overrideIsOpenPreview !== undefined ? (overrideIsOpenPreview ? 180 : 0) : isOpen ? 180 : 0 }}
             transition={{ duration: 0.2 }}
           >
             <ChevronDown size={16} className="text-muted-foreground" />

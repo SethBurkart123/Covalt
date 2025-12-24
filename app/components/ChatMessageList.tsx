@@ -161,18 +161,22 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
     prevMessagesLengthRef.current = messages.length;
 
-    if (userJustSentMessage && endOfMessagesRef.current) {
-      endOfMessagesRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
+    const scrollToBottom = () => {
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) return;
+      
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+        });
       });
+    };
+
+    if (userJustSentMessage) {
+      scrollToBottom();
       isAtBottomRef.current = true;
-    } else if (isAtBottomRef.current && endOfMessagesRef.current) {
-      // console.log('scrolling to bottom');
-      endOfMessagesRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
+    } else if (isAtBottomRef.current) {
+      scrollToBottom();
     }
   }, [messages, isLoading]);
 
