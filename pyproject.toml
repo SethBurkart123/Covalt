@@ -33,4 +33,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-zynk = { git = "https://github.com/sethburkart123/zynk.git" }
+zynk = { path = "zynk" }

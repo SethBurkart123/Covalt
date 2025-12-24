@@ -31,8 +31,8 @@ interface StreamingChatEvent {
   content?: string;
   sessionId?: string;
   reasoningContent?: string;
-  tool?: any;
-  blocks?: any[];
+  tool?: unknown;
+  blocks?: unknown[];
   error?: string;
 }
 
@@ -88,7 +88,7 @@ class ApiService {
       start: (controller) => {
         const enqueueLine = (line: string) =>
           controller.enqueue(encoder.encode(line));
-        const sendEvent = (event: string, data: Record<string, any>) => {
+        const sendEvent = (event: string, data: Record<string, unknown>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
@@ -111,7 +111,7 @@ class ApiService {
         // Subscribe to channel events
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
-          const data: Record<string, any> = {};
+          const data: Record<string, unknown> = {};
 
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === "string") data.content = rest.content;
@@ -164,7 +164,7 @@ class ApiService {
       start: (controller) => {
         const enqueueLine = (line: string) =>
           controller.enqueue(encoder.encode(line));
-        const sendEvent = (event: string, data: Record<string, any>) => {
+        const sendEvent = (event: string, data: Record<string, unknown>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
@@ -180,7 +180,7 @@ class ApiService {
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
-          const data: Record<string, any> = {};
+          const data: Record<string, unknown> = {};
 
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === "string") data.content = rest.content;
@@ -231,7 +231,7 @@ class ApiService {
       start: (controller) => {
         const enqueueLine = (line: string) =>
           controller.enqueue(encoder.encode(line));
-        const sendEvent = (event: string, data: Record<string, any>) => {
+        const sendEvent = (event: string, data: Record<string, unknown>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
@@ -247,7 +247,7 @@ class ApiService {
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
-          const data: Record<string, any> = {};
+          const data: Record<string, unknown> = {};
 
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === "string") data.content = rest.content;
@@ -298,7 +298,7 @@ class ApiService {
       start: (controller) => {
         const enqueueLine = (line: string) =>
           controller.enqueue(encoder.encode(line));
-        const sendEvent = (event: string, data: Record<string, any>) => {
+        const sendEvent = (event: string, data: Record<string, unknown>) => {
           enqueueLine(`event: ${event}\n`);
           enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
         };
@@ -315,7 +315,7 @@ class ApiService {
 
         channel.subscribe((evt: StreamingChatEvent) => {
           const { event, ...rest } = evt || {};
-          const data: Record<string, any> = {};
+          const data: Record<string, unknown> = {};
 
           if (rest.sessionId) data.sessionId = rest.sessionId;
           if (typeof rest.content === "string") data.content = rest.content;
