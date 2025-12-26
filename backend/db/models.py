@@ -72,3 +72,21 @@ class Model(Base):
         Boolean, default=False, nullable=False
     )
     extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ActiveStream(Base):
+    """Tracks currently active streaming sessions for multi-frontend support."""
+
+    __tablename__ = "active_streams"
+
+    chat_id: Mapped[str] = mapped_column(
+        String, ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
+    )
+    message_id: Mapped[str] = mapped_column(String, nullable=False)
+    run_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Status: "streaming", "paused_hitl", "completed", "error", "interrupted"
+    status: Mapped[str] = mapped_column(String, default="streaming", nullable=False)
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    # Optional error message if status is "error"
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

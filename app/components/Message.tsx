@@ -113,10 +113,9 @@ function ChatMessage({
         role === "user" ? "justify-end" : "justify-start"
       )}
     >
-      <div className={`relative mb-2 ${role === "assistant" && "w-full"}`}>
-        {/* Message bubble - different styling based on role */}
+      <div className="relative mb-2 w-full">
         {role === "user" ? (
-          <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit ml-auto">
+          <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit ml-auto overflow-x-scroll max-w-full">
             <p>{typeof content === "string" ? content : ""}</p>
           </div>
         ) : (

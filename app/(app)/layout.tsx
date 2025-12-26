@@ -3,6 +3,7 @@
 import React from "react";
 import { ChatProvider } from "@/contexts/chat-context";
 import { ToolsProvider } from "@/contexts/tools-context";
+import { StreamingProvider } from "@/contexts/streaming-context";
 import { PageTitleProvider } from "@/contexts/page-title-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -14,22 +15,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ChatProvider>
       <ToolsProvider>
-        <PageTitleProvider>
-        <SidebarProvider
-          className="flex h-dvh w-full"
-          style={
-            {
-              "--sidebar-width": "19rem",
-              "--sidebar-half-width": "9.5rem",
-            } as React.CSSProperties
-          }
-        >
-          <AppSidebar />
-          <SidebarInset className="dark:bg-card/30 border border-border shadow overflow-clip">
-            {children}
-          </SidebarInset>
-        </SidebarProvider>
-      </PageTitleProvider>
+        <StreamingProvider>
+          <PageTitleProvider>
+            <SidebarProvider
+              className="flex h-dvh w-full"
+              style={
+                {
+                  "--sidebar-width": "19rem",
+                  "--sidebar-half-width": "9.5rem",
+                } as React.CSSProperties
+              }
+            >
+              <AppSidebar />
+              <SidebarInset className="dark:bg-card/30 border border-border shadow overflow-clip">
+                {children}
+              </SidebarInset>
+            </SidebarProvider>
+          </PageTitleProvider>
+        </StreamingProvider>
       </ToolsProvider>
     </ChatProvider>
   );

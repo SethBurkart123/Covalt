@@ -17,6 +17,7 @@ from .. import db
 from ..models.chat import ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.tool_registry import get_tool_registry
+from ..services import stream_broadcaster as broadcaster
 
 import logging
 
@@ -30,6 +31,34 @@ logger = logging.getLogger(__name__)
 
 registry = get_tool_registry()
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
+
+
+class BroadcastingChannel:
+    """
+    Wrapper around a channel that also broadcasts events to all subscribers.
+    This allows sync code to call send_model() while broadcasting happens async.
+    """
+    
+    def __init__(self, channel: Any, chat_id: str):
+        self._channel = channel
+        self._chat_id = chat_id
+        self._loop = asyncio.get_event_loop()
+        self._pending_broadcasts: list = []
+    
+    def send_model(self, event: ChatEvent) -> None:
+        """Send event to the originating channel and schedule broadcast."""
+        self._channel.send_model(event)
+        
+        if self._chat_id:
+            event_dict = event.model_dump() if hasattr(event, 'model_dump') else event.dict()
+            task = asyncio.create_task(broadcaster.broadcast_event(self._chat_id, event_dict))
+            self._pending_broadcasts.append(task)
+    
+    async def flush_broadcasts(self) -> None:
+        """Wait for all pending broadcasts to complete. Call before unregister_stream."""
+        if self._pending_broadcasts:
+            await asyncio.gather(*self._pending_broadcasts, return_exceptions=True)
+            self._pending_broadcasts.clear()
 
 # Maps run_id -> asyncio.Event for signaling when approval is received
 _approval_events: Dict[str, asyncio.Event] = {}
@@ -95,9 +124,7 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
             }
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         elif model_id:
-            # Only update provider/model; preserve tools/instructions and other fields
             provider, model = parse_model_id(model_id)
-            # Update if different from current config
             cur_provider = config.get("provider") or ""
             cur_model = config.get("model_id") or ""
             if (provider and provider != cur_provider) or (
@@ -115,10 +142,8 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
 def save_user_msg(msg: ChatMessage, chat_id: str, parent_id: Optional[str] = None):
     """Save user message to db."""
     with db.db_session() as sess:
-        # Get sequence number for siblings
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
 
-        # Create the message
         message = db.Message(
             id=msg.id,
             chatId=chat_id,
@@ -132,7 +157,6 @@ def save_user_msg(msg: ChatMessage, chat_id: str, parent_id: Optional[str] = Non
         sess.add(message)
         sess.commit()
 
-        # Update active leaf to this message
         db.set_active_leaf(sess, chat_id, msg.id)
 
 
@@ -141,7 +165,6 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
-        # Determine model used from chat's agent config
         model_used: Optional[str] = None
         try:
             config = db.get_chat_agent_config(sess, chat_id)
@@ -169,7 +192,6 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
         sess.add(message)
         sess.commit()
 
-        # Update active leaf to this message
         db.set_active_leaf(sess, chat_id, msg_id)
     return msg_id
 
@@ -289,19 +311,23 @@ async def handle_content_stream(
     agent: Agent,
     messages: List[ChatMessage],
     assistant_msg_id: str,
-    ch: Any,  # Channel type - keeping flexible for now
+    raw_ch: Any,
+    chat_id: str = "",
 ):
+    ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
+    
     agno_messages = []
     for msg in messages:
         agno_messages.extend(convert_to_agno_messages(msg))
 
-    # Check if we should parse think tags for this model
+    if chat_id:
+        await broadcaster.register_stream(chat_id, assistant_msg_id)
+
     parse_think_tags = False
     try:
         with db.db_session() as sess:
             msg = sess.get(db.Message, assistant_msg_id)
             if msg and msg.model_used:
-                # Parse provider:model_id format
                 parts = msg.model_used.split(":", 1)
                 if len(parts) == 2:
                     provider, model_id = parts
@@ -319,7 +345,6 @@ async def handle_content_stream(
     had_error = False
     run_id = None
 
-    # State for parsing think tags
     think_tag_buffer = ""
     inside_think_tag = False
 
@@ -360,19 +385,15 @@ async def handle_content_stream(
         nonlocal current_text, current_reasoning, think_tag_buffer, inside_think_tag
 
         if not parse_think_tags:
-            # Not parsing, just add to current text
             current_text += content
             return
 
-        # Process character by character to handle streaming
         think_tag_buffer += content
 
         while True:
             if not inside_think_tag:
-                # Look for opening tag
                 open_idx = think_tag_buffer.find("<think>")
                 if open_idx == -1:
-                    # No opening tag, emit everything except last 6 chars (in case partial tag)
                     if len(think_tag_buffer) > 6:
                         text_chunk = think_tag_buffer[:-6]
                         current_text += text_chunk
@@ -380,26 +401,19 @@ async def handle_content_stream(
                         think_tag_buffer = think_tag_buffer[-6:]
                     break
                 else:
-                    # Found opening tag
                     if open_idx > 0:
-                        # Emit text before tag
                         text_chunk = think_tag_buffer[:open_idx]
                         current_text += text_chunk
                         ch.send_model(ChatEvent(event="RunContent", content=text_chunk))
-                    think_tag_buffer = think_tag_buffer[
-                        open_idx + 7 :
-                    ]  # Skip '<think>'
+                    think_tag_buffer = think_tag_buffer[open_idx + 7:]
                     inside_think_tag = True
 
-                    # Flush any pending text and start reasoning
                     if current_text:
                         flush_text()
                     ch.send_model(ChatEvent(event="ReasoningStarted"))
             else:
-                # Look for closing tag
                 close_idx = think_tag_buffer.find("</think>")
                 if close_idx == -1:
-                    # No closing tag yet, emit everything except last 8 chars (in case partial tag)
                     if len(think_tag_buffer) > 8:
                         reasoning_chunk = think_tag_buffer[:-8]
                         current_reasoning += reasoning_chunk
@@ -411,9 +425,7 @@ async def handle_content_stream(
                         think_tag_buffer = think_tag_buffer[-8:]
                     break
                 else:
-                    # Found closing tag
                     if close_idx > 0:
-                        # Emit reasoning content before tag
                         reasoning_chunk = think_tag_buffer[:close_idx]
                         current_reasoning += reasoning_chunk
                         ch.send_model(
@@ -421,12 +433,9 @@ async def handle_content_stream(
                                 event="ReasoningStep", reasoningContent=reasoning_chunk
                             )
                         )
-                    think_tag_buffer = think_tag_buffer[
-                        close_idx + 8 :
-                    ]  # Skip '</think>'
+                    think_tag_buffer = think_tag_buffer[close_idx + 8:]
                     inside_think_tag = False
 
-                    # Flush reasoning and complete it
                     flush_reasoning()
                     ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
@@ -454,6 +463,8 @@ async def handle_content_stream(
                     run_id = chunk.run_id
                     _active_runs[assistant_msg_id] = (run_id, agent)
                     logger.info(f"[stream] Captured run_id {run_id}")
+                    if chat_id:
+                        await broadcaster.update_stream_run_id(chat_id, run_id)
 
                 if chunk.event == RunEvent.run_cancelled:
                     flush_think_tag_buffer()
@@ -465,6 +476,9 @@ async def handle_content_stream(
                     if assistant_msg_id in _active_runs:
                         del _active_runs[assistant_msg_id]
                     ch.send_model(ChatEvent(event="RunCancelled"))
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "completed")
+                        await broadcaster.unregister_stream(chat_id)
                     return
 
                 if chunk.event == RunEvent.run_content:
@@ -575,31 +589,43 @@ async def handle_content_stream(
                     with db.db_session() as sess:
                         db.mark_message_complete(sess, assistant_msg_id)
                     ch.send_model(ChatEvent(event="RunCompleted"))
+                    await ch.flush_broadcasts()
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "completed")
+                        await broadcaster.unregister_stream(chat_id)
                     return
 
                 elif chunk.event == RunEvent.run_error:
                     flush_think_tag_buffer()
                     flush_text()
                     flush_reasoning()
+                    error_msg = str(
+                        chunk.error.message
+                        if hasattr(chunk.error, "message")
+                        else chunk
+                    )
                     content_blocks.append(
                         {
                             "type": "error",
-                            "content": str(
-                                chunk.error.message
-                                if hasattr(chunk.error, "message")
-                                else chunk
-                            ),
+                            "content": error_msg,
                             "timestamp": datetime.utcnow().isoformat(),
                         }
                     )
                     await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
                     ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
                     had_error = True
+                    await ch.flush_broadcasts()
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "error", error_msg)
+                        await broadcaster.unregister_stream(chat_id)
                     return
 
                 elif chunk.event == RunEvent.run_paused:
                     flush_text()
                     flush_reasoning()
+                    
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "paused_hitl")
                     
                     if hasattr(chunk, "tools_requiring_confirmation") and chunk.tools_requiring_confirmation:
                         tools_info = []
@@ -676,6 +702,9 @@ async def handle_content_stream(
 
                         await asyncio.to_thread(save_msg_content, assistant_msg_id, save_state())
 
+                        if chat_id:
+                            await broadcaster.update_stream_status(chat_id, "streaming")
+
                         response_stream = agent.acontinue_run(
                             run_id=run_id,
                             updated_tools=chunk.tools,
@@ -685,10 +714,16 @@ async def handle_content_stream(
                         break
 
             else:
-                # this should never happen, but if it does, we need to break out of the loop
                 break
 
-    except Exception:
+    except asyncio.CancelledError:
+        if run_id and run_id in _approval_events:
+            _approval_events.pop(run_id, None)
+            _approval_responses.pop(run_id, None)
+        raise
+        
+    except Exception as e:
+        logger.error(f"[stream] Exception in stream handler: {e}")
         flush_think_tag_buffer()
         flush_text()
         flush_reasoning()
@@ -696,6 +731,10 @@ async def handle_content_stream(
             await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
         except Exception as save_err:
             logger.error(f"[stream] Failed to save state on error: {save_err}")
+        
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
 
     if assistant_msg_id in _active_runs:
         del _active_runs[assistant_msg_id]
@@ -705,6 +744,9 @@ async def handle_content_stream(
             message = sess.get(db.Message, assistant_msg_id)
             if message and not message.is_complete:
                 db.mark_message_complete(sess, assistant_msg_id)
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
 
 
 def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
@@ -720,9 +762,7 @@ def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
 
     while i < len(content):
         if not inside_think_tag:
-            # Look for <think>
             if content[i : i + 7] == "<think>":
-                # Flush any pending text
                 if current_text:
                     blocks.append({"type": "text", "content": current_text})
                     current_text = ""
@@ -732,9 +772,7 @@ def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
                 current_text += content[i]
                 i += 1
         else:
-            # Look for </think>
             if content[i : i + 8] == "</think>":
-                # Flush reasoning
                 if current_reasoning:
                     blocks.append(
                         {
@@ -750,11 +788,9 @@ def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
                 current_reasoning += content[i]
                 i += 1
 
-    # Flush any remaining content
     if current_text:
         blocks.append({"type": "text", "content": current_text})
     if current_reasoning:
-        # If we're still inside a think tag at the end, treat it as reasoning
         blocks.append(
             {"type": "reasoning", "content": current_reasoning, "isCompleted": True}
         )
@@ -774,13 +810,11 @@ def reprocess_message_with_think_tags(message_id: str) -> bool:
                 logger.info(f"[reprocess] Message {message_id} not found")
                 return False
 
-            # Parse the current content
             try:
                 current_content = json.loads(msg.content)
             except (json.JSONDecodeError, TypeError):
                 current_content = msg.content
 
-            # If content is already blocks, extract text content
             text_content = ""
             if isinstance(current_content, list):
                 for block in current_content:
@@ -792,12 +826,10 @@ def reprocess_message_with_think_tags(message_id: str) -> bool:
                 logger.info(f"[reprocess] Unknown content format for message {message_id}")
                 return False
 
-            # Check if there are any think tags
             if "<think>" not in text_content:
                 logger.info(f"[reprocess] No think tags found in message {message_id}")
                 return False
 
-            # Parse and update
             new_blocks = parse_think_tags_from_content(text_content)
             msg.content = json.dumps(new_blocks)
             sess.commit()
@@ -861,11 +893,9 @@ async def cancel_run(body: CancelRunRequest) -> dict:
         logger.info(f"[cancel_run] Cancelling run {run_id} for message {message_id}")
         agent.cancel_run(run_id)
 
-        # Mark message as complete in database
         with db.db_session() as sess:
             db.mark_message_complete(sess, message_id)
 
-        # Clean up tracking
         del _active_runs[message_id]
 
         logger.info(f"[cancel_run] Successfully cancelled run {run_id}")
@@ -880,7 +910,6 @@ async def stream_chat(
     channel: Channel,
     body: StreamChatRequest,
 ) -> None:
-    ch = channel
     messages: List[ChatMessage] = [
         ChatMessage(
             id=m.get("id"),
@@ -894,26 +923,24 @@ async def stream_chat(
 
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
-    # Get the current active leaf to use as parent
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
         parent_id = chat.active_leaf_message_id if chat else None
 
     if messages and messages[-1].role == "user":
         save_user_msg(messages[-1], chat_id, parent_id)
-        # Update parent_id to the newly saved user message
         parent_id = messages[-1].id
 
-    ch.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
 
     assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 
-    ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
         agent = create_agent_for_chat(
             chat_id,
-            channel=ch,
+            channel=channel,
             assistant_msg_id=assistant_msg_id,
             tool_ids=body.toolIds,
         )
@@ -925,11 +952,16 @@ async def stream_chat(
             agent,
             messages,
             assistant_msg_id,
-            ch,
+            channel,
+            chat_id=chat_id,
         )
 
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
+        
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
 
         error_block = {
             "type": "error",
@@ -938,7 +970,6 @@ async def stream_chat(
             "timestamp": datetime.utcnow().isoformat(),
         }
 
-        # Preserve any existing content and append the error block
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
@@ -959,5 +990,96 @@ async def stream_chat(
         except Exception as e2:
             logger.info(f"[stream] Failed to append error block, falling back: {e2}")
             save_msg_content(assistant_msg_id, json.dumps([error_block]))
-        ch.send_model(ChatEvent(event="RunError", content=str(e)))
-        # Note: message stays is_complete=False so user can retry/continue
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+
+
+# ============ Multi-Frontend Stream Commands ============
+
+
+class ActiveStreamInfo(BaseModel):
+    """Information about an active stream."""
+    chatId: str
+    messageId: str
+    status: str  # streaming, paused_hitl, completed, error, interrupted
+    errorMessage: Optional[str] = None
+
+
+class ActiveStreamsResponse(BaseModel):
+    """Response containing all active streams."""
+    streams: List[ActiveStreamInfo]
+
+
+class SubscribeToStreamRequest(BaseModel):
+    """Request to subscribe to a stream."""
+    chatId: str
+
+
+class ClearStreamRequest(BaseModel):
+    """Request to clear a stream record (after user acknowledges)."""
+    chatId: str
+
+
+@command
+async def get_active_streams() -> ActiveStreamsResponse:
+    """
+    Get all active and recently completed/errored streams.
+    Used by frontend on initialization to discover running streams.
+    """
+    streams = await broadcaster.get_all_active_streams()
+    return ActiveStreamsResponse(
+        streams=[
+            ActiveStreamInfo(
+                chatId=s["chatId"],
+                messageId=s["messageId"],
+                status=s["status"],
+                errorMessage=s.get("errorMessage"),
+            )
+            for s in streams
+        ]
+    )
+
+
+@command
+async def subscribe_to_stream(
+    channel: Channel,
+    body: SubscribeToStreamRequest,
+) -> None:
+    """
+    Subscribe to events for an already-running stream.
+    
+    This allows new frontends (or page reloads) to receive
+    live events for an existing stream.
+    """
+    chat_id = body.chatId
+    
+    queue = await broadcaster.subscribe(chat_id)
+    
+    if queue is None:
+        channel.send_model(ChatEvent(event="StreamNotActive", content=chat_id))
+        return
+    
+    channel.send_model(ChatEvent(event="StreamSubscribed", content=chat_id))
+    
+    try:
+        while True:
+            event = await queue.get()
+            
+            if event is None:
+                break
+            
+            channel.send_model(ChatEvent(**event))
+            
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await broadcaster.unsubscribe(chat_id, queue)
+
+
+@command
+async def clear_stream_record(body: ClearStreamRequest) -> dict:
+    """
+    Clear a stream record from the database.
+    Called when user acknowledges an interrupted/error stream.
+    """
+    await broadcaster.clear_stream_record(body.chatId)
+    return {"success": True}

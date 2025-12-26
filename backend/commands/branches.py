@@ -57,22 +57,17 @@ async def continue_message(
     body: ContinueMessageRequest,
 ) -> None:
     """Continue incomplete assistant message from where it stopped."""
-    ch = channel
-
     existing_blocks: List[Dict[str, Any]] = []
 
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
-            # Load existing config and merge model changes (preserve tools!)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider
             config["model_id"] = model
             db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
-        # Get the message path up to this message
         messages = db.get_message_path(sess, body.messageId)
 
-        # Convert to ChatMessage format (parse JSON array content if present)
         chat_messages = []
         for m in messages:
             content = m.content
@@ -80,7 +75,6 @@ async def continue_message(
                 try:
                     content = json.loads(content)
                 except Exception:
-                    # Keep as-is if parsing fails (legacy/plain text)
                     pass
             chat_messages.append(
                 ChatMessage(
@@ -89,9 +83,8 @@ async def continue_message(
                     content=content,
                     createdAt=m.createdAt,
                 )
-            )
+                )
 
-        # Seed blocks for the assistant message being continued (trim trailing error)
         target_msg = sess.get(db.Message, body.messageId)
         if target_msg and isinstance(target_msg.content, str):
             raw = target_msg.content.strip()
@@ -102,7 +95,6 @@ async def continue_message(
                     existing_blocks = [{"type": "text", "content": target_msg.content}]
             else:
                 existing_blocks = [{"type": "text", "content": target_msg.content}]
-            # Remove trailing error blocks
             while (
                 existing_blocks
                 and isinstance(existing_blocks[-1], dict)
@@ -110,32 +102,29 @@ async def continue_message(
             ):
                 existing_blocks.pop()
 
-    ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    # For parity with other streams, emit the assistant message ID being continued
-    ch.send_model(ChatEvent(event="AssistantMessageId", content=body.messageId))
-    # Seed existing content so the frontend doesn't clear it on first chunk
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=body.messageId))
     if existing_blocks:
-        ch.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
+        channel.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
 
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=ch,
+            channel=channel,
             assistant_msg_id=body.messageId,
             tool_ids=body.toolIds,
         )
 
-        # Continue streaming into the same message
         await handle_content_stream(
             agent,
             chat_messages,
-            body.messageId,  # Same message ID - append content
-            ch,
+            body.messageId,
+            channel,
+            chat_id=body.chatId,
         )
 
     except Exception as e:
         print(f"[continue_message] Error: {e}")
-        # Persist error to the message so reload shows it
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, body.messageId)
@@ -158,9 +147,9 @@ async def continue_message(
                 db.update_message_content(
                     sess, messageId=body.messageId, content=json.dumps(blocks)
                 )
-        except Exception as _:
+        except Exception:
             pass
-        ch.send_model(ChatEvent(event="RunError", content=str(e)))
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
 @command
@@ -169,29 +158,23 @@ async def retry_message(
     body: RetryMessageRequest,
 ) -> None:
     """Create sibling message and retry generation."""
-    ch = channel
-
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
-            # Load existing config and merge model changes (preserve tools!)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider
             config["model_id"] = model
             db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
-        # Get the original message to find its parent
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
-            ch.send_model(ChatEvent(event="RunError", content="Message not found"))
+            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        # Get conversation up to the parent
         if original_msg.parent_message_id:
             messages = db.get_message_path(sess, original_msg.parent_message_id)
         else:
             messages = []
 
-        # Convert to ChatMessage format (parse JSON array content if present)
         chat_messages = []
         for m in messages:
             content = m.content
@@ -199,7 +182,6 @@ async def retry_message(
                 try:
                     content = json.loads(content)
                 except Exception:
-                    # Keep as-is if parsing fails (legacy/plain text)
                     pass
             chat_messages.append(
                 ChatMessage(
@@ -210,7 +192,6 @@ async def retry_message(
                 )
             )
 
-        # Create new sibling assistant message
         new_msg_id = db.create_branch_message(
             sess,
             parent_id=original_msg.parent_message_id,
@@ -220,32 +201,29 @@ async def retry_message(
             is_complete=False,
         )
 
-        # Update active leaf to the new message
         db.set_active_leaf(sess, body.chatId, new_msg_id)
 
-    ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    # Emit the assistant message ID so the frontend can track updates
-    ch.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
 
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=ch,
+            channel=channel,
             assistant_msg_id=new_msg_id,
             tool_ids=body.toolIds,
         )
 
-        # Stream fresh response
         await handle_content_stream(
             agent,
             chat_messages,
             new_msg_id,
-            ch,
+            channel,
+            chat_id=body.chatId,
         )
 
     except Exception as e:
         print(f"[retry_message] Error: {e}")
-        # Persist error to the new assistant message
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
@@ -268,9 +246,9 @@ async def retry_message(
                 db.update_message_content(
                     sess, messageId=new_msg_id, content=json.dumps(blocks)
                 )
-        except Exception as _:
+        except Exception:
             pass
-        ch.send_model(ChatEvent(event="RunError", content=str(e)))
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
 @command
@@ -279,29 +257,23 @@ async def edit_user_message(
     body: EditUserMessageRequest,
 ) -> None:
     """Edit user message by creating sibling with new content."""
-    ch = channel
-
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
-            # Load existing config and merge model changes (preserve tools!)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider
             config["model_id"] = model
             db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
-        # Get the original message to find its parent
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
-            ch.send_model(ChatEvent(event="RunError", content="Message not found"))
+            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        # Get conversation up to the parent (excluding the message being edited)
         if original_msg.parent_message_id:
             messages = db.get_message_path(sess, original_msg.parent_message_id)
         else:
             messages = []
 
-        # Create new sibling user message with edited content
         new_user_msg_id = db.create_branch_message(
             sess,
             parent_id=original_msg.parent_message_id,
@@ -311,10 +283,8 @@ async def edit_user_message(
             is_complete=True,
         )
 
-        # Update active leaf to the new user message
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
-        # Convert to ChatMessage format (including the new user message)
         chat_messages = []
         for m in messages:
             content = m.content
@@ -322,7 +292,6 @@ async def edit_user_message(
                 try:
                     content = json.loads(content)
                 except Exception:
-                    # Keep as-is if parsing fails (legacy/plain text)
                     pass
             chat_messages.append(
                 ChatMessage(
@@ -341,7 +310,6 @@ async def edit_user_message(
             )
         )
 
-        # Create assistant response message
         assistant_msg_id = db.create_branch_message(
             sess,
             parent_id=new_user_msg_id,
@@ -351,32 +319,29 @@ async def edit_user_message(
             is_complete=False,
         )
 
-        # Update active leaf to the assistant message
         db.set_active_leaf(sess, body.chatId, assistant_msg_id)
 
-    ch.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    # Emit the assistant message ID for frontend tracking
-    ch.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=ch,
+            channel=channel,
             assistant_msg_id=assistant_msg_id,
             tool_ids=body.toolIds,
         )
 
-        # Stream response to edited message
         await handle_content_stream(
             agent,
             chat_messages,
             assistant_msg_id,
-            ch,
+            channel,
+            chat_id=body.chatId,
         )
 
     except Exception as e:
         print(f"[edit_user_message] Error: {e}")
-        # Persist error to the assistant message
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
@@ -399,9 +364,9 @@ async def edit_user_message(
                 db.update_message_content(
                     sess, messageId=assistant_msg_id, content=json.dumps(blocks)
                 )
-        except Exception as _:
+        except Exception:
             pass
-        ch.send_model(ChatEvent(event="RunError", content=str(e)))
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
 @command
@@ -410,10 +375,7 @@ async def switch_to_sibling(
 ) -> None:
     """Switch active branch to different sibling."""
     with db.db_session() as sess:
-        # Get the leaf descendant of the sibling
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
-
-        # Update active leaf to point to this branch
         db.set_active_leaf(sess, body.chatId, leaf_id)
 
 
@@ -427,12 +389,10 @@ async def get_message_siblings(
         if not message:
             return []
 
-        # Get all siblings (messages with same parent in the same chat)
         siblings = db.get_message_children(
             sess, message.parent_message_id, message.chatId
         )
 
-        # Get the chat to determine which is active
         chat = sess.get(db.Chat, message.chatId)
         active_path = []
         if chat and chat.active_leaf_message_id:

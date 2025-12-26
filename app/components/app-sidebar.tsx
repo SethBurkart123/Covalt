@@ -8,6 +8,9 @@ import {
   Trash2,
   Settings,
   Wrench,
+  Loader2,
+  AlertCircle,
+  Circle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -22,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import clsx from "clsx";
 import { useChat } from "@/contexts/chat-context";
+import { useStreaming } from "@/contexts/streaming-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +48,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     deleteChat,
     renameChat,
   } = useChat();
+  const { getStreamState, markChatAsSeen } = useStreaming();
 
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
@@ -102,6 +107,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             const isActive = currentChatId === id;
             const title =
               chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
+            
+            const streamState = getStreamState(id);
+            const isStreaming = streamState?.isStreaming ?? false;
+            const isPausedForApproval = streamState?.isPausedForApproval ?? false;
+            const hasError = streamState?.status === "error" || streamState?.status === "interrupted";
+            const hasUnseenUpdate = streamState?.hasUnseenUpdate ?? false;
 
             return (
               <SidebarMenuItem key={id}>
@@ -128,7 +139,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   ) : (
                     <>
                       <button
-                        onClick={() => switchChat(id)}
+                        onClick={() => {
+                          markChatAsSeen(id);
+                          switchChat(id);
+                        }}
                         className={clsx(
                           "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
                           isActive
@@ -138,6 +152,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         )}
                         title={title}
                       >
+                        {isStreaming && (
+                          <Loader2 className="size-3 animate-spin text-primary flex-shrink-0" />
+                        )}
+                        {isPausedForApproval && (
+                          <AlertCircle className="size-3 text-amber-500 flex-shrink-0" />
+                        )}
+                        {hasError && !isActive && (
+                          <AlertCircle className="size-3 text-destructive flex-shrink-0" />
+                        )}
+                        {hasUnseenUpdate && !isActive && !isStreaming && !isPausedForApproval && !hasError && (
+                          <Circle className="size-2 fill-primary text-primary flex-shrink-0" />
+                        )}
                         <span className="truncate">{title}</span>
                       </button>
                       <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
