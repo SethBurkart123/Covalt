@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
@@ -19,6 +19,31 @@ export function ArtifactPanel() {
   const displayArtifactsRef = useRef(artifacts);
   const displayActiveRef = useRef(activeArtifact);
   
+  const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const [animatingWidth, setAnimatingWidth] = useState<number | null>(null);
+  
+  const handleAnimationStart = useCallback(() => {
+    const parent = containerRef.current?.parentElement;
+    if (!parent) return;
+    
+    setAnimatingWidth(parent.clientWidth * 0.5);
+    observerRef.current = new ResizeObserver(([entry]) => {
+      setAnimatingWidth(entry.contentRect.width * 0.5);
+    });
+    observerRef.current.observe(parent);
+  }, []);
+  
+  const handleAnimationComplete = useCallback(() => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    setAnimatingWidth(null);
+  }, []);
+  
+  useEffect(() => {
+    return () => observerRef.current?.disconnect();
+  }, []);
+  
   if (artifacts.length > 0) {
     displayArtifactsRef.current = artifacts;
     displayActiveRef.current = activeArtifact;
@@ -26,14 +51,17 @@ export function ArtifactPanel() {
 
   return (
     <motion.div
+      ref={containerRef}
       className="overflow-hidden"
       initial={false}
       animate={{ width: isOpen ? "50%" : 0 }}
       transition={TRANSITION}
+      onAnimationStart={handleAnimationStart}
+      onAnimationComplete={handleAnimationComplete}
     >
       <div 
         className="h-full bg-card/80 border-l border-border flex flex-col overflow-hidden"
-        style={{ width: "50vw" }}
+        style={animatingWidth ? { width: animatingWidth } : undefined}
       >
         <div className="flex border-b border-border overflow-x-auto p-2 gap-2">
           {displayArtifactsRef.current.map((artifact) => (
