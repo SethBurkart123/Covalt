@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useChat } from "@/contexts/chat-context";
 
 export interface Artifact {
   id: string;
@@ -26,6 +27,8 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
   const wasSidebarOpenRef = useRef<boolean | null>(null);
+  const { chatId } = useChat();
+  const prevChatIdRef = useRef<string>("");
 
   const open = useCallback((id: string, title: string, content: ReactNode) => {
     const isFirstArtifact = artifacts.length === 0;
@@ -71,6 +74,13 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [activeId, setSidebarOpen]);
+
+  useEffect(() => {
+    if (prevChatIdRef.current !== "" && prevChatIdRef.current !== chatId) {
+      close();
+    }
+    prevChatIdRef.current = chatId;
+  }, [chatId, close]);
 
   return (
     <ArtifactPanelContext.Provider
