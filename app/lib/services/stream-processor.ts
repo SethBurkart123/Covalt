@@ -24,14 +24,14 @@ export interface StreamCallbacks {
   onThinkTagDetected?: () => void;
 }
 
-interface StreamState {
+export interface StreamState {
   contentBlocks: ContentBlock[];
   currentTextBlock: string;
   currentReasoningBlock: string;
   thinkTagDetected: boolean;
 }
 
-function createInitialState(): StreamState {
+export function createInitialState(): StreamState {
   return {
     contentBlocks: [],
     currentTextBlock: "",
@@ -188,7 +188,7 @@ function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
   }
 }
 
-function processEvent(
+export function processEvent(
   eventType: string,
   data: unknown,
   state: StreamState,

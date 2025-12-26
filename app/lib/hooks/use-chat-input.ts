@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { useTools } from "@/contexts/tools-context";
+import { useStreaming } from "@/contexts/streaming-context";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
 import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
@@ -32,14 +33,10 @@ function createErrorMessage(error: unknown): Message {
 export function useChatInput(onThinkTagDetected?: () => void) {
   const { chatId, selectedModel, refreshChats } = useChat();
   const { activeToolIds } = useTools();
+  const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
-  const [streamingContent, setStreamingContent] = useState<ContentBlock[] | null>(null);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [canSendMessage, setCanSendMessage] = useState(true);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -50,11 +47,17 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevChatIdRef = useRef<string | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
-  
+
+  const streamState = chatId ? getStreamState(chatId) : undefined;
+  const isLoading = streamState?.isStreaming || streamState?.isPausedForApproval || false;
+  const streamingContent = streamState?.streamingContent || null;
+  const streamingMessageId = streamState?.streamingMessageId || null;
+
   const messages = useMemo(() => {
-    if (streamingContent === null || streamingMessageId === null) {
+    if (!streamingContent || streamingContent.length === 0 || !streamingMessageId) {
       return baseMessages;
     }
+    
     const streamingMessage: Message = {
       id: streamingMessageId,
       role: "assistant",
@@ -62,18 +65,18 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       isComplete: false,
       sequence: 1,
     };
-    return [...baseMessages.filter(m => m.id !== streamingMessageId), streamingMessage];
+    
+    // Replace or append the streaming message
+    const filtered = baseMessages.filter(m => m.id !== streamingMessageId);
+    return [...filtered, streamingMessage];
   }, [baseMessages, streamingContent, streamingMessageId]);
 
-  const clearStreaming = useCallback(() => {
-    setStreamingContent(null);
-    setStreamingMessageId(null);
-  }, []);
-
-  const startStreaming = useCallback((messageId: string) => {
-    setStreamingMessageId(messageId);
-    setStreamingContent([{ type: "text", content: "" }]);
-  }, []);
+  const canSendMessage = useMemo(() => {
+    if (isLoading) return false;
+    if (messages.length === 0) return true;
+    const last = messages[messages.length - 1];
+    return last.isComplete !== false;
+  }, [isLoading, messages]);
 
   const triggerReload = useCallback(() => setReloadTrigger((n) => n + 1), []);
 
@@ -90,87 +93,16 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     setBaseMessages(fullChat.messages || []);
   }, []);
 
-  const streamWithUpdates = useCallback(
-    async (
-      response: Response,
-      messageId: string,
-      isUpdateExisting: boolean = false,
-    ) => {
-      setIsLoading(true);
-      abortControllerRef.current = new AbortController();
-      streamingMessageIdRef.current = null;
-
-      if (isUpdateExisting) {
-        try {
-          await processMessageStream(response, {
-            onUpdate: (content) => {
-              setBaseMessages((prev) =>
-                prev.map((m) => (m.id === messageId ? { ...m, content, isComplete: false } : m)),
-              );
-            },
-            onMessageId: (id) => {
-              streamingMessageIdRef.current = id;
-            },
-            onThinkTagDetected,
-          });
-
-          if (chatId) await reloadMessages(chatId);
-        } finally {
-          setIsLoading(false);
-          abortControllerRef.current = null;
-          streamingMessageIdRef.current = null;
-        }
-        return;
-      }
-
-      startStreaming(messageId);
-
-      try {
-        await processMessageStream(response, {
-          onUpdate: (content) => {
-            setStreamingContent(content);
-          },
-          onMessageId: (id) => {
-            streamingMessageIdRef.current = id;
-            setStreamingMessageId(id);
-          },
-          onThinkTagDetected,
-        });
-
-        if (chatId) await reloadMessages(chatId);
-      } finally {
-        setIsLoading(false);
-        abortControllerRef.current = null;
-        streamingMessageIdRef.current = null;
-        clearStreaming();
-      }
-    },
-    [chatId, onThinkTagDetected, reloadMessages, clearStreaming, startStreaming],
-  );
-
-  useEffect(() => {
-    if (messages.length === 0) {
-      setCanSendMessage(true);
-      return;
-    }
-    const last = messages[messages.length - 1];
-    setCanSendMessage(last.isComplete !== false);
-  }, [messages]);
-
   useEffect(() => {
     const prev = prevChatIdRef.current;
     const isSwitching = prev && chatId && prev !== chatId;
 
     if (isSwitching) {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      setIsLoading(false);
       setInput("");
-      clearStreaming();
     }
 
     prevChatIdRef.current = chatId || null;
-  }, [chatId, clearStreaming]);
+  }, [chatId]);
 
   useEffect(() => {
     selectedModelRef.current = selectedModel;
@@ -179,15 +111,30 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   useEffect(() => {
     if (!chatId) {
       setBaseMessages([]);
-      clearStreaming();
       return;
     }
+    
+    const existingStream = getStreamState(chatId);
+    if (existingStream?.isStreaming) {
+      return;
+    }
+    
     reloadMessages(chatId).catch((err) => {
       console.error("Failed to load chat messages:", err);
       setBaseMessages([]);
-      clearStreaming();
     });
-  }, [chatId, reloadTrigger, reloadMessages, clearStreaming]);
+  }, [chatId, reloadTrigger, reloadMessages, getStreamState]);
+
+  useEffect(() => {
+    const unsubscribe = onStreamComplete((completedChatId) => {
+      if (completedChatId === chatId) {
+        reloadMessages(chatId).catch((err) => {
+          console.error("Failed to reload messages after stream completion:", err);
+        });
+      }
+    });
+    return unsubscribe;
+  }, [chatId, reloadMessages, onStreamComplete]);
 
   useEffect(() => {
     if (baseMessages.length === 0) return;
@@ -223,13 +170,9 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       setBaseMessages(newBaseMessages);
       setInput("");
-      setIsLoading(true);
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
-
-      const tempId = crypto.randomUUID();
-      startStreaming(tempId);
 
       try {
         const response = await api.streamChat(newBaseMessages, selectedModel, chatId || undefined, activeToolIds);
@@ -240,7 +183,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
         await processMessageStream(response, {
           onUpdate: (content) => {
-            setStreamingContent(content);
+            const currentSessionId = sessionId || chatId;
+            if (currentSessionId) {
+              updateStreamContent(currentSessionId, content);
+            }
           },
           onSessionId: (id) => {
             sessionId = id;
@@ -249,31 +195,41 @@ export function useChatInput(onThinkTagDetected?: () => void) {
               refreshChats();
               api.generateChatTitle(id).then(refreshChats).catch(console.error);
             }
+            if (id && streamingMessageIdRef.current) {
+              registerStream(id, streamingMessageIdRef.current);
+            }
           },
           onMessageId: (id) => {
             streamingMessageIdRef.current = id;
-            setStreamingMessageId(id);
+            const currentSessionId = sessionId || chatId;
+            if (currentSessionId) {
+              registerStream(currentSessionId, id);
+            }
           },
           onThinkTagDetected,
         });
 
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
-          await reloadMessages(finalChatId);
           trackModel();
+          unregisterStream(finalChatId);
         }
       } catch (error) {
         console.error("Error streaming chat:", error);
-        clearStreaming();
-        setBaseMessages([...newBaseMessages, createErrorMessage(error)]);
+        const finalChatId = sessionId || chatId;
+        if (finalChatId) {
+          unregisterStream(finalChatId);
+          await reloadMessages(finalChatId).catch(() => {});
+        }
+        if (!finalChatId) {
+          setBaseMessages([...newBaseMessages, createErrorMessage(error)]);
+        }
       } finally {
-        setIsLoading(false);
         abortControllerRef.current = null;
         streamingMessageIdRef.current = null;
-        clearStreaming();
       }
     },
-    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, clearStreaming, startStreaming, activeToolIds],
+    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream],
   );
 
   const handleContinue = useCallback(
@@ -282,15 +238,28 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const message = baseMessages.find((m) => m.id === messageId);
       try {
+        registerStream(chatId, messageId);
         const currentModel = selectedModelRef.current || undefined;
         const response = await api.continueMessage(messageId, chatId, currentModel, activeToolIds);
-        await streamWithUpdates(response, messageId, true);
+        
+        await processMessageStream(response, {
+          onUpdate: (content) => {
+            updateStreamContent(chatId, content);
+          },
+          onMessageId: (id) => {
+            streamingMessageIdRef.current = id;
+          },
+          onThinkTagDetected,
+        });
+
+        unregisterStream(chatId);
         trackModel(message?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
+        unregisterStream(chatId);
       }
     },
-    [chatId, baseMessages, streamWithUpdates, trackModel, activeToolIds],
+    [chatId, baseMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent],
   );
 
   const handleRetry = useCallback(
@@ -303,38 +272,30 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       const newBaseMessages = baseMessages.slice(0, idx);
       setBaseMessages(newBaseMessages);
 
-    const tempId = crypto.randomUUID();
-    startStreaming(tempId);
-    setIsLoading(true);
-
-    try {
-      const currentModel = selectedModelRef.current || undefined;
-      const response = await api.retryMessage(messageId, chatId, currentModel, activeToolIds);
+      try {
+        const currentModel = selectedModelRef.current || undefined;
+        const response = await api.retryMessage(messageId, chatId, currentModel, activeToolIds);
         
         await processMessageStream(response, {
           onUpdate: (content) => {
-            setStreamingContent(content);
+            updateStreamContent(chatId, content);
           },
           onMessageId: (id) => {
             streamingMessageIdRef.current = id;
-            setStreamingMessageId(id);
+            registerStream(chatId, id);
           },
           onThinkTagDetected,
         });
 
-        if (chatId) await reloadMessages(chatId);
+        unregisterStream(chatId);
         trackModel();
       } catch (error) {
         console.error("Failed to retry message:", error);
-        clearStreaming();
-      } finally {
-        setIsLoading(false);
-        abortControllerRef.current = null;
-        streamingMessageIdRef.current = null;
-        clearStreaming();
+        unregisterStream(chatId);
+        await reloadMessages(chatId).catch(() => {});
       }
     },
-    [chatId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected, activeToolIds],
+    [chatId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent],
   );
 
   const handleEdit = useCallback(
@@ -376,37 +337,29 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     setBaseMessages(newBaseMessages);
     setEditingMessageId(null);
 
-    const tempId = crypto.randomUUID();
-    startStreaming(tempId);
-    setIsLoading(true);
-
     try {
       const currentModel = selectedModelRef.current || undefined;
       const response = await api.editUserMessage(messageId, newContent, chatId, currentModel, activeToolIds);
       
-      await processMessageStream(response, {
-        onUpdate: (content) => {
-          setStreamingContent(content);
-        },
-        onMessageId: (id) => {
-          streamingMessageIdRef.current = id;
-          setStreamingMessageId(id);
-        },
-        onThinkTagDetected,
-      });
+        await processMessageStream(response, {
+          onUpdate: (content) => {
+            updateStreamContent(chatId, content);
+          },
+          onMessageId: (id) => {
+            streamingMessageIdRef.current = id;
+            registerStream(chatId, id);
+          },
+          onThinkTagDetected,
+        });
 
-      if (chatId) await reloadMessages(chatId);
-      trackModel();
-    } catch (error) {
-      console.error("Failed to edit message:", error);
-      clearStreaming();
-    } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
-      streamingMessageIdRef.current = null;
-      clearStreaming();
-    }
-  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, clearStreaming, startStreaming, onThinkTagDetected, activeToolIds]);
+        unregisterStream(chatId);
+        trackModel();
+      } catch (error) {
+        console.error("Failed to edit message:", error);
+        unregisterStream(chatId);
+        await reloadMessages(chatId).catch(() => {});
+      }
+  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent]);
 
   const handleNavigate = useCallback(
     async (messageId: string, siblingId: string) => {
@@ -429,6 +382,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         const result = await api.cancelRun(messageId);
         if (result.cancelled && chatId) {
           await reloadMessages(chatId);
+          unregisterStream(chatId);
         }
       } catch (error) {
         console.error("Error cancelling run:", error);
@@ -438,9 +392,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     streamingMessageIdRef.current = null;
-    setIsLoading(false);
-    clearStreaming();
-  }, [chatId, reloadMessages, clearStreaming]);
+  }, [chatId, reloadMessages, unregisterStream]);
 
   const setMessages = useCallback((messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
     if (typeof messagesOrUpdater === "function") {
@@ -448,8 +400,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     } else {
       setBaseMessages(messagesOrUpdater);
     }
-    clearStreaming();
-  }, [clearStreaming]);
+  }, []);
 
   return {
     input,
