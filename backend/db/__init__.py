@@ -43,6 +43,7 @@ from .model_ops import (
 from .models import (
     Base,
     Chat,
+    McpServer,
     Message,
     Model,
     ProviderSettings,
@@ -79,10 +80,11 @@ __all__ = [
     # Models
     "Base",
     "Chat",
+    "McpServer",
     "Message",
+    "Model",
     "ProviderSettings",
     "UserSettings",
-    "Model",
     # Chats
     "list_chats",
     "get_chat_messages",

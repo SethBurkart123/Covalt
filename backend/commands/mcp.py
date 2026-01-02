@@ -222,6 +222,26 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
 
 
 @command
+async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
+    """
+    Get a single MCP server's configuration for editing.
+    
+    Returns unsanitized config with actual environment variable values.
+    
+    Args:
+        body: Contains server ID
+        
+    Returns:
+        Server configuration dict
+    """
+    mcp = get_mcp_manager()
+    config = mcp.get_server_config(body.id, sanitize=False)
+    if config is None:
+        raise ValueError(f"Server {body.id} not found")
+    return config
+
+
+@command
 async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
     """
     Reconnect to a failed or disconnected MCP server.

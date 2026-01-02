@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from agno.tools.function import Function
@@ -20,11 +22,23 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool as MCPTool
 
-from ..config import get_db_directory
+from ..db import db_session
+from ..db.models import McpServer
 
 logger = logging.getLogger(__name__)
 
 ServerStatus = Literal["connecting", "connected", "error", "disconnected"]
+
+
+def _extract_error_message(e: BaseException) -> str:
+    """Extract a useful error message, unwrapping ExceptionGroups if needed."""
+    if isinstance(e, BaseExceptionGroup):
+        messages = [_extract_error_message(exc) for exc in e.exceptions]
+        return "; ".join(messages)
+    return str(e)
+
+
+StatusCallback = Callable[[str, ServerStatus, str | None, int], None]
 
 
 @dataclass
@@ -32,7 +46,16 @@ class MCPServerState:
     """State for a single MCP server connection."""
 
     id: str
-    config: dict[str, Any]
+    server_type: str
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] | None = None
+    cwd: str | None = None
+    url: str | None = None
+    headers: dict[str, str] | None = None
+    env: dict[str, str] | None = None
+    requires_confirmation: bool = True
+    tool_overrides: dict[str, Any] | None = None
     status: ServerStatus = "disconnected"
     error: str | None = None
     tools: list[MCPTool] = field(default_factory=list)
@@ -41,49 +64,132 @@ class MCPServerState:
     _connection_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
+def _db_row_to_state(row: McpServer) -> MCPServerState:
+    """Convert a database row to MCPServerState."""
+    return MCPServerState(
+        id=row.id,
+        server_type=row.server_type,
+        enabled=row.enabled,
+        command=row.command,
+        args=json.loads(row.args) if row.args else None,
+        cwd=row.cwd,
+        url=row.url,
+        headers=json.loads(row.headers) if row.headers else None,
+        env=json.loads(row.env) if row.env else None,
+        requires_confirmation=row.requires_confirmation,
+        tool_overrides=json.loads(row.tool_overrides) if row.tool_overrides else None,
+    )
+
+
+def _state_to_config_dict(state: MCPServerState) -> dict[str, Any]:
+    """Convert MCPServerState to the old config dict format for compatibility."""
+    config: dict[str, Any] = {"type": state.server_type}
+    if state.command:
+        config["command"] = state.command
+    if state.args:
+        config["args"] = state.args
+    if state.cwd:
+        config["cwd"] = state.cwd
+    if state.url:
+        config["url"] = state.url
+    if state.headers:
+        config["headers"] = state.headers
+    if state.env:
+        config["env"] = state.env
+    if state.tool_overrides:
+        config["toolOverrides"] = state.tool_overrides
+    config["requiresConfirmation"] = state.requires_confirmation
+    return config
+
+
 class MCPManager:
     """
     Singleton manager for all MCP server connections.
 
     Handles:
-    - Loading config from db/mcp_servers.json
+    - Loading config from SQLite database
     - Connecting to all configured servers on startup
     - Maintaining persistent sessions
     - Creating agno Function wrappers for MCP tools
     - Tool execution via MCP protocol
+    - Broadcasting status changes via callbacks
     """
 
     def __init__(self) -> None:
         self._servers: dict[str, MCPServerState] = {}
-        self._config_path = get_db_directory() / "mcp_servers.json"
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._status_callbacks: set[StatusCallback] = set()
 
-    def _load_config(self) -> dict[str, Any]:
-        """Load MCP config from file."""
-        if not self._config_path.exists():
-            return {"mcpServers": {}}
+    def add_status_callback(self, callback: StatusCallback) -> None:
+        """Register a callback for status changes."""
+        self._status_callbacks.add(callback)
 
-        try:
-            with open(self._config_path) as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load MCP config: {e}")
-            return {"mcpServers": {}}
+    def remove_status_callback(self, callback: StatusCallback) -> None:
+        """Unregister a status callback."""
+        self._status_callbacks.discard(callback)
 
-    def _save_config(self) -> None:
-        """Save MCP config to file."""
-        config = {
-            "mcpServers": {
-                server_id: state.config for server_id, state in self._servers.items()
-            }
-        }
-        try:
-            self._config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._config_path, "w") as f:
-                json.dump(config, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save MCP config: {e}")
+    def _notify_status_change(
+        self, server_id: str, status: ServerStatus, error: str | None, tool_count: int
+    ) -> None:
+        """Notify all registered callbacks of a status change."""
+        for callback in self._status_callbacks:
+            try:
+                callback(server_id, status, error, tool_count)
+            except Exception as e:
+                logger.error(f"Status callback error: {e}")
+
+    def _load_servers_from_db(self) -> dict[str, MCPServerState]:
+        """Load all enabled MCP servers from database."""
+        servers: dict[str, MCPServerState] = {}
+        with db_session() as session:
+            rows = session.query(McpServer).filter(McpServer.enabled.is_(True)).all()
+            for row in rows:
+                servers[row.id] = _db_row_to_state(row)
+        return servers
+
+    def _save_server_to_db(self, state: MCPServerState) -> None:
+        """Save or update a server in the database."""
+        with db_session() as session:
+            existing = session.query(McpServer).filter(McpServer.id == state.id).first()
+            if existing:
+                existing.server_type = state.server_type
+                existing.enabled = state.enabled
+                existing.command = state.command
+                existing.args = json.dumps(state.args) if state.args else None
+                existing.cwd = state.cwd
+                existing.url = state.url
+                existing.headers = json.dumps(state.headers) if state.headers else None
+                existing.env = json.dumps(state.env) if state.env else None
+                existing.requires_confirmation = state.requires_confirmation
+                existing.tool_overrides = (
+                    json.dumps(state.tool_overrides) if state.tool_overrides else None
+                )
+            else:
+                new_server = McpServer(
+                    id=state.id,
+                    server_type=state.server_type,
+                    enabled=state.enabled,
+                    command=state.command,
+                    args=json.dumps(state.args) if state.args else None,
+                    cwd=state.cwd,
+                    url=state.url,
+                    headers=json.dumps(state.headers) if state.headers else None,
+                    env=json.dumps(state.env) if state.env else None,
+                    requires_confirmation=state.requires_confirmation,
+                    tool_overrides=(
+                        json.dumps(state.tool_overrides) if state.tool_overrides else None
+                    ),
+                    created_at=datetime.now().isoformat(),
+                )
+                session.add(new_server)
+            session.commit()
+
+    def _delete_server_from_db(self, server_id: str) -> None:
+        """Delete a server from the database."""
+        with db_session() as session:
+            session.query(McpServer).filter(McpServer.id == server_id).delete()
+            session.commit()
 
     async def initialize(self) -> None:
         """
@@ -94,16 +200,13 @@ class MCPManager:
             if self._initialized:
                 return
 
-            config = self._load_config()
-            servers_config = config.get("mcpServers", {})
+            self._servers = self._load_servers_from_db()
             tasks = []
-            for server_id, server_config in servers_config.items():
-                self._servers[server_id] = MCPServerState(
-                    id=server_id,
-                    config=server_config,
-                    status="connecting",
-                )
-                tasks.append(self._connect_server(server_id))
+            for server_id, state in self._servers.items():
+                if state.enabled:
+                    state.status = "connecting"
+                    self._notify_status_change(server_id, "connecting", None, 0)
+                    tasks.append(self._connect_server(server_id))
 
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -113,45 +216,53 @@ class MCPManager:
                 f"MCP Manager initialized with {len(self._servers)} server(s)"
             )
 
+    def _set_status(
+        self, server_id: str, status: ServerStatus, error: str | None = None
+    ) -> None:
+        """Set server status and notify callbacks."""
+        state = self._servers.get(server_id)
+        if state:
+            state.status = status
+            state.error = error
+            self._notify_status_change(
+                server_id, status, error, len(state.tools) if status == "connected" else 0
+            )
+
     async def _connect_server(self, server_id: str) -> None:
         """Connect to a single MCP server."""
         state = self._servers.get(server_id)
         if not state:
             return
 
-        config = state.config
-        state.status = "connecting"
-        state.error = None
+        self._set_status(server_id, "connecting")
 
         try:
-            if "command" in config:
-                await self._connect_stdio(server_id, config)
-            elif "url" in config:
-                transport = config.get("transport", "streamable-http")
-                if transport == "sse":
-                    await self._connect_sse(server_id, config)
+            if state.command:
+                await self._connect_stdio(server_id)
+            elif state.url:
+                if state.server_type == "sse":
+                    await self._connect_sse(server_id)
                 else:
-                    await self._connect_streamable_http(server_id, config)
+                    await self._connect_streamable_http(server_id)
             else:
-                raise ValueError("Config must have 'command' or 'url'")
+                raise ValueError("Server must have 'command' or 'url'")
 
         except Exception as e:
             logger.error(f"Failed to connect to MCP server {server_id}: {e}")
-            state.status = "error"
-            state.error = str(e)
+            self._set_status(server_id, "error", _extract_error_message(e))
             state.session = None
             state.tools = []
 
-    async def _connect_stdio(self, server_id: str, config: dict) -> None:
+    async def _connect_stdio(self, server_id: str) -> None:
         """Connect to a stdio-based MCP server."""
         state = self._servers[server_id]
         state._connection_event.clear()
 
         params = StdioServerParameters(
-            command=config["command"],
-            args=config.get("args", []),
-            env=config.get("env"),
-            cwd=config.get("cwd"),
+            command=state.command or "",
+            args=state.args or [],
+            env=state.env,
+            cwd=state.cwd,
         )
 
         async def run_connection():
@@ -160,9 +271,9 @@ class MCPManager:
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         state.session = session
-                        state.status = "connected"
                         tools_result = await session.list_tools()
                         state.tools = tools_result.tools
+                        self._set_status(server_id, "connected")
                         logger.info(
                             f"MCP server {server_id} connected with "
                             f"{len(state.tools)} tool(s)"
@@ -177,8 +288,7 @@ class MCPManager:
                 raise
             except Exception as e:
                 logger.error(f"MCP connection {server_id} error: {e}")
-                state.status = "error"
-                state.error = str(e)
+                self._set_status(server_id, "error", _extract_error_message(e))
                 state.session = None
                 state._connection_event.set()
 
@@ -189,23 +299,22 @@ class MCPManager:
         except asyncio.TimeoutError:
             logger.warning(f"MCP server {server_id} connection timeout")
 
-    async def _connect_sse(self, server_id: str, config: dict) -> None:
+    async def _connect_sse(self, server_id: str) -> None:
         """Connect to an SSE-based MCP server."""
         state = self._servers[server_id]
         state._connection_event.clear()
-        url = config["url"]
-        headers = config.get("headers")
 
         async def run_connection():
             try:
-                async with sse_client(url, headers=headers) as (read, write):
+                async with sse_client(
+                    state.url or "", headers=state.headers
+                ) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         state.session = session
-                        state.status = "connected"
-
                         tools_result = await session.list_tools()
                         state.tools = tools_result.tools
+                        self._set_status(server_id, "connected")
                         logger.info(
                             f"MCP server {server_id} (SSE) connected with "
                             f"{len(state.tools)} tool(s)"
@@ -219,8 +328,7 @@ class MCPManager:
                 raise
             except Exception as e:
                 logger.error(f"MCP SSE connection {server_id} error: {e}")
-                state.status = "error"
-                state.error = str(e)
+                self._set_status(server_id, "error", _extract_error_message(e))
                 state.session = None
                 state._connection_event.set()
 
@@ -231,22 +339,20 @@ class MCPManager:
         except asyncio.TimeoutError:
             logger.warning(f"MCP server {server_id} connection timeout")
 
-    async def _connect_streamable_http(self, server_id: str, config: dict) -> None:
+    async def _connect_streamable_http(self, server_id: str) -> None:
         """Connect to a streamable HTTP MCP server."""
         state = self._servers[server_id]
         state._connection_event.clear()
-        url = config["url"]
 
         async def run_connection():
             try:
-                async with streamable_http_client(url) as (read, write, _):
+                async with streamable_http_client(state.url or "") as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         state.session = session
-                        state.status = "connected"
-
                         tools_result = await session.list_tools()
                         state.tools = tools_result.tools
+                        self._set_status(server_id, "connected")
                         logger.info(
                             f"MCP server {server_id} (HTTP) connected with "
                             f"{len(state.tools)} tool(s)"
@@ -260,8 +366,7 @@ class MCPManager:
                 raise
             except Exception as e:
                 logger.error(f"MCP HTTP connection {server_id} error: {e}")
-                state.status = "error"
-                state.error = str(e)
+                self._set_status(server_id, "error", _extract_error_message(e))
                 state.session = None
                 state._connection_event.set()
 
@@ -278,15 +383,14 @@ class MCPManager:
         if not state:
             raise ValueError(f"Unknown server: {server_id}")
 
-        # Cancel existing connection task
         if state._cleanup_task and not state._cleanup_task.done():
             state._cleanup_task.cancel()
             try:
                 await state._cleanup_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
 
-        state.status = "disconnected"
+        self._set_status(server_id, "disconnected")
         state.session = None
         state.tools = []
 
@@ -298,13 +402,13 @@ class MCPManager:
         if not state:
             return
 
-        state.status = "disconnected"
+        self._set_status(server_id, "disconnected")
 
         if state._cleanup_task and not state._cleanup_task.done():
             state._cleanup_task.cancel()
             try:
                 await state._cleanup_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
 
         state.session = None
@@ -320,16 +424,15 @@ class MCPManager:
             "status": "connected",
             "error": null,
             "toolCount": 5,
+            "serverType": "stdio",
             "config": {...}  # without sensitive env vars
         }
         """
         result = []
         for server_id, state in self._servers.items():
-            safe_config = {k: v for k, v in state.config.items() if k != "env"}
-            if "env" in state.config:
-                safe_config["env"] = {
-                    k: "***" for k in state.config["env"].keys()
-                }
+            config = _state_to_config_dict(state)
+            if "env" in config:
+                config["env"] = {k: "***" for k in config["env"].keys()}
 
             result.append(
                 {
@@ -337,10 +440,32 @@ class MCPManager:
                     "status": state.status,
                     "error": state.error,
                     "toolCount": len(state.tools),
-                    "config": safe_config,
+                    "serverType": state.server_type,
+                    "config": config,
                 }
             )
         return result
+
+    def get_server_config(self, server_id: str, sanitize: bool = True) -> dict[str, Any] | None:
+        """
+        Get a single server's config, optionally with sanitized env vars.
+        
+        Args:
+            server_id: Server ID to get config for
+            sanitize: If True, replace env var values with "***"
+        
+        Returns:
+            Config dict or None if server not found
+        """
+        state = self._servers.get(server_id)
+        if not state:
+            return None
+        
+        config = _state_to_config_dict(state)
+        if sanitize and "env" in config:
+            config["env"] = {k: "***" for k in config["env"].keys()}
+        
+        return config
 
     def get_server_tools(self, server_id: str) -> list[dict[str, Any]]:
         """
@@ -352,8 +477,7 @@ class MCPManager:
         if not state or state.status != "connected":
             return []
 
-        tool_overrides = state.config.get("toolOverrides", {})
-        server_requires_confirmation = state.config.get("requiresConfirmation", True)
+        tool_overrides = state.tool_overrides or {}
 
         result = []
         for tool in state.tools:
@@ -367,7 +491,7 @@ class MCPManager:
                 "renderer": overrides.get("renderer"),
                 "editable_args": overrides.get("editable_args"),
                 "requires_confirmation": overrides.get(
-                    "requires_confirmation", server_requires_confirmation
+                    "requires_confirmation", state.requires_confirmation
                 ),
             }
             result.append(tool_info)
@@ -406,20 +530,16 @@ class MCPManager:
         if not mcp_tool:
             return None
 
-        tool_overrides = state.config.get("toolOverrides", {})
+        tool_overrides = state.tool_overrides or {}
         overrides = tool_overrides.get(tool_name, {})
-        server_requires_confirmation = state.config.get("requiresConfirmation", True)
-
-        manager = self
 
         async def mcp_tool_entrypoint(**kwargs: Any) -> str:
             try:
-                return await manager.call_tool(server_id, tool_name, kwargs)
+                return await self.call_tool(server_id, tool_name, kwargs)
             except Exception as e:
                 logger.error(f"MCP tool {server_id}:{tool_name} error: {e}")
                 return f"Error calling tool: {e}"
 
-        # Set function metadata for agno
         mcp_tool_entrypoint.__name__ = f"{server_id}:{tool_name}"
         mcp_tool_entrypoint.__doc__ = mcp_tool.description
 
@@ -430,7 +550,7 @@ class MCPManager:
             entrypoint=mcp_tool_entrypoint,
             skip_entrypoint_processing=True,
             requires_confirmation=overrides.get(
-                "requires_confirmation", server_requires_confirmation
+                "requires_confirmation", state.requires_confirmation
             ),
         )
 
@@ -467,8 +587,7 @@ class MCPManager:
         except Exception as e:
             logger.error(f"MCP tool call failed: {server_id}:{tool_name}: {e}")
             if "connection" in str(e).lower() or "closed" in str(e).lower():
-                state.status = "error"
-                state.error = str(e)
+                self._set_status(server_id, "error", _extract_error_message(e))
             raise
 
     async def add_server(self, server_id: str, config: dict[str, Any]) -> None:
@@ -476,26 +595,55 @@ class MCPManager:
         if server_id in self._servers:
             raise ValueError(f"Server {server_id} already exists")
 
-        self._servers[server_id] = MCPServerState(
+        server_type = config.get("type", "stdio")
+        if "transport" in config:
+            server_type = config["transport"]
+
+        state = MCPServerState(
             id=server_id,
-            config=config,
+            server_type=server_type,
+            enabled=True,
+            command=config.get("command"),
+            args=config.get("args"),
+            cwd=config.get("cwd"),
+            url=config.get("url"),
+            headers=config.get("headers"),
+            env=config.get("env"),
+            requires_confirmation=config.get("requiresConfirmation", True),
+            tool_overrides=config.get("toolOverrides"),
             status="connecting",
         )
 
-        await self._connect_server(server_id)
-        self._save_config()
+        self._servers[server_id] = state
+        self._save_server_to_db(state)
+        self._notify_status_change(server_id, "connecting", None, 0)
 
-    async def update_server(
-        self, server_id: str, config: dict[str, Any]
-    ) -> None:
+        await self._connect_server(server_id)
+
+    async def update_server(self, server_id: str, config: dict[str, Any]) -> None:
         """Update MCP server config and reconnect."""
         if server_id not in self._servers:
             raise ValueError(f"Unknown server: {server_id}")
 
         await self.disconnect(server_id)
-        self._servers[server_id].config = config
+
+        server_type = config.get("type", "stdio")
+        if "transport" in config:
+            server_type = config["transport"]
+
+        state = self._servers[server_id]
+        state.server_type = server_type
+        state.command = config.get("command")
+        state.args = config.get("args")
+        state.cwd = config.get("cwd")
+        state.url = config.get("url")
+        state.headers = config.get("headers")
+        state.env = config.get("env")
+        state.requires_confirmation = config.get("requiresConfirmation", True)
+        state.tool_overrides = config.get("toolOverrides")
+
+        self._save_server_to_db(state)
         await self._connect_server(server_id)
-        self._save_config()
 
     async def remove_server(self, server_id: str) -> None:
         """Disconnect and remove an MCP server."""
@@ -504,7 +652,7 @@ class MCPManager:
 
         await self.disconnect(server_id)
         del self._servers[server_id]
-        self._save_config()
+        self._delete_server_from_db(server_id)
 
     async def shutdown(self) -> None:
         """Disconnect all servers on shutdown."""
@@ -512,7 +660,6 @@ class MCPManager:
             await self.disconnect(server_id)
 
 
-# Singleton instance
 _mcp_manager: MCPManager | None = None
 
 
