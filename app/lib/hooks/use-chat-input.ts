@@ -47,6 +47,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevChatIdRef = useRef<string | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
+  const activeSubmissionChatIdRef = useRef<string | null>(null);
 
   const streamState = chatId ? getStreamState(chatId) : undefined;
   const isLoading = streamState?.isStreaming || streamState?.isPausedForApproval || false;
@@ -109,6 +110,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [selectedModel]);
 
   useEffect(() => {
+    if (activeSubmissionChatIdRef.current) return;
+    
     if (!chatId) {
       setBaseMessages([]);
       return;
@@ -190,6 +193,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           },
           onSessionId: (id) => {
             sessionId = id;
+            if (id) activeSubmissionChatIdRef.current = id;
             if (!chatId && id) {
               window.history.replaceState(null, "", `/?chatId=${id}`);
               refreshChats();
@@ -227,9 +231,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       } finally {
         abortControllerRef.current = null;
         streamingMessageIdRef.current = null;
+        activeSubmissionChatIdRef.current = null;
       }
     },
-    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream],
+    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent],
   );
 
   const handleContinue = useCallback(
