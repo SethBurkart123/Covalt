@@ -34,3 +34,6 @@ dev = [
 
 [tool.uv.sources]
 zynk = { path = "zynk" }
+
+[tool.ruff]
+target-version = "py312"

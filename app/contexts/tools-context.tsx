@@ -3,6 +3,10 @@
 import * as React from "react";
 import { useChat } from "@/contexts/chat-context";
 import {
+  useMcpStatus,
+  type McpServerStatus,
+} from "@/contexts/websocket-context";
+import {
   getAvailableTools,
   setDefaultTools,
   getDefaultTools,
@@ -15,6 +19,8 @@ export interface ToolsByCategory {
   [category: string]: ToolInfo[];
 }
 
+export type { McpServerStatus };
+
 interface ToolsContextType {
   availableTools: ToolInfo[];
   activeToolIds: string[];
@@ -24,6 +30,10 @@ interface ToolsContextType {
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
   isLoading: boolean;
+  /** MCP servers with real-time status from WebSocket */
+  mcpServers: McpServerStatus[];
+  /** Manually refresh the tools list */
+  refreshTools: () => void;
 }
 
 const ToolsContext = React.createContext<ToolsContextType | undefined>(
@@ -32,24 +42,45 @@ const ToolsContext = React.createContext<ToolsContextType | undefined>(
 
 export function ToolsProvider({ children }: { children: React.ReactNode }) {
   const { chatId } = useChat();
+  const { mcpServers } = useMcpStatus();
 
   const [availableTools, setAvailableTools] = React.useState<ToolInfo[]>([]);
   const [activeToolIds, setActiveToolIds] = React.useState<string[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    const loadTools = async () => {
-      try {
-        const response = await getAvailableTools();
-        setAvailableTools(response?.tools || []);
-      } catch (error) {
-        console.error("Failed to load available tools:", error);
-        setAvailableTools([]);
-      }
-    };
+  // Track connected server IDs to detect changes
+  const connectedServerIds = React.useMemo(
+    () =>
+      mcpServers
+        .filter((s) => s.status === "connected")
+        .map((s) => s.id)
+        .sort()
+        .join(","),
+    [mcpServers]
+  );
 
-    loadTools();
+  const loadTools = React.useCallback(async () => {
+    try {
+      const response = await getAvailableTools();
+      setAvailableTools(response?.tools || []);
+    } catch (error) {
+      console.error("Failed to load available tools:", error);
+      setAvailableTools([]);
+    }
   }, []);
+
+  // Initial load
+  React.useEffect(() => {
+    loadTools();
+  }, [loadTools]);
+
+  // Reload tools when connected MCP servers change
+  React.useEffect(() => {
+    // Skip the initial empty state
+    if (connectedServerIds !== "") {
+      loadTools();
+    }
+  }, [connectedServerIds, loadTools]);
 
   React.useEffect(() => {
     const loadActiveTools = async () => {
@@ -178,6 +209,8 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       isToolsetActive,
       isToolsetPartiallyActive,
       isLoading,
+      mcpServers,
+      refreshTools: loadTools,
     }),
     [
       availableTools,
@@ -188,6 +221,8 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       isToolsetActive,
       isToolsetPartiallyActive,
       isLoading,
+      mcpServers,
+      loadTools,
     ]
   );
 

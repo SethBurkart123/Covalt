@@ -90,3 +90,35 @@ class ActiveStream(Base):
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
     # Optional error message if status is "error"
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class McpServer(Base):
+    """MCP server configuration stored in database."""
+
+    __tablename__ = "mcp_servers"
+
+    # Identity
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+
+    # Server type: "stdio" | "sse" | "streamable-http"
+    server_type: Mapped[str] = mapped_column(String, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # For stdio servers
+    command: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    args: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    cwd: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # For HTTP/SSE servers
+    url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    headers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON dict
+
+    # Common config
+    env: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON dict
+    requires_confirmation: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    tool_overrides: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+
+    # Metadata
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
