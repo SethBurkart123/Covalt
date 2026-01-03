@@ -11,7 +11,7 @@ def main() -> int:
     init_database()
 
     output_dir = Path(__file__).parent.parent / "app" / "python"
-    app = Bridge(generate_ts=str(output_dir / "api.ts"), port=8000, debug=False)
+    app = Bridge(generate_ts=str(output_dir / "api.ts"), port=8000, debug=False, reload_includes="backend")
 
     app.run(dev=True)
     return 0

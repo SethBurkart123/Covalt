@@ -242,8 +242,12 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       if (!chatId) return;
 
       const message = baseMessages.find((m) => m.id === messageId);
+      const idx = baseMessages.findIndex((m) => m.id === messageId);
+      if (idx !== -1) {
+        setBaseMessages(baseMessages.slice(0, idx));
+      }
+
       try {
-        registerStream(chatId, messageId);
         const currentModel = selectedModelRef.current || undefined;
         const response = await api.continueMessage(messageId, chatId, currentModel, activeToolIds);
         
@@ -253,6 +257,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           },
           onMessageId: (id) => {
             streamingMessageIdRef.current = id;
+            registerStream(chatId, id);
           },
           onThinkTagDetected,
         });
@@ -262,9 +267,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       } catch (error) {
         console.error("Failed to continue message:", error);
         unregisterStream(chatId);
+        await reloadMessages(chatId).catch(() => {});
       }
     },
-    [chatId, baseMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent],
+    [chatId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent],
   );
 
   const handleRetry = useCallback(

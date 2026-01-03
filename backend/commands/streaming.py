@@ -33,6 +33,29 @@ registry = get_tool_registry()
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
 
 
+def extract_error_message(error_content: str) -> str:
+    """Extract a clean error message from litellm/provider error strings for cleaner display."""
+    if not error_content:
+        return "Unknown error"
+    
+    try:
+        json_start = error_content.find('{')
+        if json_start != -1:
+            json_str = error_content[json_start:]
+            data = json.loads(json_str)
+            if isinstance(data, dict):
+                # {"error": {"message": "..."}} format
+                if "error" in data and isinstance(data["error"], dict):
+                    return data["error"].get("message", error_content)
+                # {"message": "..."} format
+                if "message" in data:
+                    return data["message"]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    
+    return error_content
+
+
 class BroadcastingChannel:
     """
     Wrapper around a channel that also broadcasts events to all subscribers.
@@ -599,11 +622,8 @@ async def handle_content_stream(
                     flush_think_tag_buffer()
                     flush_text()
                     flush_reasoning()
-                    error_msg = str(
-                        chunk.error.message
-                        if hasattr(chunk.error, "message")
-                        else chunk
-                    )
+                    raw_error = chunk.content if chunk.content else str(chunk)
+                    error_msg = extract_error_message(raw_error)
                     content_blocks.append(
                         {
                             "type": "error",
@@ -612,7 +632,7 @@ async def handle_content_stream(
                         }
                     )
                     await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-                    ch.send_model(ChatEvent(event="RunError", content=str(chunk)))
+                    ch.send_model(ChatEvent(event="RunError", content=error_msg))
                     had_error = True
                     await ch.flush_broadcasts()
                     if chat_id:
