@@ -202,6 +202,11 @@ export function processEvent(
       break;
 
     case "AssistantMessageId":
+      if (Array.isArray(d.blocks)) {
+        state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
+        state.currentTextBlock = "";
+        state.currentReasoningBlock = "";
+      }
       if (d.content) callbacks.onMessageId?.(d.content as string);
       break;
 

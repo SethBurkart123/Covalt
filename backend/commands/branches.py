@@ -56,7 +56,7 @@ async def continue_message(
     channel: Channel,
     body: ContinueMessageRequest,
 ) -> None:
-    """Continue incomplete assistant message from where it stopped."""
+    """Continue incomplete assistant message by creating a sibling branch."""
     existing_blocks: List[Dict[str, Any]] = []
 
     with db.db_session() as sess:
@@ -66,7 +66,17 @@ async def continue_message(
             config["provider"] = provider
             config["model_id"] = model
             db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
-        messages = db.get_message_path(sess, body.messageId)
+
+        original_msg = sess.get(db.Message, body.messageId)
+        if not original_msg:
+            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
+            return
+
+        # Get message path up to (but not including) the original message
+        if original_msg.parent_message_id:
+            messages = db.get_message_path(sess, original_msg.parent_message_id)
+        else:
+            messages = []
 
         chat_messages = []
         for m in messages:
@@ -83,18 +93,18 @@ async def continue_message(
                     content=content,
                     createdAt=m.createdAt,
                 )
-                )
+            )
 
-        target_msg = sess.get(db.Message, body.messageId)
-        if target_msg and isinstance(target_msg.content, str):
-            raw = target_msg.content.strip()
+        # Extract existing content (strip error blocks)
+        if original_msg.content and isinstance(original_msg.content, str):
+            raw = original_msg.content.strip()
             if raw.startswith("["):
                 try:
                     existing_blocks = json.loads(raw)
                 except Exception:
-                    existing_blocks = [{"type": "text", "content": target_msg.content}]
+                    existing_blocks = [{"type": "text", "content": original_msg.content}]
             else:
-                existing_blocks = [{"type": "text", "content": target_msg.content}]
+                existing_blocks = [{"type": "text", "content": original_msg.content}]
             while (
                 existing_blocks
                 and isinstance(existing_blocks[-1], dict)
@@ -102,23 +112,36 @@ async def continue_message(
             ):
                 existing_blocks.pop()
 
+        new_msg_id = db.create_branch_message(
+            sess,
+            parent_id=original_msg.parent_message_id,
+            role="assistant",
+            content=json.dumps(existing_blocks) if existing_blocks else "",
+            chat_id=body.chatId,
+            is_complete=False,
+        )
+
+        db.set_active_leaf(sess, body.chatId, new_msg_id)
+
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    channel.send_model(ChatEvent(event="AssistantMessageId", content=body.messageId))
-    if existing_blocks:
-        channel.send_model(ChatEvent(event="SeedBlocks", blocks=existing_blocks))
+    channel.send_model(ChatEvent(
+        event="AssistantMessageId",
+        content=new_msg_id,
+        blocks=existing_blocks if existing_blocks else None,
+    ))
 
     try:
         agent = create_agent_for_chat(
             body.chatId,
             channel=channel,
-            assistant_msg_id=body.messageId,
+            assistant_msg_id=new_msg_id,
             tool_ids=body.toolIds,
         )
 
         await handle_content_stream(
             agent,
             chat_messages,
-            body.messageId,
+            new_msg_id,
             channel,
             chat_id=body.chatId,
         )
@@ -127,7 +150,7 @@ async def continue_message(
         print(f"[continue_message] Error: {e}")
         try:
             with db.db_session() as sess:
-                message = sess.get(db.Message, body.messageId)
+                message = sess.get(db.Message, new_msg_id)
                 blocks: List[Dict[str, Any]] = []
                 if message and message.content:
                     raw = message.content.strip()
@@ -145,7 +168,7 @@ async def continue_message(
                     }
                 )
                 db.update_message_content(
-                    sess, messageId=body.messageId, content=json.dumps(blocks)
+                    sess, messageId=new_msg_id, content=json.dumps(blocks)
                 )
         except Exception:
             pass
