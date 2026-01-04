@@ -7,6 +7,7 @@ import { animate, spring, stagger } from 'motion';
 import { useTheme } from '@/contexts/theme-context';
 import { Check, Copy } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // Memoized components for better performance
 const MemoizedComponents = {
@@ -25,11 +26,11 @@ const MemoizedComponents = {
   pre: memo(({node, ...props}: any) => <pre {...props} />),
   img: memo(({node, ...props}: any) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />),
   hr: memo(({node, ...props}: any) => <hr className="!my-8" {...props} />),
-  input: memo(({node, className, ...props}: any) => {
-    if (props.type === 'checkbox') {
-      return <input type="checkbox" className={`mr-2 ${className}`} {...props} />;
+  input: memo(({node, className, type, checked, ...props}: any) => {
+    if (type === 'checkbox') {
+      return <Checkbox checked={!!checked} className={`mr-2 ${className}`} disabled />;
     }
-    return <input className={className} {...props} />;
+    return <input type={type} className={className} {...props} />;
   }),
 };
 
