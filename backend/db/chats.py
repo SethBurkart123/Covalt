@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from datetime import datetime
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Chat, Message
+from ..services.file_storage import get_extension_from_mime, load_attachment
 
 
 def list_chats(sess: Session) -> List[Chat]:
@@ -48,19 +50,42 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
                 # If parsing fails, keep as string (legacy format)
                 pass
 
-        messages.append(
-            {
-                "id": r.id,
-                "role": r.role,
-                "content": content,
-                "createdAt": r.createdAt,
-                "toolCalls": toolCalls,
-                "parentMessageId": r.parent_message_id,
-                "isComplete": r.is_complete,
-                "sequence": r.sequence,
-                "modelUsed": r.model_used,
-            }
-        )
+        # Parse attachments if present and load base64 data for images
+        attachments = None
+        if r.attachments:
+            try:
+                raw_attachments = json.loads(r.attachments)
+                attachments = []
+                for att in raw_attachments:
+                    # For images, load the file and encode as base64 for display
+                    if att.get("type") == "image":
+                        try:
+                            ext = get_extension_from_mime(att["mimeType"])
+                            file_bytes = load_attachment(chatId, att["id"], ext)
+                            att["data"] = base64.b64encode(file_bytes).decode("utf-8")
+                        except Exception:
+                            pass  # File not found, skip data
+                    attachments.append(att)
+            except Exception:
+                pass
+
+        msg_data = {
+            "id": r.id,
+            "role": r.role,
+            "content": content,
+            "createdAt": r.createdAt,
+            "toolCalls": toolCalls,
+            "parentMessageId": r.parent_message_id,
+            "isComplete": r.is_complete,
+            "sequence": r.sequence,
+            "modelUsed": r.model_used,
+        }
+
+        # Only include attachments if present
+        if attachments:
+            msg_data["attachments"] = attachments
+
+        messages.append(msg_data)
     return messages
 
 

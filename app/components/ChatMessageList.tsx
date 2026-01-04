@@ -78,6 +78,7 @@ const MessageRow = React.memo(function MessageRow({
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content === nextProps.message.content &&
+    prevProps.message.attachments?.length === nextProps.message.attachments?.length &&
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.isLoading === nextProps.isLoading &&

@@ -22,8 +22,6 @@ _agent_db = InMemoryDb()
 
 def create_agent_for_chat(
     chat_id: str,
-    assistant_msg_id: str,
-    channel=None,
     tool_ids: List[str] = [],
 ) -> Agent:
     """
@@ -34,8 +32,6 @@ def create_agent_for_chat(
 
     Args:
         chat_id: Chat identifier
-        assistant_msg_id: Assistant message ID (needed for approval gates)
-        channel: Optional channel for sending events (needed for approval gates)
         tool_ids: list of tool IDs to use (overrides config if provided)
 
     Returns:
