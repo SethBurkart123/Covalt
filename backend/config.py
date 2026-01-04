@@ -24,3 +24,10 @@ def get_db_directory() -> Path:
 def get_db_path() -> Path:
     """Get full path to database file."""
     return get_db_directory() / "app.db"
+
+
+def get_chat_files_directory() -> Path:
+    """Get directory for chat file attachments."""
+    files_dir = get_db_directory() / "chat_files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    return files_dir

@@ -5,17 +5,23 @@ import json
 import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from agno.agent import Agent, Message, RunEvent
+from agno.media import Audio, File, Image, Video
 from pydantic import BaseModel
 from rich.logging import RichHandler
 
 from zynk import Channel, command
 
 from .. import db
-from ..models.chat import ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
+from ..services.file_storage import (
+    get_extension_from_mime,
+    load_attachment,
+    save_attachment_from_base64,
+)
 from ..services.tool_registry import get_tool_registry
 from ..services import stream_broadcaster as broadcaster
 
@@ -89,11 +95,23 @@ _approval_events: Dict[str, asyncio.Event] = {}
 # Global storage for pending approval responses
 _approval_responses: Dict[str, Dict[str, Any]] = {}  # approval_id -> {approved: bool, edited_args: dict}
 
+class AttachmentInput(BaseModel):
+    """Incoming attachment with base64 data."""
+
+    id: str
+    type: str  # "image" | "file" | "audio" | "video"
+    name: str
+    mimeType: str
+    size: int
+    data: str  # base64-encoded file content
+
+
 class StreamChatRequest(BaseModel):
     messages: List[Dict[str, Any]]
     modelId: Optional[str] = None
     chatId: Optional[str] = None
     toolIds: List[str] = []
+    attachments: List[AttachmentInput] = []  # File attachments with base64 data
 
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     """Parse 'provider:model' format."""
@@ -103,6 +121,75 @@ def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
         provider, model = model_id.split(":", 1)
         return provider, model
     return "", model_id
+
+
+# TODO: Add file size limit validation (e.g., 50MB per file)
+def process_and_save_attachments(
+    chat_id: str, attachments: List[AttachmentInput]
+) -> List[Attachment]:
+    """
+    Process incoming attachments: save files to disk and return metadata list.
+
+    Args:
+        chat_id: The chat ID for organizing files
+        attachments: List of incoming attachments with base64 data
+
+    Returns:
+        List of Attachment metadata (without the base64 data)
+    """
+    saved_attachments: List[Attachment] = []
+
+    for att in attachments:
+        extension = get_extension_from_mime(att.mimeType)
+        save_attachment_from_base64(chat_id, att.id, att.data, extension)
+
+        saved_attachments.append(
+            Attachment(
+                id=att.id,
+                type=att.type,
+                name=att.name,
+                mimeType=att.mimeType,
+                size=att.size,
+            )
+        )
+
+    return saved_attachments
+
+
+def load_attachments_as_agno_media(
+    chat_id: str, attachments: List[Attachment]
+) -> tuple[
+    Sequence[Image], Sequence[File], Sequence[Audio], Sequence[Video]
+]:
+    """
+    Load attachment files from disk and convert to Agno media objects.
+
+    Args:
+        chat_id: The chat ID
+        attachments: List of attachment metadata
+
+    Returns:
+        Tuple of (images, files, audio, videos) Agno media objects
+    """
+    images: List[Image] = []
+    files: List[File] = []
+    audio: List[Audio] = []
+    videos: List[Video] = []
+
+    for att in attachments:
+        extension = get_extension_from_mime(att.mimeType)
+        content = load_attachment(chat_id, att.id, extension)
+
+        if att.type == "image":
+            images.append(Image(content=content))
+        elif att.type == "audio":
+            audio.append(Audio(content=content))
+        elif att.type == "video":
+            videos.append(Video(content=content))
+        else:  # "file" type
+            files.append(File(content=content, name=att.name))
+
+    return images, files, audio, videos
 
 
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
@@ -162,10 +249,22 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
     return chat_id
 
 
-def save_user_msg(msg: ChatMessage, chat_id: str, parent_id: Optional[str] = None):
-    """Save user message to db."""
+def save_user_msg(
+    msg: ChatMessage,
+    chat_id: str,
+    parent_id: Optional[str] = None,
+    attachments: Optional[List[Attachment]] = None,
+):
+    """Save user message to db with optional attachments."""
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
+
+        # Serialize attachments to JSON if present
+        attachments_json = None
+        if attachments:
+            attachments_json = json.dumps(
+                [att.model_dump() for att in attachments]
+            )
 
         message = db.Message(
             id=msg.id,
@@ -176,6 +275,7 @@ def save_user_msg(msg: ChatMessage, chat_id: str, parent_id: Optional[str] = Non
             parent_message_id=parent_id,
             is_complete=True,  # User messages are always complete
             sequence=sequence,
+            attachments=attachments_json,
         )
         sess.add(message)
         sess.commit()
@@ -336,6 +436,10 @@ async def handle_content_stream(
     assistant_msg_id: str,
     raw_ch: Any,
     chat_id: str = "",
+    images: Optional[Sequence[Image]] = None,
+    files: Optional[Sequence[File]] = None,
+    audio: Optional[Sequence[Audio]] = None,
+    videos: Optional[Sequence[Video]] = None,
 ):
     ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
     
@@ -360,7 +464,20 @@ async def handle_content_stream(
     except Exception as e:
         logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
 
-    response_stream = agent.arun(input=agno_messages, stream=True, stream_events=True)
+    # Pass media attachments to agent.arun() if provided
+    if images:
+        logger.info(f"[stream] Passing {len(images)} images to agent.arun()")
+    if files:
+        logger.info(f"[stream] Passing {len(files)} files to agent.arun()")
+    response_stream = agent.arun(
+        input=agno_messages,
+        images=images if images else None,
+        files=files if files else None,
+        audio=audio if audio else None,
+        videos=videos if videos else None,
+        stream=True,
+        stream_events=True,
+    )
 
     content_blocks = load_initial_content(assistant_msg_id)
     current_text = ""
@@ -943,12 +1060,32 @@ async def stream_chat(
 
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
+    # Process and save attachments if provided
+    saved_attachments: List[Attachment] = []
+    images: Sequence[Image] = []
+    files: Sequence[File] = []
+    audio: Sequence[Audio] = []
+    videos: Sequence[Video] = []
+
+    if body.attachments:
+        logger.info(f"[stream] Processing {len(body.attachments)} attachments for chat {chat_id}")
+        saved_attachments = process_and_save_attachments(chat_id, body.attachments)
+        images, files, audio, videos = load_attachments_as_agno_media(
+            chat_id, saved_attachments
+        )
+        logger.info(f"[stream] Loaded media: {len(images)} images, {len(files)} files, {len(audio)} audio, {len(videos)} videos")
+
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
         parent_id = chat.active_leaf_message_id if chat else None
 
     if messages and messages[-1].role == "user":
-        save_user_msg(messages[-1], chat_id, parent_id)
+        save_user_msg(
+            messages[-1],
+            chat_id,
+            parent_id,
+            attachments=saved_attachments if saved_attachments else None,
+        )
         parent_id = messages[-1].id
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
@@ -960,8 +1097,6 @@ async def stream_chat(
     try:
         agent = create_agent_for_chat(
             chat_id,
-            channel=channel,
-            assistant_msg_id=assistant_msg_id,
             tool_ids=body.toolIds,
         )
 
@@ -974,6 +1109,10 @@ async def stream_chat(
             assistant_msg_id,
             channel,
             chat_id=chat_id,
+            images=images if images else None,
+            files=files if files else None,
+            audio=audio if audio else None,
+            videos=videos if videos else None,
         )
 
     except Exception as e:

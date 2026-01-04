@@ -41,6 +41,8 @@ class Message(Base):
     is_complete: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # JSON string of attachment metadata (id, type, name, mimeType, size)
+    attachments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
 

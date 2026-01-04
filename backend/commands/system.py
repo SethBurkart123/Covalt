@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from zynk import command
 
 from .. import db
+from ..config import get_db_directory
 from ..models.chat import (
     AllModelSettingsResponse,
     AllProvidersResponse,
@@ -47,6 +48,21 @@ async def greet(body: Person) -> Greeting:
 @command
 async def get_version() -> str:
     return sys.version
+
+
+class DbPathResponse(BaseModel):
+    path: str
+
+
+@command
+async def get_db_path() -> DbPathResponse:
+    """
+    Get the database directory path for file access.
+    
+    Returns:
+        The absolute path to the database directory
+    """
+    return DbPathResponse(path=str(get_db_directory()))
 
 
 @command

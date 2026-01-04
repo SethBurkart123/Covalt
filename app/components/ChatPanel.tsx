@@ -77,6 +77,10 @@ export default function ChatPanel() {
     messageSiblings,
     streamingMessageIdRef,
     triggerReload,
+    // Attachment handlers
+    pendingAttachments,
+    addAttachment,
+    removeAttachment,
   } = useChatInput(handleThinkTagDetected);
 
   const handleAcceptThinkingPrompt = useCallback(async () => {
@@ -294,6 +298,9 @@ export default function ChatPanel() {
               getModelName={getModelName}
               canSendMessage={canSendMessage}
               onStop={handleStop}
+              attachments={pendingAttachments}
+              onAddAttachment={addAttachment}
+              onRemoveAttachment={removeAttachment}
             />
           </div>
           {showThinkingPrompt && (

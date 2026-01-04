@@ -133,8 +133,6 @@ async def continue_message(
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=channel,
-            assistant_msg_id=new_msg_id,
             tool_ids=body.toolIds,
         )
 
@@ -232,8 +230,6 @@ async def retry_message(
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=channel,
-            assistant_msg_id=new_msg_id,
             tool_ids=body.toolIds,
         )
 
@@ -350,8 +346,6 @@ async def edit_user_message(
     try:
         agent = create_agent_for_chat(
             body.chatId,
-            channel=channel,
-            assistant_msg_id=assistant_msg_id,
             tool_ids=body.toolIds,
         )
 

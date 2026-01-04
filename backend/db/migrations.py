@@ -54,6 +54,16 @@ def run_migrations() -> None:
             )
             conn.commit()
 
+        # Add attachments column to messages table
+        if "messages" in existing_tables:
+            messages_columns = [col["name"] for col in inspector.get_columns("messages")]
+            if "attachments" not in messages_columns:
+                conn.execute(
+                    text("ALTER TABLE messages ADD COLUMN attachments TEXT DEFAULT NULL")
+                )
+                conn.commit()
+                logger.info("Added attachments column to messages table")
+
         # MCP servers table migration
         mcp_table_existed = "mcp_servers" in existing_tables
         if not mcp_table_existed:
