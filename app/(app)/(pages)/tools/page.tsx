@@ -30,6 +30,8 @@ import type { ToolInfo } from "@/lib/types/chat";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -217,8 +219,11 @@ function configToFormData(
   config: Record<string, unknown>
 ): ServerFormData {
   let serverType: ServerType = "stdio";
-  if (config.url) {
-    serverType = config.transport === "sse" ? "sse" : "streamable-http";
+  if (config.type && typeof config.type === "string") {
+    const type = config.type;
+    if (type === "sse" || type === "streamable-http" || type === "stdio") {
+      serverType = type;
+    }
   }
 
   let fullCommand = (config.command as string) || "";
@@ -632,21 +637,19 @@ function ServerFormDialog({
 
             {/* Requires Confirmation */}
             <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="requiresConfirmation"
                 checked={formData.requiresConfirmation}
-                onChange={(e) =>
+                onCheckedChange={(checked) =>
                   setFormData({
                     ...formData,
-                    requiresConfirmation: e.target.checked,
+                    requiresConfirmation: !!checked,
                   })
                 }
-                className="size-4 rounded border-input"
               />
-              <label htmlFor="requiresConfirmation" className="text-sm">
+              <Label htmlFor="requiresConfirmation" className="text-sm cursor-pointer">
                 Require confirmation before tool execution
-              </label>
+              </Label>
             </div>
           </div>
         ) : (

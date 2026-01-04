@@ -1,12 +1,13 @@
 "use client";
 
 import React from "react";
-import { Loader2, Wrench, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, Wrench } from "lucide-react";
 import { useTools, type McpServerStatus } from "@/contexts/tools-context";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -36,24 +37,26 @@ function formatCategoryName(category: string): string {
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-/** Small status indicator dot for MCP servers */
 function McpStatusIndicator({
   status,
 }: {
   status: McpServerStatus["status"];
 }) {
-  if (status === "connected") {
-    return <CheckCircle2 className="size-3.5 text-emerald-500 flex-shrink-0" />;
-  }
-  if (status === "connecting") {
-    return (
-      <Loader2 className="size-3.5 text-amber-500 animate-spin flex-shrink-0" />
-    );
-  }
-  if (status === "error") {
-    return <XCircle className="size-3.5 text-red-500 flex-shrink-0" />;
-  }
-  return <AlertCircle className="size-3.5 text-zinc-500 flex-shrink-0" />;
+  return (
+    <div
+      className={cn(
+        "size-2 rounded-full flex-shrink-0",
+        status === "connected"
+          ? "bg-emerald-500"
+          : status === "connecting"
+            ? "bg-amber-500"
+            : status === "error"
+              ? "bg-red-500"
+              : "bg-zinc-500",
+        status === "connecting" && "animate-pulse"
+      )}
+    />
+  );
 }
 
 interface ToolSelectorProps {
@@ -72,9 +75,6 @@ export function ToolSelector({ children }: ToolSelectorProps) {
     mcpServers,
   } = useTools();
 
-  const categories = Object.keys(toolsByCategory);
-
-  // Map MCP server IDs to their status for quick lookup
   const mcpStatusMap = React.useMemo(() => {
     const map: Record<string, McpServerStatus["status"]> = {};
     mcpServers.forEach((s) => {
@@ -83,8 +83,20 @@ export function ToolSelector({ children }: ToolSelectorProps) {
     return map;
   }, [mcpServers]);
 
-  // Check if a category is an MCP server category
+  const categories = React.useMemo(() => {
+    const toolCategories = new Set(Object.keys(toolsByCategory));
+    mcpServers.forEach((server) => {
+      if (!toolCategories.has(server.id)) {
+        toolCategories.add(server.id);
+      }
+    });
+    return Array.from(toolCategories).sort();
+  }, [toolsByCategory, mcpServers]);
+
   const getMcpServerId = (category: string): string | null => {
+    if (mcpStatusMap[category]) {
+      return category;
+    }
     if (category.startsWith("mcp:")) {
       return category.slice(4);
     }
@@ -115,26 +127,61 @@ export function ToolSelector({ children }: ToolSelectorProps) {
           </div>
         ) : (
           categories.map((category) => {
-            const tools = toolsByCategory[category];
+            const tools = toolsByCategory[category] || [];
             const allActive = isToolsetActive(category);
             const partiallyActive = isToolsetPartiallyActive(category);
             const mcpServerId = getMcpServerId(category);
             const mcpStatus = mcpServerId ? mcpStatusMap[mcpServerId] : null;
+            const isErrorOrLoading = mcpStatus === "error" || mcpStatus === "connecting" || mcpStatus === "disconnected";
+            const hasTools = tools.length > 0;
+
+            if (isErrorOrLoading && !hasTools) {
+              return (
+                <DropdownMenuItem
+                  key={category}
+                  disabled
+                  className={cn(
+                    "gap-2 py-2",
+                    mcpStatus === "error" && "opacity-60 text-muted-foreground",
+                    (mcpStatus === "connecting" || mcpStatus === "disconnected") && "opacity-70"
+                  )}
+                >
+                  {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
+                  <span className="flex-1 truncate">{formatCategoryName(category)}</span>
+                  <Switch
+                    checked={false}
+                    disabled
+                    className="opacity-50"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </DropdownMenuItem>
+              );
+            }
 
             return (
               <DropdownMenuSub key={category}>
-                <DropdownMenuSubTrigger className="gap-2 py-2">
-                  <span className="text-base leading-none">
-                    {getCategoryIcon(category)}
-                  </span>
+                <DropdownMenuSubTrigger 
+                  className={cn(
+                    "gap-2 py-2",
+                    isErrorOrLoading && "opacity-60 text-muted-foreground"
+                  )}
+                >
+                  {mcpStatus ? (
+                    <McpStatusIndicator status={mcpStatus} />
+                  ) : (
+                    <span className="text-base leading-none">
+                      {getCategoryIcon(category)}
+                    </span>
+                  )}
                   <span className="flex-1 truncate flex items-center gap-1.5">
                     {formatCategoryName(category)}
-                    {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
                   </span>
-                  <span className="text-xs text-muted-foreground mr-1">
-                    {tools.filter((t) => activeToolIds.includes(t.id)).length}/
-                    {tools.length}
-                  </span>
+                  {hasTools && (
+                    <span className="text-xs text-muted-foreground mr-1">
+                      {tools.filter((t) => activeToolIds.includes(t.id)).length}/
+                      {tools.length}
+                    </span>
+                  )}
                   <Switch
                     checked={allActive}
                     data-state={
@@ -146,17 +193,23 @@ export function ToolSelector({ children }: ToolSelectorProps) {
                     }
                     className={cn(
                       partiallyActive && "opacity-60",
-                      mcpStatus === "error" && "opacity-50"
+                      isErrorOrLoading && "opacity-50"
                     )}
                     onCheckedChange={() => toggleToolset(category)}
                     onClick={(e) => e.stopPropagation()}
-                    disabled={mcpStatus === "error" || mcpStatus === "disconnected"}
+                    disabled={isErrorOrLoading}
                   />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-72 max-h-80 overflow-y-auto rounded-xl">
                   {mcpStatus === "error" && (
                     <div className="px-3 py-2 text-xs text-red-500 bg-red-500/5 border-b border-red-500/10">
                       Server disconnected. Reconnect in Tools page.
+                    </div>
+                  )}
+                  {mcpStatus === "connecting" && (
+                    <div className="px-3 py-2 text-xs text-amber-500 bg-amber-500/5 border-b border-amber-500/10 flex items-center gap-2">
+                      <Loader2 className="size-3 animate-spin" />
+                      Connecting to server...
                     </div>
                   )}
                   {tools.map((tool) => {

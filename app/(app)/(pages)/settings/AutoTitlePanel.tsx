@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { getAutoTitleSettings, saveAutoTitleSettings } from "@/python/api";
 import ModelSelector from "@/components/ModelSelector";
@@ -142,16 +143,14 @@ export default function AutoTitlePanel() {
             >
               <div className="px-2 border-t border-border/60 pt-4 space-y-4 mt-2">
                 <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     id="auto-title-enabled"
                     checked={settings.enabled}
-                    onChange={(e) =>
-                      setSettings({ ...settings, enabled: e.target.checked })
+                    onCheckedChange={(checked) =>
+                      setSettings({ ...settings, enabled: !!checked })
                     }
-                    className="h-4 w-4 rounded border-gray-300"
                   />
-                  <Label htmlFor="auto-title-enabled" className="font-medium">
+                  <Label htmlFor="auto-title-enabled" className="font-medium cursor-pointer">
                     Enable Auto-Title Generation
                   </Label>
                 </div>
