@@ -120,7 +120,7 @@ def delete_chat_attachments(chat_id: str) -> None:
         shutil.rmtree(chat_dir)
 
 
-def load_attachment(chat_id: str, attachment_id: str, extension: str) -> bytes:
+def load_attachment_bytes(chat_id: str, attachment_id: str, extension: str) -> bytes:
     """
     Load attachment bytes from disk.
 
@@ -134,4 +134,8 @@ def load_attachment(chat_id: str, attachment_id: str, extension: str) -> bytes:
     """
     path = get_attachment_path(chat_id, attachment_id, extension)
     return path.read_bytes()
+
+
+# Alias for backwards compatibility
+load_attachment = load_attachment_bytes
 

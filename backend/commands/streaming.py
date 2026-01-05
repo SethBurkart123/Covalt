@@ -18,8 +18,8 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
+    get_attachment_path,
     get_extension_from_mime,
-    load_attachment,
     save_attachment_from_base64,
 )
 from ..services.tool_registry import get_tool_registry
@@ -164,6 +164,8 @@ def load_attachments_as_agno_media(
     """
     Load attachment files from disk and convert to Agno media objects.
 
+    Uses filepath instead of loading bytes - cleaner and more memory efficient!
+
     Args:
         chat_id: The chat ID
         attachments: List of attachment metadata
@@ -178,16 +180,18 @@ def load_attachments_as_agno_media(
 
     for att in attachments:
         extension = get_extension_from_mime(att.mimeType)
-        content = load_attachment(chat_id, att.id, extension)
+        filepath = get_attachment_path(chat_id, att.id, extension)
+
+        logger.info(f"[stream] Loading attachment {att.id} from {filepath}")
 
         if att.type == "image":
-            images.append(Image(content=content))
+            images.append(Image(filepath=filepath))
         elif att.type == "audio":
-            audio.append(Audio(content=content))
+            audio.append(Audio(filepath=filepath))
         elif att.type == "video":
-            videos.append(Video(content=content))
+            videos.append(Video(filepath=filepath))
         else:  # "file" type
-            files.append(File(content=content, name=att.name))
+            files.append(File(filepath=filepath, name=att.name))
 
     return images, files, audio, videos
 
