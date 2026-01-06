@@ -182,8 +182,6 @@ def load_attachments_as_agno_media(
         extension = get_extension_from_mime(att.mimeType)
         filepath = get_attachment_path(chat_id, att.id, extension)
 
-        logger.info(f"[stream] Loading attachment {att.id} from {filepath}")
-
         if att.type == "image":
             images.append(Image(filepath=filepath))
         elif att.type == "audio":
@@ -468,17 +466,29 @@ async def handle_content_stream(
     except Exception as e:
         logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
 
-    # Pass media attachments to agent.arun() if provided
-    if images:
-        logger.info(f"[stream] Passing {len(images)} images to agent.arun()")
-    if files:
-        logger.info(f"[stream] Passing {len(files)} files to agent.arun()")
+    # Attach media to the last user message if provided
+    # This is necessary because agno only attaches images/files to the user message
+    # when input is a string, not when it's a list of Message objects
+    if images or files or audio or videos:
+        # Find the last user message and attach media to it
+        for i in range(len(agno_messages) - 1, -1, -1):
+            if agno_messages[i].role == "user":
+                if images:
+                    agno_messages[i].images = list(images)
+                    logger.info(f"[stream] Attached {len(images)} images to last user message")
+                if files:
+                    agno_messages[i].files = list(files)
+                    logger.info(f"[stream] Attached {len(files)} files to last user message")
+                if audio:
+                    agno_messages[i].audio = list(audio)
+                    logger.info(f"[stream] Attached {len(audio)} audio to last user message")
+                if videos:
+                    agno_messages[i].videos = list(videos)
+                    logger.info(f"[stream] Attached {len(videos)} videos to last user message")
+                break
+
     response_stream = agent.arun(
         input=agno_messages,
-        images=images if images else None,
-        files=files if files else None,
-        audio=audio if audio else None,
-        videos=videos if videos else None,
         stream=True,
         stream_events=True,
     )
