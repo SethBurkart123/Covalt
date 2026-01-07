@@ -16,13 +16,11 @@ import type {
 } from "@/lib/types/chat";
 import { addRecentModel } from "@/lib/utils";
 
-// Helper to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:image/png;base64,")
       const base64 = result.split(",")[1];
       resolve(base64);
     };
@@ -31,7 +29,6 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// Helper to determine media type from MIME type
 function getMediaType(mimeType: string): AttachmentType {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("audio/")) return "audio";
@@ -52,19 +49,14 @@ function createUserMessage(content: string, attachments?: (Attachment | PendingA
     createdAt: new Date().toISOString(),
     isComplete: true,
     sequence: 1,
-    // Include attachments - convert to Attachment format (metadata only)
     attachments: attachments?.map((att) => {
       if (isPendingAttachment(att)) {
-        // PendingAttachment - extract metadata, preserve data for preview
-        // previewUrl is intentionally excluded (blob URLs become invalid after File is released)
         const { data, previewUrl: _previewUrl, ...rest } = att;
         return {
           ...rest,
-          // Keep data for local preview if available
           ...(data ? { data } : {}),
         } as Attachment & { data?: string };
       }
-      // Attachment - just metadata
       return att;
     }) as Attachment[],
   };
@@ -86,17 +78,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [editingAttachments, setEditingAttachments] = useState<(Attachment | PendingAttachment)[]>([]);
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevChatIdRef = useRef<string | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
   const activeSubmissionChatIdRef = useRef<string | null>(null);
@@ -124,7 +113,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     return [...filtered, streamingMessage];
   }, [baseMessages, streamingContent, streamingMessageId]);
 
-  // Helper to check if a message contains an error block
   const hasErrorBlock = useCallback((message: Message): boolean => {
     if (typeof message.content === "string") {
       return false;
@@ -164,14 +152,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     const isSwitching = prev && chatId && prev !== chatId;
 
     if (isSwitching) {
-      setInput("");
-      // Clear pending attachments and revoke preview URLs when switching chats
-      setPendingAttachments((prev) => {
-        prev.forEach((att) => {
-          if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-        });
-        return [];
-      });
     }
 
     prevChatIdRef.current = chatId || null;
@@ -231,41 +211,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     loadSiblings();
   }, [baseMessages]);
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-  }, []);
-
-  // Attachment handlers
-  const addAttachment = useCallback(async (file: File) => {
-    // TODO: Add file size limit check here (e.g., 50MB)
-    const id = crypto.randomUUID();
-    const type = getMediaType(file.type);
-    const data = await fileToBase64(file);
-    const previewUrl = type === "image" ? URL.createObjectURL(file) : undefined;
-
-    setPendingAttachments((prev) => [
-      ...prev,
-      {
-        id,
-        type,
-        name: file.name,
-        mimeType: file.type,
-        size: file.size,
-        data,
-        previewUrl,
-      },
-    ]);
-  }, []);
-
-  const removeAttachment = useCallback((id: string) => {
-    setPendingAttachments((prev) => {
-      const att = prev.find((a) => a.id === id);
-      if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
-      return prev.filter((a) => a.id !== id);
-    });
-  }, []);
-
-  // Editing attachment handlers
   const addEditingAttachment = useCallback(async (file: File) => {
     const id = crypto.randomUUID();
     const type = getMediaType(file.type);
@@ -296,30 +241,15 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     });
   }, []);
 
-  const clearAttachments = useCallback(() => {
-    setPendingAttachments((prev) => {
-      prev.forEach((att) => {
-        if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-      });
-      return [];
-    });
-  }, []);
-
   const handleSubmit = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const hasContent = input.trim() || pendingAttachments.length > 0;
+    async (inputText: string, attachments: PendingAttachment[]) => {
+      const hasContent = inputText.trim() || attachments.length > 0;
       if (!hasContent || isLoading || !canSendMessage) return;
 
-      // Capture attachments before clearing
-      const attachmentsToSend = [...pendingAttachments];
-
-      const userMessage = createUserMessage(input.trim(), attachmentsToSend);
+      const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
 
       setBaseMessages(newBaseMessages);
-      setInput("");
-      clearAttachments();
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
@@ -330,7 +260,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           selectedModel,
           chatId || undefined,
           activeToolIds,
-          attachmentsToSend.length > 0 ? attachmentsToSend : undefined
+          attachments.length > 0 ? attachments : undefined
         );
 
         if (!response.ok) {
@@ -387,7 +317,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         activeSubmissionChatIdRef.current = null;
       }
     },
-    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent, pendingAttachments, clearAttachments],
+    [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent],
   );
 
   const handleContinue = useCallback(
@@ -505,16 +435,12 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     
     editingAttachments.forEach((att) => {
       if (isPendingAttachment(att)) {
-        // This is a PendingAttachment (new file)
         newAttachments.push(att);
       } else {
-        // This is an Attachment (existing file)
         existingAttachments.push(att);
       }
     });
 
-    // createUserMessage handles both Attachment and PendingAttachment types,
-    // preserving data for local preview
     const userMessage = createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined);
     const newBaseMessages = [...baseMessages.slice(0, idx), userMessage];
     setBaseMessages(newBaseMessages);
@@ -595,11 +521,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, []);
 
   return {
-    input,
-    handleInputChange,
     handleSubmit,
     isLoading,
-    inputRef,
     messages,
     canSendMessage,
     triggerReload,
@@ -616,11 +539,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     handleNavigate,
     messageSiblings,
     streamingMessageIdRef,
-    // Attachment handlers
-    pendingAttachments,
-    addAttachment,
-    removeAttachment,
-    // Editing attachment handlers
     editingAttachments,
     addEditingAttachment,
     removeEditingAttachment,

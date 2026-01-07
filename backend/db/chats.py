@@ -47,17 +47,14 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
             try:
                 content = json.loads(content)
             except Exception:
-                # If parsing fails, keep as string (legacy format)
                 pass
 
-        # Parse attachments if present and load base64 data for images
         attachments = None
         if r.attachments:
             try:
                 raw_attachments = json.loads(r.attachments)
                 attachments = []
                 for att in raw_attachments:
-                    # For images, load the file and encode as base64 for display
                     if att.get("type") == "image":
                         try:
                             ext = get_extension_from_mime(att["mimeType"])
@@ -81,7 +78,6 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
             "modelUsed": r.model_used,
         }
 
-        # Only include attachments if present
         if attachments:
             msg_data["attachments"] = attachments
 

@@ -347,10 +347,8 @@ async def edit_user_message(
         else:
             messages = []
 
-        # Process attachments: save new ones, combine with existing ones
         all_attachments: List[Attachment] = []
 
-        # Add existing attachments (files already saved)
         for existing_att in body.existingAttachments:
             all_attachments.append(
                 Attachment(
@@ -362,7 +360,6 @@ async def edit_user_message(
                 )
             )
 
-        # Save new attachments and add to list
         for new_att in body.newAttachments:
             extension = get_extension_from_mime(new_att.mimeType)
             save_attachment_from_base64(
@@ -387,7 +384,6 @@ async def edit_user_message(
             is_complete=True,
         )
 
-        # Update message with attachments if we have any
         if all_attachments:
             attachments_json = json.dumps([att.model_dump() for att in all_attachments])
             user_msg = sess.get(db.Message, new_user_msg_id)

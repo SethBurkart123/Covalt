@@ -328,7 +328,6 @@ function UserMessageEditor({
       className="w-full"
     >
       <div className="rounded-3xl bg-muted text-muted-foreground p-3">
-        {/* Attachment preview */}
         {attachments.length > 0 && (
           <div className="w-full pb-2">
             <AttachmentPreview
