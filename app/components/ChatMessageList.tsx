@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from "react";
-import ChatMessage from "./Message";
+import ChatMessage from "./ChatMessage";
 import { Message, MessageSibling, Attachment, PendingAttachment } from "@/lib/types/chat";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { FileDropZone, FileDropZoneTrigger } from "@/components/ui/file-drop-zone";
