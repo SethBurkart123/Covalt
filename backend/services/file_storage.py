@@ -11,6 +11,8 @@ from ..config import get_chat_files_directory
 
 AttachmentType = Literal["image", "file", "audio", "video"]
 
+PENDING_UPLOADS_DIR = "_pending"
+
 
 def get_media_type(mime_type: str) -> AttachmentType:
     """Map MIME type to attachment type category."""
@@ -136,6 +138,97 @@ def load_attachment_bytes(chat_id: str, attachment_id: str, extension: str) -> b
     return path.read_bytes()
 
 
-# Alias for backwards compatibility
 load_attachment = load_attachment_bytes
 
+
+def get_pending_uploads_dir() -> Path:
+    """Get directory for temporary (pending) uploads before they're linked to a chat."""
+    pending_dir = get_chat_files_directory() / PENDING_UPLOADS_DIR
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    return pending_dir
+
+
+def get_pending_attachment_path(attachment_id: str, extension: str) -> Path:
+    """Get file path for a pending (temp) attachment."""
+    return get_pending_uploads_dir() / f"{attachment_id}.{extension}"
+
+
+def save_pending_attachment(
+    attachment_id: str, file_data: bytes, extension: str
+) -> Path:
+    """
+    Save attachment to pending/temp storage.
+
+    Args:
+        attachment_id: Unique ID for the attachment
+        file_data: Raw bytes of the file
+        extension: File extension (without dot)
+
+    Returns:
+        Path to the saved file
+    """
+    path = get_pending_attachment_path(attachment_id, extension)
+    path.write_bytes(file_data)
+    return path
+
+
+def move_pending_to_chat(attachment_id: str, extension: str, chat_id: str) -> Path:
+    """
+    Move a pending attachment from temp storage to a chat's folder.
+
+    Args:
+        attachment_id: The attachment ID
+        extension: File extension
+        chat_id: The chat ID to move the file to
+
+    Returns:
+        Path to the final location
+    """
+    source = get_pending_attachment_path(attachment_id, extension)
+    dest = get_attachment_path(chat_id, attachment_id, extension)
+
+    if source.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(dest))
+    elif not dest.exists():
+        raise FileNotFoundError(
+            f"Attachment {attachment_id} not found in pending or chat storage"
+        )
+
+    return dest
+
+
+def pending_attachment_exists(attachment_id: str, extension: str) -> bool:
+    """Check if a pending attachment exists."""
+    return get_pending_attachment_path(attachment_id, extension).exists()
+
+
+def delete_pending_attachment(attachment_id: str, extension: str) -> bool:
+    """
+    Delete a pending attachment.
+
+    Returns:
+        True if file was deleted, False if it didn't exist
+    """
+    path = get_pending_attachment_path(attachment_id, extension)
+    if path.exists():
+        path.unlink()
+        return True
+    return False
+
+
+def cleanup_pending_uploads() -> int:
+    """
+    Clean up all pending uploads. Called manually when needed.
+
+    Returns:
+        Number of files deleted
+    """
+    pending_dir = get_pending_uploads_dir()
+    count = 0
+    if pending_dir.exists():
+        for file in pending_dir.iterdir():
+            if file.is_file():
+                file.unlink()
+                count += 1
+    return count

@@ -1,5 +1,6 @@
 import type {
   AllChatsData,
+  Attachment,
   ChatData,
   Message,
   MessageSibling,
@@ -81,7 +82,7 @@ class ApiService {
     modelId: string,
     chatId?: string,
     toolIds?: string[],
-    attachments?: PendingAttachment[],
+    attachments?: Attachment[],
   ): Promise<Response> {
     // Use zynk's createChannel for streaming - it returns a BridgeChannel
     const encoder = new TextEncoder();
@@ -107,14 +108,13 @@ class ApiService {
             modelId: modelId,
             chatId: chatId,
             toolIds: toolIds,
-            // Include attachments with base64 data for backend processing
+            // Pass attachment metadata only (files are pre-uploaded via uploadAttachment)
             attachments: attachments?.map((a) => ({
               id: a.id,
               type: a.type,
               name: a.name,
               mimeType: a.mimeType,
               size: a.size,
-              data: a.data,
             })) || [],
           },
         });

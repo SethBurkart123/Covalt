@@ -14,6 +14,7 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
+import { linkAttachments } from "@/python/api";
 import { addRecentModel } from "@/lib/utils";
 
 async function fileToBase64(file: File): Promise<string> {
@@ -36,7 +37,6 @@ function getMediaType(mimeType: string): AttachmentType {
   return "file";
 }
 
-// Type guard to check if attachment is PendingAttachment
 function isPendingAttachment(att: Attachment | PendingAttachment): att is PendingAttachment {
   return 'data' in att && typeof att.data === 'string';
 }
@@ -55,7 +55,7 @@ function createUserMessage(content: string, attachments?: (Attachment | PendingA
         return {
           ...rest,
           ...(data ? { data } : {}),
-        } as Attachment & { data?: string };
+        };
       }
       return att;
     }) as Attachment[],
@@ -108,7 +108,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       sequence: 1,
     };
     
-    // Replace or append the streaming message
     const filtered = baseMessages.filter(m => m.id !== streamingMessageId);
     return [...filtered, streamingMessage];
   }, [baseMessages, streamingContent, streamingMessageId]);
@@ -127,7 +126,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     if (isLoading) return false;
     if (messages.length === 0) return true;
     const last = messages[messages.length - 1];
-    // Allow sending if message is complete, or if it's incomplete but has an error (user can continue after error)
     if (last.isComplete !== false) return true;
     return hasErrorBlock(last);
   }, [isLoading, messages, hasErrorBlock]);
@@ -148,12 +146,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, []);
 
   useEffect(() => {
-    const prev = prevChatIdRef.current;
-    const isSwitching = prev && chatId && prev !== chatId;
-
-    if (isSwitching) {
-    }
-
     prevChatIdRef.current = chatId || null;
   }, [chatId]);
 
@@ -242,7 +234,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, []);
 
   const handleSubmit = useCallback(
-    async (inputText: string, attachments: PendingAttachment[]) => {
+    async (inputText: string, attachments: Attachment[]) => {
       const hasContent = inputText.trim() || attachments.length > 0;
       if (!hasContent || isLoading || !canSendMessage) return;
 
@@ -253,6 +245,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
+      let attachmentsLinked = false;
 
       try {
         const response = await api.streamChat(
@@ -274,7 +267,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
               updateStreamContent(currentSessionId, content);
             }
           },
-          onSessionId: (id) => {
+          onSessionId: async (id) => {
             sessionId = id;
             if (id) activeSubmissionChatIdRef.current = id;
             if (!chatId && id) {
@@ -284,6 +277,22 @@ export function useChatInput(onThinkTagDetected?: () => void) {
             }
             if (id && streamingMessageIdRef.current) {
               registerStream(id, streamingMessageIdRef.current);
+            }
+            if (id && attachments.length > 0 && !attachmentsLinked) {
+              attachmentsLinked = true;
+              try {
+                await linkAttachments({
+                  body: {
+                    chatId: id,
+                    attachments: attachments.map(a => ({
+                      id: a.id,
+                      mimeType: a.mimeType,
+                    })),
+                  },
+                });
+              } catch (e) {
+                console.error("Failed to link attachments:", e);
+              }
             }
           },
           onMessageId: (id) => {
@@ -409,7 +418,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       setEditingDraft(initial);
       setEditingMessageId(messageId);
-      // Load attachments from the original message
       setEditingAttachments(msg.attachments || []);
     },
     [baseMessages],
@@ -429,7 +437,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     const idx = baseMessages.findIndex((m) => m.id === messageId);
     if (idx === -1) return;
 
-    // Separate existing attachments (just metadata) from new ones (with base64 data)
     const existingAttachments: Attachment[] = [];
     const newAttachments: PendingAttachment[] = [];
     

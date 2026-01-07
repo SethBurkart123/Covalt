@@ -8,18 +8,19 @@ import { useChat } from "@/contexts/chat-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { api } from "@/lib/services/api";
 import { getModelSettings } from "@/python/api";
+import type { AllModelSettingsResponse } from "@/python/api";
 import { Header } from "./Header";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import "@/components/tool-renderers";
-import type { PendingAttachment } from "@/lib/types/chat";
+import type { Attachment } from "@/lib/types/chat";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
-  const [modelSettings, setModelSettings] = useState<any>(null);
+  const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -39,7 +40,7 @@ export default function ChatPanel() {
     if (!provider || !modelId || !modelSettings) return;
 
     const setting = modelSettings.models?.find(
-      (m: any) => m.provider === provider && m.modelId === modelId,
+      (m) => m.provider === provider && m.modelId === modelId,
     );
 
     if (
@@ -75,7 +76,6 @@ export default function ChatPanel() {
     messageSiblings,
     streamingMessageIdRef,
     triggerReload,
-    // Editing attachment handlers
     editingAttachments,
     addEditingAttachment,
     removeEditingAttachment,
@@ -132,7 +132,6 @@ export default function ChatPanel() {
     setShowThinkingPrompt(false);
   }, []);
 
-  // Create stable callback references using refs
   const submitRef = useRef(handleSubmit);
   const setSelectedModelRef = useRef(setSelectedModel);
   const handleStopRef = useRef(handleStop);
@@ -149,9 +148,8 @@ export default function ChatPanel() {
     handleStopRef.current = handleStop;
   }, [handleStop]);
 
-  // Stable callbacks that never change reference
   const stableHandleSubmit = useCallback(
-    (input: string, attachments: PendingAttachment[]) => {
+    (input: string, attachments: Attachment[]) => {
       return submitRef.current(input, attachments);
     },
     [],
@@ -165,7 +163,6 @@ export default function ChatPanel() {
     return handleStopRef.current();
   }, []);
 
-  // Memoize models array reference - only create new reference when models actually change
   const stableModels = useMemo(() => models, [models]);
 
   return (
@@ -193,6 +190,7 @@ export default function ChatPanel() {
                 editingAttachments={editingAttachments}
                 onAddEditingAttachment={addEditingAttachment}
                 onRemoveEditingAttachment={removeEditingAttachment}
+                chatId={chatId ?? undefined}
               />
             </div>
           </div>

@@ -30,6 +30,17 @@ export interface PendingAttachment extends Attachment {
   previewUrl?: string; // blob URL for local preview (images only)
 }
 
+// Upload status tracking
+export type UploadStatus = "pending" | "uploading" | "uploaded" | "error";
+
+// For attachments that are being uploaded
+export interface UploadingAttachment extends Omit<Attachment, "data"> {
+  uploadStatus: UploadStatus;
+  uploadProgress: number; // 0-100
+  uploadError?: string;
+  previewUrl?: string; // blob URL for local preview (images only)
+}
+
 export type ContentBlock =
   | { type: "text"; content: string }
   | {

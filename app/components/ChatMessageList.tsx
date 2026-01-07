@@ -23,6 +23,7 @@ interface ChatMessageListProps {
   editingAttachments?: (Attachment | PendingAttachment)[];
   onAddEditingAttachment?: (file: File) => void;
   onRemoveEditingAttachment?: (id: string) => void;
+  chatId?: string;
 }
 
 interface MessageRowProps {
@@ -35,6 +36,7 @@ interface MessageRowProps {
   onRetry?: (messageId: string) => void;
   onEditStart?: (messageId: string) => void;
   onNavigate?: (messageId: string, siblingId: string) => void;
+  chatId?: string;
 }
 
 const MessageRow = React.memo(function MessageRow({
@@ -47,6 +49,7 @@ const MessageRow = React.memo(function MessageRow({
   onRetry,
   onEditStart,
   onNavigate,
+  chatId,
 }: MessageRowProps) {
   const handleContinue = useCallback(() => {
     onContinue?.(message.id);
@@ -78,6 +81,7 @@ const MessageRow = React.memo(function MessageRow({
         onNavigate={onNavigate ? handleNavigate : undefined}
         isLoading={isLoading}
         isLastAssistantMessage={isLastAssistantMessage}
+        chatId={chatId}
       />
     </div>
   );
@@ -90,6 +94,7 @@ const MessageRow = React.memo(function MessageRow({
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.siblings.length === nextProps.siblings.length &&
+    prevProps.chatId === nextProps.chatId &&
 
     prevProps.onContinue === nextProps.onContinue &&
     prevProps.onRetry === nextProps.onRetry &&
@@ -115,6 +120,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   editingAttachments = [],
   onAddEditingAttachment,
   onRemoveEditingAttachment,
+  chatId,
 }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -247,6 +253,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
             onRetry={onRetry}
             onEditStart={onEditStart}
             onNavigate={onNavigate}
+            chatId={chatId}
           />
         );
       })}
