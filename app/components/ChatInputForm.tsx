@@ -1,8 +1,10 @@
-import React, {
+import {
   KeyboardEvent,
+  memo,
   useCallback,
   useEffect,
   useRef,
+  useState
 } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +12,7 @@ import {
   MoreHorizontal,
   ArrowUp,
   Square,
+  Wrench,
 } from "lucide-react";
 import clsx from "clsx";
 import { motion, LayoutGroup } from "framer-motion";
@@ -48,12 +51,12 @@ interface ChatInputFormProps {
 const MAX_HEIGHT = 200;
 
 // Scrolling text component for long model names
-const ScrollingText = React.memo(
+const ScrollingText = memo(
   ({ text, className = "" }: { text: string; className?: string }) => {
     const [isHovered, setIsHovered] = useState(false);
     const [shouldScroll, setShouldScroll] = useState(false);
-    const textRef = React.useRef<HTMLSpanElement>(null);
-    const containerRef = React.useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLSpanElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
       if (textRef.current && containerRef.current) {
@@ -105,7 +108,7 @@ const ScrollingText = React.memo(
 
 ScrollingText.displayName = "ScrollingText";
 
-const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
+const ChatInputForm: React.FC<ChatInputFormProps> = memo(
   ({
     input,
     handleInputChange,
@@ -167,20 +170,19 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
       canSendMessage && (input.trim() || attachments.length > 0);
 
     return (
-      <FileDropZone
-        onFilesDrop={handleFilesDrop}
-        disabled={isLoading || !canSendMessage}
-        className="w-full"
+      <motion.form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        className={clsx(
+          "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card p-3 shadow-lg",
+          "chat-input-form"
+        )}
       >
-        <motion.form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className={clsx(
-            "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card px-4 py-3 shadow-lg",
-            "chat-input-form"
-          )}
+        <FileDropZone
+          onFilesDrop={handleFilesDrop}
+          disabled={isLoading || !canSendMessage}
+          className="w-full"
         >
-          {/* Attachment preview bar */}
           {attachments.length > 0 && (
             <div className="w-full pb-2">
               <AttachmentPreview
@@ -210,7 +212,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
           <div className="flex w-full items-center gap-2 pt-2">
             <LayoutGroup>
               <LayoutGroup>
-                {/* Attachment button (repurposed +) */}
                 <FileDropZoneTrigger asChild>
                   <Button
                     type="button"
@@ -229,10 +230,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
               models={models}
             />
             <LayoutGroup>
-              {/* More options menu with ToolSelector */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
+              <ToolSelector>
+                <Button
                     type="button"
                     variant="secondary"
                     size="icon"
@@ -241,24 +240,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
                   >
                     <MoreHorizontal className="size-5" />
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  className="w-auto p-2"
-                  side="top"
-                >
-                  <ToolSelector>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="w-full justify-start gap-2"
-                    >
-                      <Plus className="size-4" />
-                      Tools
-                    </Button>
-                  </ToolSelector>
-                </PopoverContent>
-              </Popover>
+              </ToolSelector>
 
               <div className="flex-1" />
 
@@ -287,8 +269,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
             </LayoutGroup>
           </LayoutGroup>
         </div>
-      </motion.form>
       </FileDropZone>
+    </motion.form>
     );
   }
 );
