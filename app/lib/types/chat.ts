@@ -21,6 +21,7 @@ export interface Attachment {
   name: string;
   mimeType: string;
   size: number;
+  data?: string; // base64 encoded data (optional, used for local preview before backend reload)
 }
 
 // For pending attachments (before upload) - includes base64 data

@@ -3,7 +3,6 @@ import React, {
   useCallback,
   useEffect,
   useRef,
-  useState,
 } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,10 +10,9 @@ import {
   MoreHorizontal,
   ArrowUp,
   Square,
-  Paperclip,
 } from "lucide-react";
 import clsx from "clsx";
-import { motion, LayoutGroup, AnimatePresence } from "framer-motion";
+import { motion, LayoutGroup } from "framer-motion";
 import type { ModelInfo, PendingAttachment } from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
 import ModelSelector from "@/components/ModelSelector";
@@ -24,6 +22,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  FileDropZone,
+  FileDropZoneTrigger,
+} from "@/components/ui/file-drop-zone";
 
 interface ChatInputFormProps {
   input: string;
@@ -119,10 +121,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
     onAddAttachment,
     onRemoveAttachment,
   }) => {
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
-    const dragCounterRef = useRef(0);
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -154,57 +153,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
       };
     }, [input, inputRef]);
 
-    // Handle file selection from input
-    const handleFileSelect = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || !onAddAttachment) return;
-
-        Array.from(files).forEach((file) => {
-          onAddAttachment(file);
-        });
-
-        // Reset input so the same file can be selected again
-        e.target.value = "";
-      },
-      [onAddAttachment]
-    );
-
-    // Drag and drop handlers
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current++;
-      if (e.dataTransfer.types.includes("Files")) {
-        setIsDragging(true);
-      }
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current--;
-      if (dragCounterRef.current === 0) {
-        setIsDragging(false);
-      }
-    }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }, []);
-
-    const handleDrop = useCallback(
-      (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        dragCounterRef.current = 0;
-
+    const handleFilesDrop = useCallback(
+      (files: File[]) => {
         if (!onAddAttachment) return;
-
-        const files = e.dataTransfer.files;
-        Array.from(files).forEach((file) => {
+        files.forEach((file) => {
           onAddAttachment(file);
         });
       },
@@ -215,94 +167,62 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
       canSendMessage && (input.trim() || attachments.length > 0);
 
     return (
-      <motion.form
-        ref={formRef}
-        onSubmit={handleSubmit}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        className={clsx(
-          "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card px-4 py-3 shadow-lg",
-          "chat-input-form",
-          isDragging && "ring-2 ring-primary ring-offset-2"
-        )}
+      <FileDropZone
+        onFilesDrop={handleFilesDrop}
+        disabled={isLoading || !canSendMessage}
+        className="w-full"
       >
-        {/* Drag overlay */}
-        <AnimatePresence>
-          {isDragging && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-primary/10 backdrop-blur-sm"
-            >
-              <div className="flex flex-col items-center gap-2 text-primary">
-                <Paperclip className="size-8" />
-                <span className="text-sm font-medium">Drop files here</span>
-              </div>
-            </motion.div>
+        <motion.form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className={clsx(
+            "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card px-4 py-3 shadow-lg",
+            "chat-input-form"
           )}
-        </AnimatePresence>
+        >
+          {/* Attachment preview bar */}
+          {attachments.length > 0 && (
+            <div className="w-full pb-2">
+              <AttachmentPreview
+                attachments={attachments}
+                onRemove={onRemoveAttachment}
+              />
+            </div>
+          )}
 
-        {/* Hidden file input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          multiple
-          accept="image/*,application/pdf,audio/*,video/*,.txt,.csv,.json,.doc,.docx"
-          className="hidden"
-        />
-
-        {/* Attachment preview bar */}
-        {attachments.length > 0 && (
-          <div className="w-full pb-2">
-            <AttachmentPreview
-              attachments={attachments}
-              onRemove={onRemoveAttachment}
+          <div className="w-full min-h-[40px] max-h-[200px]">
+            <textarea
+              ref={inputRef}
+              className={clsx(
+                "w-full flex-1 border-none bg-transparent pt-2 px-1 text-lg shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+                "placeholder:text-muted-foreground resize-none h-full",
+                "min-h-[40px] max-h-[200px] overflow-y-auto",
+                "query-input"
+              )}
+              placeholder="Ask anything"
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              rows={1}
             />
           </div>
-        )}
 
-        <div className="w-full min-h-[40px] max-h-[200px]">
-          <textarea
-            ref={inputRef}
-            className={clsx(
-              "w-full flex-1 border-none bg-transparent pt-2 px-1 text-lg shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-              "placeholder:text-muted-foreground resize-none h-full",
-              "min-h-[40px] max-h-[200px] overflow-y-auto",
-              "query-input",
-              !canSendMessage && "opacity-50 cursor-not-allowed"
-            )}
-            placeholder={
-              canSendMessage
-                ? "Ask anything"
-                : "Complete or retry the previous message first"
-            }
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={!canSendMessage}
-          />
-        </div>
-
-        <div className="flex w-full items-center gap-2 pt-2">
-          <LayoutGroup>
+          <div className="flex w-full items-center gap-2 pt-2">
             <LayoutGroup>
-              {/* Attachment button (repurposed +) */}
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className="h-9 w-9 flex-shrink-0 rounded-full p-2"
-                disabled={isLoading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Plus className="size-5" />
-              </Button>
-            </LayoutGroup>
+              <LayoutGroup>
+                {/* Attachment button (repurposed +) */}
+                <FileDropZoneTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+                    disabled={isLoading}
+                  >
+                    <Plus className="size-5" />
+                  </Button>
+                </FileDropZoneTrigger>
+              </LayoutGroup>
             <ModelSelector
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
@@ -368,6 +288,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = React.memo(
           </LayoutGroup>
         </div>
       </motion.form>
+      </FileDropZone>
     );
   }
 );
