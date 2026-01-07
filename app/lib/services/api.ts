@@ -1,8 +1,10 @@
 import type {
   AllChatsData,
+  Attachment,
   ChatData,
   Message,
   MessageSibling,
+  PendingAttachment,
 } from "@/lib/types/chat";
 import {
   initBridge,
@@ -80,6 +82,7 @@ class ApiService {
     modelId: string,
     chatId?: string,
     toolIds?: string[],
+    attachments?: Attachment[],
   ): Promise<Response> {
     // Use zynk's createChannel for streaming - it returns a BridgeChannel
     const encoder = new TextEncoder();
@@ -105,6 +108,14 @@ class ApiService {
             modelId: modelId,
             chatId: chatId,
             toolIds: toolIds,
+            // Pass attachment metadata only (files are pre-uploaded via uploadAttachment)
+            attachments: attachments?.map((a) => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+            })) || [],
           },
         });
 
@@ -291,6 +302,8 @@ class ApiService {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
+    existingAttachments?: import("@/lib/types/chat").Attachment[],
+    newAttachments?: PendingAttachment[],
   ): Promise<Response> {
     const encoder = new TextEncoder();
 
@@ -310,6 +323,22 @@ class ApiService {
             chatId,
             modelId,
             toolIds,
+            // Include existing attachments (just metadata) and new attachments (with base64 data)
+            existingAttachments: existingAttachments?.map((a) => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+            })) || [],
+            newAttachments: newAttachments?.map((a) => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+              data: a.data,
+            })) || [],
           },
         });
 

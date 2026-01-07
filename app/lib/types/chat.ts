@@ -12,6 +12,35 @@ export interface ToolInfo {
   category?: string | null;
 }
 
+// Attachment types
+export type AttachmentType = "image" | "file" | "audio" | "video";
+
+export interface Attachment {
+  id: string;
+  type: AttachmentType;
+  name: string;
+  mimeType: string;
+  size: number;
+  data?: string; // base64 encoded data (optional, used for local preview before backend reload)
+}
+
+// For pending attachments (before upload) - includes base64 data
+export interface PendingAttachment extends Attachment {
+  data: string; // base64 encoded file content
+  previewUrl?: string; // blob URL for local preview (images only)
+}
+
+// Upload status tracking
+export type UploadStatus = "pending" | "uploading" | "uploaded" | "error";
+
+// For attachments that are being uploaded
+export interface UploadingAttachment extends Omit<Attachment, "data"> {
+  uploadStatus: UploadStatus;
+  uploadProgress: number; // 0-100
+  uploadError?: string;
+  previewUrl?: string; // blob URL for local preview (images only)
+}
+
 export type ContentBlock =
   | { type: "text"; content: string }
   | {
@@ -40,6 +69,7 @@ export interface Message {
   isComplete: boolean;
   sequence: number;
   modelUsed?: string;
+  attachments?: Attachment[];
 }
 
 export interface MessageSibling {

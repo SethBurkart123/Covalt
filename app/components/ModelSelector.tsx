@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useId, useState, useMemo, useEffect } from "react";
+import { Fragment, useId, useState, useMemo, useEffect, memo } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ function getProviderFromKey(modelKey: string): string {
   return colonIndex !== -1 ? modelKey.slice(0, colonIndex) : modelKey;
 }
 
-export default function ModelSelector({
+function ModelSelector({
   selectedModel,
   setSelectedModel,
   models,
@@ -218,3 +218,5 @@ export default function ModelSelector({
     </Popover>
   );
 }
+
+export default memo(ModelSelector);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatInputForm from "@/components/ChatInputForm";
 import ChatMessageList from "@/components/ChatMessageList";
 import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
@@ -8,17 +8,19 @@ import { useChat } from "@/contexts/chat-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { api } from "@/lib/services/api";
 import { getModelSettings } from "@/python/api";
+import type { AllModelSettingsResponse } from "@/python/api";
 import { Header } from "./Header";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import "@/components/tool-renderers";
+import type { Attachment } from "@/lib/types/chat";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
-  const [modelSettings, setModelSettings] = useState<any>(null);
+  const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -38,7 +40,7 @@ export default function ChatPanel() {
     if (!provider || !modelId || !modelSettings) return;
 
     const setting = modelSettings.models?.find(
-      (m: any) => m.provider === provider && m.modelId === modelId,
+      (m) => m.provider === provider && m.modelId === modelId,
     );
 
     if (
@@ -57,11 +59,8 @@ export default function ChatPanel() {
   }, [selectedModel]);
 
   const {
-    input,
-    handleInputChange,
     handleSubmit,
     isLoading,
-    inputRef,
     messages,
     canSendMessage,
     handleStop,
@@ -77,6 +76,9 @@ export default function ChatPanel() {
     messageSiblings,
     streamingMessageIdRef,
     triggerReload,
+    editingAttachments,
+    addEditingAttachment,
+    removeEditingAttachment,
   } = useChatInput(handleThinkTagDetected);
 
   const handleAcceptThinkingPrompt = useCallback(async () => {
@@ -131,130 +133,37 @@ export default function ChatPanel() {
   }, []);
 
   const submitRef = useRef(handleSubmit);
-  const changeRef = useRef(handleInputChange);
+  const setSelectedModelRef = useRef(setSelectedModel);
+  const handleStopRef = useRef(handleStop);
+
   useEffect(() => {
     submitRef.current = handleSubmit;
   }, [handleSubmit]);
+
   useEffect(() => {
-    changeRef.current = handleInputChange;
-  }, [handleInputChange]);
+    setSelectedModelRef.current = setSelectedModel;
+  }, [setSelectedModel]);
+
+  useEffect(() => {
+    handleStopRef.current = handleStop;
+  }, [handleStop]);
 
   const stableHandleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      return submitRef.current(e);
+    (input: string, attachments: Attachment[]) => {
+      return submitRef.current(input, attachments);
     },
     [],
   );
 
-  const stableHandleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      return changeRef.current(e);
-    },
-    [],
-  );
+  const stableSetSelectedModel = useCallback((model: string) => {
+    return setSelectedModelRef.current(model);
+  }, []);
 
-  const getModelName = useCallback((id: string) => id, []);
+  const stableHandleStop = useCallback(() => {
+    return handleStopRef.current();
+  }, []);
 
-  useEffect(() => {
-    if (!canSendMessage) return;
-
-    let isComposing = false;
-
-    const handleCompositionStart = () => {
-      isComposing = true;
-    };
-
-    const handleCompositionEnd = () => {
-      isComposing = false;
-    };
-
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isComposing || e.isComposing) return;
-
-      const activeElement = document.activeElement;
-      const isInputFocused =
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        activeElement?.getAttribute("contenteditable") === "true";
-
-      const selection = window.getSelection();
-      const hasSelection = selection && selection.toString().trim().length > 0;
-      const hasModifiers = e.metaKey || e.ctrlKey || e.altKey;
-
-      const specialKeys = [
-        "Escape",
-        "Tab",
-        "Enter",
-        "ArrowUp",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-        "Home",
-        "End",
-        "PageUp",
-        "PageDown",
-        "Insert",
-        "Delete",
-        "Backspace",
-        "F1",
-        "F2",
-        "F3",
-        "F4",
-        "F5",
-        "F6",
-        "F7",
-        "F8",
-        "F9",
-        "F10",
-        "F11",
-        "F12",
-        "PrintScreen",
-        "ScrollLock",
-        "Pause",
-      ];
-      const isPrintableKey =
-        e.key.length === 1 && !specialKeys.includes(e.key);
-
-      if (
-        isInputFocused ||
-        hasSelection ||
-        hasModifiers ||
-        !isPrintableKey ||
-        activeElement === inputRef.current
-      ) {
-        return;
-      }
-
-      const textarea = inputRef.current;
-      if (!textarea) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      textarea.focus();
-
-      const start = textarea.selectionStart ?? input.length;
-      const end = textarea.selectionEnd ?? input.length;
-      const newValue = input.slice(0, start) + e.key + input.slice(end);
-
-      handleInputChange({
-        target: { value: newValue },
-      } as React.ChangeEvent<HTMLTextAreaElement>);
-
-      requestAnimationFrame(() => {
-        textarea.setSelectionRange(start + 1, start + 1);
-      });
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    window.addEventListener("compositionstart", handleCompositionStart);
-    window.addEventListener("compositionend", handleCompositionEnd);
-
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-      window.removeEventListener("compositionstart", handleCompositionStart);
-      window.removeEventListener("compositionend", handleCompositionEnd);
-    };
-  }, [canSendMessage, input, inputRef, handleInputChange]);
+  const stableModels = useMemo(() => models, [models]);
 
   return (
     <ArtifactPanelProvider>
@@ -278,22 +187,22 @@ export default function ChatPanel() {
                 onEditSubmit={handleEditSubmit}
                 onNavigate={handleNavigate}
                 actionLoading={null}
+                editingAttachments={editingAttachments}
+                onAddEditingAttachment={addEditingAttachment}
+                onRemoveEditingAttachment={removeEditingAttachment}
+                chatId={chatId ?? undefined}
               />
             </div>
           </div>
           <div className="px-4 pb-4">
             <ChatInputForm
-              input={input}
-              handleInputChange={stableHandleInputChange}
-              handleSubmit={stableHandleSubmit}
+              onSubmit={stableHandleSubmit}
               isLoading={isLoading}
-              inputRef={inputRef}
               selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              models={models}
-              getModelName={getModelName}
+              setSelectedModel={stableSetSelectedModel}
+              models={stableModels}
               canSendMessage={canSendMessage}
-              onStop={handleStop}
+              onStop={stableHandleStop}
             />
           </div>
           {showThinkingPrompt && (

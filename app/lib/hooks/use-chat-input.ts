@@ -6,10 +6,42 @@ import { useTools } from "@/contexts/tools-context";
 import { useStreaming } from "@/contexts/streaming-context";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
-import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
+import type {
+  Attachment,
+  AttachmentType,
+  ContentBlock,
+  Message,
+  MessageSibling,
+  PendingAttachment,
+} from "@/lib/types/chat";
+import { linkAttachments } from "@/python/api";
 import { addRecentModel } from "@/lib/utils";
 
-function createUserMessage(content: string): Message {
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function getMediaType(mimeType: string): AttachmentType {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType.startsWith("video/")) return "video";
+  return "file";
+}
+
+function isPendingAttachment(att: Attachment | PendingAttachment): att is PendingAttachment {
+  return 'data' in att && typeof att.data === 'string';
+}
+
+function createUserMessage(content: string, attachments?: (Attachment | PendingAttachment)[]): Message {
   return {
     id: crypto.randomUUID(),
     role: "user",
@@ -17,6 +49,16 @@ function createUserMessage(content: string): Message {
     createdAt: new Date().toISOString(),
     isComplete: true,
     sequence: 1,
+    attachments: attachments?.map((att) => {
+      if (isPendingAttachment(att)) {
+        const { data, previewUrl: _previewUrl, ...rest } = att;
+        return {
+          ...rest,
+          ...(data ? { data } : {}),
+        };
+      }
+      return att;
+    }) as Attachment[],
   };
 }
 
@@ -36,15 +78,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
+  const [editingAttachments, setEditingAttachments] = useState<(Attachment | PendingAttachment)[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevChatIdRef = useRef<string | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
   const activeSubmissionChatIdRef = useRef<string | null>(null);
@@ -67,17 +108,27 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       sequence: 1,
     };
     
-    // Replace or append the streaming message
     const filtered = baseMessages.filter(m => m.id !== streamingMessageId);
     return [...filtered, streamingMessage];
   }, [baseMessages, streamingContent, streamingMessageId]);
+
+  const hasErrorBlock = useCallback((message: Message): boolean => {
+    if (typeof message.content === "string") {
+      return false;
+    }
+    if (Array.isArray(message.content)) {
+      return message.content.some((block) => block.type === "error");
+    }
+    return false;
+  }, []);
 
   const canSendMessage = useMemo(() => {
     if (isLoading) return false;
     if (messages.length === 0) return true;
     const last = messages[messages.length - 1];
-    return last.isComplete !== false;
-  }, [isLoading, messages]);
+    if (last.isComplete !== false) return true;
+    return hasErrorBlock(last);
+  }, [isLoading, messages, hasErrorBlock]);
 
   const triggerReload = useCallback(() => setReloadTrigger((n) => n + 1), []);
 
@@ -95,13 +146,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, []);
 
   useEffect(() => {
-    const prev = prevChatIdRef.current;
-    const isSwitching = prev && chatId && prev !== chatId;
-
-    if (isSwitching) {
-      setInput("");
-    }
-
     prevChatIdRef.current = chatId || null;
   }, [chatId]);
 
@@ -159,26 +203,58 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     loadSiblings();
   }, [baseMessages]);
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+  const addEditingAttachment = useCallback(async (file: File) => {
+    const id = crypto.randomUUID();
+    const type = getMediaType(file.type);
+    const data = await fileToBase64(file);
+    const previewUrl = type === "image" ? URL.createObjectURL(file) : undefined;
+
+    setEditingAttachments((prev) => [
+      ...prev,
+      {
+        id,
+        type,
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        data,
+        previewUrl,
+      },
+    ]);
+  }, []);
+
+  const removeEditingAttachment = useCallback((id: string) => {
+    setEditingAttachments((prev) => {
+      const att = prev.find((a) => a.id === id);
+      if (att && isPendingAttachment(att) && att.previewUrl) {
+        URL.revokeObjectURL(att.previewUrl);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
   }, []);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (!input.trim() || isLoading || !canSendMessage) return;
+    async (inputText: string, attachments: Attachment[]) => {
+      const hasContent = inputText.trim() || attachments.length > 0;
+      if (!hasContent || isLoading || !canSendMessage) return;
 
-      const userMessage = createUserMessage(input.trim());
+      const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
 
       setBaseMessages(newBaseMessages);
-      setInput("");
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
+      let attachmentsLinked = false;
 
       try {
-        const response = await api.streamChat(newBaseMessages, selectedModel, chatId || undefined, activeToolIds);
+        const response = await api.streamChat(
+          newBaseMessages,
+          selectedModel,
+          chatId || undefined,
+          activeToolIds,
+          attachments.length > 0 ? attachments : undefined
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to stream chat: ${response.statusText}`);
@@ -191,7 +267,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
               updateStreamContent(currentSessionId, content);
             }
           },
-          onSessionId: (id) => {
+          onSessionId: async (id) => {
             sessionId = id;
             if (id) activeSubmissionChatIdRef.current = id;
             if (!chatId && id) {
@@ -201,6 +277,22 @@ export function useChatInput(onThinkTagDetected?: () => void) {
             }
             if (id && streamingMessageIdRef.current) {
               registerStream(id, streamingMessageIdRef.current);
+            }
+            if (id && attachments.length > 0 && !attachmentsLinked) {
+              attachmentsLinked = true;
+              try {
+                await linkAttachments({
+                  body: {
+                    chatId: id,
+                    attachments: attachments.map(a => ({
+                      id: a.id,
+                      mimeType: a.mimeType,
+                    })),
+                  },
+                });
+              } catch (e) {
+                console.error("Failed to link attachments:", e);
+              }
             }
           },
           onMessageId: (id) => {
@@ -234,7 +326,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         activeSubmissionChatIdRef.current = null;
       }
     },
-    [input, isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent],
+    [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent],
   );
 
   const handleContinue = useCallback(
@@ -326,6 +418,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       setEditingDraft(initial);
       setEditingMessageId(messageId);
+      setEditingAttachments(msg.attachments || []);
     },
     [baseMessages],
   );
@@ -333,24 +426,45 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const handleEditCancel = useCallback(() => {
     setEditingMessageId(null);
     setEditingDraft("");
+    setEditingAttachments([]);
   }, []);
 
   const handleEditSubmit = useCallback(async () => {
     const messageId = editingMessageId;
     const newContent = editingDraft.trim();
-    if (!messageId || !newContent || !chatId) return;
+    if (!messageId || (!newContent && editingAttachments.length === 0) || !chatId) return;
 
     const idx = baseMessages.findIndex((m) => m.id === messageId);
     if (idx === -1) return;
 
-    const userMessage = createUserMessage(newContent);
+    const existingAttachments: Attachment[] = [];
+    const newAttachments: PendingAttachment[] = [];
+    
+    editingAttachments.forEach((att) => {
+      if (isPendingAttachment(att)) {
+        newAttachments.push(att);
+      } else {
+        existingAttachments.push(att);
+      }
+    });
+
+    const userMessage = createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined);
     const newBaseMessages = [...baseMessages.slice(0, idx), userMessage];
     setBaseMessages(newBaseMessages);
     setEditingMessageId(null);
+    setEditingAttachments([]);
 
     try {
       const currentModel = selectedModelRef.current || undefined;
-      const response = await api.editUserMessage(messageId, newContent, chatId, currentModel, activeToolIds);
+      const response = await api.editUserMessage(
+        messageId,
+        newContent,
+        chatId,
+        currentModel,
+        activeToolIds,
+        existingAttachments,
+        newAttachments.length > 0 ? newAttachments : undefined
+      );
       
         await processMessageStream(response, {
           onUpdate: (content) => {
@@ -370,7 +484,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         unregisterStream(chatId);
         await reloadMessages(chatId).catch(() => {});
       }
-  }, [chatId, editingDraft, editingMessageId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent]);
+  }, [chatId, editingDraft, editingMessageId, editingAttachments, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent]);
 
   const handleNavigate = useCallback(
     async (messageId: string, siblingId: string) => {
@@ -414,11 +528,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, []);
 
   return {
-    input,
-    handleInputChange,
     handleSubmit,
     isLoading,
-    inputRef,
     messages,
     canSendMessage,
     triggerReload,
@@ -435,5 +546,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     handleNavigate,
     messageSiblings,
     streamingMessageIdRef,
+    editingAttachments,
+    addEditingAttachment,
+    removeEditingAttachment,
   };
 }

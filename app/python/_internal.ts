@@ -167,3 +167,86 @@ export function createChannel<T>(command: string, args: unknown): BridgeChannel<
         },
     };
 }
+
+export interface UploadProgressEvent {
+    loaded: number;
+    total: number;
+    percentage: number;
+}
+
+export interface UploadHandle<T> {
+    promise: Promise<T>;
+    abort(): void;
+    onProgress(callback: (event: UploadProgressEvent) => void): UploadHandle<T>;
+}
+
+export function createUpload<T>(
+    handler: string,
+    files: File[],
+    args: Record<string, unknown>
+): UploadHandle<T> {
+    const xhr = new XMLHttpRequest();
+    let progressCallback: ((e: UploadProgressEvent) => void) | null = null;
+
+    const promise = new Promise<T>((resolve, reject) => {
+        const formData = new FormData();
+
+        // Add files
+        for (const file of files) {
+            formData.append("files", file);
+        }
+
+        // Add other args as JSON
+        formData.append("_args", JSON.stringify(args));
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && progressCallback) {
+                progressCallback({
+                    loaded: e.loaded,
+                    total: e.total,
+                    percentage: Math.round((e.loaded / e.total) * 100),
+                });
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    resolve(data.result as T);
+                } catch {
+                    reject(new Error("Failed to parse response"));
+                }
+            } else {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    reject(new BridgeRequestError({
+                        code: data.code || "UPLOAD_ERROR",
+                        message: data.message || "Upload failed",
+                        details: data.details,
+                    }));
+                } catch {
+                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                }
+            }
+        };
+
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.onabort = () => reject(new Error("Upload aborted"));
+
+        const baseUrl = getBaseUrl();
+        xhr.open("POST", `${baseUrl}/upload/${handler}`);
+        xhr.send(formData);
+    });
+
+    const handle: UploadHandle<T> = {
+        promise,
+        abort: () => xhr.abort(),
+        onProgress: (cb) => {
+            progressCallback = cb;
+            return handle;
+        },
+    };
+
+    return handle;
+}
