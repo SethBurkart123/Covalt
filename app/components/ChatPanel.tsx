@@ -81,6 +81,10 @@ export default function ChatPanel() {
     pendingAttachments,
     addAttachment,
     removeAttachment,
+    // Editing attachment handlers
+    editingAttachments,
+    addEditingAttachment,
+    removeEditingAttachment,
   } = useChatInput(handleThinkTagDetected);
 
   const handleAcceptThinkingPrompt = useCallback(async () => {
@@ -282,6 +286,9 @@ export default function ChatPanel() {
                 onEditSubmit={handleEditSubmit}
                 onNavigate={handleNavigate}
                 actionLoading={null}
+                editingAttachments={editingAttachments}
+                onAddEditingAttachment={addEditingAttachment}
+                onRemoveEditingAttachment={removeEditingAttachment}
               />
             </div>
           </div>

@@ -8,9 +8,17 @@ from pydantic import BaseModel
 from zynk import Channel, command
 
 from .. import db
-from ..models.chat import ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
-from .streaming import handle_content_stream, parse_model_id
+from ..services.file_storage import (
+    get_extension_from_mime,
+    save_attachment_from_base64,
+)
+from .streaming import (
+    handle_content_stream,
+    load_attachments_as_agno_media,
+    parse_model_id,
+)
 
 
 class ContinueMessageRequest(BaseModel):
@@ -27,12 +35,35 @@ class RetryMessageRequest(BaseModel):
     toolIds: List[str] = []
 
 
+class AttachmentInput(BaseModel):
+    """Incoming attachment with base64 data (for new attachments)."""
+
+    id: str
+    type: str  # "image" | "file" | "audio" | "video"
+    name: str
+    mimeType: str
+    size: int
+    data: str  # base64-encoded file content
+
+
+class ExistingAttachmentInput(BaseModel):
+    """Existing attachment (just metadata, file already saved)."""
+
+    id: str
+    type: str
+    name: str
+    mimeType: str
+    size: int
+
+
 class EditUserMessageRequest(BaseModel):
     messageId: str
     newContent: str
     chatId: str
     modelId: Optional[str] = None
     toolIds: List[str] = []
+    existingAttachments: List[ExistingAttachmentInput] = []
+    newAttachments: List[AttachmentInput] = []
 
 
 class SwitchToSiblingRequest(BaseModel):
@@ -224,6 +255,20 @@ async def retry_message(
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
 
+        # Load attachments from the parent user message (if it exists)
+        user_attachments: List[Attachment] = []
+        if original_msg.parent_message_id:
+            parent_user_msg = sess.get(db.Message, original_msg.parent_message_id)
+            if parent_user_msg and parent_user_msg.attachments:
+                try:
+                    attachments_data = json.loads(parent_user_msg.attachments)
+                    user_attachments = [
+                        Attachment(**att_data) for att_data in attachments_data
+                    ]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    # If parsing fails, just continue without attachments
+                    pass
+
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
 
@@ -233,12 +278,21 @@ async def retry_message(
             tool_ids=body.toolIds,
         )
 
+        # Load attachments as agno media if we have any
+        images, files, audio, videos = load_attachments_as_agno_media(
+            body.chatId, user_attachments
+        ) if user_attachments else ([], [], [], [])
+
         await handle_content_stream(
             agent,
             chat_messages,
             new_msg_id,
             channel,
             chat_id=body.chatId,
+            images=images if images else None,
+            files=files if files else None,
+            audio=audio if audio else None,
+            videos=videos if videos else None,
         )
 
     except Exception as e:
@@ -293,6 +347,37 @@ async def edit_user_message(
         else:
             messages = []
 
+        # Process attachments: save new ones, combine with existing ones
+        all_attachments: List[Attachment] = []
+
+        # Add existing attachments (files already saved)
+        for existing_att in body.existingAttachments:
+            all_attachments.append(
+                Attachment(
+                    id=existing_att.id,
+                    type=existing_att.type,
+                    name=existing_att.name,
+                    mimeType=existing_att.mimeType,
+                    size=existing_att.size,
+                )
+            )
+
+        # Save new attachments and add to list
+        for new_att in body.newAttachments:
+            extension = get_extension_from_mime(new_att.mimeType)
+            save_attachment_from_base64(
+                body.chatId, new_att.id, new_att.data, extension
+            )
+            all_attachments.append(
+                Attachment(
+                    id=new_att.id,
+                    type=new_att.type,
+                    name=new_att.name,
+                    mimeType=new_att.mimeType,
+                    size=new_att.size,
+                )
+            )
+
         new_user_msg_id = db.create_branch_message(
             sess,
             parent_id=original_msg.parent_message_id,
@@ -301,6 +386,14 @@ async def edit_user_message(
             chat_id=body.chatId,
             is_complete=True,
         )
+
+        # Update message with attachments if we have any
+        if all_attachments:
+            attachments_json = json.dumps([att.model_dump() for att in all_attachments])
+            user_msg = sess.get(db.Message, new_user_msg_id)
+            if user_msg:
+                user_msg.attachments = attachments_json
+                sess.commit()
 
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
@@ -349,12 +442,21 @@ async def edit_user_message(
             tool_ids=body.toolIds,
         )
 
+        # Load attachments as agno media if we have any
+        images, files, audio, videos = load_attachments_as_agno_media(
+            body.chatId, all_attachments
+        ) if all_attachments else ([], [], [], [])
+
         await handle_content_stream(
             agent,
             chat_messages,
             assistant_msg_id,
             channel,
             chat_id=body.chatId,
+            images=images if images else None,
+            files=files if files else None,
+            audio=audio if audio else None,
+            videos=videos if videos else None,
         )
 
     except Exception as e:

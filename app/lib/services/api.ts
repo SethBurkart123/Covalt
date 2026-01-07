@@ -302,6 +302,8 @@ class ApiService {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
+    existingAttachments?: import("@/lib/types/chat").Attachment[],
+    newAttachments?: PendingAttachment[],
   ): Promise<Response> {
     const encoder = new TextEncoder();
 
@@ -321,6 +323,22 @@ class ApiService {
             chatId,
             modelId,
             toolIds,
+            // Include existing attachments (just metadata) and new attachments (with base64 data)
+            existingAttachments: existingAttachments?.map((a) => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+            })) || [],
+            newAttachments: newAttachments?.map((a) => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+              data: a.data,
+            })) || [],
           },
         });
 
