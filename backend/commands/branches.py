@@ -16,7 +16,6 @@ from ..services.file_storage import (
 )
 from .streaming import (
     handle_content_stream,
-    load_attachments_as_agno_media,
     parse_model_id,
 )
 
@@ -117,12 +116,25 @@ async def continue_message(
                     content = json.loads(content)
                 except Exception:
                     pass
+
+            # Load attachments for user messages
+            attachments = None
+            if m.role == "user" and m.attachments:
+                try:
+                    attachments_data = json.loads(m.attachments)
+                    attachments = [
+                        Attachment(**att_data) for att_data in attachments_data
+                    ]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+
             chat_messages.append(
                 ChatMessage(
                     id=m.id,
                     role=m.role,
                     content=content,
                     createdAt=m.createdAt,
+                    attachments=attachments,
                 )
             )
 
@@ -133,7 +145,9 @@ async def continue_message(
                 try:
                     existing_blocks = json.loads(raw)
                 except Exception:
-                    existing_blocks = [{"type": "text", "content": original_msg.content}]
+                    existing_blocks = [
+                        {"type": "text", "content": original_msg.content}
+                    ]
             else:
                 existing_blocks = [{"type": "text", "content": original_msg.content}]
             while (
@@ -155,11 +169,13 @@ async def continue_message(
         db.set_active_leaf(sess, body.chatId, new_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    channel.send_model(ChatEvent(
-        event="AssistantMessageId",
-        content=new_msg_id,
-        blocks=existing_blocks if existing_blocks else None,
-    ))
+    channel.send_model(
+        ChatEvent(
+            event="AssistantMessageId",
+            content=new_msg_id,
+            blocks=existing_blocks if existing_blocks else None,
+        )
+    )
 
     try:
         agent = create_agent_for_chat(
@@ -235,12 +251,25 @@ async def retry_message(
                     content = json.loads(content)
                 except Exception:
                     pass
+
+            # Load attachments for user messages
+            attachments = None
+            if m.role == "user" and m.attachments:
+                try:
+                    attachments_data = json.loads(m.attachments)
+                    attachments = [
+                        Attachment(**att_data) for att_data in attachments_data
+                    ]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+
             chat_messages.append(
                 ChatMessage(
                     id=m.id,
                     role=m.role,
                     content=content,
                     createdAt=m.createdAt,
+                    attachments=attachments,
                 )
             )
 
@@ -255,20 +284,6 @@ async def retry_message(
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
 
-        # Load attachments from the parent user message (if it exists)
-        user_attachments: List[Attachment] = []
-        if original_msg.parent_message_id:
-            parent_user_msg = sess.get(db.Message, original_msg.parent_message_id)
-            if parent_user_msg and parent_user_msg.attachments:
-                try:
-                    attachments_data = json.loads(parent_user_msg.attachments)
-                    user_attachments = [
-                        Attachment(**att_data) for att_data in attachments_data
-                    ]
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    # If parsing fails, just continue without attachments
-                    pass
-
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
 
@@ -278,21 +293,13 @@ async def retry_message(
             tool_ids=body.toolIds,
         )
 
-        # Load attachments as agno media if we have any
-        images, files, audio, videos = load_attachments_as_agno_media(
-            body.chatId, user_attachments
-        ) if user_attachments else ([], [], [], [])
-
+        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,
             new_msg_id,
             channel,
             chat_id=body.chatId,
-            images=images if images else None,
-            files=files if files else None,
-            audio=audio if audio else None,
-            videos=videos if videos else None,
         )
 
     except Exception as e:
@@ -349,26 +356,36 @@ async def edit_user_message(
 
         all_attachments: List[Attachment] = []
 
+        # Keep existing attachments (already in chat folder)
         for existing_att in body.existingAttachments:
             all_attachments.append(
                 Attachment(
                     id=existing_att.id,
-                    type=existing_att.type,
+                    type=existing_att.type,  # type: ignore
                     name=existing_att.name,
                     mimeType=existing_att.mimeType,
                     size=existing_att.size,
                 )
             )
 
+        # Process new attachments - try pending storage first, then base64 fallback
+        from ..services.file_storage import move_pending_to_chat
+
         for new_att in body.newAttachments:
             extension = get_extension_from_mime(new_att.mimeType)
-            save_attachment_from_base64(
-                body.chatId, new_att.id, new_att.data, extension
-            )
+            try:
+                move_pending_to_chat(new_att.id, extension, body.chatId)
+            except FileNotFoundError:
+                # Fallback: save from base64 data (backward compatibility)
+                if new_att.data:
+                    save_attachment_from_base64(
+                        body.chatId, new_att.id, new_att.data, extension
+                    )
+
             all_attachments.append(
                 Attachment(
                     id=new_att.id,
-                    type=new_att.type,
+                    type=new_att.type,  # type: ignore
                     name=new_att.name,
                     mimeType=new_att.mimeType,
                     size=new_att.size,
@@ -393,6 +410,7 @@ async def edit_user_message(
 
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
+        # Build chat messages with attachments for history
         chat_messages = []
         for m in messages:
             content = m.content
@@ -401,20 +419,36 @@ async def edit_user_message(
                     content = json.loads(content)
                 except Exception:
                     pass
+
+            # Load attachments for user messages in history
+            msg_attachments = None
+            if m.role == "user" and m.attachments:
+                try:
+                    attachments_data = json.loads(m.attachments)
+                    msg_attachments = [
+                        Attachment(**att_data) for att_data in attachments_data
+                    ]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+
             chat_messages.append(
                 ChatMessage(
                     id=m.id,
                     role=m.role,
                     content=content,
                     createdAt=m.createdAt,
+                    attachments=msg_attachments,
                 )
             )
+
+        # Add the new user message with its attachments
         chat_messages.append(
             ChatMessage(
                 id=new_user_msg_id,
                 role="user",
                 content=body.newContent,
                 createdAt=original_msg.createdAt,
+                attachments=all_attachments if all_attachments else None,
             )
         )
 
@@ -438,21 +472,13 @@ async def edit_user_message(
             tool_ids=body.toolIds,
         )
 
-        # Load attachments as agno media if we have any
-        images, files, audio, videos = load_attachments_as_agno_media(
-            body.chatId, all_attachments
-        ) if all_attachments else ([], [], [], [])
-
+        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,
             assistant_msg_id,
             channel,
             chat_id=body.chatId,
-            images=images if images else None,
-            files=files if files else None,
-            audio=audio if audio else None,
-            videos=videos if videos else None,
         )
 
     except Exception as e:

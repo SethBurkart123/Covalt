@@ -128,7 +128,6 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           onDrop={handleDrop}
           className={cn("relative", className)}
         >
-          {/* Hidden file input */}
           <input
             type="file"
             ref={fileInputRef}
@@ -139,7 +138,6 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
             disabled={disabled}
           />
 
-          {/* Drag overlay */}
           <AnimatePresence>
             {isDragging && (
               <motion.div

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
 import { LayoutGroup } from "framer-motion";
-import type { ModelInfo, PendingAttachment, AttachmentType } from "@/lib/types/chat";
+import type { ModelInfo, AttachmentType, UploadingAttachment, Attachment } from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
@@ -18,6 +18,7 @@ import {
   FileDropZone,
   FileDropZoneTrigger,
 } from "@/components/ui/file-drop-zone";
+import { uploadAttachment, deletePendingUpload } from "@/python/api";
 
 interface LeftToolbarProps {
   isLoading: boolean;
@@ -107,7 +108,7 @@ const SubmitButton = memo(function SubmitButton({
 });
 
 interface ChatInputFormProps {
-  onSubmit: (input: string, attachments: PendingAttachment[]) => void;
+  onSubmit: (input: string, attachments: Attachment[]) => void;
   isLoading: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
@@ -117,19 +118,6 @@ interface ChatInputFormProps {
 }
 
 const MAX_HEIGHT = 200;
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 function getMediaType(mimeType: string): AttachmentType {
   if (mimeType.startsWith("image/")) return "image";
@@ -149,10 +137,17 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     onStop,
   }) => {
     const [input, setInput] = useState("");
-    const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+    const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
     
     const formRef = useRef<HTMLFormElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    const hasUploadingFiles = pendingAttachments.some(
+      att => att.uploadStatus === "uploading" || att.uploadStatus === "pending"
+    );
+    const hasUploadErrors = pendingAttachments.some(
+      att => att.uploadStatus === "error"
+    );
 
     const clearAttachments = useCallback(() => {
       setPendingAttachments((prev) => {
@@ -163,32 +158,43 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       });
     }, []);
 
+    const getUploadedAttachments = useCallback((): Attachment[] => {
+      return pendingAttachments
+        .filter((att) => att.uploadStatus === "uploaded")
+        .map(({ id, type, name, mimeType, size }) => ({ id, type, name, mimeType, size }));
+    }, [pendingAttachments]);
+
     const handleKeyDown = useCallback(
       (e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
-          const hasContent = input.trim() || pendingAttachments.length > 0;
-          if (hasContent && canSendMessage && !isLoading) {
-            onSubmit(input.trim(), pendingAttachments);
+          const uploadedAttachments = getUploadedAttachments();
+          const hasContent = input.trim() || uploadedAttachments.length > 0;
+          const canSubmitNow = hasContent && canSendMessage && !isLoading && !hasUploadingFiles && !hasUploadErrors;
+          
+          if (canSubmitNow) {
+            onSubmit(input.trim(), uploadedAttachments);
             setInput("");
             clearAttachments();
           }
         }
       },
-      [input, pendingAttachments, canSendMessage, isLoading, onSubmit, clearAttachments]
+      [input, canSendMessage, isLoading, hasUploadingFiles, hasUploadErrors, onSubmit, clearAttachments, getUploadedAttachments]
     );
 
     const handleFormSubmit = useCallback(
       (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const hasContent = input.trim() || pendingAttachments.length > 0;
-        if (!hasContent || isLoading || !canSendMessage) return;
+        const uploadedAttachments = getUploadedAttachments();
+        const hasContent = input.trim() || uploadedAttachments.length > 0;
+        
+        if (!hasContent || isLoading || !canSendMessage || hasUploadingFiles || hasUploadErrors) return;
 
-        onSubmit(input.trim(), pendingAttachments);
+        onSubmit(input.trim(), uploadedAttachments);
         setInput("");
         clearAttachments();
       },
-      [input, pendingAttachments, isLoading, canSendMessage, onSubmit, clearAttachments]
+      [input, isLoading, canSendMessage, hasUploadingFiles, hasUploadErrors, onSubmit, clearAttachments, getUploadedAttachments]
     );
 
     useEffect(() => {
@@ -316,21 +322,56 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       files.forEach(async (file) => {
         const id = crypto.randomUUID();
         const type = getMediaType(file.type);
-        const data = await fileToBase64(file);
         const previewUrl = type === "image" ? URL.createObjectURL(file) : undefined;
 
-        setPendingAttachments((prev) => [
-          ...prev,
-          {
-            id,
-            type,
-            name: file.name,
-            mimeType: file.type,
-            size: file.size,
-            data,
-            previewUrl,
-          },
-        ]);
+        const newAttachment: UploadingAttachment = {
+          id,
+          type,
+          name: file.name,
+          mimeType: file.type,
+          size: file.size,
+          previewUrl,
+          uploadStatus: "uploading",
+          uploadProgress: 0,
+        };
+
+        setPendingAttachments((prev) => [...prev, newAttachment]);
+
+        try {
+          const uploadHandle = uploadAttachment({ file, id });
+
+          uploadHandle.onProgress((event) => {
+            setPendingAttachments((prev) =>
+              prev.map((att) =>
+                att.id === id
+                  ? { ...att, uploadProgress: event.percentage }
+                  : att
+              )
+            );
+          });
+
+          await uploadHandle.promise;
+
+          setPendingAttachments((prev) =>
+            prev.map((att) =>
+              att.id === id
+                ? { ...att, uploadStatus: "uploaded", uploadProgress: 100 }
+                : att
+            )
+          );
+        } catch (error) {
+          setPendingAttachments((prev) =>
+            prev.map((att) =>
+              att.id === id
+                ? {
+                    ...att,
+                    uploadStatus: "error",
+                    uploadError: error instanceof Error ? error.message : "Upload failed",
+                  }
+                : att
+            )
+          );
+        }
       });
     }, []);
 
@@ -338,9 +379,21 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       setPendingAttachments((prev) => {
         const att = prev.find((a) => a.id === id);
         if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
+        
+        if (att && att.uploadStatus === "uploaded") {
+          deletePendingUpload({ body: { id: att.id, mimeType: att.mimeType } }).catch(() => {});
+        }
+        
         return prev.filter((a) => a.id !== id);
       });
     }, []);
+
+    const handleRetryUpload = useCallback((id: string) => {
+      const att = pendingAttachments.find(a => a.id === id);
+      if (!att || att.uploadStatus !== "error") return;
+      
+      handleRemoveAttachment(id);
+    }, [pendingAttachments, handleRemoveAttachment]);
 
     const handleInputChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -349,8 +402,12 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       []
     );
 
+    const uploadedCount = pendingAttachments.filter(att => att.uploadStatus === "uploaded").length;
     const canSubmit =
-      canSendMessage && (input.trim().length > 0 || pendingAttachments.length > 0);
+      canSendMessage && 
+      (input.trim().length > 0 || uploadedCount > 0) &&
+      !hasUploadingFiles &&
+      !hasUploadErrors;
 
     return (
       <form
@@ -367,10 +424,11 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           className="w-full"
         >
           {pendingAttachments.length > 0 && (
-            <div className="w-full pb-2">
+            <div className="w-full pb-2 -mt-12">
               <AttachmentPreview
                 attachments={pendingAttachments}
                 onRemove={handleRemoveAttachment}
+                onRetry={handleRetryUpload}
               />
             </div>
           )}
