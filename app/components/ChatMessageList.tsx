@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useCallback } from "react";
-import ChatMessage from "./Message";
-import { Message, MessageSibling } from "@/lib/types/chat";
+import ChatMessage from "./ChatMessage";
+import { Message, MessageSibling, Attachment, PendingAttachment } from "@/lib/types/chat";
+import { AttachmentPreview } from "@/components/AttachmentPreview";
+import { FileDropZone, FileDropZoneTrigger } from "@/components/ui/file-drop-zone";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 interface ChatMessageListProps {
   messages: Message[];
@@ -16,6 +20,10 @@ interface ChatMessageListProps {
   onEditSubmit?: () => void;
   onNavigate?: (messageId: string, siblingId: string) => void;
   actionLoading?: string | null;
+  editingAttachments?: (Attachment | PendingAttachment)[];
+  onAddEditingAttachment?: (file: File) => void;
+  onRemoveEditingAttachment?: (id: string) => void;
+  chatId?: string;
 }
 
 interface MessageRowProps {
@@ -28,6 +36,7 @@ interface MessageRowProps {
   onRetry?: (messageId: string) => void;
   onEditStart?: (messageId: string) => void;
   onNavigate?: (messageId: string, siblingId: string) => void;
+  chatId?: string;
 }
 
 const MessageRow = React.memo(function MessageRow({
@@ -40,6 +49,7 @@ const MessageRow = React.memo(function MessageRow({
   onRetry,
   onEditStart,
   onNavigate,
+  chatId,
 }: MessageRowProps) {
   const handleContinue = useCallback(() => {
     onContinue?.(message.id);
@@ -71,6 +81,7 @@ const MessageRow = React.memo(function MessageRow({
         onNavigate={onNavigate ? handleNavigate : undefined}
         isLoading={isLoading}
         isLastAssistantMessage={isLastAssistantMessage}
+        chatId={chatId}
       />
     </div>
   );
@@ -78,10 +89,12 @@ const MessageRow = React.memo(function MessageRow({
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content === nextProps.message.content &&
+    prevProps.message.attachments?.length === nextProps.message.attachments?.length &&
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.siblings.length === nextProps.siblings.length &&
+    prevProps.chatId === nextProps.chatId &&
 
     prevProps.onContinue === nextProps.onContinue &&
     prevProps.onRetry === nextProps.onRetry &&
@@ -104,6 +117,10 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   onEditSubmit,
   onNavigate,
   actionLoading,
+  editingAttachments = [],
+  onAddEditingAttachment,
+  onRemoveEditingAttachment,
+  chatId,
 }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -214,6 +231,10 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
                   onChange={(val) => setEditingDraft && setEditingDraft(val)}
                   onCancel={onEditCancel}
                   onSubmit={onEditSubmit}
+                  attachments={editingAttachments}
+                  onAddAttachment={onAddEditingAttachment}
+                  onRemoveAttachment={onRemoveEditingAttachment}
+                  isLoading={isLoading}
                 />
               </div>
             </div>
@@ -232,6 +253,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
             onRetry={onRetry}
             onEditStart={onEditStart}
             onNavigate={onNavigate}
+            chatId={chatId}
           />
         );
       })}
@@ -248,11 +270,19 @@ function UserMessageEditor({
   onChange,
   onCancel,
   onSubmit,
+  attachments = [],
+  onAddAttachment,
+  onRemoveAttachment,
+  isLoading = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   onCancel?: () => void;
   onSubmit?: () => void;
+  attachments?: (Attachment | PendingAttachment)[];
+  onAddAttachment?: (file: File) => void;
+  onRemoveAttachment?: (id: string) => void;
+  isLoading?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -286,35 +316,77 @@ function UserMessageEditor({
     [onSubmit, onCancel],
   );
 
+  const handleFilesDrop = useCallback(
+    (files: File[]) => {
+      if (!onAddAttachment) return;
+      files.forEach((file) => {
+        onAddAttachment(file);
+      });
+    },
+    [onAddAttachment]
+  );
+
+  const canSubmit = value.trim() || attachments.length > 0;
+
   return (
-    <div className="rounded-3xl bg-muted text-muted-foreground p-3">
-      <div className="w-full min-h-[40px] max-h-[200px]">
-        <textarea
-          ref={textareaRef}
-          className="w-full border-none bg-transparent px-1 text-base shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={1}
-        />
+    <FileDropZone
+      onFilesDrop={handleFilesDrop}
+      disabled={isLoading}
+      className="w-full"
+    >
+      <div className="rounded-3xl bg-muted text-muted-foreground p-3">
+        {attachments.length > 0 && (
+          <div className="w-full pb-2">
+            <AttachmentPreview
+              attachments={attachments}
+              onRemove={onRemoveAttachment}
+            />
+          </div>
+        )}
+
+        <div className="w-full min-h-[40px] max-h-[200px]">
+          <textarea
+            ref={textareaRef}
+            className="w-full border-none bg-transparent px-1 text-base shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={1}
+            disabled={isLoading}
+          />
+        </div>
+        <div className="flex items-center gap-2 pt-2 justify-between">
+          <FileDropZoneTrigger asChild>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8 flex-shrink-0 rounded-full p-2"
+              disabled={isLoading}
+            >
+              <Plus className="size-4" />
+            </Button>
+          </FileDropZoneTrigger>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full border border-border hover:bg-accent text-sm"
+              onClick={onCancel}
+              disabled={isLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
+              onClick={onSubmit}
+              disabled={!canSubmit || isLoading}
+            >
+              Send
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-2 pt-2 justify-end">
-        <button
-          type="button"
-          className="h-8 px-3 rounded-full border border-border hover:bg-accent text-sm"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="h-8 px-3 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
-          onClick={onSubmit}
-          disabled={!value.trim()}
-        >
-          Send
-        </button>
-      </div>
-    </div>
+    </FileDropZone>
   );
 }

@@ -1,6 +1,7 @@
 import OpenAIIcon from './icons/OpenAI';
 import ClaudeIcon from './icons/Claude';
 import GroqIcon from './icons/Groq';
+import OpenRouterIcon from './icons/OpenRouter';
 import OllamaIcon from './icons/Ollama';
 import VLLMIcon from './icons/VLLM';
 import LMStudioIcon from './icons/LMStudio';
@@ -74,6 +75,16 @@ export const PROVIDERS: ProviderDefinition[] = [
     icon: GroqIcon,
     fields: [
       { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'gsk_...' },
+    ],
+    defaults: { enabled: true },
+  },
+  {
+    key: 'openrouter',
+    name: 'OpenRouter',
+    description: 'Access to 100+ AI models from multiple providers',
+    icon: OpenRouterIcon,
+    fields: [
+      { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-or-v1-...' },
     ],
     defaults: { enabled: true },
   },

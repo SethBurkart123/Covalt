@@ -8,6 +8,7 @@ import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { AttachmentPreview } from "./AttachmentPreview";
 import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
 
 export interface ChatMessageProps {
@@ -22,6 +23,7 @@ export interface ChatMessageProps {
   onNavigate?: (siblingId: string) => void;
   isLoading?: boolean;
   isLastAssistantMessage?: boolean;
+  chatId?: string;
 }
 
 function ChatMessage({
@@ -36,6 +38,7 @@ function ChatMessage({
   onNavigate,
   isLoading,
   isLastAssistantMessage,
+  chatId,
 }: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -115,8 +118,15 @@ function ChatMessage({
     >
       <div className="relative mb-2 w-full">
         {role === "user" ? (
-          <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit ml-auto overflow-x-scroll max-w-full">
-            <p>{typeof content === "string" ? content : ""}</p>
+          <div className="flex flex-col w-full place-items-end">
+            {message?.attachments && message.attachments.length > 0 && (
+              <div className="mb-2">
+                <AttachmentPreview attachments={message.attachments} readonly chatId={chatId} />
+              </div>
+            )}
+            <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit overflow-x-scroll max-w-full">
+              <p>{typeof content === "string" ? content : ""}</p>
+            </div>
           </div>
         ) : (
           <div
@@ -331,6 +341,7 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
     prevProps.role === nextProps.role &&
     prevProps.content === nextProps.content &&
     prevProps.message?.id === nextProps.message?.id &&
+    prevProps.message?.attachments?.length === nextProps.message?.attachments?.length &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.siblings?.length === nextProps.siblings?.length

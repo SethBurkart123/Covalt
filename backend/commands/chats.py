@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import datetime
 from typing import Any, Dict
 
+from pydantic import BaseModel
 from zynk import command
 
 from .. import db
@@ -21,6 +23,11 @@ from ..models.chat import (
     UpdateChatModelInput,
 )
 from ..services.agent_factory import update_agent_model, update_agent_tools
+from ..services.file_storage import (
+    delete_chat_attachments,
+    get_extension_from_mime,
+    load_attachment,
+)
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
 from ..services.tool_registry import get_tool_registry
@@ -116,6 +123,7 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
 async def delete_chat(body: ChatId) -> None:
     with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
+    delete_chat_attachments(body.id)
     return None
 
 
@@ -256,3 +264,33 @@ async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
             db.update_chat(sess, id=body.id, title=title)
         return {"title": title}
     return {"title": None}
+
+
+class GetAttachmentInput(BaseModel):
+    chatId: str
+    attachmentId: str
+    mimeType: str
+
+
+class AttachmentDataResponse(BaseModel):
+    data: str  # base64 encoded file content
+    mimeType: str
+
+
+@command
+async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
+    """
+    Load an attachment file and return it as base64.
+
+    Args:
+        body: Contains chatId, attachmentId, and mimeType
+
+    Returns:
+        Base64-encoded file data with mime type
+    """
+    extension = get_extension_from_mime(body.mimeType)
+    file_bytes = load_attachment(body.chatId, body.attachmentId, extension)
+    return AttachmentDataResponse(
+        data=base64.b64encode(file_bytes).decode("utf-8"),
+        mimeType=body.mimeType
+    )

@@ -33,12 +33,23 @@ class ContentBlock(BaseModel):
     approvalStatus: Optional[str] = None  # "pending", "approved", "denied"
 
 
+class Attachment(BaseModel):
+    """Model for file attachments on messages."""
+
+    id: str
+    type: Literal["image", "file", "audio", "video"]
+    name: str
+    mimeType: str
+    size: int
+
+
 class ChatMessage(BaseModel):
     id: str
     role: str
     content: Union[str, List[ContentBlock]]  # Support both formats
     createdAt: Optional[str] = None
     toolCalls: Optional[List[ToolCall]] = None  # Deprecated, for migration
+    attachments: Optional[List[Attachment]] = None
 
 
 class ChatData(BaseModel):
