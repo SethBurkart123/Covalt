@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface FileDropZoneContextValue {
   isDragging: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFilesSelected: (files: File[]) => void;
 }
 
@@ -146,7 +146,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-primary/10 backdrop-blur-sm"
+                className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-sm ring-4 ring-card"
               >
                 <div className="flex flex-col items-center gap-2 text-primary">
                   <Paperclip className="size-8" />
@@ -189,11 +189,10 @@ const FileDropZoneTrigger = React.forwardRef<
     return React.cloneElement(
       props.children as React.ReactElement,
       {
-        ref,
         onClick: handleClick,
         disabled,
         ...props,
-      }
+      } as React.ComponentPropsWithoutRef<"button">
     );
   }
 

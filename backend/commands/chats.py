@@ -121,10 +121,8 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
 
 @command
 async def delete_chat(body: ChatId) -> None:
-    # Delete chat from database
     with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
-    # Clean up any attachment files for this chat
     delete_chat_attachments(body.id)
     return None
 
@@ -292,5 +290,7 @@ async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
     """
     extension = get_extension_from_mime(body.mimeType)
     file_bytes = load_attachment(body.chatId, body.attachmentId, extension)
-    data = base64.b64encode(file_bytes).decode("utf-8")
-    return AttachmentDataResponse(data=data, mimeType=body.mimeType)
+    return AttachmentDataResponse(
+        data=base64.b64encode(file_bytes).decode("utf-8"),
+        mimeType=body.mimeType
+    )

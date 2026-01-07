@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatInputForm from "@/components/ChatInputForm";
 import ChatMessageList from "@/components/ChatMessageList";
 import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
@@ -12,6 +12,7 @@ import { Header } from "./Header";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import "@/components/tool-renderers";
+import type { PendingAttachment } from "@/lib/types/chat";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
@@ -57,11 +58,8 @@ export default function ChatPanel() {
   }, [selectedModel]);
 
   const {
-    input,
-    handleInputChange,
     handleSubmit,
     isLoading,
-    inputRef,
     messages,
     canSendMessage,
     handleStop,
@@ -77,10 +75,6 @@ export default function ChatPanel() {
     messageSiblings,
     streamingMessageIdRef,
     triggerReload,
-    // Attachment handlers
-    pendingAttachments,
-    addAttachment,
-    removeAttachment,
     // Editing attachment handlers
     editingAttachments,
     addEditingAttachment,
@@ -138,131 +132,41 @@ export default function ChatPanel() {
     setShowThinkingPrompt(false);
   }, []);
 
+  // Create stable callback references using refs
   const submitRef = useRef(handleSubmit);
-  const changeRef = useRef(handleInputChange);
+  const setSelectedModelRef = useRef(setSelectedModel);
+  const handleStopRef = useRef(handleStop);
+
   useEffect(() => {
     submitRef.current = handleSubmit;
   }, [handleSubmit]);
-  useEffect(() => {
-    changeRef.current = handleInputChange;
-  }, [handleInputChange]);
 
+  useEffect(() => {
+    setSelectedModelRef.current = setSelectedModel;
+  }, [setSelectedModel]);
+
+  useEffect(() => {
+    handleStopRef.current = handleStop;
+  }, [handleStop]);
+
+  // Stable callbacks that never change reference
   const stableHandleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      return submitRef.current(e);
+    (input: string, attachments: PendingAttachment[]) => {
+      return submitRef.current(input, attachments);
     },
     [],
   );
 
-  const stableHandleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      return changeRef.current(e);
-    },
-    [],
-  );
+  const stableSetSelectedModel = useCallback((model: string) => {
+    return setSelectedModelRef.current(model);
+  }, []);
 
-  const getModelName = useCallback((id: string) => id, []);
+  const stableHandleStop = useCallback(() => {
+    return handleStopRef.current();
+  }, []);
 
-  useEffect(() => {
-    if (!canSendMessage) return;
-
-    let isComposing = false;
-
-    const handleCompositionStart = () => {
-      isComposing = true;
-    };
-
-    const handleCompositionEnd = () => {
-      isComposing = false;
-    };
-
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isComposing || e.isComposing) return;
-
-      const activeElement = document.activeElement;
-      const isInputFocused =
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        activeElement?.getAttribute("contenteditable") === "true";
-
-      const selection = window.getSelection();
-      const hasSelection = selection && selection.toString().trim().length > 0;
-      const hasModifiers = e.metaKey || e.ctrlKey || e.altKey;
-
-      const specialKeys = [
-        "Escape",
-        "Tab",
-        "Enter",
-        "ArrowUp",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-        "Home",
-        "End",
-        "PageUp",
-        "PageDown",
-        "Insert",
-        "Delete",
-        "Backspace",
-        "F1",
-        "F2",
-        "F3",
-        "F4",
-        "F5",
-        "F6",
-        "F7",
-        "F8",
-        "F9",
-        "F10",
-        "F11",
-        "F12",
-        "PrintScreen",
-        "ScrollLock",
-        "Pause",
-      ];
-      const isPrintableKey =
-        e.key.length === 1 && !specialKeys.includes(e.key);
-
-      if (
-        isInputFocused ||
-        hasSelection ||
-        hasModifiers ||
-        !isPrintableKey ||
-        activeElement === inputRef.current
-      ) {
-        return;
-      }
-
-      const textarea = inputRef.current;
-      if (!textarea) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      textarea.focus();
-
-      const start = textarea.selectionStart ?? input.length;
-      const end = textarea.selectionEnd ?? input.length;
-      const newValue = input.slice(0, start) + e.key + input.slice(end);
-
-      handleInputChange({
-        target: { value: newValue },
-      } as React.ChangeEvent<HTMLTextAreaElement>);
-
-      requestAnimationFrame(() => {
-        textarea.setSelectionRange(start + 1, start + 1);
-      });
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    window.addEventListener("compositionstart", handleCompositionStart);
-    window.addEventListener("compositionend", handleCompositionEnd);
-
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-      window.removeEventListener("compositionstart", handleCompositionStart);
-      window.removeEventListener("compositionend", handleCompositionEnd);
-    };
-  }, [canSendMessage, input, inputRef, handleInputChange]);
+  // Memoize models array reference - only create new reference when models actually change
+  const stableModels = useMemo(() => models, [models]);
 
   return (
     <ArtifactPanelProvider>
@@ -294,20 +198,13 @@ export default function ChatPanel() {
           </div>
           <div className="px-4 pb-4">
             <ChatInputForm
-              input={input}
-              handleInputChange={stableHandleInputChange}
-              handleSubmit={stableHandleSubmit}
+              onSubmit={stableHandleSubmit}
               isLoading={isLoading}
-              inputRef={inputRef}
               selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              models={models}
-              getModelName={getModelName}
+              setSelectedModel={stableSetSelectedModel}
+              models={stableModels}
               canSendMessage={canSendMessage}
-              onStop={handleStop}
-              attachments={pendingAttachments}
-              onAddAttachment={addAttachment}
-              onRemoveAttachment={removeAttachment}
+              onStop={stableHandleStop}
             />
           </div>
           {showThinkingPrompt && (

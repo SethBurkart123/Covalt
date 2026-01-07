@@ -63,7 +63,7 @@ interface ToolSelectorProps {
   children: React.ReactNode;
 }
 
-export function ToolSelector({ children }: ToolSelectorProps) {
+export const ToolSelector = React.memo(function ToolSelector({ children }: ToolSelectorProps) {
   const {
     toolsByCategory,
     activeToolIds,
@@ -247,4 +247,4 @@ export function ToolSelector({ children }: ToolSelectorProps) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

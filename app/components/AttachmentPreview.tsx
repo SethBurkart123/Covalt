@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo, useCallback } from "react";
 import { X, FileText, Music, Video, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import clsx from "clsx";
@@ -31,33 +31,23 @@ function getFileIcon(type: string) {
   }
 }
 
-// Extended type for attachments that may include data (from frontend or backend)
-interface AttachmentWithData extends Attachment {
-  data?: string; // base64 encoded data
-  previewUrl?: string; // blob URL (frontend pending attachments only)
-}
-
 function getImageSrc(att: Attachment | PendingAttachment): string {
-  const attWithData = att as AttachmentWithData;
-
-  // First priority: use blob URL if available (fastest for pending attachments)
-  if (attWithData.previewUrl) {
-    return attWithData.previewUrl;
+  if ("previewUrl" in att && att.previewUrl) {
+    return att.previewUrl;
   }
 
-  // Second priority: use base64 data URL (works for both pending and saved)
-  if (attWithData.data) {
-    return `data:${att.mimeType};base64,${attWithData.data}`;
+  if (att.data) {
+    return `data:${att.mimeType};base64,${att.data}`;
   }
 
   return "";
 }
 
-const AttachmentItem: React.FC<{
+const AttachmentItem = memo<{
   attachment: Attachment | PendingAttachment;
   onRemove?: () => void;
   readonly?: boolean;
-}> = ({ attachment, onRemove, readonly }) => {
+}>(({ attachment, onRemove, readonly }) => {
   const isImage = attachment.type === "image";
 
   if (isImage) {
@@ -97,7 +87,6 @@ const AttachmentItem: React.FC<{
     );
   }
 
-  // Non-image attachments (file, audio, video)
   return (
     <div className="relative group">
       <div
@@ -130,13 +119,20 @@ const AttachmentItem: React.FC<{
       </div>
     </div>
   );
-};
+});
 
-export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
+AttachmentItem.displayName = "AttachmentItem";
+
+export const AttachmentPreview = memo<AttachmentPreviewProps>(({
   attachments,
   onRemove,
   readonly = false,
 }) => {
+  const createRemoveHandler = useCallback(
+    (id: string) => (onRemove ? () => onRemove(id) : undefined),
+    [onRemove]
+  );
+
   if (!attachments || attachments.length === 0) {
     return null;
   }
@@ -147,12 +143,14 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
         <AttachmentItem
           key={att.id}
           attachment={att}
-          onRemove={onRemove ? () => onRemove(att.id) : undefined}
+          onRemove={createRemoveHandler(att.id)}
           readonly={readonly}
         />
       ))}
     </div>
   );
-};
+});
+
+AttachmentPreview.displayName = "AttachmentPreview";
 
 export default AttachmentPreview;

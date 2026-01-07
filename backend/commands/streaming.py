@@ -164,8 +164,6 @@ def load_attachments_as_agno_media(
     """
     Load attachment files from disk and convert to Agno media objects.
 
-    Uses filepath instead of loading bytes - cleaner and more memory efficient!
-
     Args:
         chat_id: The chat ID
         attachments: List of attachment metadata
@@ -466,11 +464,7 @@ async def handle_content_stream(
     except Exception as e:
         logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
 
-    # Attach media to the last user message if provided
-    # This is necessary because agno only attaches images/files to the user message
-    # when input is a string, not when it's a list of Message objects
     if images or files or audio or videos:
-        # Find the last user message and attach media to it
         for i in range(len(agno_messages) - 1, -1, -1):
             if agno_messages[i].role == "user":
                 if images:
@@ -1074,7 +1068,6 @@ async def stream_chat(
 
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
-    # Process and save attachments if provided
     saved_attachments: List[Attachment] = []
     images: Sequence[Image] = []
     files: Sequence[File] = []
