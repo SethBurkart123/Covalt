@@ -17,6 +17,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [currentChatId, setCurrentChatId] = React.useState("");
   const [isLoaded, setIsLoaded] = React.useState(false);
 
+  const currentChatIdRef = React.useRef(currentChatId);
+  currentChatIdRef.current = currentChatId;
+
   const { models, selectedModel, setSelectedModel, refreshModels } = useModels();
 
   const operations = useChatOperations({
@@ -43,14 +46,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    const chatIdFromUrl = searchParams.get("chatId");
-
-    if (chatIdFromUrl && chatIdFromUrl !== currentChatId) {
+    const chatIdFromUrl = searchParams.get("chatId") || "";
+    if (chatIdFromUrl !== currentChatIdRef.current) {
       setCurrentChatId(chatIdFromUrl);
-    } else if (!chatIdFromUrl && currentChatId) {
-      setCurrentChatId("");
     }
-  }, [searchParams, currentChatId]);
+  }, [searchParams]);
 
   const chatIds = React.useMemo(
     () =>
