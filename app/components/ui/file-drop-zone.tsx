@@ -171,7 +171,7 @@ interface FileDropZoneTriggerProps
 const FileDropZoneTrigger = React.forwardRef<
   HTMLButtonElement,
   FileDropZoneTriggerProps
->(({ asChild = false, onClick, disabled, ...props }, ref) => {
+>(({ asChild = false, onClick, disabled, children, ...props }, ref) => {
   const { fileInputRef } = useFileDropZone();
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -184,14 +184,14 @@ const FileDropZoneTrigger = React.forwardRef<
   };
 
   if (asChild) {
-    return React.cloneElement(
-      props.children as React.ReactElement,
-      {
-        onClick: handleClick,
-        disabled,
-        ...props,
-      } as React.ComponentPropsWithoutRef<"button">
-    );
+    const child = React.Children.only(children) as React.ReactElement<
+      React.ComponentPropsWithoutRef<"button">
+    >;
+    return React.cloneElement(child, {
+      onClick: handleClick,
+      disabled,
+      ref,
+    } as Partial<React.ComponentPropsWithoutRef<"button">>);
   }
 
   return (
@@ -201,7 +201,9 @@ const FileDropZoneTrigger = React.forwardRef<
       onClick={handleClick}
       disabled={disabled}
       {...props}
-    />
+    >
+      {children}
+    </button>
   );
 });
 
