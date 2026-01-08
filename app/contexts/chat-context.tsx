@@ -70,7 +70,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const chatTitle = React.useMemo(() => {
     if (!currentChatId || !allChatsData.chats[currentChatId]) {
-      return "New Chat";
+      return "";
     }
     return allChatsData.chats[currentChatId].title;
   }, [currentChatId, allChatsData]);
