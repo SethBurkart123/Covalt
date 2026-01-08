@@ -344,26 +344,12 @@ def convert_to_agno_messages(
     chat_msg: ChatMessage,
     chat_id: Optional[str] = None,
 ) -> List[Message]:
-    """
-    Convert our ChatMessage format to Agno Message format.
-    Handles structured content blocks with tool calls.
-
-    For user messages with attachments, loads the media files and attaches them
-    to the Agno Message so they're properly sent to the model.
-
-    Args:
-        chat_msg: The ChatMessage to convert
-        chat_id: The chat ID, needed to load attachment files from disk
-
-    Returns:
-        List of Agno Message objects
-    """
+    """Convert our ChatMessage format to Agno Message format."""
     if chat_msg.role == "user":
         content = chat_msg.content
         if isinstance(content, list):
             content = json.dumps(content)
 
-        # Load attachments if present and chat_id provided
         images_list: Optional[List[Image]] = None
         files_list: Optional[List[File]] = None
         audio_list: Optional[List[Audio]] = None
@@ -494,23 +480,9 @@ async def handle_content_stream(
     raw_ch: Any,
     chat_id: str = "",
 ):
-    """
-    Handle the content streaming from an agent run.
-
-    Attachments are now handled properly during message conversion -
-    each ChatMessage with attachments gets them loaded and attached
-    to the corresponding Agno Message automatically.
-
-    Args:
-        agent: The Agno agent to run
-        messages: List of ChatMessages (user messages may have attachments)
-        assistant_msg_id: ID of the assistant message being generated
-        raw_ch: The channel to send events to
-        chat_id: The chat ID (needed for loading attachment files)
-    """
+    """Handle the content streaming from an agent run."""
     ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
 
-    # Convert messages to Agno format, passing chat_id so attachments can be loaded
     agno_messages = []
     for msg in messages:
         agno_messages.extend(convert_to_agno_messages(msg, chat_id))
@@ -531,9 +503,6 @@ async def handle_content_stream(
                         parse_think_tags = model_settings.parse_think_tags
     except Exception as e:
         logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
-
-    # NOTE: The old hack that attached media to the last user message has been removed.
-    # Attachments are now properly loaded during convert_to_agno_messages() above.
 
     response_stream = agent.arun(
         input=agno_messages,
