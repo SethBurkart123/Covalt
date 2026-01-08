@@ -424,7 +424,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           className="w-full"
         >
           {pendingAttachments.length > 0 && (
-            <div className="w-full pb-2 -mt-12">
+            <div className="w-full pb-2 -mt-16">
               <AttachmentPreview
                 attachments={pendingAttachments}
                 onRemove={handleRemoveAttachment}
