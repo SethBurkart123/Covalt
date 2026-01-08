@@ -170,9 +170,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           e.preventDefault();
           const uploadedAttachments = getUploadedAttachments();
           const hasContent = input.trim() || uploadedAttachments.length > 0;
-          const canSubmitNow = hasContent && canSendMessage && !isLoading && !hasUploadingFiles && !hasUploadErrors;
           
-          if (canSubmitNow) {
+          if (hasContent && canSendMessage && !isLoading && !hasUploadingFiles && !hasUploadErrors) {
             onSubmit(input.trim(), uploadedAttachments);
             setInput("");
             clearAttachments();

@@ -8,7 +8,6 @@ import clsx from "clsx";
 import type { Attachment, PendingAttachment, UploadingAttachment } from "@/lib/types/chat";
 import { getAttachment } from "@/python/api";
 
-// Type guard to check if attachment is uploading
 function isUploadingAttachment(
   att: Attachment | PendingAttachment | UploadingAttachment
 ): att is UploadingAttachment {
