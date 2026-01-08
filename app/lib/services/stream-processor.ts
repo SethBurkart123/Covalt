@@ -276,18 +276,32 @@ export function processEvent(
   scheduleUpdate(state, callbacks.onUpdate);
 }
 
+export interface StreamResult {
+  finalContent: ContentBlock[];
+  messageId: string | null;
+}
+
 export async function processMessageStream(
   response: Response,
   callbacks: StreamCallbacks,
-): Promise<void> {
+  initialBlocks?: ContentBlock[],
+): Promise<StreamResult> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
 
   const decoder = new TextDecoder();
   const state = createInitialState();
+  if (initialBlocks?.length) {
+    state.contentBlocks.push(...initialBlocks);
+  }
 
   let buffer = "";
   let currentEvent = "";
+  let messageId: string | null = null;
+  const wrappedCallbacks: StreamCallbacks = {
+    ...callbacks,
+    onMessageId: (id) => { messageId = id; callbacks.onMessageId?.(id); },
+  };
 
   try {
     while (true) {
@@ -309,7 +323,7 @@ export async function processMessageStream(
 
           try {
             const parsed = JSON.parse(data);
-            processEvent(currentEvent, parsed, state, callbacks);
+            processEvent(currentEvent, parsed, state, wrappedCallbacks);
           } catch (err) {
             console.error("Failed to parse SSE data:", err);
           }
@@ -319,5 +333,10 @@ export async function processMessageStream(
   } finally {
     reader.releaseLock();
   }
+
+  return {
+    finalContent: buildCurrentContent(state),
+    messageId,
+  };
 }
 

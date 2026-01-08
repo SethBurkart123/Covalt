@@ -172,16 +172,13 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
 
           case "RunCompleted":
           case "RunCancelled":
-            console.log(`[StreamingContext] Stream completed for ${chatId}`);
+            // Don't delete stream state here - let the original sender's code path
+            // (handleSubmit/handleContinue/etc.) handle cleanup via unregisterStream().
+            // This prevents a race condition where the WebSocket event arrives before
+            // the stream processor finishes, causing the message to briefly disappear.
+            console.log(`[StreamingContext] Stream completed for ${chatId} (cleanup handled by sender)`);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
-            streamStateRefs.current.delete(chatId);
-            setStreamStates((prev) => {
-              const next = new Map(prev);
-              next.delete(chatId);
-              return next;
-            });
-            completeCallbacksRef.current.forEach(cb => cb(chatId));
             break;
 
           case "RunError":
