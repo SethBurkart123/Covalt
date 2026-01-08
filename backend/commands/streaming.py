@@ -275,6 +275,7 @@ def save_user_msg(
     """Save user message to db with optional attachments."""
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
+        now = datetime.utcnow().isoformat()
 
         # Serialize attachments to JSON if present
         attachments_json = None
@@ -286,7 +287,7 @@ def save_user_msg(
             chatId=chat_id,
             role=msg.role,
             content=msg.content,
-            createdAt=msg.createdAt or datetime.utcnow().isoformat(),
+            createdAt=msg.createdAt or now,
             parent_message_id=parent_id,
             is_complete=True,  # User messages are always complete
             sequence=sequence,
@@ -296,6 +297,7 @@ def save_user_msg(
         sess.commit()
 
         db.set_active_leaf(sess, chat_id, msg.id)
+        db.update_chat(sess, id=chat_id, updatedAt=now)
 
 
 def init_assistant_msg(chat_id: str, parent_id: str) -> str:
@@ -303,6 +305,7 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
+        now = datetime.utcnow().isoformat()
         model_used: Optional[str] = None
         try:
             config = db.get_chat_agent_config(sess, chat_id)
@@ -321,7 +324,7 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
             chatId=chat_id,
             role="assistant",
             content="",
-            createdAt=datetime.utcnow().isoformat(),
+            createdAt=now,
             parent_message_id=parent_id,
             is_complete=False,
             sequence=sequence,
@@ -331,6 +334,7 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
         sess.commit()
 
         db.set_active_leaf(sess, chat_id, msg_id)
+        db.update_chat(sess, id=chat_id, updatedAt=now)
     return msg_id
 
 

@@ -1,17 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  MoreVertical,
-  PlusIcon,
-  Pencil,
-  Trash2,
-  Settings,
-  Wrench,
-  Loader2,
-  AlertCircle,
-  Circle,
-} from "lucide-react";
+import { PlusIcon, Settings, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -23,15 +13,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import clsx from "clsx";
 import { useChat } from "@/contexts/chat-context";
 import { useStreaming } from "@/contexts/streaming-context";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { groupChatsByTimePeriod } from "@/lib/utils/chat-grouping";
+import { ChatItem } from "@/components/ChatItem";
 
 /**
  * Sidebar that shows all stored chats and offers
@@ -55,13 +40,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const handleRenameConfirm = async (id: string) => {
     if (editTitle.trim()) {
-      try {
-        await renameChat(id, editTitle.trim());
-      } catch (error) {
-        console.error("Failed to rename chat:", error);
-      }
+      await renameChat(id, editTitle.trim());
     }
-    // Always exit editing mode after confirm/blur
     setEditingId(null);
     setEditTitle("");
   };
@@ -71,8 +51,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setEditTitle("");
   };
 
-  // chatIds are already sorted newest first from context
-  const orderedChatIds = chatIds;
+  const chatGroups = React.useMemo(
+    () => groupChatsByTimePeriod(chatIds, chatsData),
+    [chatIds, chatsData]
+  );
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -103,130 +85,61 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       <SidebarContent>
         <SidebarMenu className="gap-1 px-2 flex flex-col">
-          {orderedChatIds.map((id: string) => {
-            const isActive = currentChatId === id;
-            const title =
-              chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
-            
-            const streamState = getStreamState(id);
-            const isStreaming = streamState?.isStreaming ?? false;
-            const isPausedForApproval = streamState?.isPausedForApproval ?? false;
-            const hasError = streamState?.status === "error" || streamState?.status === "interrupted";
-            const hasUnseenUpdate = streamState?.hasUnseenUpdate ?? false;
-
-            return (
-              <SidebarMenuItem key={id}>
-                <div className="group/chat relative flex w-full items-center">
-                  {editingId === id ? (
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleRenameConfirm(id);
-                        }
-                        if (e.key === "Escape") {
-                          handleRenameCancel();
-                        }
-                      }}
-                      onBlur={() => handleRenameConfirm(id)}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-background text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-ring h-auto text-sm"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          markChatAsSeen(id);
-                          switchChat(id);
-                        }}
-                        className={clsx(
-                          "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
-                          isActive
-                            ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
-                            : "hover:bg-muted/50",
-                          "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                        )}
-                        title={title}
-                      >
-                        {isStreaming && (
-                          <Loader2 className="size-3 animate-spin text-primary flex-shrink-0" />
-                        )}
-                        {isPausedForApproval && (
-                          <AlertCircle className="size-3 text-amber-500 flex-shrink-0" />
-                        )}
-                        {hasError && !isActive && (
-                          <AlertCircle className="size-3 text-destructive flex-shrink-0" />
-                        )}
-                        {hasUnseenUpdate && !isActive && !isStreaming && !isPausedForApproval && !hasError && (
-                          <Circle className="size-2 fill-primary text-primary flex-shrink-0" />
-                        )}
-                        <span className="truncate">{title}</span>
-                      </button>
-                      <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className={clsx(
-                                "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                                isActive
-                                  ? "text-sidebar-accent-foreground"
-                                  : "text-muted-foreground",
-                              )}
-                              aria-label={`Chat options for ${title}`}
-                            >
-                              <MoreVertical className="size-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingId(id);
-                                setEditTitle(title);
-                              }}
-                            >
-                              <Pencil className="mr-2 size-4" />
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={async () => {
-                                try {
-                                  await deleteChat(id);
-                                } catch (error) {
-                                  console.error(
-                                    "Failed to delete chat:",
-                                    error,
-                                  );
-                                }
-                              }}
-                              className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                            >
-                              <Trash2 className="mr-2 size-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </SidebarMenuItem>
-            );
-          })}
-
-          {orderedChatIds.length === 0 && (
+          {chatGroups.length === 0 ? (
             <SidebarMenuItem>
               <span className="px-4 py-2 text-sm text-muted-foreground italic">
                 No chats yet
               </span>
             </SidebarMenuItem>
+          ) : (
+            chatGroups.map((group) => (
+              <React.Fragment key={group.label}>
+                <SidebarMenuItem>
+                  <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground">
+                    {group.label}
+                  </div>
+                </SidebarMenuItem>
+                {group.chatIds.map((id) => {
+                  const isActive = currentChatId === id;
+                  const title =
+                    chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
+                  const streamState = getStreamState(id);
+                  const isStreaming = streamState?.isStreaming ?? false;
+                  const isPausedForApproval =
+                    streamState?.isPausedForApproval ?? false;
+                  const hasError =
+                    streamState?.status === "error" ||
+                    streamState?.status === "interrupted";
+                  const hasUnseenUpdate = streamState?.hasUnseenUpdate ?? false;
+
+                  return (
+                    <ChatItem
+                      key={id}
+                      title={title}
+                      isActive={isActive}
+                      isStreaming={isStreaming}
+                      isPausedForApproval={isPausedForApproval}
+                      hasError={hasError}
+                      hasUnseenUpdate={hasUnseenUpdate}
+                      isEditing={editingId === id}
+                      editTitle={editTitle}
+                      onEditTitleChange={setEditTitle}
+                      onEditConfirm={() => handleRenameConfirm(id)}
+                      onEditCancel={handleRenameCancel}
+                      onSelect={() => {
+                        markChatAsSeen(id);
+                        switchChat(id);
+                      }}
+                      onRename={() => {
+                        setEditingId(id);
+                        setEditTitle(title);
+                      }}
+                      onDelete={() => deleteChat(id)}
+                    />
+                  );
+                })}
+              </React.Fragment>
+            ))
           )}
         </SidebarMenu>
       </SidebarContent>

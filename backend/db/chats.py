@@ -273,6 +273,7 @@ def mark_message_complete(sess: Session, message_id: str) -> None:
     message = sess.get(Message, message_id)
     if message:
         message.is_complete = True
+        update_chat(sess, id=message.chatId, updatedAt=datetime.utcnow().isoformat())
         sess.commit()
 
 
