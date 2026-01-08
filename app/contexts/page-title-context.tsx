@@ -12,7 +12,7 @@ const PageTitleContext = createContext<PageTitleContextType | undefined>(
 );
 
 export function PageTitleProvider({ children }: { children: React.ReactNode }) {
-  const [title, setTitle] = useState<string>("New Chat");
+  const [title, setTitle] = useState<string>("");
 
   const value = useMemo(() => ({ title, setTitle }), [title]);
 

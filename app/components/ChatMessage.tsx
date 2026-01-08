@@ -194,7 +194,7 @@ function ChatMessage({
                                   />
                                 </svg>
                                 <div className="flex-1">
-                                  <div className="text-sm whitespace-pre-wrap">
+                                  <div className="text-sm whitespace-pre-wrap selection:bg-green-500">
                                     {block.content}
                                   </div>
                                 </div>
@@ -324,7 +324,6 @@ function ChatMessage({
   );
 }
 
-// Custom comparison function to prevent unnecessary re-renders
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
   // If streaming status changed, re-render
   if (prevProps.isStreaming !== nextProps.isStreaming) {

@@ -165,46 +165,74 @@ export default function ChatPanel() {
 
   const stableModels = useMemo(() => models, [models]);
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
+
   return (
     <ArtifactPanelProvider>
       <div className="flex flex-row min-h-full">
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
-          <div className="overflow-y-scroll flex-1">
-            <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
-            <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
-              <ChatMessageList
-                messages={messages}
-                isLoading={isLoading}
-                messageSiblings={messageSiblings}
-                onContinue={handleContinue}
-                onRetry={handleRetry}
-                onEditStart={handleEdit}
-                editingMessageId={editingMessageId}
-                editingDraft={editingDraft}
-                setEditingDraft={setEditingDraft}
-                onEditCancel={handleEditCancel}
-                onEditSubmit={handleEditSubmit}
-                onNavigate={handleNavigate}
-                actionLoading={null}
-                editingAttachments={editingAttachments}
-                onAddEditingAttachment={addEditingAttachment}
-                onRemoveEditingAttachment={removeEditingAttachment}
-                chatId={chatId ?? undefined}
-              />
+          {messages.length > 0 ? (
+            <>
+              <div className="overflow-y-scroll flex-1">
+                <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
+                <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
+                  <ChatMessageList
+                    messages={messages}
+                    isLoading={isLoading}
+                    messageSiblings={messageSiblings}
+                    onContinue={handleContinue}
+                    onRetry={handleRetry}
+                    onEditStart={handleEdit}
+                    editingMessageId={editingMessageId}
+                    editingDraft={editingDraft}
+                    setEditingDraft={setEditingDraft}
+                    onEditCancel={handleEditCancel}
+                    onEditSubmit={handleEditSubmit}
+                    onNavigate={handleNavigate}
+                    actionLoading={null}
+                    editingAttachments={editingAttachments}
+                    onAddEditingAttachment={addEditingAttachment}
+                    onRemoveEditingAttachment={removeEditingAttachment}
+                    chatId={chatId ?? undefined}
+                  />
+                </div>
+              </div>
+              <div className="px-4 pb-4">
+                <ChatInputForm
+                  onSubmit={stableHandleSubmit}
+                  isLoading={isLoading}
+                  selectedModel={selectedModel}
+                  setSelectedModel={stableSetSelectedModel}
+                  models={stableModels}
+                  canSendMessage={canSendMessage}
+                  onStop={stableHandleStop}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">
+              <h1 className="text-4xl mb-8 text-muted-foreground">
+                {getGreeting()}.
+              </h1>
+              <div className="w-full max-w-4xl">
+                <ChatInputForm
+                  onSubmit={stableHandleSubmit}
+                  isLoading={isLoading}
+                  selectedModel={selectedModel}
+                  setSelectedModel={stableSetSelectedModel}
+                  models={stableModels}
+                  canSendMessage={canSendMessage}
+                  onStop={stableHandleStop}
+                />
+              </div>
             </div>
-          </div>
-          <div className="px-4 pb-4">
-            <ChatInputForm
-              onSubmit={stableHandleSubmit}
-              isLoading={isLoading}
-              selectedModel={selectedModel}
-              setSelectedModel={stableSetSelectedModel}
-              models={stableModels}
-              canSendMessage={canSendMessage}
-              onStop={stableHandleStop}
-            />
-          </div>
+          )}
           {showThinkingPrompt && (
             <ThinkingTagPrompt
               onAccept={handleAcceptThinkingPrompt}
