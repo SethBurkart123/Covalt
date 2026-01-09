@@ -113,7 +113,7 @@ function ChatMessage({
     <div
       className={clsx(
         "flex w-full group/message",
-        role === "user" ? "justify-end" : "justify-start"
+        role === "user" ? "justify-end -mb-4 mt-4 max-w-[90%] ml-auto" : "justify-start"
       )}
     >
       <div className="relative mb-2 w-full">
