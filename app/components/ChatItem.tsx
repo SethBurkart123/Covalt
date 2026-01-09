@@ -8,6 +8,7 @@ import {
   Loader2,
   AlertCircle,
   Circle,
+  Star,
 } from "lucide-react";
 import clsx from "clsx";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
@@ -33,6 +34,8 @@ interface ChatItemProps {
   onSelect: () => void;
   onRename: () => void;
   onDelete: () => void;
+  isStarred?: boolean;
+  onToggleStar?: () => void;
 }
 
 export function ChatItem({
@@ -50,6 +53,8 @@ export function ChatItem({
   onSelect,
   onRename,
   onDelete,
+  isStarred = false,
+  onToggleStar,
 }: ChatItemProps) {
   return (
     <SidebarMenuItem>
@@ -124,6 +129,19 @@ export function ChatItem({
                   align="end"
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {onToggleStar && (
+                    <DropdownMenuItem onClick={onToggleStar}>
+                      <Star
+                        className={clsx(
+                          "mr-2 size-4",
+                          isStarred
+                            ? "fill-yellow-500 text-yellow-500"
+                            : "text-muted-foreground"
+                        )}
+                      />
+                      {isStarred ? "Unstar" : "Star"}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={onRename}>
                     <Pencil className="mr-2 size-4" />
                     Rename

@@ -93,6 +93,7 @@ export interface ChatData {
   model?: string;
   createdAt?: string;
   updatedAt?: string;
+  starred?: boolean;
   agentConfig?: AgentConfig;
 }
 
@@ -111,6 +112,7 @@ export interface ChatContextType {
   switchChat: (id: string) => void;
   deleteChat: (id: string) => Promise<void>;
   renameChat: (id: string, newTitle: string) => Promise<void>;
+  toggleStarChat: (id: string) => Promise<void>;
   refreshChats: () => Promise<void>;
   selectedModel: string;
   setSelectedModel: (model: string) => void;

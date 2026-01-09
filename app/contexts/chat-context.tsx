@@ -94,6 +94,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       switchChat: operations.switchChat,
       deleteChat: operations.deleteChat,
       renameChat: operations.renameChat,
+      toggleStarChat: operations.toggleStarChat,
       refreshChats,
       selectedModel,
       setSelectedModel,

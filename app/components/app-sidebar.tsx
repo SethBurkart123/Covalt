@@ -32,6 +32,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     switchChat,
     deleteChat,
     renameChat,
+    toggleStarChat,
   } = useChat();
   const { getStreamState, markChatAsSeen } = useStreaming();
 
@@ -135,6 +136,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         setEditTitle(title);
                       }}
                       onDelete={() => deleteChat(id)}
+                      isStarred={chatsData[id]?.starred ?? false}
+                      onToggleStar={() => toggleStarChat(id)}
                     />
                   );
                 })}

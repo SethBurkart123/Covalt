@@ -112,6 +112,7 @@ def update_chat(
     title: Optional[str] = None,
     model: Optional[str] = None,
     updatedAt: Optional[str] = None,
+    starred: Optional[bool] = None,
 ) -> None:
     chat: Optional[Chat] = sess.get(Chat, id)
     if not chat:
@@ -122,6 +123,8 @@ def update_chat(
         chat.model = model
     if updatedAt is not None:
         chat.updatedAt = updatedAt
+    if starred is not None:
+        chat.starred = starred
     sess.commit()
 
 

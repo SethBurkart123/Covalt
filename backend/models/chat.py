@@ -59,6 +59,7 @@ class ChatData(BaseModel):
     model: Optional[str] = None
     createdAt: Optional[str] = None
     updatedAt: Optional[str] = None
+    starred: bool = False
 
 
 class AllChatsData(BaseModel):

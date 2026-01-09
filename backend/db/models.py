@@ -20,6 +20,7 @@ class Chat(Base):
     updatedAt: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     agent_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     active_leaf_message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    starred: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     messages: Mapped[List["Message"]] = relationship(
         back_populates="chat", cascade="all, delete-orphan"
