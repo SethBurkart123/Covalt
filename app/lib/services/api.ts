@@ -18,7 +18,6 @@ import {
   cancelRun,
   generateChatTitle,
   respondToThinkingTagPrompt,
-  reprocessMessageThinkTags,
 } from "@/python/api";
 import { createChannel } from "@/python/_internal";
 import type { BridgeError } from "@/python/_internal";
@@ -416,14 +415,6 @@ class ApiService {
     return respondToThinkingTagPrompt({
       body: { provider, modelId, accepted },
     });
-  }
-
-  async reprocessMessageThinkTags(
-    messageId: string,
-  ): Promise<{ success: boolean }> {
-    return reprocessMessageThinkTags({ body: { messageId } }) as Promise<{
-      success: boolean;
-    }>;
   }
 }
 

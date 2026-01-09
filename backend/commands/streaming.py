@@ -494,20 +494,6 @@ async def handle_content_stream(
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
 
-    parse_think_tags = False
-    try:
-        with db.db_session() as sess:
-            msg = sess.get(db.Message, assistant_msg_id)
-            if msg and msg.model_used:
-                parts = msg.model_used.split(":", 1)
-                if len(parts) == 2:
-                    provider, model_id = parts
-                    model_settings = db.get_model_settings(sess, provider, model_id)
-                    if model_settings:
-                        parse_think_tags = model_settings.parse_think_tags
-    except Exception as e:
-        logger.info(f"[stream] Warning: Failed to check parse_think_tags: {e}")
-
     response_stream = agent.arun(
         input=agno_messages,
         stream=True,
@@ -519,9 +505,6 @@ async def handle_content_stream(
     current_reasoning = ""
     had_error = False
     run_id = None
-
-    think_tag_buffer = ""
-    inside_think_tag = False
 
     def flush_text():
         nonlocal current_text
@@ -536,83 +519,6 @@ async def handle_content_stream(
                 {"type": "reasoning", "content": current_reasoning, "isCompleted": True}
             )
             current_reasoning = ""
-
-    def flush_think_tag_buffer():
-        """Flush any remaining content in the think tag buffer."""
-        nonlocal think_tag_buffer, inside_think_tag, current_text, current_reasoning
-
-        if not parse_think_tags or not think_tag_buffer:
-            return
-
-        if inside_think_tag:
-            # If we're still inside a think tag, treat remaining buffer as reasoning
-            current_reasoning += think_tag_buffer
-            flush_reasoning()
-        else:
-            # Otherwise treat it as text
-            current_text += think_tag_buffer
-
-        think_tag_buffer = ""
-        inside_think_tag = False
-
-    def process_content_with_think_tags(content: str):
-        """Parse content and handle <think> tags if enabled."""
-        nonlocal current_text, current_reasoning, think_tag_buffer, inside_think_tag
-
-        if not parse_think_tags:
-            current_text += content
-            return
-
-        think_tag_buffer += content
-
-        while True:
-            if not inside_think_tag:
-                open_idx = think_tag_buffer.find("<think>")
-                if open_idx == -1:
-                    if len(think_tag_buffer) > 6:
-                        text_chunk = think_tag_buffer[:-6]
-                        current_text += text_chunk
-                        ch.send_model(ChatEvent(event="RunContent", content=text_chunk))
-                        think_tag_buffer = think_tag_buffer[-6:]
-                    break
-                else:
-                    if open_idx > 0:
-                        text_chunk = think_tag_buffer[:open_idx]
-                        current_text += text_chunk
-                        ch.send_model(ChatEvent(event="RunContent", content=text_chunk))
-                    think_tag_buffer = think_tag_buffer[open_idx + 7 :]
-                    inside_think_tag = True
-
-                    if current_text:
-                        flush_text()
-                    ch.send_model(ChatEvent(event="ReasoningStarted"))
-            else:
-                close_idx = think_tag_buffer.find("</think>")
-                if close_idx == -1:
-                    if len(think_tag_buffer) > 8:
-                        reasoning_chunk = think_tag_buffer[:-8]
-                        current_reasoning += reasoning_chunk
-                        ch.send_model(
-                            ChatEvent(
-                                event="ReasoningStep", reasoningContent=reasoning_chunk
-                            )
-                        )
-                        think_tag_buffer = think_tag_buffer[-8:]
-                    break
-                else:
-                    if close_idx > 0:
-                        reasoning_chunk = think_tag_buffer[:close_idx]
-                        current_reasoning += reasoning_chunk
-                        ch.send_model(
-                            ChatEvent(
-                                event="ReasoningStep", reasoningContent=reasoning_chunk
-                            )
-                        )
-                    think_tag_buffer = think_tag_buffer[close_idx + 8 :]
-                    inside_think_tag = False
-
-                    flush_reasoning()
-                    ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
     def save_state():
         temp = content_blocks.copy()
@@ -642,7 +548,6 @@ async def handle_content_stream(
                         await broadcaster.update_stream_run_id(chat_id, run_id)
 
                 if chunk.event == RunEvent.run_cancelled:
-                    flush_think_tag_buffer()
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -674,20 +579,13 @@ async def handle_content_stream(
                         )
 
                     if chunk.content:
-                        if (
-                            current_reasoning
-                            and not current_text
-                            and not parse_think_tags
-                        ):
+                        if current_reasoning and not current_text:
                             flush_reasoning()
 
-                        if parse_think_tags:
-                            process_content_with_think_tags(chunk.content)
-                        else:
-                            current_text += chunk.content
-                            ch.send_model(
-                                ChatEvent(event="RunContent", content=chunk.content)
-                            )
+                        current_text += chunk.content
+                        ch.send_model(
+                            ChatEvent(event="RunContent", content=chunk.content)
+                        )
 
                         await asyncio.to_thread(
                             save_msg_content, assistant_msg_id, save_state()
@@ -767,7 +665,6 @@ async def handle_content_stream(
                     ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
                 elif chunk.event == RunEvent.run_completed:
-                    flush_think_tag_buffer()
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -783,7 +680,6 @@ async def handle_content_stream(
                     return
 
                 elif chunk.event == RunEvent.run_error:
-                    flush_think_tag_buffer()
                     flush_text()
                     flush_reasoning()
                     raw_error = chunk.content if chunk.content else str(chunk)
@@ -930,7 +826,6 @@ async def handle_content_stream(
 
     except Exception as e:
         logger.error(f"[stream] Exception in stream handler: {e}")
-        flush_think_tag_buffer()
         flush_text()
         flush_reasoning()
         try:
@@ -953,104 +848,6 @@ async def handle_content_stream(
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "completed")
             await broadcaster.unregister_stream(chat_id)
-
-
-def parse_think_tags_from_content(content: str) -> List[Dict[str, Any]]:
-    """
-    Parse content and extract <think> tags, converting to content blocks.
-    Returns list of content blocks with reasoning extracted.
-    """
-    blocks = []
-    current_text = ""
-    current_reasoning = ""
-    inside_think_tag = False
-    i = 0
-
-    while i < len(content):
-        if not inside_think_tag:
-            if content[i : i + 7] == "<think>":
-                if current_text:
-                    blocks.append({"type": "text", "content": current_text})
-                    current_text = ""
-                inside_think_tag = True
-                i += 7
-            else:
-                current_text += content[i]
-                i += 1
-        else:
-            if content[i : i + 8] == "</think>":
-                if current_reasoning:
-                    blocks.append(
-                        {
-                            "type": "reasoning",
-                            "content": current_reasoning,
-                            "isCompleted": True,
-                        }
-                    )
-                    current_reasoning = ""
-                inside_think_tag = False
-                i += 8
-            else:
-                current_reasoning += content[i]
-                i += 1
-
-    if current_text:
-        blocks.append({"type": "text", "content": current_text})
-    if current_reasoning:
-        blocks.append(
-            {"type": "reasoning", "content": current_reasoning, "isCompleted": True}
-        )
-
-    return blocks if blocks else [{"type": "text", "content": ""}]
-
-
-def reprocess_message_with_think_tags(message_id: str) -> bool:
-    """
-    Re-process a message's content to parse <think> tags.
-    Returns True if message was updated, False otherwise.
-    """
-    try:
-        with db.db_session() as sess:
-            msg = sess.get(db.Message, message_id)
-            if not msg:
-                logger.info(f"[reprocess] Message {message_id} not found")
-                return False
-
-            try:
-                current_content = json.loads(msg.content)
-            except (json.JSONDecodeError, TypeError):
-                current_content = msg.content
-
-            text_content = ""
-            if isinstance(current_content, list):
-                for block in current_content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text_content += block.get("content", "")
-            elif isinstance(current_content, str):
-                text_content = current_content
-            else:
-                logger.info(
-                    f"[reprocess] Unknown content format for message {message_id}"
-                )
-                return False
-
-            if "<think>" not in text_content:
-                logger.info(f"[reprocess] No think tags found in message {message_id}")
-                return False
-
-            new_blocks = parse_think_tags_from_content(text_content)
-            msg.content = json.dumps(new_blocks)
-            sess.commit()
-
-            logger.info(
-                f"[reprocess] Successfully parsed think tags for message {message_id}"
-            )
-            return True
-
-    except Exception as e:
-        logger.info(f"[reprocess] Error reprocessing message {message_id}: {e}")
-        traceback.print_exc()
-        return False
 
 
 class CancelRunRequest(BaseModel):

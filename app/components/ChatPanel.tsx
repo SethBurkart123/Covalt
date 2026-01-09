@@ -13,7 +13,11 @@ import { Header } from "./Header";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import "@/components/tool-renderers";
-import type { Attachment } from "@/lib/types/chat";
+import type { Attachment, Message } from "@/lib/types/chat";
+import {
+  shouldParseThinkTags,
+  processMessageContent,
+} from "@/lib/utils/think-tag-parser";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models, chatId } = useChat();
@@ -61,7 +65,7 @@ export default function ChatPanel() {
   const {
     handleSubmit,
     isLoading,
-    messages,
+    messages: rawMessages,
     canSendMessage,
     handleStop,
     handleContinue,
@@ -81,6 +85,35 @@ export default function ChatPanel() {
     removeEditingAttachment,
   } = useChatInput(handleThinkTagDetected);
 
+  const messages = useMemo(() => {
+    if (!modelSettings?.models) return rawMessages;
+
+    return rawMessages.map((msg): Message => {
+      if (msg.role !== "assistant") {
+        return msg;
+      }
+
+      const modelKey = msg.modelUsed || selectedModel;
+      if (!modelKey) {
+        return msg;
+      }
+
+      const shouldParse = shouldParseThinkTags(
+        modelKey,
+        modelSettings.models,
+      );
+
+      if (!shouldParse) {
+        return msg;
+      }
+
+      return {
+        ...msg,
+        content: processMessageContent(msg.content, shouldParse),
+      };
+    });
+  }, [rawMessages, modelSettings, selectedModel]);
+
   const handleAcceptThinkingPrompt = useCallback(async () => {
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId) return;
@@ -89,31 +122,15 @@ export default function ChatPanel() {
       await api.respondToThinkingTagPrompt(provider, modelId, true);
       setShowThinkingPrompt(false);
 
-      const messageId =
-        streamingMessageIdRef.current ||
-        messages.filter((m) => m.role === "assistant").pop()?.id;
-
-      if (messageId && chatId) {
-        if (!isLoading && streamingMessageIdRef.current) {
-          console.log(`Reprocessing message ${messageId} to parse think tags`);
-          if ((await api.reprocessMessageThinkTags(messageId)).success) {
-            triggerReload();
-          }
-        }
+      if (!isLoading && streamingMessageIdRef.current) {
+        triggerReload();
       }
 
       setModelSettings(await getModelSettings());
     } catch (error) {
       console.error("Failed to accept thinking tag prompt:", error);
     }
-  }, [
-    selectedModel,
-    streamingMessageIdRef,
-    messages,
-    chatId,
-    isLoading,
-    triggerReload,
-  ]);
+  }, [selectedModel, streamingMessageIdRef, isLoading, triggerReload]);
 
   const handleDeclineThinkingPrompt = useCallback(async () => {
     const [provider, modelId] = selectedModel?.split(":") || [];
