@@ -97,10 +97,38 @@ export function useChatOperations({
     [allChatsData, setAllChatsData],
   );
 
+  const toggleStarChat = useCallback(
+    async (id: string) => {
+      if (!allChatsData.chats[id]) return;
+
+      try {
+        const updatedChat = await api.toggleStarChat(id);
+
+        const nextData: AllChatsData = {
+          ...allChatsData,
+          chats: {
+            ...allChatsData.chats,
+            [id]: {
+              ...allChatsData.chats[id],
+              starred: updatedChat.starred,
+            },
+          },
+        };
+
+        setAllChatsData(nextData);
+      } catch (error) {
+        console.error("Failed to toggle star chat:", error);
+        throw error;
+      }
+    },
+    [allChatsData, setAllChatsData],
+  );
+
   return {
     startNewChat,
     switchChat,
     deleteChat,
     renameChat,
+    toggleStarChat,
   };
 }

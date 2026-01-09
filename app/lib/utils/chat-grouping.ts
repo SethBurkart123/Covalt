@@ -19,6 +19,7 @@ export function groupChatsByTimePeriod(
   thisMonth.setMonth(thisMonth.getMonth() - 1);
 
   const groups: ChatGroup[] = [];
+  const starredChats: string[] = [];
   const todayChats: string[] = [];
   const yesterdayChats: string[] = [];
   const thisWeekChats: string[] = [];
@@ -28,6 +29,11 @@ export function groupChatsByTimePeriod(
   for (const chatId of chatIds) {
     const chat = chatsData[chatId];
     if (!chat) continue;
+
+    if (chat.starred) {
+      starredChats.push(chatId);
+      continue;
+    }
 
     const updatedAt = chat.updatedAt || chat.createdAt;
     if (!updatedAt) {
@@ -64,6 +70,9 @@ export function groupChatsByTimePeriod(
     }
   }
 
+  if (starredChats.length > 0) {
+    groups.push({ label: "Starred", chatIds: starredChats });
+  }
   if (todayChats.length > 0) {
     groups.push({ label: "Today", chatIds: todayChats });
   }

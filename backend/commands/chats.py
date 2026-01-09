@@ -44,6 +44,7 @@ async def get_all_chats() -> AllChatsData:
                 model=r.model,
                 createdAt=r.createdAt,
                 updatedAt=r.updatedAt,
+                starred=r.starred,
                 messages=[],  # do not load heavy messages list here
             )
             chats[chat.id or "unknown"] = chat
@@ -88,6 +89,7 @@ async def create_chat(body: CreateChatInput) -> ChatData:
         model=body.model,
         createdAt=now,
         updatedAt=now,
+        starred=False,
         messages=[],
     )
 
@@ -115,6 +117,7 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
             model=chatRow.model,
             createdAt=chatRow.createdAt,
             updatedAt=chatRow.updatedAt,
+            starred=chatRow.starred,
             messages=[],
         )
 
@@ -125,6 +128,25 @@ async def delete_chat(body: ChatId) -> None:
         db.delete_chat(sess, chatId=body.id)
     delete_chat_attachments(body.id)
     return None
+
+
+@command
+async def toggle_star_chat(body: ChatId) -> ChatData:
+    with db.db_session() as sess:
+        chat = sess.get(db.Chat, body.id)
+        if not chat:
+            raise ValueError(f"Chat {body.id} not found")
+        chat.starred = not chat.starred
+        sess.commit()
+        return ChatData(
+            id=chat.id,
+            title=chat.title,
+            model=chat.model,
+            createdAt=chat.createdAt,
+            updatedAt=chat.updatedAt,
+            starred=chat.starred,
+            messages=[],
+        )
 
 
 @command

@@ -18,6 +18,7 @@ import {
   cancelRun,
   generateChatTitle,
   respondToThinkingTagPrompt,
+  toggleStarChat,
 } from "@/python/api";
 import { createChannel } from "@/python/_internal";
 import type { BridgeError } from "@/python/_internal";
@@ -74,6 +75,10 @@ class ApiService {
 
   async renameChat(chatId: string, title: string): Promise<ChatData> {
     return updateChat({ body: { id: chatId, title } });
+  }
+
+  async toggleStarChat(chatId: string): Promise<ChatData> {
+    return toggleStarChat({ body: { id: chatId } });
   }
 
   async streamChat(
