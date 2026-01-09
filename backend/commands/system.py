@@ -293,24 +293,6 @@ class RespondToThinkingTagPromptInput(BaseModel):
     accepted: bool
 
 
-class ReprocessMessageRequest(BaseModel):
-    messageId: str
-
-
-@command
-async def reprocess_message_think_tags(
-    body: ReprocessMessageRequest,
-) -> dict:
-    """
-    Re-process a message to parse <think> tags from its content.
-    Returns {success: bool}
-    """
-    from ..commands.streaming import reprocess_message_with_think_tags
-
-    success = reprocess_message_with_think_tags(body.messageId)
-    return {"success": success}
-
-
 @command
 async def respond_to_thinking_tag_prompt(
     body: RespondToThinkingTagPromptInput,
@@ -318,7 +300,7 @@ async def respond_to_thinking_tag_prompt(
     """
     Handle user response to thinking tag detection prompt.
 
-    If accepted, enables parse_think_tags and reprocesses the current message.
+    If accepted, enables parse_think_tags setting.
     If declined, stores thinkingTagPrompted: { prompted: true, declined: true } in extra.
 
     Args:
