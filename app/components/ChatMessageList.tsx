@@ -5,6 +5,7 @@ import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { FileDropZone, FileDropZoneTrigger } from "@/components/ui/file-drop-zone";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import ChatMessageEditor from "./ChatMessageEditor";
 
 interface ChatMessageListProps {
   messages: Message[];
@@ -68,7 +69,7 @@ const MessageRow = React.memo(function MessageRow({
   }, [onNavigate, message.id]);
 
   return (
-    <div>
+    <>
       <ChatMessage
         role={message.role as "user" | "assistant"}
         content={message.content}
@@ -83,7 +84,7 @@ const MessageRow = React.memo(function MessageRow({
         isLastAssistantMessage={isLastAssistantMessage}
         chatId={chatId}
       />
-    </div>
+    </>
   );
 }, (prevProps, nextProps) => {
   return (
@@ -217,7 +218,6 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
         const isLastAssistantMessage =
           !isLoading && index === lastAssistantIndex && m.role === "assistant";
 
-        // Inline editor for user message being edited
         if (
           m.role === "user" &&
           editingMessageId &&
@@ -226,7 +226,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
           return (
             <div key={m.id} className="flex w-full justify-end group/message">
               <div className="relative mb-2 max-w-[50rem] w-full">
-                <UserMessageEditor
+                <ChatMessageEditor
                   value={editingDraft}
                   onChange={(val) => setEditingDraft && setEditingDraft(val)}
                   onCancel={onEditCancel}
@@ -263,130 +263,3 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 };
 
 export default React.memo(ChatMessageList);
-
-// Editor component for inline user message editing
-function UserMessageEditor({
-  value,
-  onChange,
-  onCancel,
-  onSubmit,
-  attachments = [],
-  onAddAttachment,
-  onRemoveAttachment,
-  isLoading = false,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onCancel?: () => void;
-  onSubmit?: () => void;
-  attachments?: (Attachment | PendingAttachment)[];
-  onAddAttachment?: (file: File) => void;
-  onRemoveAttachment?: (id: string) => void;
-  isLoading?: boolean;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    // Focus and select all text
-    ta.focus();
-    ta.select();
-
-    const adjust = () => {
-      ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-    };
-    adjust();
-    const ro = new ResizeObserver(adjust);
-    ro.observe(ta);
-    return () => ro.disconnect();
-  }, []);
-
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        onSubmit?.();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel?.();
-      }
-    },
-    [onSubmit, onCancel],
-  );
-
-  const handleFilesDrop = useCallback(
-    (files: File[]) => {
-      if (!onAddAttachment) return;
-      files.forEach((file) => {
-        onAddAttachment(file);
-      });
-    },
-    [onAddAttachment]
-  );
-
-  const canSubmit = value.trim() || attachments.length > 0;
-
-  return (
-    <FileDropZone
-      onFilesDrop={handleFilesDrop}
-      disabled={isLoading}
-      className="w-full"
-    >
-      <div className="rounded-3xl bg-muted text-muted-foreground p-3">
-        {attachments.length > 0 && (
-          <div className="w-full pb-2">
-            <AttachmentPreview
-              attachments={attachments}
-              onRemove={onRemoveAttachment}
-            />
-          </div>
-        )}
-
-        <div className="w-full min-h-[40px] max-h-[200px]">
-          <textarea
-            ref={textareaRef}
-            className="w-full border-none bg-transparent px-1 text-base shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-            disabled={isLoading}
-          />
-        </div>
-        <div className="flex items-center gap-2 pt-2 justify-between">
-          <FileDropZoneTrigger asChild>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 flex-shrink-0 rounded-full p-2"
-              disabled={isLoading}
-            >
-              <Plus className="size-4" />
-            </Button>
-          </FileDropZoneTrigger>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="h-8 px-3 rounded-full border border-border hover:bg-accent text-sm"
-              onClick={onCancel}
-              disabled={isLoading}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="h-8 px-3 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
-              onClick={onSubmit}
-              disabled={!canSubmit || isLoading}
-            >
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
-    </FileDropZone>
-  );
-}
