@@ -194,7 +194,7 @@ export default function ChatPanel() {
       <div className="flex flex-row min-h-full">
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
-          {messages.length > 0 ? (
+          {!(messages.length === 0 && !chatId) ? (
             <>
               <div className="overflow-y-scroll flex-1">
                 <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
