@@ -82,6 +82,29 @@ def write_artifact(title: str, content: str) -> str:
     Returns:
         The formatted markdown artifact
     """
-    time.sleep(0.5)
 
     return content
+
+
+@tool(
+    name="Write HTML Artifact",
+    description="Create an HTML artifact (requires approval)",
+    category="content",
+    renderer="html",
+    editable_args=["html"],
+    requires_confirmation=True,
+)
+def write_html_artifact(title: str, html: str) -> str:
+    """
+    Create an HTML artifact with the given title and content.
+    This tool requires user approval before execution.
+
+    Args:
+        title: Title of the artifact
+        html: A single HTML file (CSS/JS inlined)
+
+    Returns:
+        The HTML content
+    """
+
+    return html

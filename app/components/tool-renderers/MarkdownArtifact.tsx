@@ -27,7 +27,10 @@ export function MarkdownArtifact({
 
   const handleClick = () => {
     if (!isCompleted || !toolResult) return;
-    open(id, title, <MarkdownRenderer content={toolResult} />);
+    open(id, title,
+      <div className="flex-1 overflow-auto p-4 px-8">
+        <MarkdownRenderer content={toolResult} />
+      </div>);
   };
 
   return (
