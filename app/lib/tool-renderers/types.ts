@@ -1,3 +1,5 @@
+import type { RenderPlan } from "@/lib/types/chat";
+
 export interface ToolCallRendererProps {
   toolName: string;
   toolArgs: Record<string, unknown>;
@@ -12,6 +14,10 @@ export interface ToolCallRendererProps {
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
+  // New: render plan from toolset tools
+  renderPlan?: RenderPlan;
+  // Chat context for workspace access
+  chatId?: string;
 }
 
 export type ToolCallRenderer = React.ComponentType<ToolCallRendererProps>;

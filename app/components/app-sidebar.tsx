@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusIcon, Settings, Wrench } from "lucide-react";
+import { Package, PlusIcon, Settings, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -156,6 +156,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             >
               <Wrench className="size-4" />
               Tools
+            </button>
+            <button
+              className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={() => router.push("/toolsets")}
+            >
+              <Package className="size-4" />
+              Toolsets
             </button>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"

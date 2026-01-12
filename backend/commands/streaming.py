@@ -23,6 +23,7 @@ from ..services.file_storage import (
     save_attachment_from_base64,
 )
 from ..services.tool_registry import get_tool_registry
+from ..services.toolset_executor import get_toolset_executor
 from ..services import stream_broadcaster as broadcaster
 
 import logging
@@ -60,6 +61,28 @@ def extract_error_message(error_content: str) -> str:
         pass
 
     return error_content
+
+
+def is_toolset_tool(tool_name: str) -> bool:
+    return (
+        ":" in tool_name
+        and not tool_name.startswith("mcp:")
+        and not tool_name.startswith("-")
+    )
+
+
+def parse_tool_result(result: Any) -> dict[str, Any]:
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"result": parsed}
+        except json.JSONDecodeError:
+            return {"result": result}
+    return {"result": result}
 
 
 class BroadcastingChannel:
@@ -142,7 +165,35 @@ def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     return "", model_id
 
 
-# TODO: Add file size limit validation (e.g., 50MB per file)
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+# Allowed types for attaching files into Agno messages.
+# Note: Uploading is intentionally broader; enforcement happens at conversion time.
+AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
+    "image/*",
+    "audio/*",
+    "video/*",
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "application/json",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+]
+
+
+def is_allowed_attachment_mime(mime_type: str) -> bool:
+    if not mime_type:
+        return False
+    if mime_type.startswith("image/"):
+        return "image/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    if mime_type.startswith("audio/"):
+        return "audio/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    if mime_type.startswith("video/"):
+        return "video/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+
+
 def process_and_save_attachments(
     chat_id: str, attachments: List[AttachmentInput]
 ) -> List[Attachment]:
@@ -194,8 +245,26 @@ def load_attachments_as_agno_media(
     videos: List[Video] = []
 
     for att in attachments:
+        if att.size > MAX_ATTACHMENT_BYTES:
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): {att.size} bytes exceeds {MAX_ATTACHMENT_BYTES}"
+            )
+            continue
+
+        if not is_allowed_attachment_mime(att.mimeType):
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): MIME '{att.mimeType}' not allowed for Agno"
+            )
+            continue
+
         extension = get_extension_from_mime(att.mimeType)
         filepath = get_attachment_path(chat_id, att.id, extension)
+
+        if not filepath.exists():
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): file not found at {filepath}"
+            )
+            continue
 
         if att.type == "image":
             images.append(Image(filepath=filepath))
@@ -611,6 +680,17 @@ async def handle_content_stream(
                     flush_text()
                     flush_reasoning()
 
+                    render_plan = None
+                    if is_toolset_tool(chunk.tool.tool_name):
+                        toolset_executor = get_toolset_executor()
+                        parsed_result = parse_tool_result(chunk.tool.result)
+                        render_plan = toolset_executor.generate_render_plan(
+                            chunk.tool.tool_name,
+                            chunk.tool.tool_args or {},
+                            parsed_result,
+                            chat_id,
+                        )
+
                     tool_block = {
                         "type": "tool_call",
                         "id": chunk.tool.tool_call_id,
@@ -622,6 +702,9 @@ async def handle_content_stream(
                         "isCompleted": True,
                         "renderer": registry.get_renderer(chunk.tool.tool_name),
                     }
+
+                    if render_plan is not None:
+                        tool_block["renderPlan"] = render_plan
 
                     existing_index = next(
                         (

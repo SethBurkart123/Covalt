@@ -24,7 +24,25 @@ def run_migrations() -> None:
             chats_columns = [col["name"] for col in inspector.get_columns("chats")]
             if "starred" not in chats_columns:
                 conn.execute(
-                    text("ALTER TABLE chats ADD COLUMN starred BOOLEAN DEFAULT 0 NOT NULL")
+                    text(
+                        "ALTER TABLE chats ADD COLUMN starred BOOLEAN DEFAULT 0 NOT NULL"
+                    )
                 )
                 conn.commit()
                 logger.info("Added starred column to chats table")
+
+            # Add active_manifest_id column to chats table
+            if "active_manifest_id" not in chats_columns:
+                conn.execute(
+                    text("ALTER TABLE chats ADD COLUMN active_manifest_id TEXT")
+                )
+                conn.commit()
+                logger.info("Added active_manifest_id column to chats table")
+
+        # Add toolset_id column to mcp_servers table
+        if "mcp_servers" in existing_tables:
+            mcp_columns = [col["name"] for col in inspector.get_columns("mcp_servers")]
+            if "toolset_id" not in mcp_columns:
+                conn.execute(text("ALTER TABLE mcp_servers ADD COLUMN toolset_id TEXT"))
+                conn.commit()
+                logger.info("Added toolset_id column to mcp_servers table")

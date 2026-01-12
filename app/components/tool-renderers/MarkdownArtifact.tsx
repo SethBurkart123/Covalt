@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -10,6 +10,7 @@ import {
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
+import { useWorkspaceFile } from "@/hooks/use-workspace-file";
 
 export function MarkdownArtifact({
   toolName,
@@ -20,25 +21,49 @@ export function MarkdownArtifact({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  renderPlan,
+  chatId,
 }: ToolCallRendererProps) {
   const { open } = useArtifactPanel();
-  const title = (toolArgs.title as string) || toolName;
+
+  const filePath = renderPlan?.config?.file;
+  const shouldFetchFile = !!filePath && !!chatId && isCompleted;
+
+  const { content: fileContent, isLoading: isLoadingFile } = useWorkspaceFile(
+    shouldFetchFile ? chatId : undefined,
+    shouldFetchFile ? filePath : undefined
+  );
+
+  const title = (toolArgs.title as string) || filePath || toolName;
   const id = toolCallId || `${toolName}-${title}`;
 
+  let content = "";
+  if (filePath && fileContent) {
+    content = fileContent;
+  } else if (renderPlan?.config?.content) {
+    content = String(renderPlan.config.content);
+  } else if (toolResult) {
+    content = toolResult;
+  }
+
   const handleClick = () => {
-    if (!isCompleted || !toolResult) return;
+    if (!isCompleted) return;
+    if (shouldFetchFile && isLoadingFile) return;
+    if (!content) return;
     open(id, title,
       <div className="flex-1 overflow-auto p-4 px-8">
-        <MarkdownRenderer content={toolResult} />
+        <MarkdownRenderer content={content} />
       </div>);
   };
+
+  const isLoading = !isCompleted || (shouldFetchFile && isLoadingFile);
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted}
+      shimmer={isLoading}
       disableToggle
       data-toolcall
     >
@@ -48,8 +73,8 @@ export function MarkdownArtifact({
           <span className="text-sm font-medium text-foreground">
             {title}
           </span>
-          {!isCompleted && (
-            <span className="text-xs text-muted-foreground">generating...</span>
+          {isLoading && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>
       </CollapsibleTrigger>

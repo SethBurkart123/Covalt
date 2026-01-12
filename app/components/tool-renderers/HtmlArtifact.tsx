@@ -1,4 +1,4 @@
-import { Code2 } from "lucide-react";
+import { Code2, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -8,18 +8,35 @@ import {
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 
-function buildHtml(html: string): string {
+/**
+ * Build a complete HTML document, optionally injecting data as window.__TOOL_DATA__
+ */
+function buildHtml(html: string, data?: unknown): string {
   const trimmed = html.trim();
   const hasHtmlTag = /<html[\s>]/i.test(trimmed);
   const hasDoctype = /<!doctype\s+html>/i.test(trimmed);
 
-  if (hasHtmlTag || hasDoctype) return trimmed;
+  // Create the data injection script
+  const dataScript = data !== undefined
+    ? `<script>window.__TOOL_DATA__ = ${JSON.stringify(data)};</script>\n`
+    : "";
+
+  if (hasHtmlTag || hasDoctype) {
+    // Inject data script before </head> or at start of <body>
+    if (/<\/head>/i.test(trimmed)) {
+      return trimmed.replace(/<\/head>/i, `${dataScript}</head>`);
+    } else if (/<body[^>]*>/i.test(trimmed)) {
+      return trimmed.replace(/(<body[^>]*>)/i, `$1\n${dataScript}`);
+    }
+    return trimmed;
+  }
 
   return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    ${dataScript}
   </head>
   <body>
 ${trimmed}
@@ -27,10 +44,19 @@ ${trimmed}
 </html>`;
 }
 
-function HtmlArtifactContent({ html }: { html: string }) {
-  const htmlContent = buildHtml(html);
+function HtmlArtifactContent({ html, data }: { html: string; data?: unknown }) {
+  const htmlContent = buildHtml(html, data);
   const blobUrl = URL.createObjectURL(new Blob([htmlContent], { type: "text/html" }));
-  return <iframe src={blobUrl} className="w-full h-full flex-1" style={{ height: "75vh" }} referrerPolicy="no-referrer" title="HTML Artifact" />;
+  return (
+    <iframe 
+      src={blobUrl} 
+      className="w-full h-full flex-1" 
+      style={{ height: "75vh" }} 
+      referrerPolicy="no-referrer" 
+      title="HTML Artifact"
+      sandbox="allow-scripts allow-same-origin"
+    />
+  );
 }
 
 export function HtmlArtifact({
@@ -42,27 +68,38 @@ export function HtmlArtifact({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  renderPlan,
+  chatId: _chatId,
 }: ToolCallRendererProps) {
   const { open } = useArtifactPanel();
 
   const title = (toolArgs.title as string) || toolName;
   const id = toolCallId || `${toolName}-${title}`;
 
-  const html = typeof toolResult === "string" && toolResult.length > 0
-    ? toolResult
-    : (toolArgs.html as string) || "";
+  let html = "";
+  if (typeof renderPlan?.config?.content === "string" && renderPlan.config.content.length > 0) {
+    html = renderPlan.config.content;
+  } else if (typeof toolResult === "string" && toolResult.length > 0) {
+    html = toolResult;
+  } else {
+    html = (toolArgs.html as string) || "";
+  }
+
+  const dataToInject = renderPlan?.config?.data;
 
   const handleClick = () => {
     if (!isCompleted || !html) return;
-    open(id, title, <HtmlArtifactContent html={html} />);
+    open(id, title, <HtmlArtifactContent html={html} data={dataToInject} />);
   };
+
+  const isLoading = !isCompleted;
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted}
+      shimmer={isLoading}
       disableToggle
       data-toolcall
     >
@@ -70,8 +107,8 @@ export function HtmlArtifact({
         <CollapsibleHeader>
           <CollapsibleIcon icon={Code2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
-          {!isCompleted && (
-            <span className="text-xs text-muted-foreground">generating...</span>
+          {isLoading && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>
       </CollapsibleTrigger>

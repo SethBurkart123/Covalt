@@ -1,0 +1,513 @@
+"""
+Toolset Executor - handles execution of Python tools from toolsets.
+
+This module:
+- Loads Python tool modules from installed toolsets
+- Creates agno Function wrappers for toolset tools
+- Manages workspace materialize → execute → snapshot cycle
+- Persists tool call records
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import json
+import logging
+import re
+import sys
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable
+
+from agno.tools.function import Function
+
+from ..db import db_session
+from ..db.models import Tool, ToolCall, ToolRenderConfig, Toolset
+from .toolset_manager import get_toolset_directory
+from .workspace_manager import WorkspaceManager, get_workspace_manager
+
+logger = logging.getLogger(__name__)
+
+
+class ToolsetExecutor:
+    """
+    Executes Python tools from installed toolsets.
+
+    Handles:
+    - Loading Python modules from toolset directories
+    - Creating agno Function wrappers
+    - Workspace lifecycle (materialize/snapshot)
+    - Tool call persistence
+    """
+
+    def __init__(self) -> None:
+        self._loaded_tools: dict[str, tuple[Callable, str]] = {}
+        self._tool_metadata: dict[str, dict[str, Any]] = {}
+
+    def _load_tool_module(self, toolset_id: str, entrypoint: str) -> Callable | None:
+        """
+        Load a Python function from a toolset module.
+
+        Args:
+            toolset_id: Toolset ID
+            entrypoint: Module:function string (e.g., "tools.files:write_file")
+
+        Returns:
+            The function, or None if loading fails
+        """
+        try:
+            if ":" not in entrypoint:
+                logger.error(f"Invalid entrypoint format: {entrypoint}")
+                return None
+
+            module_path, func_name = entrypoint.rsplit(":", 1)
+
+            toolset_dir = get_toolset_directory(toolset_id)
+            if not toolset_dir.exists():
+                logger.error(f"Toolset directory not found: {toolset_dir}")
+                return None
+
+            rel_path = module_path.replace(".", "/") + ".py"
+            module_file = toolset_dir / rel_path
+
+            if not module_file.exists():
+                logger.error(f"Module file not found: {module_file}")
+                return None
+
+            module_name = f"toolset_{toolset_id}_{module_path.replace('.', '_')}"
+
+            spec = importlib.util.spec_from_file_location(module_name, module_file)
+            if spec is None or spec.loader is None:
+                logger.error(f"Failed to create module spec for {module_file}")
+                return None
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            if not hasattr(module, func_name):
+                logger.error(f"Function '{func_name}' not found in {module_file}")
+                return None
+
+            return getattr(module, func_name)
+
+        except Exception as e:
+            logger.error(f"Failed to load tool module {entrypoint}: {e}")
+            return None
+
+    def _get_tool_from_db(self, tool_id: str) -> dict[str, Any] | None:
+        """Get tool info from database."""
+        if tool_id in self._tool_metadata:
+            return self._tool_metadata[tool_id]
+
+        with db_session() as session:
+            tool = session.query(Tool).filter(Tool.tool_id == tool_id).first()
+            if tool is None:
+                return None
+
+            render_config = (
+                session.query(ToolRenderConfig)
+                .filter(ToolRenderConfig.tool_id == tool_id)
+                .order_by(ToolRenderConfig.priority.desc())
+                .first()
+            )
+
+            metadata = {
+                "tool_id": tool.tool_id,
+                "toolset_id": tool.toolset_id,
+                "name": tool.name,
+                "description": tool.description,
+                "category": tool.category,
+                "input_schema": json.loads(tool.input_schema)
+                if tool.input_schema
+                else None,
+                "requires_confirmation": tool.requires_confirmation,
+                "enabled": tool.enabled,
+                "entrypoint": tool.entrypoint,
+                "render_config": {
+                    "renderer": render_config.renderer,
+                    "config": json.loads(render_config.config),
+                }
+                if render_config
+                else None,
+            }
+
+            self._tool_metadata[tool_id] = metadata
+            return metadata
+
+    def get_tool_function(self, tool_id: str, chat_id: str) -> Function | None:
+        """
+        Get an agno Function wrapper for a toolset tool.
+
+        The wrapper handles:
+        - Workspace materialization before execution
+        - Injecting workspace path into the tool function
+        - Snapshotting workspace after execution
+        - Recording the tool call
+
+        Args:
+            tool_id: Tool ID (e.g., "app-builder:write_file")
+            chat_id: Chat ID for workspace context
+
+        Returns:
+            agno Function object, or None if tool not found
+        """
+        tool_info = self._get_tool_from_db(tool_id)
+        if tool_info is None:
+            return None
+
+        toolset_id = tool_info.get("toolset_id")
+        entrypoint = tool_info.get("entrypoint")
+
+        if not toolset_id or not entrypoint:
+            logger.warning(f"Tool {tool_id} has no toolset or entrypoint")
+            return None
+
+        cache_key = f"{toolset_id}:{entrypoint}"
+        if cache_key not in self._loaded_tools:
+            fn = self._load_tool_module(toolset_id, entrypoint)
+            if fn is None:
+                return None
+            self._loaded_tools[cache_key] = (fn, toolset_id)
+
+        tool_fn, _ = self._loaded_tools[cache_key]
+
+        async def toolset_tool_entrypoint(**kwargs: Any) -> str:
+            return await self._execute_tool(
+                tool_id=tool_id,
+                tool_fn=tool_fn,
+                chat_id=chat_id,
+                args=kwargs,
+            )
+
+        toolset_tool_entrypoint.__name__ = tool_id
+        toolset_tool_entrypoint.__doc__ = tool_info.get("description", "")
+
+        return Function(
+            name=tool_id,
+            description=tool_info.get("description"),
+            parameters=tool_info.get("input_schema")
+            or {"type": "object", "properties": {}},
+            entrypoint=toolset_tool_entrypoint,
+            skip_entrypoint_processing=True,
+            requires_confirmation=tool_info.get("requires_confirmation", False),
+        )
+
+    async def _execute_tool(
+        self,
+        tool_id: str,
+        tool_fn: Callable,
+        chat_id: str,
+        args: dict[str, Any],
+    ) -> str:
+        """
+        Execute a tool with workspace lifecycle management.
+
+        1. Materialize workspace to current manifest
+        2. Execute tool function
+        3. Snapshot workspace
+        4. Record tool call
+        5. Return result
+        """
+        workspace_manager = get_workspace_manager(chat_id)
+        tool_call_id = str(uuid.uuid4())
+        started_at = datetime.now().isoformat()
+
+        # Record tool call as pending
+        pre_manifest_id = workspace_manager.get_active_manifest_id()
+        self._record_tool_call(
+            tool_call_id=tool_call_id,
+            chat_id=chat_id,
+            tool_id=tool_id,
+            args=args,
+            status="running",
+            started_at=started_at,
+            pre_manifest_id=pre_manifest_id,
+        )
+
+        try:
+            workspace_manager.materialize()
+            workspace_path = workspace_manager.workspace_dir
+
+            if asyncio.iscoroutinefunction(tool_fn):
+                result = await tool_fn(workspace=workspace_path, **args)
+            else:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None, lambda: tool_fn(workspace=workspace_path, **args)
+                )
+
+            if not isinstance(result, dict):
+                result = {"result": result}
+
+            post_manifest_id = workspace_manager.snapshot(
+                source="tool_run",
+                source_ref=tool_call_id,
+            )
+
+            render_plan = self._generate_render_plan(tool_id, args, result, chat_id)
+
+            self._update_tool_call(
+                tool_call_id=tool_call_id,
+                status="success",
+                result=result,
+                render_plan=render_plan,
+                post_manifest_id=post_manifest_id,
+            )
+
+            return json.dumps(result, indent=2)
+
+        except Exception as e:
+            logger.error(f"Tool execution failed for {tool_id}: {e}")
+
+            try:
+                post_manifest_id = workspace_manager.snapshot(
+                    source="tool_run",
+                    source_ref=tool_call_id,
+                )
+            except Exception:
+                post_manifest_id = None
+
+            self._update_tool_call(
+                tool_call_id=tool_call_id,
+                status="error",
+                error=str(e),
+                post_manifest_id=post_manifest_id,
+            )
+
+            return f"Error executing tool: {e}"
+
+    def _record_tool_call(
+        self,
+        tool_call_id: str,
+        chat_id: str,
+        tool_id: str,
+        args: dict[str, Any],
+        status: str,
+        started_at: str,
+        pre_manifest_id: str | None = None,
+        message_id: str | None = None,
+    ) -> None:
+        """Record a tool call in the database."""
+        with db_session() as session:
+            tool_call = ToolCall(
+                id=tool_call_id,
+                chat_id=chat_id,
+                message_id=message_id or "",
+                tool_id=tool_id,
+                args=json.dumps(args),
+                status=status,
+                started_at=started_at,
+                pre_manifest_id=pre_manifest_id,
+            )
+            session.add(tool_call)
+            session.commit()
+
+    def _update_tool_call(
+        self,
+        tool_call_id: str,
+        status: str,
+        result: dict[str, Any] | None = None,
+        render_plan: dict[str, Any] | None = None,
+        error: str | None = None,
+        post_manifest_id: str | None = None,
+    ) -> None:
+        """Update a tool call record."""
+        with db_session() as session:
+            tool_call = (
+                session.query(ToolCall).filter(ToolCall.id == tool_call_id).first()
+            )
+            if tool_call:
+                tool_call.status = status
+                tool_call.finished_at = datetime.now().isoformat()
+                if result is not None:
+                    tool_call.result = json.dumps(result)
+                if render_plan is not None:
+                    tool_call.render_plan = json.dumps(render_plan)
+                if error is not None:
+                    tool_call.error = error
+                if post_manifest_id is not None:
+                    tool_call.post_manifest_id = post_manifest_id
+                session.commit()
+
+    def generate_render_plan(
+        self,
+        tool_id: str,
+        args: dict[str, Any],
+        result: dict[str, Any],
+        chat_id: str,
+    ) -> dict[str, Any] | None:
+        """Public wrapper to generate render plans for toolset tools."""
+        return self._generate_render_plan(tool_id, args, result, chat_id)
+
+    def _generate_render_plan(
+        self,
+        tool_id: str,
+        args: dict[str, Any],
+        result: dict[str, Any],
+        chat_id: str,
+    ) -> dict[str, Any] | None:
+        """
+        Generate a render plan for a tool call result.
+
+        Applies interpolation to the render config.
+        """
+        tool_info = self._get_tool_from_db(tool_id)
+        if not tool_info or not tool_info.get("render_config"):
+            return None
+
+        render_config = tool_info["render_config"]
+        config = render_config.get("config", {})
+
+        context = {
+            "args": args,
+            "return": result,
+            "chat_id": chat_id,
+            "workspace": str(get_workspace_manager(chat_id).workspace_dir),
+            "toolset": str(get_toolset_directory(tool_info.get("toolset_id", ""))),
+        }
+
+        interpolated_config = self._interpolate(config, context)
+
+        renderer_type = render_config["renderer"]
+        if renderer_type == "html" and "artifact" in interpolated_config:
+            artifact_path = interpolated_config["artifact"]
+            html_content = self._load_artifact_content(
+                tool_info.get("toolset_id", ""), artifact_path
+            )
+            if html_content:
+                interpolated_config["content"] = html_content
+
+        return {
+            "renderer": renderer_type,
+            "config": interpolated_config,
+        }
+
+    def _interpolate(self, obj: Any, context: dict[str, Any]) -> Any:
+        """
+        Recursively interpolate $var expressions in config.
+
+        Supports:
+        - $args.name -> context["args"]["name"]
+        - $return.path -> context["return"]["path"]
+        - $chat_id -> context["chat_id"]
+        - $workspace -> context["workspace"]
+        - $toolset -> context["toolset"]
+        """
+        if isinstance(obj, str):
+            return self._interpolate_string(obj, context)
+        elif isinstance(obj, dict):
+            return {k: self._interpolate(v, context) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._interpolate(item, context) for item in obj]
+        return obj
+
+    def _interpolate_string(self, s: str, context: dict[str, Any]) -> Any:
+        """Interpolate a single string value."""
+        if s.startswith("$") and "." not in s[1:] and s[1:] in context:
+            return context[s[1:]]
+
+        if s.startswith("$"):
+            parts = s[1:].split(".", 1)
+            var_name = parts[0]
+
+            if var_name in context:
+                value = context[var_name]
+                if len(parts) > 1 and isinstance(value, dict):
+                    path_parts = parts[1].split(".")
+                    for part in path_parts:
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        else:
+                            return s
+                return value
+
+        def replace_var(match: re.Match) -> str:
+            var_expr = match.group(1)
+            parts = var_expr.split(".", 1)
+            var_name = parts[0]
+
+            if var_name in context:
+                value = context[var_name]
+                if len(parts) > 1 and isinstance(value, dict):
+                    path_parts = parts[1].split(".")
+                    for part in path_parts:
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        else:
+                            return match.group(0)
+                return str(value)
+            return match.group(0)
+
+        return re.sub(r"\$(\w+(?:\.\w+)*)", replace_var, s)
+
+    def _load_artifact_content(self, toolset_id: str, artifact_path: str) -> str | None:
+        """
+        Load HTML artifact content from a toolset's artifact directory.
+
+        Args:
+            toolset_id: The toolset ID
+            artifact_path: Path to the artifact (e.g., "artifacts/quiz.html")
+
+        Returns:
+            The HTML content as a string, or None if not found
+        """
+        if not toolset_id:
+            return None
+
+        try:
+            toolset_dir = get_toolset_directory(toolset_id)
+            if artifact_path.startswith(str(toolset_dir)):
+                full_path = Path(artifact_path)
+            else:
+                full_path = toolset_dir / artifact_path
+
+            if full_path.exists() and full_path.is_file():
+                return full_path.read_text(encoding="utf-8")
+
+            logger.warning(f"Artifact not found: {full_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to load artifact {artifact_path}: {e}")
+            return None
+
+    def list_toolset_tools(self) -> list[dict[str, Any]]:
+        """List all enabled tools from installed toolsets."""
+        with db_session() as session:
+            tools = (
+                session.query(Tool)
+                .join(Toolset)
+                .filter(Tool.enabled.is_(True), Toolset.enabled.is_(True))
+                .all()
+            )
+
+            return [
+                {
+                    "id": t.tool_id,
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category or t.toolset_id,
+                    "requires_confirmation": t.requires_confirmation,
+                    "toolset_id": t.toolset_id,
+                }
+                for t in tools
+            ]
+
+    def clear_cache(self) -> None:
+        """Clear loaded modules and metadata cache."""
+        self._loaded_tools.clear()
+        self._tool_metadata.clear()
+
+
+# Singleton instance
+_toolset_executor: ToolsetExecutor | None = None
+
+
+def get_toolset_executor() -> ToolsetExecutor:
+    """Get the global toolset executor instance."""
+    global _toolset_executor
+    if _toolset_executor is None:
+        _toolset_executor = ToolsetExecutor()
+    return _toolset_executor

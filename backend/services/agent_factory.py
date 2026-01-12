@@ -41,33 +41,26 @@ def create_agent_for_chat(
         RuntimeError: If agent configuration is invalid or missing required keys
     """
 
-    # Load agent configuration from database
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
-            # Use default config if not set
             config = db.get_default_agent_config()
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
-    # Extract configuration
     provider = config.get("provider", "openai")
     model_id = config.get("model_id")
     instructions = config.get("instructions", [])
     name = config.get("name", "Assistant")
     description = config.get("description", "You are a helpful AI assistant.")
 
-    # Get model instance
     if not model_id:
         raise RuntimeError("Model ID is required in agent configuration")
     model = get_model(provider, model_id)
 
-    # Get tool instances
     tool_registry = get_tool_registry()
-    tools = tool_registry.resolve_tool_ids(tool_ids) if tool_ids else []
-
-    # Create agent instance
-    # NOTE: We use Agno's InMemoryDb for run state tracking (required for HITL)
-    # but our own SQLAlchemy DB for message persistence
+    tools = (
+        tool_registry.resolve_tool_ids(tool_ids, chat_id=chat_id) if tool_ids else []
+    )
     agent = Agent(
         name=name,
         model=model,
