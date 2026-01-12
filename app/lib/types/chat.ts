@@ -41,6 +41,24 @@ export interface UploadingAttachment extends Omit<Attachment, "data"> {
   previewUrl?: string; // blob URL for local preview (images only)
 }
 
+// Render plan from toolset tool execution
+export interface RenderPlan {
+  renderer: "code" | "document" | "html" | "frame" | string;
+  config: {
+    // For code/document renderers
+    file?: string; // file path in workspace
+    content?: string; // direct content
+    language?: string;
+    editable?: boolean;
+    // For html renderer
+    artifact?: string; // path to HTML template
+    data?: unknown; // data to inject as window.__TOOL_DATA__
+    // For frame renderer
+    url?: string;
+    port?: number;
+  };
+}
+
 export type ContentBlock =
   | { type: "text"; content: string }
   | {
@@ -56,6 +74,8 @@ export type ContentBlock =
       toolCallId?: string;
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
       editableArgs?: string[] | boolean;
+      // New: render plan from toolset tools
+      renderPlan?: RenderPlan;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string };

@@ -4,7 +4,9 @@ Tool Registry for managing available tools.
 Provides a unified @tool decorator that wraps agno's @tool while also
 registering tools with a centralized registry for UI display and activation.
 
-Also integrates with MCP servers to provide MCP tools alongside builtin tools.
+Integrates with:
+- MCP servers to provide MCP tools
+- Toolset executor to provide Python toolset tools
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from agno.tools import tool as agno_tool
 
 if TYPE_CHECKING:
     from .mcp_manager import MCPManager
+    from .toolset_executor import ToolsetExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -116,19 +119,17 @@ class ToolRegistry:
 
         return None
 
-    def _parse_tool_id(
-        self, tool_id: str
-    ) -> tuple[str, str | None, str | None]:
+    def _parse_tool_id(self, tool_id: str) -> tuple[str, str | None, str | None]:
         """
-        Parse tool ID into (type, server_id, tool_name).
+        Parse tool ID into (type, namespace, tool_name).
 
         Examples:
             "calculate" → ("builtin", None, "calculate")
             "mcp:github" → ("mcp_toolset", "github", None)
             "mcp:github:search" → ("mcp_tool", "github", "search")
+            "app-builder:write_file" → ("toolset_tool", "app-builder", "write_file")
             "-mcp:github:x" → ("blacklist", "github", "x")
         """
-        # Handle blacklist
         if tool_id.startswith("-"):
             inner = tool_id[1:]
             if inner.startswith("mcp:"):
@@ -137,20 +138,22 @@ class ToolRegistry:
                     return ("blacklist", parts[1], parts[2])
             return ("blacklist", None, inner)
 
-        # Handle MCP tools
         if tool_id.startswith("mcp:"):
             parts = tool_id.split(":", 2)
             if len(parts) == 2:
-                # mcp:server_id - whole toolset
                 return ("mcp_toolset", parts[1], None)
             elif len(parts) == 3:
-                # mcp:server_id:tool_name - specific tool
                 return ("mcp_tool", parts[1], parts[2])
 
-        # Builtin tool
+        if ":" in tool_id:
+            parts = tool_id.split(":", 1)
+            return ("toolset_tool", parts[0], parts[1])
+
         return ("builtin", None, tool_id)
 
-    def resolve_tool_ids(self, tool_ids: list[str]) -> list[Any]:
+    def resolve_tool_ids(
+        self, tool_ids: list[str], chat_id: str | None = None
+    ) -> list[Any]:
         """
         Resolve tool IDs to actual Function objects.
 
@@ -158,7 +161,12 @@ class ToolRegistry:
         - Builtin tools: "calculate" → builtin Function
         - MCP toolsets: "mcp:github" → all tools from github server
         - MCP individual: "mcp:github:search" → specific MCP tool
+        - Toolset tools: "app-builder:write_file" → Python toolset tool
         - Blacklist: "-mcp:github:create_issue" → exclude from toolset
+
+        Args:
+            tool_ids: List of tool IDs to resolve
+            chat_id: Chat ID for toolset tools (required for workspace context)
 
         Returns list of agno Function objects ready to pass to Agent.
         """
@@ -167,20 +175,23 @@ class ToolRegistry:
         include_builtin: set[str] = set()
         include_mcp_toolsets: set[str] = set()
         include_mcp_tools: set[tuple[str, str]] = set()  # (server_id, tool_name)
-        blacklist: set[tuple[str, str]] = set()  # (server_id, tool_name)
+        include_toolset_tools: set[str] = set()
+        blacklist: set[tuple[str, str]] = set()
 
         for tool_id in tool_ids:
             parsed = self._parse_tool_id(tool_id)
-            tool_type, server_id, tool_name = parsed
+            tool_type, namespace, tool_name = parsed
 
             if tool_type == "builtin" and tool_name:
                 include_builtin.add(tool_name)
-            elif tool_type == "mcp_toolset" and server_id:
-                include_mcp_toolsets.add(server_id)
-            elif tool_type == "mcp_tool" and server_id and tool_name:
-                include_mcp_tools.add((server_id, tool_name))
-            elif tool_type == "blacklist" and server_id and tool_name:
-                blacklist.add((server_id, tool_name))
+            elif tool_type == "mcp_toolset" and namespace:
+                include_mcp_toolsets.add(namespace)
+            elif tool_type == "mcp_tool" and namespace and tool_name:
+                include_mcp_tools.add((namespace, tool_name))
+            elif tool_type == "toolset_tool" and namespace and tool_name:
+                include_toolset_tools.add(tool_id)
+            elif tool_type == "blacklist" and namespace and tool_name:
+                blacklist.add((namespace, tool_name))
 
         result: list[Any] = []
 
@@ -209,6 +220,17 @@ class ToolRegistry:
                     if fn:
                         result.append(fn)
 
+        if include_toolset_tools and chat_id:
+            executor = get_toolset_executor()
+            for tool_id in include_toolset_tools:
+                fn = executor.get_tool_function(tool_id, chat_id)
+                if fn:
+                    result.append(fn)
+        elif include_toolset_tools and not chat_id:
+            logger.warning(
+                f"Toolset tools requested but no chat_id provided: {include_toolset_tools}"
+            )
+
         return result
 
     def list_builtin_tools(self) -> list[dict[str, Any]]:
@@ -217,6 +239,11 @@ class ToolRegistry:
             {"id": tool_id, **self._metadata.get(tool_id, {})}
             for tool_id in self._tools.keys()
         ]
+
+    def list_toolset_tools(self) -> list[dict[str, Any]]:
+        """Return all enabled toolset tools for UI display."""
+        executor = get_toolset_executor()
+        return executor.list_toolset_tools()
 
 
 _tool_registry: ToolRegistry | None = None
@@ -227,6 +254,13 @@ def get_mcp_manager() -> "MCPManager":
     from .mcp_manager import get_mcp_manager as _get_mcp_manager
 
     return _get_mcp_manager()
+
+
+def get_toolset_executor() -> "ToolsetExecutor":
+    """Get the toolset executor (lazy import to avoid circular deps)."""
+    from .toolset_executor import get_toolset_executor as _get_toolset_executor
+
+    return _get_toolset_executor()
 
 
 def get_tool_registry() -> ToolRegistry:

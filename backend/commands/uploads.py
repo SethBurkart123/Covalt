@@ -63,24 +63,11 @@ class DeletePendingRequest(BaseModel):
     mimeType: str
 
 
-# 50MB max file size
+# 50MB max file size (upload safety cap; Agno attachment rules enforced later)
 MAX_FILE_SIZE = "50MB"
 
-# Allowed file types
-ALLOWED_TYPES = [
-    "image/*",
-    "audio/*",
-    "video/*",
-    "application/pdf",
-    "text/plain",
-    "text/csv",
-    "application/json",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/msword",
-]
 
-
-@upload(max_size=MAX_FILE_SIZE, allowed_types=ALLOWED_TYPES)
+@upload(max_size=MAX_FILE_SIZE)
 async def upload_attachment(
     file: UploadFile,
     id: str,

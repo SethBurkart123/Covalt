@@ -56,6 +56,7 @@ class MCPServerState:
     env: dict[str, str] | None = None
     requires_confirmation: bool = True
     tool_overrides: dict[str, Any] | None = None
+    toolset_id: str | None = None  # Toolset this server belongs to (if any)
     status: ServerStatus = "disconnected"
     error: str | None = None
     tools: list[MCPTool] = field(default_factory=list)
@@ -78,6 +79,7 @@ def _db_row_to_state(row: McpServer) -> MCPServerState:
         env=json.loads(row.env) if row.env else None,
         requires_confirmation=row.requires_confirmation,
         tool_overrides=json.loads(row.tool_overrides) if row.tool_overrides else None,
+        toolset_id=row.toolset_id,
     )
 
 
@@ -178,7 +180,9 @@ class MCPManager:
                     env=json.dumps(state.env) if state.env else None,
                     requires_confirmation=state.requires_confirmation,
                     tool_overrides=(
-                        json.dumps(state.tool_overrides) if state.tool_overrides else None
+                        json.dumps(state.tool_overrides)
+                        if state.tool_overrides
+                        else None
                     ),
                     created_at=datetime.now().isoformat(),
                 )
@@ -212,9 +216,41 @@ class MCPManager:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
             self._initialized = True
-            logger.info(
-                f"MCP Manager initialized with {len(self._servers)} server(s)"
-            )
+            logger.info(f"MCP Manager initialized with {len(self._servers)} server(s)")
+
+    async def reload_from_db(self) -> list[str]:
+        """
+        Reload servers from database, connecting any new ones.
+
+        Used when toolsets add new MCP servers to the database.
+
+        Returns:
+            List of newly connected server IDs
+        """
+        async with self._lock:
+            db_servers = self._load_servers_from_db()
+            new_server_ids: list[str] = []
+
+            for server_id, state in db_servers.items():
+                if server_id not in self._servers:
+                    self._servers[server_id] = state
+                    new_server_ids.append(server_id)
+
+            tasks = []
+            for server_id in new_server_ids:
+                state = self._servers[server_id]
+                if state.enabled:
+                    state.status = "connecting"
+                    self._notify_status_change(server_id, "connecting", None, 0)
+                    tasks.append(self._connect_server(server_id))
+
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            if new_server_ids:
+                logger.info(f"Loaded {len(new_server_ids)} new MCP server(s) from DB")
+
+            return new_server_ids
 
     def _set_status(
         self, server_id: str, status: ServerStatus, error: str | None = None
@@ -225,7 +261,10 @@ class MCPManager:
             state.status = status
             state.error = error
             self._notify_status_change(
-                server_id, status, error, len(state.tools) if status == "connected" else 0
+                server_id,
+                status,
+                error,
+                len(state.tools) if status == "connected" else 0,
             )
 
     async def _connect_server(self, server_id: str) -> None:
@@ -306,9 +345,10 @@ class MCPManager:
 
         async def run_connection():
             try:
-                async with sse_client(
-                    state.url or "", headers=state.headers
-                ) as (read, write):
+                async with sse_client(state.url or "", headers=state.headers) as (
+                    read,
+                    write,
+                ):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         state.session = session
@@ -414,6 +454,33 @@ class MCPManager:
         state.session = None
         state.tools = []
 
+    async def disconnect_toolset_servers(self, toolset_id: str) -> list[str]:
+        """
+        Disconnect all MCP servers that belong to a toolset.
+
+        Used when a toolset is disabled or uninstalled.
+
+        Args:
+            toolset_id: The toolset ID whose servers should be disconnected
+
+        Returns:
+            List of disconnected server IDs
+        """
+        disconnected: list[str] = []
+
+        for server_id, state in list(self._servers.items()):
+            if state.toolset_id == toolset_id:
+                await self.disconnect(server_id)
+                disconnected.append(server_id)
+
+        if disconnected:
+            logger.info(
+                f"Disconnected {len(disconnected)} MCP server(s) "
+                f"from toolset '{toolset_id}'"
+            )
+
+        return disconnected
+
     def get_servers(self) -> list[dict[str, Any]]:
         """
         Return all servers with status for UI.
@@ -446,25 +513,27 @@ class MCPManager:
             )
         return result
 
-    def get_server_config(self, server_id: str, sanitize: bool = True) -> dict[str, Any] | None:
+    def get_server_config(
+        self, server_id: str, sanitize: bool = True
+    ) -> dict[str, Any] | None:
         """
         Get a single server's config, optionally with sanitized env vars.
-        
+
         Args:
             server_id: Server ID to get config for
             sanitize: If True, replace env var values with "***"
-        
+
         Returns:
             Config dict or None if server not found
         """
         state = self._servers.get(server_id)
         if not state:
             return None
-        
+
         config = _state_to_config_dict(state)
         if sanitize and "env" in config:
             config["env"] = {k: "***" for k in config["env"].keys()}
-        
+
         return config
 
     def get_server_tools(self, server_id: str) -> list[dict[str, Any]]:
@@ -564,8 +633,7 @@ class MCPManager:
 
         if state.status != "connected" or not state.session:
             raise RuntimeError(
-                f"MCP server {server_id} is not connected "
-                f"(status: {state.status})"
+                f"MCP server {server_id} is not connected (status: {state.status})"
             )
 
         try:

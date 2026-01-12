@@ -106,7 +106,6 @@ function ChatMessage({
     };
   }, [isStreaming, content]);
 
-  // Always show actions if we have a message (Copy is always available)
   const showActions = !!message;
   
   return (
@@ -141,7 +140,6 @@ function ChatMessage({
           >
             {Array.isArray(content) && (
               <>
-                {/* Show indicator when run started but no content yet */}
                 {content.length === 1 &&
                 content[0].type === "text" &&
                 content[0].content === "" &&
@@ -158,7 +156,6 @@ function ChatMessage({
                       for (let i = 0; i < blocks.length; i++) {
                         const block = blocks[i];
 
-                        // Check if this is a text block
                         if (block.type === "text") {
                           const text = block.content;
                           if (text && text.trim() !== "") {
@@ -204,7 +201,6 @@ function ChatMessage({
                           continue;
                         }
 
-                        // For tool_call or reasoning blocks, check if we can group with consecutive ones
                         if (
                           block.type === "tool_call" ||
                           block.type === "reasoning"
@@ -213,7 +209,6 @@ function ChatMessage({
                           const group: ContentBlock[] = [];
                           let j = i;
 
-                          // Gather consecutive tool_call/reasoning blocks (allowing whitespace text in between)
                           while (j < blocks.length) {
                             const b = blocks[j];
                             if (
@@ -251,6 +246,8 @@ function ChatMessage({
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}
+                                  renderPlan={b.renderPlan}
+                                  chatId={chatId}
                                 />
                               );
                             } else if (b.type === "reasoning") {
@@ -270,7 +267,6 @@ function ChatMessage({
                             return null;
                           });
 
-                          // Render single item standalone, or multiple items in a grouped container
                           if (group.length === 1) {
                             rendered.push(groupItems[0]);
                           } else if (group.length > 1) {

@@ -1,5 +1,5 @@
 import React from "react";
-import { FileCode2, Copy, Check } from "lucide-react";
+import { FileCode2, Copy, Check, Loader2 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import { useTheme } from "@/contexts/theme-context";
 import {
@@ -11,6 +11,7 @@ import {
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
+import { useWorkspaceFile } from "@/hooks/use-workspace-file";
 
 function extensionToLanguage(ext?: string): string | undefined {
   if (!ext) return undefined;
@@ -171,32 +172,56 @@ export function CodeArtifact({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  renderPlan,
+  chatId,
 }: ToolCallRendererProps) {
   const { open } = useArtifactPanel();
+
+  const filePath = renderPlan?.config?.file;
+  const shouldFetchFile = !!filePath && !!chatId && isCompleted;
+
+  const { content: fileContent, isLoading: isLoadingFile } = useWorkspaceFile(
+    shouldFetchFile ? chatId : undefined,
+    shouldFetchFile ? filePath : undefined
+  );
 
   const title =
     (toolArgs.title as string) ||
     (toolArgs.filename as string) ||
+    filePath ||
     toolName;
   const id = toolCallId || `${toolName}-${title}`;
 
-  const code = typeof toolResult === "string" && toolResult.length > 0
-    ? toolResult
-    : (toolArgs.code as string) || "";
+  let code = "";
+  if (filePath && fileContent) {
+    code = fileContent;
+  } else if (renderPlan?.config?.content) {
+    code = String(renderPlan.config.content);
+  } else if (typeof toolResult === "string" && toolResult.length > 0) {
+    code = toolResult;
+  } else {
+    code = (toolArgs.code as string) || "";
+  }
 
-  const language = inferLanguage(toolArgs);
+  const language = renderPlan?.config?.language === "auto" 
+    ? inferLanguage({ ...toolArgs, filename: filePath })
+    : (renderPlan?.config?.language || inferLanguage(toolArgs));
 
   const handleClick = () => {
-    if (!isCompleted || !code) return;
+    if (!isCompleted) return;
+    if (shouldFetchFile && isLoadingFile) return;
+    if (!code) return;
     open(id, title, <CodeViewer code={code} language={language} />);
   };
+
+  const isLoading = !isCompleted || (shouldFetchFile && isLoadingFile);
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted}
+      shimmer={isLoading}
       disableToggle
       data-toolcall
     >
@@ -205,8 +230,8 @@ export function CodeArtifact({
           <CollapsibleIcon icon={FileCode2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
           <span className="text-xs text-muted-foreground">{language}</span>
-          {!isCompleted && (
-            <span className="text-xs text-muted-foreground">generating...</span>
+          {isLoading && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>
       </CollapsibleTrigger>

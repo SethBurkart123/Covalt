@@ -183,7 +183,7 @@ async def update_chat_model(body: UpdateChatModelInput) -> None:
 @command
 async def get_available_tools() -> AvailableToolsResponse:
     """
-    Get all available tools (builtin and MCP).
+    Get all available tools (builtin, MCP, and toolset).
 
     Returns:
         Response with:
@@ -238,11 +238,21 @@ async def get_available_tools() -> AvailableToolsResponse:
         if server["status"] == "connected":
             all_mcp_tools.extend(tools)
 
-    all_tools = builtin_tools + all_mcp_tools
+    toolset_data = tool_registry.list_toolset_tools()
+    toolset_tools = [
+        ToolInfo(
+            id=tool["id"],
+            name=tool.get("name"),
+            description=tool.get("description"),
+            category=tool.get("category") or tool.get("toolset_id"),
+            requires_confirmation=tool.get("requires_confirmation", False),
+        )
+        for tool in toolset_data
+    ]
 
-    return AvailableToolsResponse(
-        tools=all_tools
-    )
+    all_tools = builtin_tools + all_mcp_tools + toolset_tools
+
+    return AvailableToolsResponse(tools=all_tools)
 
 
 @command
@@ -313,6 +323,5 @@ async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
     extension = get_extension_from_mime(body.mimeType)
     file_bytes = load_attachment(body.chatId, body.attachmentId, extension)
     return AttachmentDataResponse(
-        data=base64.b64encode(file_bytes).decode("utf-8"),
-        mimeType=body.mimeType
+        data=base64.b64encode(file_bytes).decode("utf-8"), mimeType=body.mimeType
     )
