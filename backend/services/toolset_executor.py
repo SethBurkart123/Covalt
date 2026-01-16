@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from agno.tools.function import Function
 
+from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolRenderConfig, Toolset
 from .toolset_manager import get_toolset_directory
@@ -137,7 +138,9 @@ class ToolsetExecutor:
             self._tool_metadata[tool_id] = metadata
             return metadata
 
-    def get_tool_function(self, tool_id: str, chat_id: str) -> Function | None:
+    def get_tool_function(
+        self, tool_id: str, chat_id: str, message_id: str | None = None
+    ) -> Function | None:
         """
         Get an agno Function wrapper for a toolset tool.
 
@@ -150,6 +153,7 @@ class ToolsetExecutor:
         Args:
             tool_id: Tool ID (e.g., "app-builder:write_file")
             chat_id: Chat ID for workspace context
+            message_id: Message ID for manifest lookup (uses message tree inheritance)
 
         Returns:
             agno Function object, or None if tool not found
@@ -179,6 +183,7 @@ class ToolsetExecutor:
                 tool_id=tool_id,
                 tool_fn=tool_fn,
                 chat_id=chat_id,
+                message_id=message_id,
                 args=kwargs,
             )
 
@@ -201,22 +206,37 @@ class ToolsetExecutor:
         tool_fn: Callable,
         chat_id: str,
         args: dict[str, Any],
+        message_id: str | None = None,
     ) -> str:
         """
         Execute a tool with workspace lifecycle management.
 
-        1. Materialize workspace to current manifest
-        2. Execute tool function
-        3. Snapshot workspace
-        4. Record tool call
-        5. Return result
+        1. Get manifest from message tree (uses active leaf if no message_id)
+        2. Materialize workspace to that manifest
+        3. Execute tool function
+        4. Snapshot workspace
+        5. Update assistant message's manifest_id
+        6. Record tool call
+        7. Return result
         """
         workspace_manager = get_workspace_manager(chat_id)
         tool_call_id = str(uuid.uuid4())
         started_at = datetime.now().isoformat()
 
+        pre_manifest_id: str | None = None
+        actual_message_id = message_id
+        with db_session() as sess:
+            if not actual_message_id:
+                chat = sess.query(db.Chat).filter(db.Chat.id == chat_id).first()
+                if chat and chat.active_leaf_message_id:
+                    actual_message_id = chat.active_leaf_message_id
+
+            if actual_message_id:
+                pre_manifest_id = db.get_manifest_for_message(sess, actual_message_id)
+            else:
+                pre_manifest_id = workspace_manager.get_active_manifest_id()
+
         # Record tool call as pending
-        pre_manifest_id = workspace_manager.get_active_manifest_id()
         self._record_tool_call(
             tool_call_id=tool_call_id,
             chat_id=chat_id,
@@ -225,10 +245,11 @@ class ToolsetExecutor:
             status="running",
             started_at=started_at,
             pre_manifest_id=pre_manifest_id,
+            message_id=actual_message_id,
         )
 
         try:
-            workspace_manager.materialize()
+            workspace_manager.materialize(pre_manifest_id)
             workspace_path = workspace_manager.workspace_dir
 
             if asyncio.iscoroutinefunction(tool_fn):
@@ -246,6 +267,11 @@ class ToolsetExecutor:
                 source="tool_run",
                 source_ref=tool_call_id,
             )
+
+            # Update the assistant message's manifest if we have a message_id
+            if actual_message_id and post_manifest_id:
+                with db_session() as sess:
+                    db.set_message_manifest(sess, actual_message_id, post_manifest_id)
 
             render_plan = self._generate_render_plan(tool_id, args, result, chat_id)
 

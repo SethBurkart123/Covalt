@@ -1,10 +1,6 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import ChatMessage from "./ChatMessage";
 import { Message, MessageSibling, Attachment, PendingAttachment } from "@/lib/types/chat";
-import { AttachmentPreview } from "@/components/AttachmentPreview";
-import { FileDropZone, FileDropZoneTrigger } from "@/components/ui/file-drop-zone";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 import ChatMessageEditor from "./ChatMessageEditor";
 
 interface ChatMessageListProps {
@@ -69,22 +65,20 @@ const MessageRow = React.memo(function MessageRow({
   }, [onNavigate, message.id]);
 
   return (
-    <>
-      <ChatMessage
-        role={message.role as "user" | "assistant"}
-        content={message.content}
-        isStreaming={isStreaming}
-        message={message}
-        siblings={siblings}
-        onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
-        onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
-        onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
-        onNavigate={onNavigate ? handleNavigate : undefined}
-        isLoading={isLoading}
-        isLastAssistantMessage={isLastAssistantMessage}
-        chatId={chatId}
-      />
-    </>
+    <ChatMessage
+      role={message.role as "user" | "assistant"}
+      content={message.content}
+      isStreaming={isStreaming}
+      message={message}
+      siblings={siblings}
+      onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
+      onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
+      onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
+      onNavigate={onNavigate ? handleNavigate : undefined}
+      isLoading={isLoading}
+      isLastAssistantMessage={isLastAssistantMessage}
+      chatId={chatId}
+    />
   );
 }, (prevProps, nextProps) => {
   return (
@@ -155,10 +149,8 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
       if (distanceFromBottom > 70) {
-        // console.log('not at bottom');
         isAtBottomRef.current = false;
       } else if (distanceFromBottom < 50) {
-        // console.log('at bottom');
         isAtBottomRef.current = true;
       }
     };
@@ -202,7 +194,6 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     (m) => m.role === "user" || m.role === "assistant",
   );
 
-  // Find the last assistant message index
   const lastAssistantIndex = filteredMessages.reduce((lastIdx, m, idx) => {
     return m.role === "assistant" ? idx : lastIdx;
   }, -1);

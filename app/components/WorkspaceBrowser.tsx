@@ -60,7 +60,6 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
     }
   }
 
-  // Sort: directories first, then files, alphabetically
   const sortNodes = (nodes: FileTreeNode[]): FileTreeNode[] => {
     return nodes.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) {

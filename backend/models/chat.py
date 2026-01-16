@@ -110,6 +110,8 @@ class ChatEvent(BaseModel):
     error: Optional[str] = None
     # For seeding existing content blocks on continuation
     blocks: Optional[List[Dict[str, Any]]] = None
+    # For file rename notifications (original_name -> final_name after collision handling)
+    fileRenames: Optional[Dict[str, str]] = None
 
 
 class ToolApprovalResponse(BaseModel):
@@ -153,6 +155,7 @@ class MCPToolsetInfo(BaseModel):
 
 class AvailableToolsResponse(BaseModel):
     tools: List[ToolInfo] = Field(default_factory=list)
+
 
 class ModelInfo(BaseModel):
     provider: str

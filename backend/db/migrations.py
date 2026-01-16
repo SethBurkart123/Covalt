@@ -46,3 +46,13 @@ def run_migrations() -> None:
                 conn.execute(text("ALTER TABLE mcp_servers ADD COLUMN toolset_id TEXT"))
                 conn.commit()
                 logger.info("Added toolset_id column to mcp_servers table")
+
+        # Add manifest_id column to messages table (for branch-aware workspace)
+        if "messages" in existing_tables:
+            messages_columns = [
+                col["name"] for col in inspector.get_columns("messages")
+            ]
+            if "manifest_id" not in messages_columns:
+                conn.execute(text("ALTER TABLE messages ADD COLUMN manifest_id TEXT"))
+                conn.commit()
+                logger.info("Added manifest_id column to messages table")

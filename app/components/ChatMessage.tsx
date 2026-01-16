@@ -42,7 +42,6 @@ function ChatMessage({
 }: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Effect to place the cursor indicator at the end of streaming text
   useEffect(() => {
     if (!contentRef.current) return;
 
@@ -51,14 +50,12 @@ function ChatMessage({
     );
     existingIndicators.forEach((el) => el.remove());
 
-    // Show cursor indicator if streaming and has content
     const hasContent =
       typeof content === "string"
         ? content !== ""
         : Array.isArray(content) && content.length > 0;
 
     if (isStreaming && hasContent) {
-      // Find the last text node
       const walker = document.createTreeWalker(
         contentRef.current,
         NodeFilter.SHOW_TEXT,
@@ -251,7 +248,6 @@ function ChatMessage({
                                 />
                               );
                             } else if (b.type === "reasoning") {
-                              // reasoning block
                               return (
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
@@ -321,17 +317,14 @@ function ChatMessage({
 }
 
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
-  // If streaming status changed, re-render
   if (prevProps.isStreaming !== nextProps.isStreaming) {
     return false;
   }
   
-  // If this message is currently streaming, always re-render to show updates
   if (nextProps.isStreaming) {
     return false;
   }
   
-  // If not streaming, compare other props
   return (
     prevProps.role === nextProps.role &&
     prevProps.content === nextProps.content &&

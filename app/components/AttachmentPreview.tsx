@@ -88,6 +88,7 @@ const AttachmentItem = memo<{
         chatId,
         attachmentId: attachment.id,
         mimeType: attachment.mimeType,
+        name: attachment.name,
       },
     })
       .then((response) => {

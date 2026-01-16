@@ -363,6 +363,132 @@ class WorkspaceManager:
         self.set_active_manifest_id(manifest_id)
         return manifest_id
 
+    def add_files(
+        self,
+        files: list[tuple[str, bytes]],
+        parent_manifest_id: str | None = None,
+        source: str = "user_upload",
+        source_ref: str | None = None,
+        set_active: bool = True,
+        inherit_active: bool = False,
+    ) -> tuple[str, dict[str, str]]:
+        """
+        Add multiple files to workspace with collision handling.
+
+        Files are added at the workspace root. If a filename already exists,
+        it's renamed with a numeric suffix (e.g., data.csv -> data_1.csv).
+
+        Args:
+            files: List of (filename, content) tuples
+            parent_manifest_id: Parent manifest to branch from (None = start fresh)
+            source: Source type for manifest
+            source_ref: Optional reference (message_id, etc.)
+            set_active: Whether to set this as the active manifest
+            inherit_active: If True and parent_manifest_id is None, inherit from
+                active manifest. If False, None means start with empty manifest.
+
+        Returns:
+            Tuple of (new_manifest_id, rename_map)
+            rename_map: {original_name: final_name} - only includes renamed files
+        """
+        if parent_manifest_id is None and inherit_active:
+            parent_manifest_id = self.get_active_manifest_id()
+
+        current_files: dict[str, str] = {}
+        if parent_manifest_id:
+            manifest = self.get_manifest(parent_manifest_id)
+            if manifest:
+                current_files = manifest["files"].copy()
+
+        rename_map: dict[str, str] = {}
+
+        for original_name, content in files:
+            final_name = self._resolve_collision(original_name, current_files)
+
+            if final_name != original_name:
+                rename_map[original_name] = final_name
+                logger.info(
+                    f"Renamed '{original_name}' -> '{final_name}' due to collision"
+                )
+
+            # Store in blob storage only - don't write directly to workspace
+            # The workspace will be materialized from the manifest
+            file_hash = self.store_file(content)
+            current_files[final_name] = file_hash
+
+        # Create new manifest
+        manifest_id = self.create_manifest(
+            files=current_files,
+            parent_id=parent_manifest_id,
+            source=source,
+            source_ref=source_ref,
+        )
+
+        if set_active:
+            self.set_active_manifest_id(manifest_id)
+            # Materialize workspace to ensure it matches the new manifest exactly
+            # This clears any stale files and copies fresh from blob storage
+            self.materialize(manifest_id)
+
+        logger.info(
+            f"Added {len(files)} files to workspace, "
+            f"{len(rename_map)} renamed, manifest {manifest_id[:8]}..."
+        )
+
+        return manifest_id, rename_map
+
+    def _resolve_collision(self, filename: str, existing_files: dict[str, str]) -> str:
+        """
+        Resolve filename collision by adding numeric suffix.
+
+        Args:
+            filename: Original filename (e.g., "data.csv")
+            existing_files: Dict of existing file paths
+
+        Returns:
+            Final filename, possibly with suffix (e.g., "data_1.csv")
+        """
+        if filename not in existing_files:
+            return filename
+
+        # Split into base and extension
+        if "." in filename:
+            base, ext = filename.rsplit(".", 1)
+            ext = "." + ext
+        else:
+            base = filename
+            ext = ""
+
+        # Find next available number
+        counter = 1
+        while True:
+            candidate = f"{base}_{counter}{ext}"
+            if candidate not in existing_files:
+                return candidate
+            counter += 1
+
+    def read_file_from_manifest(self, manifest_id: str, rel_path: str) -> bytes | None:
+        """
+        Read a file's content from a specific manifest (via blob storage).
+
+        Args:
+            manifest_id: Manifest ID
+            rel_path: Relative path in the manifest
+
+        Returns:
+            File content, or None if not found
+        """
+        manifest = self.get_manifest(manifest_id)
+        if not manifest:
+            return None
+
+        files = manifest["files"]
+        if rel_path not in files:
+            return None
+
+        file_hash = files[rel_path]
+        return self.get_blob(file_hash)
+
     def list_files(self) -> list[str]:
         """List all files in the current workspace."""
         return [

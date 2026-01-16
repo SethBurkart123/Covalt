@@ -16,13 +16,11 @@ function buildHtml(html: string, data?: unknown): string {
   const hasHtmlTag = /<html[\s>]/i.test(trimmed);
   const hasDoctype = /<!doctype\s+html>/i.test(trimmed);
 
-  // Create the data injection script
   const dataScript = data !== undefined
     ? `<script>window.__TOOL_DATA__ = ${JSON.stringify(data)};</script>\n`
     : "";
 
   if (hasHtmlTag || hasDoctype) {
-    // Inject data script before </head> or at start of <body>
     if (/<\/head>/i.test(trimmed)) {
       return trimmed.replace(/<\/head>/i, `${dataScript}</head>`);
     } else if (/<body[^>]*>/i.test(trimmed)) {
