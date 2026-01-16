@@ -147,7 +147,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-full before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
+      <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-[calc(100%-1px)] before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
         <SidebarMenu className="space-y-2">
           <SidebarMenuItem>
             <button
