@@ -248,7 +248,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
           />
         );
       })}
-      <div ref={endOfMessagesRef} className="h-8 -mt-" />
+      <div ref={endOfMessagesRef} className="h-8" />
     </>
   );
 };

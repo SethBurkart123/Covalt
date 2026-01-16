@@ -3,8 +3,6 @@
 import * as React from "react";
 import { getBaseUrl } from "@/python/_internal";
 
-// ============ Types ============
-
 export interface McpServerStatus {
   id: string;
   status: "connecting" | "connected" | "error" | "disconnected";
@@ -16,18 +14,10 @@ interface McpServersSnapshot {
   servers: McpServerStatus[];
 }
 
-// ============ Helpers ============
-
-/**
- * Convert snake_case to camelCase for a single key
- */
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-/**
- * Convert object keys from snake_case to camelCase
- */
 function convertKeysToCamelCase<T>(obj: unknown): T {
   if (Array.isArray(obj)) {
     return obj.map((item) => convertKeysToCamelCase<T>(item)) as T;
@@ -45,27 +35,26 @@ function convertKeysToCamelCase<T>(obj: unknown): T {
 
 type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error";
 
-// ============ Context ============
+type WorkspaceFilesChangedCallback = (
+  chatId: string,
+  changedPaths: string[],
+  deletedPaths: string[]
+) => void;
 
 interface WebSocketContextType {
-  /** Current WebSocket connection status */
   status: WebSocketStatus;
-  /** All MCP servers with their current status */
   mcpServers: McpServerStatus[];
-  /** Whether the WebSocket is connected */
   isConnected: boolean;
-  /** Manually reconnect the WebSocket */
   reconnect: () => void;
+  onWorkspaceFilesChanged: (callback: WorkspaceFilesChangedCallback) => () => void;
 }
 
 const WebSocketContext = React.createContext<WebSocketContextType | undefined>(
   undefined
 );
 
-// ============ Provider ============
-
-const RECONNECT_DELAY = 3000; // 3 seconds
-const PING_INTERVAL = 30000; // 30 seconds
+const RECONNECT_DELAY = 3000;
+const PING_INTERVAL = 30000;
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<WebSocketStatus>("disconnected");
@@ -75,9 +64,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
   const mountedRef = React.useRef(true);
+  const workspaceCallbacksRef = React.useRef<Set<WorkspaceFilesChangedCallback>>(
+    new Set()
+  );
 
   const connect = React.useCallback(() => {
-    // Don't connect if already connected or connecting
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
       wsRef.current?.readyState === WebSocket.CONNECTING
@@ -96,7 +87,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         console.log("[WebSocket] Connected to events");
         setStatus("connected");
 
-        // Start ping interval to keep connection alive
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ event: "ping", data: {} }));
@@ -138,7 +128,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     (message: { event: string; data: unknown }) => {
       switch (message.event) {
         case "mcp_servers": {
-          // Full snapshot of all servers (convert snake_case to camelCase)
           const snapshot = convertKeysToCamelCase<McpServersSnapshot>(
             message.data
           );
@@ -146,7 +135,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           break;
         }
         case "mcp_status": {
-          // Single server status update (convert snake_case to camelCase)
           const update = convertKeysToCamelCase<McpServerStatus>(message.data);
           setMcpServers((prev) => {
             const existing = prev.find((s) => s.id === update.id);
@@ -155,6 +143,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             }
             return [...prev, update];
           });
+          break;
+        }
+        case "workspace_files_changed": {
+          const data = convertKeysToCamelCase<{
+            chatId: string;
+            changedPaths: string[];
+            deletedPaths: string[];
+          }>(message.data);
+          workspaceCallbacksRef.current.forEach((cb) =>
+            cb(data.chatId, data.changedPaths, data.deletedPaths)
+          );
           break;
         }
         default:
@@ -184,32 +183,36 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [connect]);
 
   const reconnect = React.useCallback(() => {
-    // Close existing connection
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
     cleanup();
-    // Clear any pending reconnect
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    // Connect immediately
     connect();
   }, [connect, cleanup]);
 
-  // Connect on mount
+  const onWorkspaceFilesChanged = React.useCallback(
+    (callback: WorkspaceFilesChangedCallback) => {
+      workspaceCallbacksRef.current.add(callback);
+      return () => {
+        workspaceCallbacksRef.current.delete(callback);
+      };
+    },
+    []
+  );
+
   React.useEffect(() => {
     mountedRef.current = true;
 
-    // Small delay to ensure bridge is initialized
     const timeout = setTimeout(() => {
       try {
-        getBaseUrl(); // Will throw if not initialized
+        getBaseUrl();
         connect();
       } catch {
-        // Bridge not initialized yet, retry later
         scheduleReconnect();
       }
     }, 100);
@@ -234,8 +237,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       mcpServers,
       isConnected: status === "connected",
       reconnect,
+      onWorkspaceFilesChanged,
     }),
-    [status, mcpServers, reconnect]
+    [status, mcpServers, reconnect, onWorkspaceFilesChanged]
   );
 
   return (
@@ -245,8 +249,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ============ Hooks ============
-
 export function useWebSocket() {
   const context = React.useContext(WebSocketContext);
   if (context === undefined) {
@@ -255,10 +257,6 @@ export function useWebSocket() {
   return context;
 }
 
-/**
- * Hook to get MCP server status.
- * Convenience wrapper around useWebSocket for MCP-specific use cases.
- */
 export function useMcpStatus() {
   const { mcpServers, isConnected } = useWebSocket();
   return { mcpServers, isConnected };

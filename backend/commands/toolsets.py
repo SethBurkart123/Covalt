@@ -151,6 +151,21 @@ class WorkspaceManifestResponse(BaseModel):
     source: str
 
 
+class UpdateWorkspaceFileRequest(BaseModel):
+    """Request to update/create a file in the workspace."""
+
+    chat_id: str
+    path: str
+    content: str  # Base64 encoded
+
+
+class UpdateWorkspaceFileResponse(BaseModel):
+    """Response after updating a workspace file."""
+
+    manifest_id: str
+    path: str
+
+
 # =============================================================================
 # Toolset Commands
 # =============================================================================
@@ -421,4 +436,53 @@ async def get_workspace_manifest(
         files=manifest["files"],
         created_at=manifest.get("created_at"),
         source=manifest["source"],
+    )
+
+
+@command
+async def update_workspace_file(
+    body: UpdateWorkspaceFileRequest,
+) -> UpdateWorkspaceFileResponse:
+    """
+    Update or create a file in a chat's workspace.
+
+    Creates a new manifest with source="edit" and updates the chat's
+    active_manifest_id. The file is written to the workspace directory
+    and stored in blob storage.
+
+    Args:
+        body: Contains chat ID, file path, and base64-encoded content
+
+    Returns:
+        New manifest ID and the file path
+    """
+    manager = get_workspace_manager(body.chat_id)
+
+    # Decode base64 content
+    try:
+        content = base64.b64decode(body.content)
+    except Exception as e:
+        raise ValueError(f"Invalid base64 content: {e}")
+
+    # Check file size (5MB limit for editable files)
+    max_size = 5 * 1024 * 1024  # 5MB
+    if len(content) > max_size:
+        raise ValueError(f"File too large: {len(content)} bytes (max {max_size})")
+
+    # Add/update the file in workspace, creating a new manifest
+    manifest_id = manager.add_file(
+        rel_path=body.path,
+        content=content,
+        source="edit",
+        source_ref=None,
+    )
+
+    logger.info(
+        f"Updated workspace file '{body.path}' in chat {body.chat_id[:8]}..., "
+        f"new manifest {manifest_id[:8]}..."
+    )
+
+    return UpdateWorkspaceFileResponse(
+        manifest_id=manifest_id,
+        path=body.path,
     )

@@ -40,6 +40,14 @@ class McpServersSnapshot(BaseModel):
     servers: List[McpServerStatus]
 
 
+class WorkspaceFilesChanged(BaseModel):
+    """Notification that workspace files have changed."""
+
+    chat_id: str
+    changed_paths: List[str]  # Paths that were modified/created
+    deleted_paths: List[str]  # Paths that were deleted
+
+
 class Ping(BaseModel):
     """Client ping to keep connection alive."""
 
@@ -51,6 +59,7 @@ class ServerEvents:
 
     mcp_status: McpServerStatus
     mcp_servers: McpServersSnapshot
+    workspace_files_changed: WorkspaceFilesChanged
 
 
 class ClientEvents:
@@ -95,6 +104,32 @@ async def _broadcast_mcp_status(
                     await client.send("mcp_status", status_update)
             except Exception as e:
                 logger.debug(f"Failed to send to client: {e}")
+                disconnected.append(client)
+
+        for client in disconnected:
+            _connected_clients.discard(client)
+
+
+async def broadcast_workspace_files_changed(
+    chat_id: str,
+    changed_paths: list[str],
+    deleted_paths: list[str],
+) -> None:
+    """Broadcast workspace file changes to all connected clients."""
+    event = WorkspaceFilesChanged(
+        chat_id=chat_id,
+        changed_paths=changed_paths,
+        deleted_paths=deleted_paths,
+    )
+
+    async with _clients_lock:
+        disconnected = []
+        for client in _connected_clients:
+            try:
+                if client.is_connected:
+                    await client.send("workspace_files_changed", event)
+            except Exception as e:
+                logger.debug(f"Failed to send workspace change to client: {e}")
                 disconnected.append(client)
 
         for client in disconnected:
@@ -159,4 +194,3 @@ async def events(ws: EventsWebSocket) -> None:
         async with _clients_lock:
             _connected_clients.discard(ws)
         logger.debug("Events WebSocket client disconnected")
-

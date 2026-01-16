@@ -18,10 +18,6 @@ import { useStreaming } from "@/contexts/streaming-context";
 import { groupChatsByTimePeriod } from "@/lib/utils/chat-grouping";
 import { ChatItem } from "@/components/ChatItem";
 
-/**
- * Sidebar that shows all stored chats and offers
- * a "New Chat" button. Uses the central ChatContext for data.
- */
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter();
   const {
@@ -173,19 +169,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </button>
           </SidebarMenuItem>
         </SidebarMenu>
-
-        {/* <div className="flex justify-between items-center w-full">
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <button
-              className="p-3 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              aria-label="Settings"
-              onClick={() => router.push('/settings')}
-            >
-              <Settings className="size-4" />
-            </button>
-          </div>
-        </div> */}
       </SidebarFooter>
     </Sidebar>
   );

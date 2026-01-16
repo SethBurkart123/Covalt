@@ -8,34 +8,47 @@ import { useTheme } from '@/contexts/theme-context';
 import { Check, Copy } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { Checkbox } from '@/components/ui/checkbox';
+import type { Components } from 'react-markdown';
 
-// Memoized components for better performance
-const MemoizedComponents = {
-  h1: memo(({node, ...props}: any) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />),
-  h2: memo(({node, ...props}: any) => <h2 className="scroll-m-20 border-b pb-2 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />),
-  h3: memo(({node, ...props}: any) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />),
-  h4: memo(({node, ...props}: any) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />),
-  p: memo(({node, ...props}: any) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />),
-  blockquote: memo(({node, ...props}: any) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />),
-  ul: memo(({node, ...props}: any) => <ul className="!my-1 list-disc pl-[1.625em]" {...props} />),
-  ol: memo(({node, ...props}: any) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />),
-  table: memo(({node, ...props}: any) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>),
-  th: memo(({node, ...props}: any) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
-  td: memo(({node, ...props}: any) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
-  a: memo(({node, ...props}: any) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />),
-  pre: memo(({node, ...props}: any) => <pre {...props} />),
-  img: memo(({node, ...props}: any) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />),
-  hr: memo(({node, ...props}: any) => <hr className="!my-8" {...props} />),
-  input: memo(({node, className, type, checked, ...props}: any) => {
+interface MarkdownNodeProps {
+  node?: unknown;
+  className?: string;
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+const MemoizedComponents: Components = {
+  h1: memo(({ className, ...props }: MarkdownNodeProps) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />),
+  h2: memo(({ className, ...props }: MarkdownNodeProps) => <h2 className="scroll-m-20 border-b pb-2 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />),
+  h3: memo(({ className, ...props }: MarkdownNodeProps) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />),
+  h4: memo(({ className, ...props }: MarkdownNodeProps) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />),
+  p: memo(({ className, ...props }: MarkdownNodeProps) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />),
+  blockquote: memo(({ className, ...props }: MarkdownNodeProps) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />),
+  ul: memo(({ className, ...props }: MarkdownNodeProps) => <ul className="!my-1 list-disc pl-[1.625em]" {...props} />),
+  ol: memo(({ className, ...props }: MarkdownNodeProps) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />),
+  table: memo(({ className, ...props }: MarkdownNodeProps) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>),
+  th: memo(({ className, ...props }: MarkdownNodeProps) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
+  td: memo(({ className, ...props }: MarkdownNodeProps) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
+  a: memo(({ className, ...props }: MarkdownNodeProps) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />),
+  pre: memo(({ className, ...props }: MarkdownNodeProps) => <pre {...props} />),
+  img: memo(({ className, ...props }: MarkdownNodeProps) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />),
+  hr: memo(({ className, ...props }: MarkdownNodeProps) => <hr className="!my-8" {...props} />),
+  input: memo(({ className, type, checked, ...props }: MarkdownNodeProps) => {
     if (type === 'checkbox') {
-      return <Checkbox checked={!!checked} className={`mr-2 ${className}`} disabled />;
+      return <Checkbox checked={!!checked} className={`mr-2 ${className || ''}`} disabled />;
     }
-    return <input type={type} className={className} {...props} />;
+    return <input type={type as string} className={className} {...props} />;
   }),
 };
 
-// @ts-expect-error: props never read
-const CodeBlock = memo(({ node, inline, className, children, ...props }: any) => {
+interface CodeBlockProps {
+  node?: { parent?: { type?: string; tagName?: string } };
+  inline?: boolean;
+  className?: string;
+  children: React.ReactElement<{ children?: string; className?: string }>;
+}
+
+const CodeBlock = memo(({ node, children }: CodeBlockProps) => {
   const codeElement = children as React.ReactElement<{ children?: string }>;
 
   const [copied, setCopied] = React.useState(false);
@@ -100,7 +113,13 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: any) =>
           code={codeString}
           language={language || 'text'}
         >
-          {({ className, style, tokens, getLineProps, getTokenProps }: any) => (
+          {({ className, style, tokens, getLineProps, getTokenProps }: {
+            className: string;
+            style: React.CSSProperties;
+            tokens: Array<Array<{ types: string[]; content: string }>>;
+            getLineProps: (props: { line: Array<{ types: string[]; content: string }> }) => React.HTMLAttributes<HTMLDivElement>;
+            getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
+          }) => (
             <pre className={className} style={{
               ...style,
               margin: 0,
@@ -108,9 +127,9 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: any) =>
               borderRadius: '0.5rem',
               fontSize: '0.875rem'
             }}>
-              {tokens.map((line: any, i: number) => (
+              {tokens.map((line, i) => (
                 <div key={i} {...getLineProps({ line })}>
-                  {line.map((token: any, key: number) => (
+                  {line.map((token, key) => (
                     <span key={key} {...getTokenProps({ token })} />
                   ))}
                 </div>
@@ -123,7 +142,7 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: any) =>
   );
 });
 
-const InlineCode = memo(({ node, className, children, ...props }: any) => {
+const InlineCode = memo(({ className, children, ...props }: MarkdownNodeProps) => {
   return (
     <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
       {children}
@@ -131,7 +150,6 @@ const InlineCode = memo(({ node, className, children, ...props }: any) => {
   );
 });
 
-// Main Renderer Component with progressive rendering always on
 function MarkdownRendererInner({ 
   content, 
   fontSize = "1rem",
@@ -143,41 +161,31 @@ function MarkdownRendererInner({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Memoized components object
   const components = useMemo(() => ({
     ...MemoizedComponents,
     pre: CodeBlock,
-    code: ({ node, ...props }: any) => {
-      // Don't render InlineCode if we're inside a pre block
-      const parent = node?.parent;
+    code: ({ node, ...props }: MarkdownNodeProps) => {
+      const parent = (node as { parent?: { type?: string; tagName?: string } })?.parent;
       if (parent?.type === 'element' && parent?.tagName === 'pre') {
         return <code {...props} />;
       }
-      return <InlineCode node={node} {...props} />;
+      return <InlineCode {...props} />;
     },
   }), []);
   
-  // Memoized plugins array with our progressive plugin
   const remarkPlugins = useMemo(() => [
     remarkGfm,
     remarkMath
   ], []);
 
-  // Animation effect
   useEffect(() => {
     if (animateContent && containerRef.current) {
-      // Small delay to let DOM update with new content
-      if (containerRef.current) {
-        // Set initial state for all direct children
-        const elements = containerRef.current.querySelectorAll('.prose > *');
-
-        // Animate them in with stagger
-        animate(
-          elements,
-          { y: [20, 0], opacity: [0, 1] },
-          { delay: stagger(0.05), type: spring, bounce: 0.17, duration: 0.55 }
-        );
-      }
+      const elements = containerRef.current.querySelectorAll('.prose > *');
+      animate(
+        elements,
+        { y: [20, 0], opacity: [0, 1] },
+        { delay: stagger(0.05), type: spring, bounce: 0.17, duration: 0.55 }
+      );
     }
   }, [animateContent, content]);
   

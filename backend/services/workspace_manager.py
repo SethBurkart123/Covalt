@@ -81,10 +81,8 @@ class WorkspaceManager:
         # Store a file
         file_hash = manager.store_file(content)
 
-        # Create a manifest from current workspace
         manifest_id = manager.snapshot(source="tool_run", source_ref="tool_call_123")
 
-        # Materialize workspace to a specific manifest
         manager.materialize(manifest_id)
     """
 
@@ -169,6 +167,47 @@ class WorkspaceManager:
                 "source": manifest.source,
                 "source_ref": manifest.source_ref,
             }
+
+    def diff_manifests(
+        self,
+        pre_manifest_id: str | None,
+        post_manifest_id: str | None,
+    ) -> tuple[list[str], list[str]]:
+        """
+        Compare two manifests and return changed and deleted file paths.
+
+        Args:
+            pre_manifest_id: Manifest ID before changes (can be None)
+            post_manifest_id: Manifest ID after changes (can be None)
+
+        Returns:
+            Tuple of (changed_paths, deleted_paths)
+        """
+        pre_files: dict[str, str] = {}
+        post_files: dict[str, str] = {}
+
+        if pre_manifest_id:
+            pre_manifest = self.get_manifest(pre_manifest_id)
+            if pre_manifest:
+                pre_files = pre_manifest["files"]
+
+        if post_manifest_id:
+            post_manifest = self.get_manifest(post_manifest_id)
+            if post_manifest:
+                post_files = post_manifest["files"]
+
+        changed: list[str] = []
+        deleted: list[str] = []
+
+        for path, file_hash in post_files.items():
+            if path not in pre_files or pre_files[path] != file_hash:
+                changed.append(path)
+
+        for path in pre_files:
+            if path not in post_files:
+                deleted.append(path)
+
+        return changed, deleted
 
     def get_active_manifest_id(self) -> str | None:
         """Get the active manifest ID for this chat."""
@@ -412,7 +451,6 @@ class WorkspaceManager:
                 )
 
             # Store in blob storage only - don't write directly to workspace
-            # The workspace will be materialized from the manifest
             file_hash = self.store_file(content)
             current_files[final_name] = file_hash
 
@@ -426,8 +464,6 @@ class WorkspaceManager:
 
         if set_active:
             self.set_active_manifest_id(manifest_id)
-            # Materialize workspace to ensure it matches the new manifest exactly
-            # This clears any stale files and copies fresh from blob storage
             self.materialize(manifest_id)
 
         logger.info(

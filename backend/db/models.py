@@ -130,7 +130,6 @@ class McpServer(Base):
     # Metadata
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    # Link to toolset (if this server was added by a toolset)
     toolset_id: Mapped[Optional[str]] = mapped_column(
         String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=True
     )
@@ -249,9 +248,7 @@ class WorkspaceManifest(Base):
     # JSON: {path: sha256, ...}
     files: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Source: "user_upload", "tool_run", "branch", "edit", "initial"
     source: Mapped[str] = mapped_column(String, default="initial", nullable=False)
-    # Reference to message_id or tool_call_id that created this manifest
     source_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 

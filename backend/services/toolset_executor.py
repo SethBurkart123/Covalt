@@ -249,7 +249,6 @@ class ToolsetExecutor:
         )
 
         try:
-            workspace_manager.materialize(pre_manifest_id)
             workspace_path = workspace_manager.workspace_dir
 
             if asyncio.iscoroutinefunction(tool_fn):
@@ -268,7 +267,6 @@ class ToolsetExecutor:
                 source_ref=tool_call_id,
             )
 
-            # Update the assistant message's manifest if we have a message_id
             if actual_message_id and post_manifest_id:
                 with db_session() as sess:
                     db.set_message_manifest(sess, actual_message_id, post_manifest_id)
@@ -282,6 +280,22 @@ class ToolsetExecutor:
                 render_plan=render_plan,
                 post_manifest_id=post_manifest_id,
             )
+
+            if pre_manifest_id or post_manifest_id:
+                changed_paths, deleted_paths = workspace_manager.diff_manifests(
+                    pre_manifest_id, post_manifest_id
+                )
+                if changed_paths or deleted_paths:
+                    try:
+                        from ..commands.events import broadcast_workspace_files_changed
+
+                        asyncio.create_task(
+                            broadcast_workspace_files_changed(
+                                chat_id, changed_paths, deleted_paths
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to broadcast workspace changes: {e}")
 
             return json.dumps(result, indent=2)
 

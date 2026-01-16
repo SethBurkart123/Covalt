@@ -14,9 +14,7 @@ export interface ToolCallRendererProps {
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
-  // New: render plan from toolset tools
   renderPlan?: RenderPlan;
-  // Chat context for workspace access
   chatId?: string;
 }
 

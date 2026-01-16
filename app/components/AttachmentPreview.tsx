@@ -19,7 +19,7 @@ interface AttachmentPreviewProps {
   onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
   readonly?: boolean;
-  chatId?: string; // For loading saved attachments from backend
+  chatId?: string;
 }
 
 function formatFileSize(bytes: number): string {

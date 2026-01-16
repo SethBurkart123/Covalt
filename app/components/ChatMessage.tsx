@@ -62,9 +62,7 @@ function ChatMessage({
         {
           acceptNode: (node) => {
             if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
-            const parentEl = (
-              node as unknown as ChildNode & { parentElement: Element | null }
-            ).parentElement;
+            const parentEl = (node as ChildNode & { parentElement: Element | null }).parentElement;
             if (parentEl && parentEl.closest("[data-toolcall]")) {
               return NodeFilter.FILTER_REJECT;
             }
@@ -223,7 +221,7 @@ function ChatMessage({
                             break;
                           }
 
-                          i = j - 1; // for-loop will increment
+                          i = j - 1;
 
                           const groupItems = group.map((b, idx) => {
                             if (b.type === "tool_call") {

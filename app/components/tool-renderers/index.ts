@@ -11,3 +11,4 @@ registerToolCallRenderer("html", HtmlArtifact);
 registerToolCallRenderer("code", CodeArtifact);
 
 export { DefaultToolCall, MarkdownArtifact, HtmlArtifact, CodeArtifact };
+export { EditableCodeViewer } from "./EditableCodeViewer";
