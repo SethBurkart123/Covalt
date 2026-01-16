@@ -89,6 +89,7 @@ async def continue_message(
 ) -> None:
     """Continue incomplete assistant message by creating a sibling branch."""
     existing_blocks: List[Dict[str, Any]] = []
+    original_msg_id: Optional[str] = None
 
     with db.db_session() as sess:
         if body.modelId:
@@ -167,6 +168,10 @@ async def continue_message(
         )
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
+        original_msg_id = original_msg.id
+
+    # Materialize to original message's state so we continue from where it left off
+    db.materialize_to_branch(body.chatId, original_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(
@@ -226,6 +231,7 @@ async def retry_message(
     body: RetryMessageRequest,
 ) -> None:
     """Create sibling message and retry generation."""
+    parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
@@ -282,6 +288,11 @@ async def retry_message(
         )
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
+        parent_msg_id = original_msg.parent_message_id
+
+    # Materialize workspace to parent message's state (before the original attempt)
+    if parent_msg_id:
+        db.materialize_to_branch(body.chatId, parent_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
@@ -451,8 +462,7 @@ async def edit_user_message(
                 user_msg.manifest_id = manifest_id
                 sess.commit()
 
-        # Don't materialize yet - we'll do it once after creating the assistant message
-        db.set_active_leaf(sess, body.chatId, new_user_msg_id, materialize=False)
+        db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
         chat_messages = []
         for m in messages:
@@ -504,6 +514,9 @@ async def edit_user_message(
         )
 
         db.set_active_leaf(sess, body.chatId, assistant_msg_id)
+
+    # Materialize workspace to the new user message's state (branch switch)
+    db.materialize_to_branch(body.chatId, new_user_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
@@ -559,6 +572,9 @@ async def switch_to_sibling(
     with db.db_session() as sess:
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
         db.set_active_leaf(sess, body.chatId, leaf_id)
+
+    # Materialize workspace to the target branch's state
+    db.materialize_to_branch(body.chatId, leaf_id)
 
 
 @command

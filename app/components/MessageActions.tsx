@@ -42,8 +42,9 @@ export function MessageActions({
   const showSiblingNav = siblings.length > 1;
   const modelLabel =
     message.role === "assistant" &&
-    typeof (message as any).modelUsed === "string"
-      ? (message as any).modelUsed
+    "modelUsed" in message &&
+    typeof message.modelUsed === "string"
+      ? message.modelUsed
       : undefined;
 
   const handlePrevious = () => {

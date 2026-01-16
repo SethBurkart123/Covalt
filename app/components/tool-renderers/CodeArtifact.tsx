@@ -1,5 +1,5 @@
 import React from "react";
-import { FileCode2, Copy, Check, Loader2 } from "lucide-react";
+import { FileCode2, Copy, Check, Loader2, Pencil } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import { useTheme } from "@/contexts/theme-context";
 import {
@@ -11,7 +11,15 @@ import {
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
-import { useWorkspaceFile } from "@/hooks/use-workspace-file";
+import { EditableCodeViewer } from "./EditableCodeViewer";
+
+interface HighlightRenderProps {
+  className: string;
+  style: React.CSSProperties;
+  tokens: Array<Array<{ types: string[]; content: string; empty?: boolean }>>;
+  getLineProps: (props: { line: Array<{ types: string[]; content: string }> }) => React.HTMLAttributes<HTMLDivElement>;
+  getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
+}
 
 function extensionToLanguage(ext?: string): string | undefined {
   if (!ext) return undefined;
@@ -126,10 +134,10 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
           code={code.replace(/\n$/, "")}
           language={language || "text"}
         >
-          {({ className, style, tokens, getLineProps, getTokenProps }: any) => (
+          {({ className, style, tokens, getLineProps, getTokenProps }: HighlightRenderProps) => (
             <div className="flex">
               <div className="flex-shrink-0">
-                {tokens.map((_line: any, i: number) => (
+                {tokens.map((_line, i) => (
                   <div
                     key={i}
                     className="select-none text-muted-foreground px-3 py-1 text-right border-r border-border/50"
@@ -143,13 +151,13 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
                 className={cn("m-0 p-0 !bg-transparent overflow-x-scroll flex-1", className)}
                 style={style}
               >
-                {tokens.map((line: any, i: number) => (
+                {tokens.map((line, i) => (
                   <div
                     key={i}
                     {...getLineProps({ line })}
                     className="px-3 py-1"
                   >
-                    {line.map((token: any, key: number) => (
+                    {line.map((token, key) => (
                       <span key={key} {...getTokenProps({ token })} />
                     ))}
                   </div>
@@ -175,15 +183,14 @@ export function CodeArtifact({
   renderPlan,
   chatId,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { open, openFile, getFileState } = useArtifactPanel();
 
   const filePath = renderPlan?.config?.file;
-  const shouldFetchFile = !!filePath && !!chatId && isCompleted;
+  const hasFile = !!filePath && !!chatId;
 
-  const { content: fileContent, isLoading: isLoadingFile } = useWorkspaceFile(
-    shouldFetchFile ? chatId : undefined,
-    shouldFetchFile ? filePath : undefined
-  );
+  const fileState = filePath ? getFileState(filePath) : undefined;
+  const fileContent = fileState?.content;
+  const isLoadingFile = fileState?.isLoading ?? false;
 
   const title =
     (toolArgs.title as string) ||
@@ -207,14 +214,33 @@ export function CodeArtifact({
     ? inferLanguage({ ...toolArgs, filename: filePath })
     : (renderPlan?.config?.language || inferLanguage(toolArgs));
 
+  const isEditable = renderPlan?.config?.editable === true && !!filePath && !!chatId;
+
   const handleClick = () => {
     if (!isCompleted) return;
-    if (shouldFetchFile && isLoadingFile) return;
-    if (!code) return;
-    open(id, title, <CodeViewer code={code} language={language} />);
+    
+    if (hasFile && filePath) {
+      openFile(filePath);
+    }
+    
+    if (isEditable && filePath && chatId) {
+      open(
+        id,
+        title,
+        <EditableCodeViewer
+          language={language}
+          filePath={filePath}
+          chatId={chatId}
+        />,
+        filePath
+      );
+    } else {
+      if (!code && !fileState) return;
+      open(id, title, <CodeViewer code={code} language={language} />, filePath);
+    }
   };
 
-  const isLoading = !isCompleted || (shouldFetchFile && isLoadingFile);
+  const isLoading = !isCompleted || (hasFile && isLoadingFile);
 
   return (
     <Collapsible
@@ -230,6 +256,11 @@ export function CodeArtifact({
           <CollapsibleIcon icon={FileCode2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
           <span className="text-xs text-muted-foreground">{language}</span>
+          {isEditable && !isLoading && (
+            <span title="Editable">
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </span>
+          )}
           {isLoading && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}

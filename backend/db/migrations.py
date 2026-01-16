@@ -31,7 +31,6 @@ def run_migrations() -> None:
                 conn.commit()
                 logger.info("Added starred column to chats table")
 
-            # Add active_manifest_id column to chats table
             if "active_manifest_id" not in chats_columns:
                 conn.execute(
                     text("ALTER TABLE chats ADD COLUMN active_manifest_id TEXT")
@@ -47,7 +46,6 @@ def run_migrations() -> None:
                 conn.commit()
                 logger.info("Added toolset_id column to mcp_servers table")
 
-        # Add manifest_id column to messages table (for branch-aware workspace)
         if "messages" in existing_tables:
             messages_columns = [
                 col["name"] for col in inspector.get_columns("messages")

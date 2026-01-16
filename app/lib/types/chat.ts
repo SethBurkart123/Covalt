@@ -21,39 +21,32 @@ export interface Attachment {
   name: string;
   mimeType: string;
   size: number;
-  data?: string; // base64 encoded data (optional, used for local preview before backend reload)
+  data?: string;
 }
 
-// For pending attachments (before upload) - includes base64 data
 export interface PendingAttachment extends Attachment {
-  data: string; // base64 encoded file content
-  previewUrl?: string; // blob URL for local preview (images only)
+  data: string;
+  previewUrl?: string;
 }
 
-// Upload status tracking
 export type UploadStatus = "pending" | "uploading" | "uploaded" | "error";
 
-// For attachments that are being uploaded
 export interface UploadingAttachment extends Omit<Attachment, "data"> {
   uploadStatus: UploadStatus;
-  uploadProgress: number; // 0-100
+  uploadProgress: number;
   uploadError?: string;
-  previewUrl?: string; // blob URL for local preview (images only)
+  previewUrl?: string;
 }
 
-// Render plan from toolset tool execution
 export interface RenderPlan {
   renderer: "code" | "document" | "html" | "frame" | string;
   config: {
-    // For code/document renderers
-    file?: string; // file path in workspace
-    content?: string; // direct content
+    file?: string;
+    content?: string;
     language?: string;
     editable?: boolean;
-    // For html renderer
-    artifact?: string; // path to HTML template
-    data?: unknown; // data to inject as window.__TOOL_DATA__
-    // For frame renderer
+    artifact?: string;
+    data?: unknown;
     url?: string;
     port?: number;
   };
@@ -74,7 +67,6 @@ export type ContentBlock =
       toolCallId?: string;
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
       editableArgs?: string[] | boolean;
-      // New: render plan from toolset tools
       renderPlan?: RenderPlan;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }

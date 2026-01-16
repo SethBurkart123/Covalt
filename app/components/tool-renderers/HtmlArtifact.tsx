@@ -8,9 +8,6 @@ import {
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 
-/**
- * Build a complete HTML document, optionally injecting data as window.__TOOL_DATA__
- */
 function buildHtml(html: string, data?: unknown): string {
   const trimmed = html.trim();
   const hasHtmlTag = /<html[\s>]/i.test(trimmed);

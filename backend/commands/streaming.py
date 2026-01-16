@@ -117,10 +117,8 @@ class BroadcastingChannel:
             self._pending_broadcasts.clear()
 
 
-# Maps run_id -> asyncio.Event for signaling when approval is received
 _approval_events: Dict[str, asyncio.Event] = {}
 
-# Global storage for pending approval responses
 _approval_responses: Dict[
     str, Dict[str, Any]
 ] = {}  # approval_id -> {approved: bool, edited_args: dict}
@@ -278,7 +276,6 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         return chat_id
 
-    # Existing chat: ensure agent config exists and, if a model_id was provided,
     # update the provider/model to match the current selection.
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
@@ -338,8 +335,7 @@ def save_user_msg(
         sess.add(message)
         sess.commit()
 
-        # Don't materialize here - init_assistant_msg will do it after creating assistant msg
-        db.set_active_leaf(sess, chat_id, msg.id, materialize=False)
+        db.set_active_leaf(sess, chat_id, msg.id)
         db.update_chat(sess, id=chat_id, updatedAt=now)
 
 

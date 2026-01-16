@@ -216,33 +216,44 @@ def get_next_sibling_sequence(
     return (max_seq or 0) + 1
 
 
-def set_active_leaf(
-    sess: Session, chat_id: str, leaf_id: str, materialize: bool = True
-) -> None:
+def set_active_leaf(sess: Session, chat_id: str, leaf_id: str) -> None:
     """Update active_leaf_message_id for a chat.
+
+    This only updates the database pointer. It does NOT materialize the workspace.
+    For branch switching operations, call materialize_to_branch() explicitly.
 
     Args:
         sess: Database session
         chat_id: Chat ID
         leaf_id: New leaf message ID
-        materialize: Whether to materialize workspace to the new leaf's manifest
     """
     chat = sess.get(Chat, chat_id)
     if chat:
         chat.active_leaf_message_id = leaf_id
         sess.commit()
 
-        # Materialize workspace to the new branch's manifest state
-        if materialize:
-            # Import here to avoid circular import
-            from ..services.workspace_manager import get_workspace_manager
 
-            manifest_id = get_manifest_for_message(sess, leaf_id)
-            workspace_manager = get_workspace_manager(chat_id)
-            workspace_manager.materialize(manifest_id)
-            # Also update the active_manifest_id on the chat for consistency
-            if manifest_id:
-                workspace_manager.set_active_manifest_id(manifest_id)
+def materialize_to_branch(chat_id: str, message_id: str) -> None:
+    """Materialize workspace to a specific message's manifest state.
+
+    This should be called when switching branches (retry, edit message, switch sibling).
+    It should NOT be called during normal forward progression (new messages, tool runs).
+
+    Args:
+        chat_id: Chat ID
+        message_id: Message ID to get manifest from (walks up tree to find manifest)
+    """
+    # Import here to avoid circular import
+    from ..services.workspace_manager import get_workspace_manager
+    from .core import db_session
+
+    with db_session() as sess:
+        manifest_id = get_manifest_for_message(sess, message_id)
+
+    workspace_manager = get_workspace_manager(chat_id)
+    workspace_manager.materialize(manifest_id)
+    if manifest_id:
+        workspace_manager.set_active_manifest_id(manifest_id)
 
 
 def create_branch_message(
@@ -258,7 +269,6 @@ def create_branch_message(
     message_id = str(uuid.uuid4())
     sequence = get_next_sibling_sequence(sess, parent_id, chat_id)
 
-    # Determine model used for assistant messages from chat agent config
     model_used: Optional[str] = None
     if role == "assistant":
         try:

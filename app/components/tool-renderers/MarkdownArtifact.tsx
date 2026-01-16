@@ -10,7 +10,6 @@ import {
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-import { useWorkspaceFile } from "@/hooks/use-workspace-file";
 
 export function MarkdownArtifact({
   toolName,
@@ -24,15 +23,14 @@ export function MarkdownArtifact({
   renderPlan,
   chatId,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { open, openFile, getFileState } = useArtifactPanel();
 
   const filePath = renderPlan?.config?.file;
-  const shouldFetchFile = !!filePath && !!chatId && isCompleted;
+  const hasFile = !!filePath && !!chatId;
 
-  const { content: fileContent, isLoading: isLoadingFile } = useWorkspaceFile(
-    shouldFetchFile ? chatId : undefined,
-    shouldFetchFile ? filePath : undefined
-  );
+  const fileState = filePath ? getFileState(filePath) : undefined;
+  const fileContent = fileState?.content;
+  const isLoadingFile = fileState?.isLoading ?? false;
 
   const title = (toolArgs.title as string) || filePath || toolName;
   const id = toolCallId || `${toolName}-${title}`;
@@ -48,15 +46,20 @@ export function MarkdownArtifact({
 
   const handleClick = () => {
     if (!isCompleted) return;
-    if (shouldFetchFile && isLoadingFile) return;
-    if (!content) return;
+    
+    if (hasFile && filePath) {
+      openFile(filePath);
+    }
+    
+    if (!content && !fileState) return;
     open(id, title,
       <div className="flex-1 overflow-auto p-4 px-8">
         <MarkdownRenderer content={content} />
-      </div>);
+      </div>,
+      filePath);
   };
 
-  const isLoading = !isCompleted || (shouldFetchFile && isLoadingFile);
+  const isLoading = !isCompleted || (hasFile && isLoadingFile);
 
   return (
     <Collapsible
