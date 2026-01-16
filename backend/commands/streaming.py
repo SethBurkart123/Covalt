@@ -18,13 +18,13 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
-    get_attachment_path,
     get_extension_from_mime,
-    save_attachment_from_base64,
+    get_pending_attachment_path,
 )
 from ..services.tool_registry import get_tool_registry
 from ..services.toolset_executor import get_toolset_executor
 from ..services import stream_broadcaster as broadcaster
+from ..services.workspace_manager import get_workspace_manager
 
 import logging
 
@@ -194,43 +194,11 @@ def is_allowed_attachment_mime(mime_type: str) -> bool:
     return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
 
 
-def process_and_save_attachments(
-    chat_id: str, attachments: List[AttachmentInput]
-) -> List[Attachment]:
-    """
-    Process incoming attachments: save files to disk and return metadata list.
-
-    Args:
-        chat_id: The chat ID for organizing files
-        attachments: List of incoming attachments with base64 data
-
-    Returns:
-        List of Attachment metadata (without the base64 data)
-    """
-    saved_attachments: List[Attachment] = []
-
-    for att in attachments:
-        extension = get_extension_from_mime(att.mimeType)
-        save_attachment_from_base64(chat_id, att.id, att.data, extension)
-
-        saved_attachments.append(
-            Attachment(
-                id=att.id,
-                type=att.type,
-                name=att.name,
-                mimeType=att.mimeType,
-                size=att.size,
-            )
-        )
-
-    return saved_attachments
-
-
 def load_attachments_as_agno_media(
     chat_id: str, attachments: List[Attachment]
 ) -> tuple[Sequence[Image], Sequence[File], Sequence[Audio], Sequence[Video]]:
     """
-    Load attachment files from disk and convert to Agno media objects.
+    Load attachment files from workspace and convert to Agno media objects.
 
     Args:
         chat_id: The chat ID
@@ -243,6 +211,8 @@ def load_attachments_as_agno_media(
     files: List[File] = []
     audio: List[Audio] = []
     videos: List[Video] = []
+
+    workspace_manager = get_workspace_manager(chat_id)
 
     for att in attachments:
         if att.size > MAX_ATTACHMENT_BYTES:
@@ -257,14 +227,16 @@ def load_attachments_as_agno_media(
             )
             continue
 
-        extension = get_extension_from_mime(att.mimeType)
-        filepath = get_attachment_path(chat_id, att.id, extension)
+        # Files are stored by name in workspace
+        workspace_path = workspace_manager.workspace_dir / att.name
 
-        if not filepath.exists():
+        if not workspace_path.exists():
             logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): file not found at {filepath}"
+                f"[attachments] Skipping {att.id} ({att.name}): file not found in workspace"
             )
             continue
+
+        filepath = workspace_path
 
         if att.type == "image":
             images.append(Image(filepath=filepath))
@@ -340,13 +312,13 @@ def save_user_msg(
     chat_id: str,
     parent_id: Optional[str] = None,
     attachments: Optional[List[Attachment]] = None,
+    manifest_id: Optional[str] = None,
 ):
-    """Save user message to db with optional attachments."""
+    """Save user message to db with optional attachments and manifest."""
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         now = datetime.utcnow().isoformat()
 
-        # Serialize attachments to JSON if present
         attachments_json = None
         if attachments:
             attachments_json = json.dumps([att.model_dump() for att in attachments])
@@ -361,11 +333,13 @@ def save_user_msg(
             is_complete=True,  # User messages are always complete
             sequence=sequence,
             attachments=attachments_json,
+            manifest_id=manifest_id,
         )
         sess.add(message)
         sess.commit()
 
-        db.set_active_leaf(sess, chat_id, msg.id)
+        # Don't materialize here - init_assistant_msg will do it after creating assistant msg
+        db.set_active_leaf(sess, chat_id, msg.id, materialize=False)
         db.update_chat(sess, id=chat_id, updatedAt=now)
 
 
@@ -1012,38 +986,72 @@ async def stream_chat(
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
     saved_attachments: List[Attachment] = []
+    manifest_id: Optional[str] = None
+    file_renames: Dict[str, str] = {}
+
     if body.attachments:
         logger.info(
-            f"[stream] Linking {len(body.attachments)} attachments for chat {chat_id}"
+            f"[stream] Processing {len(body.attachments)} attachments for chat {chat_id}"
         )
-        from ..services.file_storage import move_pending_to_chat
 
+        files_to_add: List[tuple[str, bytes]] = []
         for att in body.attachments:
             extension = get_extension_from_mime(att.mimeType)
-            try:
-                move_pending_to_chat(att.id, extension, chat_id)
-            except FileNotFoundError:
-                # File might already exist in chat folder (retry, or linked via linkAttachments)
-                existing_path = get_attachment_path(chat_id, att.id, extension)
-                if not existing_path.exists():
-                    logger.warning(
-                        f"[stream] Attachment {att.id} not found in pending or chat folder"
-                    )
-                    continue
+            pending_path = get_pending_attachment_path(att.id, extension)
 
-            saved_attachments.append(
-                Attachment(
-                    id=att.id,
-                    type=att.type,
-                    name=att.name,
-                    mimeType=att.mimeType,
-                    size=att.size,
+            if pending_path.exists():
+                content = pending_path.read_bytes()
+                # Use original filename for workspace (user sees what AI sees)
+                files_to_add.append((att.name, content))
+                logger.info(f"[stream] Loaded pending file: {att.name}")
+            else:
+                logger.warning(
+                    f"[stream] Attachment {att.id} ({att.name}) not found in pending storage"
                 )
+                continue
+
+        if files_to_add:
+            # Get parent manifest from message tree
+            with db.db_session() as sess:
+                chat = sess.get(db.Chat, chat_id)
+                parent_msg_id = chat.active_leaf_message_id if chat else None
+                parent_manifest_id = None
+                if parent_msg_id:
+                    parent_manifest_id = db.get_manifest_for_message(
+                        sess, parent_msg_id
+                    )
+
+            # Add files to workspace with collision handling
+            workspace_manager = get_workspace_manager(chat_id)
+            manifest_id, file_renames = workspace_manager.add_files(
+                files=files_to_add,
+                parent_manifest_id=parent_manifest_id,
+                source="user_upload",
+                source_ref=messages[-1].id if messages else None,
             )
 
-        logger.info(
-            f"[stream] Linked {len(saved_attachments)} attachments to chat {chat_id}"
-        )
+            for att in body.attachments:
+                final_name = file_renames.get(att.name, att.name)
+                saved_attachments.append(
+                    Attachment(
+                        id=att.id,
+                        type=att.type,
+                        name=final_name,  # Use final name after collision handling
+                        mimeType=att.mimeType,
+                        size=att.size,
+                    )
+                )
+
+            for att in body.attachments:
+                extension = get_extension_from_mime(att.mimeType)
+                pending_path = get_pending_attachment_path(att.id, extension)
+                if pending_path.exists():
+                    pending_path.unlink()
+
+            logger.info(
+                f"[stream] Added {len(files_to_add)} files to workspace, "
+                f"{len(file_renames)} renamed"
+            )
 
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
@@ -1058,10 +1066,14 @@ async def stream_chat(
             chat_id,
             parent_id,
             attachments=saved_attachments if saved_attachments else None,
+            manifest_id=manifest_id,
         )
         parent_id = messages[-1].id
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
+    # Include file_renames in RunStarted event so frontend can update display names
+    channel.send_model(
+        ChatEvent(event="RunStarted", sessionId=chat_id, fileRenames=file_renames)
+    )
 
     assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 

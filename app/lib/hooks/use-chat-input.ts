@@ -14,7 +14,6 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
-import { linkAttachments } from "@/python/api";
 import { addRecentModel } from "@/lib/utils";
 
 async function fileToBase64(file: File): Promise<string> {
@@ -254,7 +253,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
-      let attachmentsLinked = false;
 
       try {
         const response = await api.streamChat(
@@ -287,22 +285,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
             if (id && streamingMessageIdRef.current) {
               registerStream(id, streamingMessageIdRef.current);
             }
-            if (id && attachments.length > 0 && !attachmentsLinked) {
-              attachmentsLinked = true;
-              try {
-                await linkAttachments({
-                  body: {
-                    chatId: id,
-                    attachments: attachments.map(a => ({
-                      id: a.id,
-                      mimeType: a.mimeType,
-                    })),
-                  },
-                });
-              } catch (e) {
-                console.error("Failed to link attachments:", e);
-              }
-            }
           },
           onMessageId: (id) => {
             streamingMessageIdRef.current = id;
@@ -317,7 +299,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
           trackModel();
-          // Preserve streaming content before unregistering to prevent message disappearing
           preserveStreamingMessage(result);
           unregisterStream(finalChatId);
         }
@@ -400,7 +381,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           onThinkTagDetected,
         });
 
-        // Preserve streaming content before unregistering to prevent message disappearing
         preserveStreamingMessage(result);
         unregisterStream(chatId);
         trackModel();
@@ -489,7 +469,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         onThinkTagDetected,
       });
 
-      // Preserve streaming content before unregistering to prevent message disappearing
       preserveStreamingMessage(result);
       unregisterStream(chatId);
       trackModel();

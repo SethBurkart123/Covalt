@@ -46,6 +46,8 @@ class Message(Base):
     model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # JSON string of attachment metadata (id, type, name, mimeType, size)
     attachments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Workspace manifest ID at this point in the message tree
+    manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
 

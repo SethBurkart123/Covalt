@@ -23,11 +23,8 @@ from ..models.chat import (
     UpdateChatModelInput,
 )
 from ..services.agent_factory import update_agent_model, update_agent_tools
-from ..services.file_storage import (
-    delete_chat_attachments,
-    get_extension_from_mime,
-    load_attachment,
-)
+from ..services.file_storage import get_extension_from_mime
+from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
 from ..services.tool_registry import get_tool_registry
@@ -57,7 +54,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
 
-    # Handle agent config
     agent_config = None
     if body.agentConfig:
         agent_config = {
@@ -69,7 +65,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
             "description": body.agentConfig.description,
         }
     else:
-        # Use default config
         agent_config = db.get_default_agent_config()
 
     with db.db_session() as sess:
@@ -81,7 +76,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
             createdAt=now,
             updatedAt=now,
         )
-        # Set agent config
         db.update_chat_agent_config(sess, chatId=chatId, config=agent_config)
     return ChatData(
         id=chatId,
@@ -126,7 +120,7 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
 async def delete_chat(body: ChatId) -> None:
     with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
-    delete_chat_attachments(body.id)
+    delete_chat_workspace(body.id)
     return None
 
 
@@ -269,7 +263,6 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, body.id)
         if not config:
-            # No config yet, return defaults
             config = db.get_default_agent_config()
 
     return ChatAgentConfigResponse(
@@ -300,8 +293,9 @@ async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
 
 class GetAttachmentInput(BaseModel):
     chatId: str
-    attachmentId: str
+    attachmentId: str  # Kept for backwards compatibility in API schema
     mimeType: str
+    name: str  # Filename in workspace
 
 
 class AttachmentDataResponse(BaseModel):
@@ -315,13 +309,15 @@ async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
     Load an attachment file and return it as base64.
 
     Args:
-        body: Contains chatId, attachmentId, and mimeType
+        body: Contains chatId, name (filename), and mimeType
 
     Returns:
         Base64-encoded file data with mime type
     """
-    extension = get_extension_from_mime(body.mimeType)
-    file_bytes = load_attachment(body.chatId, body.attachmentId, extension)
+    workspace_manager = get_workspace_manager(body.chatId)
+    file_bytes = workspace_manager.read_file(body.name)
+    if not file_bytes:
+        raise FileNotFoundError(f"Attachment '{body.name}' not found in workspace")
     return AttachmentDataResponse(
         data=base64.b64encode(file_bytes).decode("utf-8"), mimeType=body.mimeType
     )

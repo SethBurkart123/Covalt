@@ -83,7 +83,6 @@ class ToolsetManifest:
 
     def _validate(self) -> None:
         """Validate manifest structure."""
-        # Required fields
         if "id" not in self.raw:
             raise ValueError("Manifest missing required field: id")
         if "name" not in self.raw:
@@ -91,12 +90,10 @@ class ToolsetManifest:
         if "version" not in self.raw:
             raise ValueError("Manifest missing required field: version")
 
-        # Check manifest version
         manifest_version = self.raw.get("manifest_version", "1")
         if manifest_version not in SUPPORTED_MANIFEST_VERSIONS:
             raise ValueError(f"Unsupported manifest version: {manifest_version}")
 
-        # Validate tools structure
         for i, tool in enumerate(self.raw.get("tools", [])):
             if "id" not in tool:
                 raise ValueError(f"Tool at index {i} missing required field: id")
@@ -415,7 +412,6 @@ class ToolsetManager:
 
             session.commit()
 
-        # Delete files
         toolset_dir = get_toolset_directory(toolset_id)
         if toolset_dir.exists():
             shutil.rmtree(toolset_dir)
@@ -573,7 +569,6 @@ class ToolsetManager:
             if toolset.description:
                 manifest["description"] = toolset.description
 
-            # Add tools
             if tools:
                 manifest["tools"] = []
                 for tool in tools:

@@ -12,8 +12,9 @@ from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
     get_extension_from_mime,
-    save_attachment_from_base64,
+    get_pending_attachment_path,
 )
+from ..services.workspace_manager import get_workspace_manager
 from .streaming import (
     handle_content_stream,
     parse_model_id,
@@ -117,7 +118,6 @@ async def continue_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages
             attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -252,7 +252,6 @@ async def retry_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages
             attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -293,7 +292,6 @@ async def retry_message(
             tool_ids=body.toolIds,
         )
 
-        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,
@@ -337,6 +335,9 @@ async def edit_user_message(
     body: EditUserMessageRequest,
 ) -> None:
     """Edit user message by creating sibling with new content."""
+    file_renames: Dict[str, str] = {}
+    manifest_id: Optional[str] = None
+
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
@@ -354,33 +355,54 @@ async def edit_user_message(
         else:
             messages = []
 
+        # Get manifest from the original message (where the existing attachments live)
+        original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
+
         all_attachments: List[Attachment] = []
 
-        # Keep existing attachments (already in chat folder)
-        for existing_att in body.existingAttachments:
-            all_attachments.append(
-                Attachment(
-                    id=existing_att.id,
-                    type=existing_att.type,  # type: ignore
-                    name=existing_att.name,
-                    mimeType=existing_att.mimeType,
-                    size=existing_att.size,
-                )
-            )
+        files_to_add: List[tuple[str, bytes]] = []
 
-        # Process new attachments - try pending storage first, then base64 fallback
-        from ..services.file_storage import move_pending_to_chat
+        for existing_att in body.existingAttachments:
+            content = None
+            if original_manifest_id:
+                workspace_manager = get_workspace_manager(body.chatId)
+                content = workspace_manager.read_file_from_manifest(
+                    original_manifest_id, existing_att.name
+                )
+
+            if content:
+                files_to_add.append((existing_att.name, content))
+                all_attachments.append(
+                    Attachment(
+                        id=existing_att.id,
+                        type=existing_att.type,  # type: ignore
+                        name=existing_att.name,
+                        mimeType=existing_att.mimeType,
+                        size=existing_att.size,
+                    )
+                )
+            else:
+                # Log warning but don't add attachment if content not found
+                print(
+                    f"[edit_user_message] Warning: Could not find existing attachment "
+                    f"'{existing_att.name}' in manifest {original_manifest_id}"
+                )
 
         for new_att in body.newAttachments:
             extension = get_extension_from_mime(new_att.mimeType)
-            try:
-                move_pending_to_chat(new_att.id, extension, body.chatId)
-            except FileNotFoundError:
-                # Fallback: save from base64 data (backward compatibility)
-                if new_att.data:
-                    save_attachment_from_base64(
-                        body.chatId, new_att.id, new_att.data, extension
-                    )
+            pending_path = get_pending_attachment_path(new_att.id, extension)
+
+            if pending_path.exists():
+                content = pending_path.read_bytes()
+                files_to_add.append((new_att.name, content))
+                # Clean up pending file
+                pending_path.unlink()
+            elif new_att.data:
+                # Fallback: use base64 data (backward compatibility)
+                import base64
+
+                content = base64.b64decode(new_att.data)
+                files_to_add.append((new_att.name, content))
 
             all_attachments.append(
                 Attachment(
@@ -391,6 +413,20 @@ async def edit_user_message(
                     size=new_att.size,
                 )
             )
+
+        if files_to_add:
+            workspace_manager = get_workspace_manager(body.chatId)
+            manifest_id, file_renames = workspace_manager.add_files(
+                files=files_to_add,
+                parent_manifest_id=None,  # Start fresh for edit (don't inherit old files)
+                source="user_upload",
+                source_ref=None,  # Will update after creating message
+            )
+
+            # Update attachment names based on renames
+            for att in all_attachments:
+                if att.name in file_renames:
+                    att.name = file_renames[att.name]
 
         new_user_msg_id = db.create_branch_message(
             sess,
@@ -406,11 +442,18 @@ async def edit_user_message(
             user_msg = sess.get(db.Message, new_user_msg_id)
             if user_msg:
                 user_msg.attachments = attachments_json
+                if manifest_id:
+                    user_msg.manifest_id = manifest_id
+                sess.commit()
+        elif manifest_id:
+            user_msg = sess.get(db.Message, new_user_msg_id)
+            if user_msg:
+                user_msg.manifest_id = manifest_id
                 sess.commit()
 
-        db.set_active_leaf(sess, body.chatId, new_user_msg_id)
+        # Don't materialize yet - we'll do it once after creating the assistant message
+        db.set_active_leaf(sess, body.chatId, new_user_msg_id, materialize=False)
 
-        # Build chat messages with attachments for history
         chat_messages = []
         for m in messages:
             content = m.content
@@ -441,7 +484,6 @@ async def edit_user_message(
                 )
             )
 
-        # Add the new user message with its attachments
         chat_messages.append(
             ChatMessage(
                 id=new_user_msg_id,
@@ -472,7 +514,6 @@ async def edit_user_message(
             tool_ids=body.toolIds,
         )
 
-        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,

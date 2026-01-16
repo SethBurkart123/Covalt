@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Chat, Message
-from ..services.file_storage import get_extension_from_mime, load_attachment
 
 
 def list_chats(sess: Session) -> List[Chat]:
@@ -23,10 +22,8 @@ def list_chats(sess: Session) -> List[Chat]:
 
 def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
     """Get messages for the active branch of a chat."""
-    # Get the chat to find active leaf
     chat = sess.get(Chat, chatId)
     if not chat or not chat.active_leaf_message_id:
-        # Fallback: return all messages in creation order (for old chats)
         stmt = (
             select(Message)
             .where(Message.chatId == chatId)
@@ -34,14 +31,12 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
         )
         rows = list(sess.scalars(stmt))
     else:
-        # Use the active branch path
         rows = get_message_path(sess, chat.active_leaf_message_id)
 
     messages: List[Dict[str, Any]] = []
     for r in rows:
         toolCalls = json.loads(r.toolCalls) if r.toolCalls else None
 
-        # Parse content if it's a JSON array (structured content blocks)
         content = r.content
         if content and content.strip().startswith("["):
             try:
@@ -57,9 +52,13 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
                 for att in raw_attachments:
                     if att.get("type") == "image":
                         try:
-                            ext = get_extension_from_mime(att["mimeType"])
-                            file_bytes = load_attachment(chatId, att["id"], ext)
-                            att["data"] = base64.b64encode(file_bytes).decode("utf-8")
+                            file_bytes = _load_attachment_content(
+                                chatId, r.id, att["name"], att["mimeType"]
+                            )
+                            if file_bytes:
+                                att["data"] = base64.b64encode(file_bytes).decode(
+                                    "utf-8"
+                                )
                         except Exception:
                             pass  # File not found, skip data
                     attachments.append(att)
@@ -188,7 +187,6 @@ def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
         path.append(message)
         current_id = message.parent_message_id
 
-    # Reverse to get root-to-leaf order
     return list(reversed(path))
 
 
@@ -218,12 +216,33 @@ def get_next_sibling_sequence(
     return (max_seq or 0) + 1
 
 
-def set_active_leaf(sess: Session, chat_id: str, leaf_id: str) -> None:
-    """Update active_leaf_message_id for a chat."""
+def set_active_leaf(
+    sess: Session, chat_id: str, leaf_id: str, materialize: bool = True
+) -> None:
+    """Update active_leaf_message_id for a chat.
+
+    Args:
+        sess: Database session
+        chat_id: Chat ID
+        leaf_id: New leaf message ID
+        materialize: Whether to materialize workspace to the new leaf's manifest
+    """
     chat = sess.get(Chat, chat_id)
     if chat:
         chat.active_leaf_message_id = leaf_id
         sess.commit()
+
+        # Materialize workspace to the new branch's manifest state
+        if materialize:
+            # Import here to avoid circular import
+            from ..services.workspace_manager import get_workspace_manager
+
+            manifest_id = get_manifest_for_message(sess, leaf_id)
+            workspace_manager = get_workspace_manager(chat_id)
+            workspace_manager.materialize(manifest_id)
+            # Also update the active_manifest_id on the chat for consistency
+            if manifest_id:
+                workspace_manager.set_active_manifest_id(manifest_id)
 
 
 def create_branch_message(
@@ -292,7 +311,6 @@ def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
         children = get_message_children(sess, current_id, chat_id)
         if not children:
             return current_id
-        # Follow last child
         current_id = children[-1].id
 
 
@@ -348,3 +366,81 @@ def get_default_agent_config() -> Dict[str, Any]:
         "tool_ids": [],
         "instructions": [],
     }
+
+
+def get_manifest_for_message(sess: Session, message_id: str) -> Optional[str]:
+    """
+    Get the workspace manifest ID for a message by walking up the tree.
+
+    Messages may have manifest_id = NULL if they don't introduce new files.
+    In that case, we inherit from the nearest ancestor with a manifest.
+
+    Args:
+        sess: Database session
+        message_id: Message ID to find manifest for
+
+    Returns:
+        Manifest ID, or None if no manifest exists in ancestry (new chat, no files yet)
+    """
+    current_id: Optional[str] = message_id
+
+    while current_id:
+        message = sess.get(Message, current_id)
+        if not message:
+            break
+
+        if message.manifest_id:
+            return message.manifest_id
+
+        current_id = message.parent_message_id
+
+    return None
+
+
+def set_message_manifest(sess: Session, message_id: str, manifest_id: str) -> None:
+    """
+    Set the manifest ID for a message.
+
+    Args:
+        sess: Database session
+        message_id: Message ID
+        manifest_id: Manifest ID to set
+    """
+    message = sess.get(Message, message_id)
+    if message:
+        message.manifest_id = manifest_id
+        sess.commit()
+
+
+def _load_attachment_content(
+    chat_id: str, message_id: str, filename: str, mime_type: str
+) -> Optional[bytes]:
+    """
+    Load attachment content from workspace.
+
+    Args:
+        chat_id: Chat ID
+        message_id: Message ID (for manifest lookup)
+        filename: Attachment filename in workspace
+        mime_type: MIME type (unused, kept for API compatibility)
+
+    Returns:
+        File content as bytes, or None if not found
+    """
+    from ..services.workspace_manager import get_workspace_manager
+
+    workspace_manager = get_workspace_manager(chat_id)
+    content = workspace_manager.read_file(filename)
+    if content:
+        return content
+
+    from .core import db_session
+
+    with db_session() as sess:
+        manifest_id = get_manifest_for_message(sess, message_id)
+        if manifest_id:
+            content = workspace_manager.read_file_from_manifest(manifest_id, filename)
+            if content:
+                return content
+
+    return None
