@@ -171,6 +171,25 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
   );
 }
 
+function FileCodeViewer({ filePath, language, fallbackCode }: { filePath: string; language: string; fallbackCode: string }) {
+  const { getFileState } = useArtifactPanel();
+  const fileState = getFileState(filePath);
+  
+  const code = fileState?.content ?? fallbackCode;
+  const isLoading = fileState?.isLoading && !fileState?.content;
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground p-8">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading file...
+      </div>
+    );
+  }
+  
+  return <CodeViewer code={code} language={language} />;
+}
+
 export function CodeArtifact({
   toolName,
   toolArgs,
@@ -234,9 +253,16 @@ export function CodeArtifact({
         />,
         filePath
       );
+    } else if (hasFile && filePath) {
+      open(
+        id,
+        title,
+        <FileCodeViewer filePath={filePath} language={language} fallbackCode={code} />,
+        filePath
+      );
     } else {
-      if (!code && !fileState) return;
-      open(id, title, <CodeViewer code={code} language={language} />, filePath);
+      if (!code) return;
+      open(id, title, <CodeViewer code={code} language={language} />);
     }
   };
 

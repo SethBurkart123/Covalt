@@ -62,29 +62,33 @@ The PRD envisions Docker-based MCP servers with full container lifecycle managem
 
 ## 2. Editable Artifacts
 
-**Status:** Partially implemented (display only)
+**Status:** Implemented
 
-The config layer supports `editable: true` but the UI components are read-only viewers. Full implementation enables users to edit code/documents directly in artifacts and have changes persist to the workspace.
+The config layer supports `editable: true` and the UI now provides full editing capabilities with real-time file synchronization.
 
-### Missing Components
+### Implemented Features
 
-**Editable Code Renderer**
-- Monaco/CodeMirror editor integration (not just syntax highlighting)
-- Save button or auto-save on blur
-- Write changes back to workspace file
-- Dirty state indicator
+**Editable Code Renderer** ✅
+- Monaco editor integration with full editing support
+- Auto-save with debounce (1 second delay)
+- Write changes back to workspace file via `updateWorkspaceFile` API
+- Save status indicator (Synced / Unsaved / Saving / Saved / Error)
+- Cmd+S force save support
+
+**File Sync** ✅
+- Centralized file state management in `artifact-panel-context.tsx`
+- Real-time WebSocket notifications when workspace files change
+- Automatic content refresh when LLM tools modify open files
+- Deleted file detection with read-only warning state
+
+### Remaining Features
 
 **Editable Document Renderer**
-- Rich text / Markdown editor
+- Rich text / Markdown editor (currently read-only)
 - Save to workspace file
 - Support for `file` or `content` source
 
-**File Sync**
-- Watch workspace files for external changes
-- Update artifact when file changes (from other tools)
-- Conflict resolution (artifact dirty + file changed)
-
-### Config Already Supported
+### Config Supported
 
 ```yaml
 tools:
@@ -92,7 +96,31 @@ tools:
     render: code
     file: $args.path
     language: auto
-    editable: true  # <-- This flag exists but UI ignores it
+    editable: true  # UI now respects this flag
+```
+
+### Architecture
+
+The file sync system follows a VSCode-like model:
+
+1. **Single source of truth**: `artifact-panel-context.tsx` maintains a `Map<filePath, FileState>` for all open files
+2. **Backend notifications**: After tool execution, `toolset_executor.py` compares manifests and broadcasts `workspace_files_changed` events via WebSocket
+3. **Frontend sync**: The artifact context subscribes to these events and refetches any open files that changed
+4. **Auto-save**: `EditableCodeViewer` uses debounced saves through the context's `saveFile()` method
+
+```
+┌─────────────────────┐     WebSocket      ┌─────────────────────┐
+│  Backend            │ ─────────────────► │  Frontend           │
+│  (tool execution)   │  workspace_files   │  (artifact context) │
+│                     │  _changed event    │                     │
+└─────────────────────┘                    └─────────────────────┘
+         │                                          │
+         │ diff_manifests()                         │ refetch open files
+         ▼                                          ▼
+┌─────────────────────┐                    ┌─────────────────────┐
+│  Workspace          │                    │  EditableCodeViewer │
+│  (filesystem)       │ ◄──── saveFile ─── │  (Monaco editor)    │
+└─────────────────────┘                    └─────────────────────┘
 ```
 
 ---
@@ -241,12 +269,12 @@ Multi-user features for teams.
 
 ## Implementation Priority
 
-| Priority | Feature Group | Effort | Impact |
-|----------|---------------|--------|--------|
-| **P0** | Docker & Container Runtime | High | Enables Computer Use, live preview, sandboxed execution |
-| **P1** | Editable Artifacts | Medium | Core editing workflow |
-| **P1** | `window.ai` API | Medium | Interactive artifacts |
-| **P2** | Toolset Distribution (URL import) | Low | Easier sharing |
-| **P3** | In-App Tool Editor | Medium | Developer experience |
-| **P4** | Multi-Model Routing | Medium | Cost optimization |
-| **P5** | Team Features | High | Enterprise use cases |
+| Priority | Feature Group | Effort | Impact | Status |
+|----------|---------------|--------|--------|--------|
+| **P0** | Docker & Container Runtime | High | Enables Computer Use, live preview, sandboxed execution | Not started |
+| ~~**P1**~~ | ~~Editable Artifacts~~ | ~~Medium~~ | ~~Core editing workflow~~ | **Done** |
+| **P1** | `window.ai` API | Medium | Interactive artifacts | Not started |
+| **P2** | Toolset Distribution (URL import) | Low | Easier sharing | Not started |
+| **P3** | In-App Tool Editor | Medium | Developer experience | Not started |
+| **P4** | Multi-Model Routing | Medium | Cost optimization | Not started |
+| **P5** | Team Features | High | Enterprise use cases | Not started |

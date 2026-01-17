@@ -482,6 +482,17 @@ async def update_workspace_file(
         f"new manifest {manifest_id[:8]}..."
     )
 
+    # Broadcast file change to connected clients
+    try:
+        import asyncio
+        from .events import broadcast_workspace_files_changed
+
+        asyncio.create_task(
+            broadcast_workspace_files_changed(body.chat_id, [body.path], [])
+        )
+    except Exception as e:
+        logger.debug(f"Failed to broadcast workspace change: {e}")
+
     return UpdateWorkspaceFileResponse(
         manifest_id=manifest_id,
         path=body.path,

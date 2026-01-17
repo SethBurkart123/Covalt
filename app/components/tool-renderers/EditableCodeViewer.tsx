@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import { debounce } from "lodash";
 import { useTheme } from "@/contexts/theme-context";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
-import { Loader2, Check, AlertCircle, Cloud, Trash2 } from "lucide-react";
+import { Loader2, Check, AlertCircle, Cloud, CloudOff, Trash2 } from "lucide-react";
 
-// Configure Monaco to load from CDN
 loader.config({
   paths: {
     vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs",
@@ -54,28 +53,50 @@ export function EditableCodeViewer({
   const resolvedTheme = useResolvedTheme();
   const { getFileState, saveFile } = useArtifactPanel();
 
-  // Get file state from context
   const fileState = getFileState(filePath);
-  const content = fileState?.content ?? "";
-  const isLoading = fileState?.isLoading ?? false;
+  const syncedContent = fileState?.content ?? "";
+  const isLoading = fileState?.isLoading ?? true;
   const isDeleted = fileState?.isDeleted ?? false;
+  const version = fileState?.version ?? 0;
 
+  const [localContent, setLocalContent] = useState<string | null>(null);
+  const [lastSyncedVersion, setLastSyncedVersion] = useState(0);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  const isSavingRef = useRef(false);
 
-  // Create debounced save function
+  const editorContent = localContent ?? syncedContent;
+
+  const hasUnsavedChanges = localContent !== null;
+  const externallyChanged = version > lastSyncedVersion;
+  const isDesynced = externallyChanged && hasUnsavedChanges && !isSavingRef.current;
+
+  useEffect(() => {
+    if (externallyChanged && !hasUnsavedChanges && !isSavingRef.current) {
+      setLastSyncedVersion(version);
+    }
+  }, [version, externallyChanged, hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!isLoading && lastSyncedVersion === 0 && version > 0) {
+      setLastSyncedVersion(version);
+    }
+  }, [isLoading, lastSyncedVersion, version]);
+
   const debouncedSave = useMemo(
     () =>
       debounce(async (newContent: string, path: string) => {
-        if (isDeleted) {
-          return;
-        }
+        if (isDeleted) return;
 
+        isSavingRef.current = true;
         setSaveStatus("saving");
         setErrorMessage(null);
 
         try {
           await saveFile(path, newContent);
+          setLocalContent(null);
+          setLastSyncedVersion((v) => v + 1);
           setSaveStatus("saved");
 
           setTimeout(() => {
@@ -87,6 +108,8 @@ export function EditableCodeViewer({
           setErrorMessage(
             error instanceof Error ? error.message : "Failed to save"
           );
+        } finally {
+          isSavingRef.current = false;
         }
       }, 1000),
     [saveFile, isDeleted]
@@ -94,29 +117,39 @@ export function EditableCodeViewer({
 
   useEffect(() => {
     return () => {
-      debouncedSave.cancel();
+      debouncedSave.flush();
     };
   }, [debouncedSave]);
 
   const handleChange = useCallback(
     (value: string | undefined) => {
       const newContent = value ?? "";
-      setSaveStatus("unsaved");
-      debouncedSave(newContent, filePath);
+      
+      if (newContent === syncedContent) {
+        setLocalContent(null);
+        setSaveStatus("idle");
+        debouncedSave.cancel();
+      } else {
+        setLocalContent(newContent);
+        setSaveStatus("unsaved");
+        debouncedSave(newContent, filePath);
+      }
     },
-    [filePath, debouncedSave]
+    [filePath, syncedContent, debouncedSave]
   );
 
   const forceSave = useCallback(async () => {
-    if (isDeleted) return;
+    if (isDeleted || !hasUnsavedChanges) return;
 
     debouncedSave.cancel();
-
+    isSavingRef.current = true;
     setSaveStatus("saving");
     setErrorMessage(null);
 
     try {
-      await saveFile(filePath, content);
+      await saveFile(filePath, localContent!);
+      setLocalContent(null);
+      setLastSyncedVersion((v) => v + 1);
       setSaveStatus("saved");
 
       setTimeout(() => {
@@ -128,8 +161,10 @@ export function EditableCodeViewer({
       setErrorMessage(
         error instanceof Error ? error.message : "Failed to save"
       );
+    } finally {
+      isSavingRef.current = false;
     }
-  }, [content, filePath, isDeleted, debouncedSave, saveFile]);
+  }, [localContent, filePath, isDeleted, hasUnsavedChanges, debouncedSave, saveFile]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -143,7 +178,14 @@ export function EditableCodeViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [forceSave]);
 
-  if (isLoading && !content) {
+  const acceptExternalChanges = useCallback(() => {
+    setLocalContent(null);
+    setLastSyncedVersion(version);
+    setSaveStatus("idle");
+    debouncedSave.cancel();
+  }, [version, debouncedSave]);
+
+  if (isLoading && !syncedContent) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -163,18 +205,35 @@ export function EditableCodeViewer({
         </div>
       )}
 
+      {isDesynced && (
+        <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-sm text-amber-600 dark:text-amber-400">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CloudOff size={16} />
+              <span>File was modified externally. You have unsaved changes.</span>
+            </div>
+            <button
+              onClick={acceptExternalChanges}
+              className="px-2 py-1 text-xs bg-amber-500/20 hover:bg-amber-500/30 rounded transition-colors"
+            >
+              Discard my changes
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/30 text-xs">
         <span className="text-muted-foreground font-mono truncate">
           {filePath}
         </span>
         <div className="flex items-center gap-2">
-          {!isDeleted && saveStatus === "idle" && (
+          {!isDeleted && !isDesynced && saveStatus === "idle" && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <Cloud size={14} />
               <span>Synced</span>
             </div>
           )}
-          {!isDeleted && saveStatus === "unsaved" && (
+          {!isDeleted && !isDesynced && saveStatus === "unsaved" && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <div className="w-2 h-2 rounded-full bg-amber-500" />
               <span>Unsaved</span>
@@ -186,7 +245,7 @@ export function EditableCodeViewer({
               <span>Saving...</span>
             </div>
           )}
-          {!isDeleted && saveStatus === "saved" && (
+          {!isDeleted && !isDesynced && saveStatus === "saved" && (
             <div className="flex items-center gap-1 text-green-500">
               <Check size={14} />
               <span>Saved</span>
@@ -199,6 +258,12 @@ export function EditableCodeViewer({
             >
               <AlertCircle size={14} />
               <span>Error</span>
+            </div>
+          )}
+          {isDesynced && (
+            <div className="flex items-center gap-1 text-amber-500">
+              <CloudOff size={14} />
+              <span>Desynced</span>
             </div>
           )}
           {isDeleted && (
@@ -214,7 +279,7 @@ export function EditableCodeViewer({
         <Editor
           height="100%"
           language={language}
-          value={content}
+          value={editorContent}
           onChange={handleChange}
           theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
           options={{
