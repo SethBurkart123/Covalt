@@ -320,7 +320,16 @@ class MCPManager:
                         state._connection_event.set()
 
                         while state.status == "connected":
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(10)
+                            try:
+                                await asyncio.wait_for(session.send_ping(), timeout=5.0)
+                            except Exception:
+                                self._set_status(
+                                    server_id,
+                                    "error",
+                                    "Connection lost",
+                                )
+                                break
 
             except asyncio.CancelledError:
                 logger.info(f"MCP connection {server_id} cancelled")
@@ -362,7 +371,16 @@ class MCPManager:
                         state._connection_event.set()
 
                         while state.status == "connected":
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(10)
+                            try:
+                                await asyncio.wait_for(session.send_ping(), timeout=5.0)
+                            except Exception:
+                                self._set_status(
+                                    server_id,
+                                    "error",
+                                    "Connection lost",
+                                )
+                                break
 
             except asyncio.CancelledError:
                 raise
@@ -400,7 +418,16 @@ class MCPManager:
                         state._connection_event.set()
 
                         while state.status == "connected":
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(10)
+                            try:
+                                await asyncio.wait_for(session.send_ping(), timeout=5.0)
+                            except Exception:
+                                self._set_status(
+                                    server_id,
+                                    "error",
+                                    "Connection lost",
+                                )
+                                break
 
             except asyncio.CancelledError:
                 raise
