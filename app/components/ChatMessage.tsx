@@ -63,8 +63,8 @@ function ChatMessage({
         {
           acceptNode: (node) => {
             if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
-            const parentEl = (node as ChildNode & { parentElement: Element | null }).parentElement;
-            if (parentEl && parentEl.closest("[data-toolcall]")) {
+            const parentEl = node.parentElement;
+            if (parentEl?.closest("[data-toolcall]")) {
               return NodeFilter.FILTER_REJECT;
             }
             return NodeFilter.FILTER_ACCEPT;
@@ -100,8 +100,6 @@ function ChatMessage({
     };
   }, [isStreaming, content]);
 
-  const showActions = !!message;
-  
   return (
     <div
       className={clsx(
@@ -287,7 +285,7 @@ function ChatMessage({
           </div>
         )}
         
-        {showActions && (!isStreaming) && (
+        {message && !isStreaming && (
           <div className={clsx(
             "flex items-center gap-1 transition-opacity duration-200 px-1 pointer-events-auto",
             role === "user" ? "justify-end" : "justify-start",
@@ -298,7 +296,7 @@ function ChatMessage({
                 : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100"
           )}>
             <MessageActions
-              message={message!}
+              message={message}
               siblings={siblings || []}
               onContinue={onContinue}
               onRetry={onRetry}
