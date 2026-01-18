@@ -51,7 +51,7 @@ export default function ToolsetsPage() {
     <div className="flex w-full h-full">
       <ToolsetsSidebar activeTab={activeTab} onChangeTab={setActiveTab} />
       <main className="flex-1 overflow-y-auto">
-        <div className="container max-w-4xl px-4 mx-auto py-8">
+        <div className="container max-w-4xl px-4 mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-2xl font-semibold">
