@@ -200,7 +200,6 @@ class Tool(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category: Mapped[str] = mapped_column(String, default="utility", nullable=False)
     # JSON schema for arguments
     input_schema: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requires_confirmation: Mapped[bool] = mapped_column(

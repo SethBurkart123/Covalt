@@ -65,7 +65,6 @@ export function MessageActions({
     if (typeof message.content === "string") {
       textToCopy = message.content;
     } else if (Array.isArray(message.content)) {
-      // Extract text from content blocks
       textToCopy = message.content
         .filter((block) => block.type === "text")
         .map((block) => block.content)
@@ -83,7 +82,6 @@ export function MessageActions({
 
   return (
     <div className="flex items-center gap-1">
-      {/* Copy button - available for all messages */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -102,7 +100,6 @@ export function MessageActions({
         <TooltipContent>{copied ? "Copied!" : "Copy message"}</TooltipContent>
       </Tooltip>
 
-      {/* Continue button for any assistant message */}
       {message.role === "assistant" && onContinue && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -120,7 +117,6 @@ export function MessageActions({
         </Tooltip>
       )}
 
-      {/* Retry button for assistant messages */}
       {message.role === "assistant" && onRetry && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -138,7 +134,6 @@ export function MessageActions({
         </Tooltip>
       )}
 
-      {/* Edit button for user messages */}
       {message.role === "user" && onEdit && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -156,7 +151,6 @@ export function MessageActions({
         </Tooltip>
       )}
 
-      {/* Sibling navigation */}
       {showSiblingNav && (
         <div className="flex items-center gap-0.5 ml-auto">
           <Tooltip>

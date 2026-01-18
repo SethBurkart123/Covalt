@@ -51,11 +51,6 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
             {tool.description}
           </p>
         )}
-        {tool.category && (
-          <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground mt-1">
-            {tool.category}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -101,44 +96,44 @@ function ToolsetCard({
     setIsOpen(true);
   };
 
-  const ActionButtons = (
-    <div
-      className="flex items-center gap-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onToggle}
-        disabled={isToggling}
-        title={toolset.enabled ? "Disable" : "Enable"}
-      >
-        {isToggling ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : toolset.enabled ? (
-          <Power className="size-4 text-emerald-500" />
-        ) : (
-          <PowerOff className="size-4 text-muted-foreground" />
-        )}
-      </Button>
-      <Button variant="ghost" size="icon" onClick={onExport} title="Export">
-        <Download className="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onUninstall}
-        className="text-destructive hover:text-destructive"
-        title="Uninstall"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </div>
-  );
-
   return (
     <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
-      <CollapsibleTrigger rightContent={ActionButtons}>
+      <CollapsibleTrigger
+        rightContent={
+          <div
+            className="flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggle}
+              disabled={isToggling}
+              title={toolset.enabled ? "Disable" : "Enable"}
+            >
+              {isToggling ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : toolset.enabled ? (
+                <Power className="size-4 text-emerald-500" />
+              ) : (
+                <PowerOff className="size-4 text-muted-foreground" />
+              )}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onExport} title="Export">
+              <Download className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onUninstall}
+              className="text-destructive hover:text-destructive"
+              title="Uninstall"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        }
+      >
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -287,10 +282,7 @@ export default function ToolsetsPage() {
     try {
       const response = await exportToolset({ body: { id: toolset.id } });
       const byteCharacters = atob(response.data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
+      const byteNumbers = Array.from(byteCharacters, (c) => c.charCodeAt(0));
       const url = URL.createObjectURL(
         new Blob([new Uint8Array(byteNumbers)], { type: "application/zip" })
       );
@@ -336,8 +328,7 @@ export default function ToolsetsPage() {
 
     setIsImporting(true);
     try {
-      const handle = importToolset({ file });
-      await handle.promise;
+      await importToolset({ file }).promise;
       await loadToolsets();
     } catch (err) {
       console.error("Failed to import toolset:", err);

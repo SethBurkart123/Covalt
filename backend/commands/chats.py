@@ -192,7 +192,6 @@ async def get_available_tools() -> AvailableToolsResponse:
             id=tool["id"],
             name=tool.get("name"),
             description=tool.get("description"),
-            category=tool.get("category"),
             renderer=tool.get("renderer"),
             editable_args=tool.get("editable_args"),
             requires_confirmation=tool.get("requires_confirmation"),
@@ -238,7 +237,7 @@ async def get_available_tools() -> AvailableToolsResponse:
             id=tool["id"],
             name=tool.get("name"),
             description=tool.get("description"),
-            category=tool.get("category") or tool.get("toolset_id"),
+            category=tool.get("toolset_name") or tool.get("toolset_id"),
             requires_confirmation=tool.get("requires_confirmation", False),
         )
         for tool in toolset_data

@@ -275,7 +275,6 @@ def get_tool_registry() -> ToolRegistry:
 def tool(
     name: str | None = None,
     description: str | None = None,
-    category: str = "utility",
     renderer: str | None = None,
     editable_args: list[str] | None = None,
     requires_confirmation: bool = False,
@@ -296,7 +295,6 @@ def tool(
     UI/Registry metadata:
         name: Display name in UI (defaults to function name titlecased)
         description: Display description in UI (defaults to docstring first line)
-        category: Tool category for UI grouping
         renderer: UI renderer type (e.g., "markdown")
         editable_args: Args editable in UI before execution
 
@@ -353,7 +351,6 @@ def tool(
         metadata: dict[str, Any] = {
             "name": display_name,
             "description": tool_description or "",
-            "category": category,
         }
         if renderer is not None:
             metadata["renderer"] = renderer

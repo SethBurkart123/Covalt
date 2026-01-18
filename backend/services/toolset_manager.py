@@ -196,7 +196,6 @@ class ToolsetManager:
                         "tool_id": t.tool_id,
                         "name": t.name,
                         "description": t.description,
-                        "category": t.category,
                         "requires_confirmation": t.requires_confirmation,
                         "enabled": t.enabled,
                     }
@@ -488,7 +487,6 @@ class ToolsetManager:
                     toolset_id=manifest.id,
                     name=tool_def["name"],
                     description=tool_def.get("description"),
-                    category=tool_def.get("category", "utility"),
                     input_schema=json.dumps(tool_def.get("input_schema"))
                     if tool_def.get("input_schema")
                     else None,
@@ -585,8 +583,6 @@ class ToolsetManager:
 
                     if tool.description:
                         tool_data["description"] = tool.description
-                    if tool.category != "utility":
-                        tool_data["category"] = tool.category
                     if tool.input_schema:
                         tool_data["input_schema"] = json.loads(tool.input_schema)
                     if tool.requires_confirmation:
