@@ -81,8 +81,12 @@ function ToolsetCard({
   const [isLoadingTools, setIsLoadingTools] = React.useState(false);
 
   const handleOpenChange = async (open: boolean) => {
-    setIsOpen(open);
-    if (open && tools.length === 0) {
+    if (!open) {
+      setIsOpen(false);
+      return;
+    }
+
+    if (tools.length === 0) {
       setIsLoadingTools(true);
       try {
         const detail = await getToolset({ body: { id: toolset.id } });
@@ -93,6 +97,8 @@ function ToolsetCard({
         setIsLoadingTools(false);
       }
     }
+
+    setIsOpen(true);
   };
 
   const ActionButtons = (
@@ -285,9 +291,9 @@ export default function ToolsetsPage() {
       for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: "application/zip" });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(
+        new Blob([new Uint8Array(byteNumbers)], { type: "application/zip" })
+      );
       const a = document.createElement("a");
       a.href = url;
       a.download = response.filename;
@@ -348,7 +354,6 @@ export default function ToolsetsPage() {
 
   return (
     <div className="container mx-auto max-w-4xl py-8 px-4">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Toolsets</h1>
         <p className="text-muted-foreground">
@@ -356,7 +361,6 @@ export default function ToolsetsPage() {
         </p>
       </div>
 
-      {/* Hidden file input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -378,7 +382,6 @@ export default function ToolsetsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Actions */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Package className="size-5 text-muted-foreground" />
@@ -397,7 +400,6 @@ export default function ToolsetsPage() {
             </Button>
           </div>
 
-          {/* Toolset List */}
           {toolsets.length > 0 ? (
             <div className="space-y-3">
               {toolsets.map((toolset) => (
@@ -428,7 +430,6 @@ export default function ToolsetsPage() {
             </div>
           )}
 
-          {/* Help text */}
           <div className="text-sm text-muted-foreground border-t pt-6 mt-6">
             <p className="mb-2">
               <strong>Toolsets</strong> are packages that provide Python tools
@@ -443,7 +444,6 @@ export default function ToolsetsPage() {
         </div>
       )}
 
-      {/* Uninstall Dialog */}
       <UninstallDialog
         open={uninstallDialogOpen}
         onOpenChange={setUninstallDialogOpen}
