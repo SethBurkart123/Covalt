@@ -179,8 +179,8 @@ function ToolsetCard({
           </div>
         ) : tools.length > 0 ? (
           <div className="space-y-2">
-            {tools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
+            {tools.map((tool, index) => (
+              <ToolCard key={tool.id ?? `tool-${index}`} tool={tool} />
             ))}
           </div>
         ) : (

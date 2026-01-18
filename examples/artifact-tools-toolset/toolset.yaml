@@ -1,0 +1,22 @@
+manifest_version: "1"
+
+id: artifact-tools
+name: Artifact Tools
+version: "1.0.0"
+description: Create rich artifacts for displaying markdown documents and interactive HTML content
+
+tools:
+  - id: write_artifact
+    entrypoint: tools.artifacts:write_artifact
+    requires_confirmation: true
+    renderer:
+      type: document
+      content: "$return"
+      editable: true
+
+  - id: write_html_artifact
+    entrypoint: tools.artifacts:write_html_artifact
+    requires_confirmation: true
+    renderer:
+      type: html
+      content: "$return"
