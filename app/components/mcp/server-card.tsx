@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, type MouseEvent } from "react";
 import {
-  Wrench,
   RefreshCw,
   Plug,
   Pencil,
@@ -11,18 +10,13 @@ import {
   Loader2,
   XCircle,
   AlertCircle,
+  ChevronRight,
 } from "lucide-react";
 import type { McpServerStatus } from "@/contexts/tools-context";
 import { reconnectMcpServer } from "@/python/api";
-import type { ToolInfo } from "@/lib/types/chat";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusConfig } from "@/components/ui/status-badge";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
 
 const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
   connected: {
@@ -49,72 +43,51 @@ const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
 
 interface McpServerCardProps {
   server: McpServerStatus;
-  tools: ToolInfo[];
+  toolCount?: number;
   onEdit: () => void;
   onDelete: () => void;
+  onInspect: () => void;
 }
 
 export function McpServerCard({
   server,
-  tools,
+  toolCount: toolCountProp,
   onEdit,
   onDelete,
+  onInspect,
 }: McpServerCardProps) {
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  const handleReconnect = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    setIsReconnecting(true);
-    try {
-      await reconnectMcpServer({ body: { id: server.id } });
-    } catch (error) {
-      console.error("Failed to reconnect:", error);
-    } finally {
-      setIsReconnecting(false);
-    }
-  };
+  const handleReconnect = useCallback(
+    async (e: MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      setIsReconnecting(true);
+      try {
+        await reconnectMcpServer({ body: { id: server.id } });
+      } catch (error) {
+        console.error("Failed to reconnect:", error);
+      } finally {
+        setIsReconnecting(false);
+      }
+    },
+    [server.id]
+  );
 
   const showReconnectButton =
     server.status === "error" || server.status === "disconnected";
 
-  const toolCount = server.toolCount ?? tools.length;
-  const hasTools = server.status === "connected" && tools.length > 0;
+  const toolCount = toolCountProp ?? server.toolCount ?? 0;
 
   return (
-    <Collapsible defaultOpen={false} disableToggle={!hasTools}>
-      <CollapsibleTrigger
-        rightContent={
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {showReconnectButton && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReconnect}
-                disabled={isReconnecting}
-              >
-                <RefreshCw
-                  className={cn("size-3", isReconnecting && "animate-spin")}
-                />
-                Reconnect
-              </Button>
-            )}
-            <Button variant="ghost" size="icon" onClick={onEdit}>
-              <Pencil className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onDelete}
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        }
-      >
+    <button
+      onClick={onInspect}
+      className={cn(
+        "w-full text-left rounded-lg border border-border bg-card",
+        "transition-all hover:bg-muted/50 hover:border-border/80",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      )}
+    >
+      <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -137,7 +110,7 @@ export function McpServerCard({
               )}
             />
           </div>
-          <div className="text-left">
+          <div>
             <div className="flex items-center gap-2">
               <span className="font-medium">{server.id}</span>
               <StatusBadge
@@ -156,32 +129,45 @@ export function McpServerCard({
             </p>
           </div>
         </div>
-      </CollapsibleTrigger>
 
-      {hasTools && (
-        <CollapsibleContent>
-          <div className="space-y-2">
-            {tools.map((tool) => (
-              <div
-                key={tool.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-              >
-                <Wrench className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">
-                    {tool.name || tool.id.split(":").pop()}
-                  </p>
-                  {tool.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                      {tool.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CollapsibleContent>
-      )}
-    </Collapsible>
+        <div className="flex items-center gap-1">
+          {showReconnectButton && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReconnect}
+              disabled={isReconnecting}
+            >
+              <RefreshCw
+                className={cn("size-3", isReconnecting && "animate-spin")}
+              />
+              Reconnect
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+          <ChevronRight className="size-4 text-muted-foreground ml-1" />
+        </div>
+      </div>
+    </button>
   );
 }

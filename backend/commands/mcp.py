@@ -1,21 +1,15 @@
-"""
-MCP Server management endpoints.
-
-Provides commands for managing MCP server connections:
-- List servers with status and tools
-- Add/update/remove servers
-- Reconnect to failed servers
-"""
+"""MCP server management commands."""
 
 from __future__ import annotations
 
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from zynk import command
 
 from ..services.mcp_manager import get_mcp_manager
@@ -23,8 +17,6 @@ from ..services.toolset_manager import get_toolset_manager
 
 
 class MCPServerConfig(BaseModel):
-    """Configuration for an MCP server."""
-
     command: Optional[str] = None
     args: Optional[List[str]] = None
     env: Optional[Dict[str, str]] = None
@@ -37,8 +29,6 @@ class MCPServerConfig(BaseModel):
 
 
 class MCPToolInfo(BaseModel):
-    """Information about an MCP tool."""
-
     id: str
     name: str
     description: Optional[str] = None
@@ -49,20 +39,41 @@ class MCPToolInfo(BaseModel):
 
 
 class MCPServerInfo(BaseModel):
-    """Information about an MCP server."""
-
     id: str
     status: Literal["connecting", "connected", "error", "disconnected"]
     error: Optional[str] = None
     toolCount: int = 0
-    tools: List[MCPToolInfo] = []
-    config: Dict[str, Any] = {}
+    tools: List[MCPToolInfo] = Field(default_factory=list)
+    config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MCPServersResponse(BaseModel):
-    """Response for get_mcp_servers."""
-
     servers: List[MCPServerInfo]
+
+
+def _tool_info(t: Dict[str, Any]) -> MCPToolInfo:
+    return MCPToolInfo(
+        id=t["id"],
+        name=t["name"],
+        description=t.get("description"),
+        inputSchema=t.get("inputSchema"),
+        renderer=t.get("renderer"),
+        renderer_config=t.get("renderer_config"),
+        requires_confirmation=t.get("requires_confirmation", True),
+    )
+
+
+def _server_info(mcp: Any, server_data: Dict[str, Any]) -> MCPServerInfo:
+    server_id = server_data["id"]
+    tools = [_tool_info(t) for t in mcp.get_server_tools(server_id)]
+    return MCPServerInfo(
+        id=server_id,
+        status=server_data["status"],
+        error=server_data.get("error"),
+        toolCount=server_data["toolCount"],
+        tools=tools,
+        config=server_data["config"],
+    )
 
 
 class AddMCPServerInput(BaseModel):
@@ -87,61 +98,17 @@ class MCPServerId(BaseModel):
 
 @command
 async def get_mcp_servers() -> MCPServersResponse:
-    """
-    Get all MCP servers with their status and tools.
-
-    Returns list of servers including:
-    - Connection status (connecting, connected, error, disconnected)
-    - Error message if status is error
-    - List of available tools for connected servers
-    - Sanitized config (env vars hidden)
-    """
+    """Get all MCP servers with their status and tools."""
     mcp = get_mcp_manager()
 
-    servers = []
-    for server_data in mcp.get_servers():
-        server_id = server_data["id"]
-        tools = [
-            MCPToolInfo(
-                id=t["id"],
-                name=t["name"],
-                description=t.get("description"),
-                inputSchema=t.get("inputSchema"),
-                renderer=t.get("renderer"),
-                renderer_config=t.get("renderer_config"),
-                requires_confirmation=t.get("requires_confirmation", True),
-            )
-            for t in mcp.get_server_tools(server_id)
-        ]
-
-        servers.append(
-            MCPServerInfo(
-                id=server_id,
-                status=server_data["status"],
-                error=server_data.get("error"),
-                toolCount=server_data["toolCount"],
-                tools=tools,
-                config=server_data["config"],
-            )
-        )
+    servers = [_server_info(mcp, server_data) for server_data in mcp.get_servers()]
 
     return MCPServersResponse(servers=servers)
 
 
 @command
 async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
-    """
-    Add a new MCP server and connect to it.
-
-    This creates a user_mcp toolset to wrap the MCP server,
-    then adds the server to that toolset.
-
-    Args:
-        body: Contains server ID and configuration
-
-    Returns:
-        Server info with connection status
-    """
+    """Add a new MCP server and connect to it."""
     toolset_manager = get_toolset_manager()
     toolset_manager.create_user_mcp_toolset(body.id)
 
@@ -154,39 +121,12 @@ async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
     if not server_data:
         raise RuntimeError(f"Server {body.id} not found after adding")
 
-    tools = [
-        MCPToolInfo(
-            id=t["id"],
-            name=t["name"],
-            description=t.get("description"),
-            inputSchema=t.get("inputSchema"),
-            renderer=t.get("renderer"),
-            requires_confirmation=t.get("requires_confirmation", True),
-        )
-        for t in mcp.get_server_tools(body.id)
-    ]
-
-    return MCPServerInfo(
-        id=body.id,
-        status=server_data["status"],
-        error=server_data.get("error"),
-        toolCount=server_data["toolCount"],
-        tools=tools,
-        config=server_data["config"],
-    )
+    return _server_info(mcp, server_data)
 
 
 @command
 async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
-    """
-    Update an MCP server configuration and reconnect.
-
-    Args:
-        body: Contains server ID and new configuration
-
-    Returns:
-        Server info with connection status
-    """
+    """Update an MCP server configuration and reconnect."""
     mcp = get_mcp_manager()
     await mcp.update_server(body.id, body.config.model_dump(exclude_none=True))
 
@@ -194,42 +134,12 @@ async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
     if not server_data:
         raise RuntimeError(f"Server {body.id} not found after updating")
 
-    tools = [
-        MCPToolInfo(
-            id=t["id"],
-            name=t["name"],
-            description=t.get("description"),
-            inputSchema=t.get("inputSchema"),
-            renderer=t.get("renderer"),
-            renderer_config=t.get("renderer_config"),
-            requires_confirmation=t.get("requires_confirmation", True),
-        )
-        for t in mcp.get_server_tools(body.id)
-    ]
-
-    return MCPServerInfo(
-        id=body.id,
-        status=server_data["status"],
-        error=server_data.get("error"),
-        toolCount=server_data["toolCount"],
-        tools=tools,
-        config=server_data["config"],
-    )
+    return _server_info(mcp, server_data)
 
 
 @command
 async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
-    """
-    Disconnect and remove an MCP server.
-
-    This also removes the associated user_mcp toolset.
-
-    Args:
-        body: Contains server ID
-
-    Returns:
-        Success status
-    """
+    """Disconnect and remove an MCP server (and its user toolset)."""
     mcp = get_mcp_manager()
     await mcp.remove_server(body.id)
 
@@ -241,17 +151,7 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
 
 @command
 async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
-    """
-    Get a single MCP server's configuration for editing.
-
-    Returns unsanitized config with actual environment variable values.
-
-    Args:
-        body: Contains server ID
-
-    Returns:
-        Server configuration dict
-    """
+    """Get a server's config for editing (unsanitized)."""
     mcp = get_mcp_manager()
     config = mcp.get_server_config(body.id, sanitize=False)
     if config is None:
@@ -261,15 +161,7 @@ async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
 
 @command
 async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
-    """
-    Reconnect to a failed or disconnected MCP server.
-
-    Args:
-        body: Contains server ID
-
-    Returns:
-        Server info with new connection status
-    """
+    """Reconnect to a failed or disconnected MCP server."""
     mcp = get_mcp_manager()
     await mcp.reconnect(body.id)
 
@@ -277,27 +169,7 @@ async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
     if not server_data:
         raise RuntimeError(f"Server {body.id} not found")
 
-    tools = [
-        MCPToolInfo(
-            id=t["id"],
-            name=t["name"],
-            description=t.get("description"),
-            inputSchema=t.get("inputSchema"),
-            renderer=t.get("renderer"),
-            renderer_config=t.get("renderer_config"),
-            requires_confirmation=t.get("requires_confirmation", True),
-        )
-        for t in mcp.get_server_tools(body.id)
-    ]
-
-    return MCPServerInfo(
-        id=body.id,
-        status=server_data["status"],
-        error=server_data.get("error"),
-        toolCount=server_data["toolCount"],
-        tools=tools,
-        config=server_data["config"],
-    )
+    return _server_info(mcp, server_data)
 
 
 class ScannedServer(BaseModel):
@@ -486,12 +358,46 @@ def _scan_source(source_key: str) -> SourceScanResult:
 
 @command
 async def scan_import_sources() -> ScanImportSourcesResponse:
-    """
-    Scan external app config files for MCP servers to import.
-    """
+    """Scan external app configs for MCP servers to import."""
     results: Dict[str, SourceScanResult] = {}
 
     for source_key in IMPORT_SOURCE_CONFIGS.keys():
         results[source_key] = _scan_source(source_key)
 
     return ScanImportSourcesResponse(results=results)
+
+
+class TestMCPToolInput(BaseModel):
+    serverId: str
+    toolName: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TestMCPToolResult(BaseModel):
+    success: bool
+    result: Optional[str] = None
+    error: Optional[str] = None
+    durationMs: int = 0
+
+
+@command
+async def test_mcp_tool(body: TestMCPToolInput) -> TestMCPToolResult:
+    """Invoke an MCP tool with arguments and return its output."""
+    mcp = get_mcp_manager()
+
+    start = time.perf_counter()
+    try:
+        result = await mcp.call_tool(body.serverId, body.toolName, body.arguments)
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        return TestMCPToolResult(
+            success=True,
+            result=result,
+            durationMs=duration_ms,
+        )
+    except Exception as e:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        return TestMCPToolResult(
+            success=False,
+            error=str(e),
+            durationMs=duration_ms,
+        )
