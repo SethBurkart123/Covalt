@@ -1,9 +1,6 @@
 import type { ServerFormData, ServerType } from "./types";
 import type { KeyValuePair } from "@/components/ui/key-value-input";
 
-/**
- * Converts an MCP server config from the API into form data for editing.
- */
 export function configToFormData(
   id: string,
   config: Record<string, unknown>
@@ -50,10 +47,6 @@ export function configToFormData(
   };
 }
 
-/**
- * Parses a command string into command and args array.
- * Handles quoted arguments containing spaces.
- */
 export function parseCommandString(cmdStr: string): {
   command: string;
   args: string[];

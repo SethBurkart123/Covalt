@@ -1,6 +1,5 @@
-"""Built-in tools for the agent."""
-
 from backend.services.tool_registry import tool
+
 
 @tool(
     name="Write Artifact",

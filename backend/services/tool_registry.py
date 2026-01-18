@@ -1,14 +1,3 @@
-"""
-Tool Registry for managing available tools.
-
-Provides a unified @tool decorator that wraps agno's @tool while also
-registering tools with a centralized registry for UI display and activation.
-
-Integrates with:
-- MCP servers to provide MCP tools
-- Toolset executor to provide Python toolset tools
-"""
-
 from __future__ import annotations
 
 import logging
@@ -24,32 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class ToolRegistry:
-    """
-    Centralized registry for managing available tools.
-
-    Tools are registered automatically when decorated with @tool.
-    The registry stores both the wrapped tool function and UI metadata.
-    """
-
     def __init__(self) -> None:
         self._tools: dict[str, Callable] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
 
     def register(self, name: str, fn: Any, metadata: dict[str, Any]) -> None:
-        """
-        Register a tool with the registry.
-
-        Called internally by the @tool decorator.
-        """
         self._tools[name] = fn
         self._metadata[name] = metadata
 
     def get_tools(self, tool_ids: list[str]) -> list[Any]:
-        """
-        Get tool instances for given IDs.
-
-        Returns the wrapped tool functions ready to pass to an agno Agent.
-        """
         tools = []
         for tid in tool_ids:
             if tid in self._tools:
@@ -57,15 +29,9 @@ class ToolRegistry:
         return tools
 
     def has_tool(self, tool_id: str) -> bool:
-        """Check if a tool is registered."""
         return tool_id in self._tools
 
     def _get_mcp_tool_info(self, tool_id: str) -> dict[str, Any] | None:
-        """
-        Get MCP tool info for a tool ID.
-
-        Handles MCP ID format: "mcp:github:search_repositories"
-        """
         if tool_id.startswith("mcp:"):
             parsed = self._parse_tool_id(tool_id)
             if parsed[0] == "mcp_tool":
@@ -84,13 +50,6 @@ class ToolRegistry:
         return None
 
     def get_editable_args(self, tool_id: str) -> list[str] | None:
-        """
-        Get editable_args config for a tool.
-
-        The tool_id can be in multiple formats:
-        - Builtin: "calculate"
-        - MCP ID: "mcp:github:search_repositories"
-        """
         metadata = self._metadata.get(tool_id, {})
         if "editable_args" in metadata:
             return metadata.get("editable_args")
@@ -102,13 +61,6 @@ class ToolRegistry:
         return None
 
     def get_renderer(self, tool_id: str) -> str | None:
-        """
-        Get renderer config for a tool.
-
-        The tool_id can be in multiple formats:
-        - Builtin: "calculate"
-        - MCP ID: "mcp:github:search_repositories"
-        """
         metadata = self._metadata.get(tool_id, {})
         if "renderer" in metadata:
             return metadata.get("renderer")
@@ -120,16 +72,6 @@ class ToolRegistry:
         return None
 
     def _parse_tool_id(self, tool_id: str) -> tuple[str, str | None, str | None]:
-        """
-        Parse tool ID into (type, namespace, tool_name).
-
-        Examples:
-            "calculate" → ("builtin", None, "calculate")
-            "mcp:github" → ("mcp_toolset", "github", None)
-            "mcp:github:search" → ("mcp_tool", "github", "search")
-            "app-builder:write_file" → ("toolset_tool", "app-builder", "write_file")
-            "-mcp:github:x" → ("blacklist", "github", "x")
-        """
         if tool_id.startswith("-"):
             inner = tool_id[1:]
             if inner.startswith("mcp:"):
@@ -154,22 +96,6 @@ class ToolRegistry:
     def resolve_tool_ids(
         self, tool_ids: list[str], chat_id: str | None = None
     ) -> list[Any]:
-        """
-        Resolve tool IDs to actual Function objects.
-
-        Handles:
-        - Builtin tools: "calculate" → builtin Function
-        - MCP toolsets: "mcp:github" → all tools from github server
-        - MCP individual: "mcp:github:search" → specific MCP tool
-        - Toolset tools: "app-builder:write_file" → Python toolset tool
-        - Blacklist: "-mcp:github:create_issue" → exclude from toolset
-
-        Args:
-            tool_ids: List of tool IDs to resolve
-            chat_id: Chat ID for toolset tools (required for workspace context)
-
-        Returns list of agno Function objects ready to pass to Agent.
-        """
         mcp = get_mcp_manager()
 
         include_builtin: set[str] = set()
@@ -234,14 +160,12 @@ class ToolRegistry:
         return result
 
     def list_builtin_tools(self) -> list[dict[str, Any]]:
-        """Return builtin tools with their metadata for UI display."""
         return [
             {"id": tool_id, **self._metadata.get(tool_id, {})}
             for tool_id in self._tools.keys()
         ]
 
     def list_toolset_tools(self) -> list[dict[str, Any]]:
-        """Return all enabled toolset tools for UI display."""
         executor = get_toolset_executor()
         return executor.list_toolset_tools()
 
@@ -250,21 +174,18 @@ _tool_registry: ToolRegistry | None = None
 
 
 def get_mcp_manager() -> "MCPManager":
-    """Get the MCP manager (lazy import to avoid circular deps)."""
     from .mcp_manager import get_mcp_manager as _get_mcp_manager
 
     return _get_mcp_manager()
 
 
 def get_toolset_executor() -> "ToolsetExecutor":
-    """Get the toolset executor (lazy import to avoid circular deps)."""
     from .toolset_executor import get_toolset_executor as _get_toolset_executor
 
     return _get_toolset_executor()
 
 
 def get_tool_registry() -> ToolRegistry:
-    """Get the global tool registry instance (singleton)."""
     global _tool_registry
     if _tool_registry is None:
         _tool_registry = ToolRegistry()
@@ -289,29 +210,6 @@ def tool(
     user_input_fields: list[str] | None = None,
     external_execution: bool = False,
 ) -> Callable[[Callable], Any]:
-    """
-    Unified tool decorator that wraps agno's @tool and registers with the ToolRegistry.
-
-    UI/Registry metadata:
-        name: Display name in UI (defaults to function name titlecased)
-        description: Display description in UI (defaults to docstring first line)
-        renderer: UI renderer type (e.g., "markdown")
-        editable_args: Args editable in UI before execution
-
-    Agno @tool passthrough options:
-        requires_confirmation: Requires user confirmation before execution
-        stop_after_tool_call: Stop the agent run after the tool call
-        cache_results: Cache the tool result
-        cache_dir: Directory to store cache files
-        cache_ttl: Time-to-live for cached results in seconds
-        tool_hooks: List of hooks that wrap the function execution
-        pre_hook: Hook to run before the function is executed
-        post_hook: Hook to run after the function is executed
-        requires_user_input: Requires user input before execution
-        user_input_fields: List of fields that require user input
-        external_execution: Tool will be executed outside of the agent's control
-    """
-
     def decorator(fn: Callable) -> Any:
         agno_kwargs: dict[str, Any] = {}
         if requires_confirmation:

@@ -135,6 +135,15 @@ Key rules (warnings, not errors):
 
 The `app/python/api.ts` file has relaxed rules (auto-generated).
 
+## Backwards Compatibility
+
+**No backwards compatibility is guaranteed until initial release.** Breaking changes may occur during development. This includes:
+
+- Toolset YAML schema changes
+- API changes  
+- Database schema changes
+- Python SDK changes
+
 ## The Golden Rule
 
 **If it feels messy, it probably is!** Refactor with joy. Future you will high-five present you.

@@ -1,5 +1,3 @@
-"""Workspace Manager - handles per-chat CAS (Content-Addressable Storage) workspaces."""
-
 from __future__ import annotations
 
 import hashlib
@@ -406,7 +404,6 @@ class WorkspaceManager:
                         blob_file.unlink()
                         removed += 1
 
-                # Remove empty subdirs
                 if not any(subdir.iterdir()):
                     subdir.rmdir()
 

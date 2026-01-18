@@ -7,19 +7,7 @@ description: Basic file manipulation tools for reading, writing, and listing fil
 
 tools:
   - id: write_file
-    name: Write File
-    description: Write content to a file in the workspace. Creates parent directories if needed.
     entrypoint: tools.files:write_file
-    input_schema:
-      type: object
-      properties:
-        path:
-          type: string
-          description: File path relative to workspace (e.g., "src/main.py")
-        content:
-          type: string
-          description: Content to write to the file
-      required: [path, content]
     renderer:
       type: code
       file: "$args.path"
@@ -27,42 +15,14 @@ tools:
       editable: true
 
   - id: read_file
-    name: Read File
-    description: Read the contents of a file from the workspace.
     entrypoint: tools.files:read_file
-    input_schema:
-      type: object
-      properties:
-        path:
-          type: string
-          description: File path relative to workspace
-      required: [path]
     renderer:
       type: code
       file: "$args.path"
       language: auto
 
   - id: list_files
-    name: List Files
-    description: List all files in the workspace or a specific directory.
     entrypoint: tools.files:list_files
-    input_schema:
-      type: object
-      properties:
-        directory:
-          type: string
-          description: Directory to list (empty for root)
-          default: ""
 
   - id: delete_file
-    name: Delete File
-    description: Delete a file from the workspace.
     entrypoint: tools.files:delete_file
-    input_schema:
-      type: object
-      properties:
-        path:
-          type: string
-          description: File path to delete
-      required: [path]
-    requires_confirmation: true

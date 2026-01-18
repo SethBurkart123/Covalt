@@ -1,19 +1,3 @@
-"""
-Toolset Manager - handles toolset installation, import/export, and registration.
-
-Toolsets are packages containing:
-- toolset.yaml manifest
-- tools/*.py Python tool modules
-- artifacts/ HTML templates for renderers
-- assets/ Static files
-
-This manager handles:
-- Importing toolsets from ZIP files
-- Exporting toolsets to ZIP files
-- Registering tools in the database
-- Managing toolset lifecycle (enable/disable/uninstall)
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -40,7 +24,6 @@ from ..db.models import (
 
 logger = logging.getLogger(__name__)
 
-# Manifest schema version we support
 SUPPORTED_MANIFEST_VERSIONS = ["1"]
 
 
@@ -75,14 +58,11 @@ def _classify_file(path: str) -> str:
 
 
 class ToolsetManifest:
-    """Parsed and validated toolset manifest."""
-
     def __init__(self, data: dict[str, Any]):
         self.raw = data
         self._validate()
 
     def _validate(self) -> None:
-        """Validate manifest structure."""
         if "id" not in self.raw:
             raise ValueError("Manifest missing required field: id")
         if "name" not in self.raw:
@@ -97,8 +77,6 @@ class ToolsetManifest:
         for i, tool in enumerate(self.raw.get("tools", [])):
             if "id" not in tool:
                 raise ValueError(f"Tool at index {i} missing required field: id")
-            if "name" not in tool:
-                raise ValueError(f"Tool at index {i} missing required field: name")
             if "entrypoint" not in tool:
                 raise ValueError(
                     f"Tool at index {i} missing required field: entrypoint"
@@ -134,30 +112,10 @@ class ToolsetManifest:
 
 
 class ToolsetManager:
-    """
-    Manages toolset installation, export, and lifecycle.
-
-    Usage:
-        manager = ToolsetManager()
-
-        # Import from ZIP
-        toolset_id = manager.import_from_zip(zip_path)
-
-        # List toolsets
-        toolsets = manager.list_toolsets()
-
-        # Export to ZIP
-        zip_bytes = manager.export_to_zip(toolset_id)
-
-        # Uninstall
-        manager.uninstall(toolset_id)
-    """
-
     def __init__(self) -> None:
         self.toolsets_dir = get_toolsets_directory()
 
     def list_toolsets(self) -> list[dict[str, Any]]:
-        """List all installed toolsets."""
         with db_session() as session:
             toolsets = session.query(Toolset).all()
             return [
@@ -174,7 +132,6 @@ class ToolsetManager:
             ]
 
     def get_toolset(self, toolset_id: str) -> dict[str, Any] | None:
-        """Get toolset details including tools."""
         with db_session() as session:
             toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
@@ -209,20 +166,6 @@ class ToolsetManager:
         source_type: str = "zip",
         source_ref: str | None = None,
     ) -> str:
-        """
-        Import a toolset from a ZIP file.
-
-        Args:
-            zip_data: ZIP file contents as bytes or path to ZIP file
-            source_type: Source type ("zip", "local", "url")
-            source_ref: Original path/URL
-
-        Returns:
-            Installed toolset ID
-
-        Raises:
-            ValueError: If manifest is invalid or toolset already exists
-        """
         if isinstance(zip_data, Path):
             zip_bytes = zip_data.read_bytes()
             if source_ref is None:
@@ -280,15 +223,6 @@ class ToolsetManager:
         return manifest.id
 
     def import_from_directory(self, directory: Path) -> str:
-        """
-        Import a toolset from a directory (for development).
-
-        Args:
-            directory: Path to toolset directory
-
-        Returns:
-            Installed toolset ID
-        """
         manifest_path = directory / "toolset.yaml"
         if not manifest_path.exists():
             raise ValueError(f"No toolset.yaml found in {directory}")
@@ -336,18 +270,6 @@ class ToolsetManager:
         return manifest.id
 
     def export_to_zip(self, toolset_id: str) -> bytes:
-        """
-        Export a toolset to a ZIP file.
-
-        Args:
-            toolset_id: Toolset ID to export
-
-        Returns:
-            ZIP file contents as bytes
-
-        Raises:
-            ValueError: If toolset not found
-        """
         toolset = self.get_toolset(toolset_id)
         if toolset is None:
             raise ValueError(f"Toolset '{toolset_id}' not found")
@@ -373,7 +295,6 @@ class ToolsetManager:
         return zip_buffer.getvalue()
 
     def enable_toolset(self, toolset_id: str, enabled: bool = True) -> bool:
-        """Enable or disable a toolset."""
         with db_session() as session:
             toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
@@ -395,11 +316,6 @@ class ToolsetManager:
         return True
 
     def uninstall(self, toolset_id: str) -> bool:
-        """
-        Uninstall a toolset.
-
-        Removes all database records and files.
-        """
         with db_session() as session:
             toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
@@ -419,7 +335,6 @@ class ToolsetManager:
         return True
 
     def _find_and_parse_manifest(self, zf: zipfile.ZipFile) -> dict[str, Any]:
-        """Find and parse toolset.yaml in a ZIP file."""
         for name in ["toolset.yaml", "toolset.yml"]:
             if name in zf.namelist():
                 content = zf.read(name).decode("utf-8")
@@ -434,7 +349,6 @@ class ToolsetManager:
         raise ValueError("No toolset.yaml found in ZIP file")
 
     def _normalize_zip_path(self, path: str) -> str | None:
-        """Normalize a ZIP file path, handling nested root folders."""
         parts = path.split("/")
         if any(p.startswith(".") for p in parts if p):
             return None
@@ -454,7 +368,6 @@ class ToolsetManager:
         source_type: str,
         source_ref: str | None,
     ) -> None:
-        """Register a toolset and its components in the database."""
         with db_session() as session:
             toolset = Toolset(
                 id=manifest.id,
@@ -485,11 +398,9 @@ class ToolsetManager:
                 tool = Tool(
                     tool_id=tool_id,
                     toolset_id=manifest.id,
-                    name=tool_def["name"],
+                    name=tool_def.get("name", tool_def["id"]),
                     description=tool_def.get("description"),
-                    input_schema=json.dumps(tool_def.get("input_schema"))
-                    if tool_def.get("input_schema")
-                    else None,
+                    input_schema=None,
                     requires_confirmation=tool_def.get("requires_confirmation", False),
                     enabled=True,
                     entrypoint=tool_def["entrypoint"],
@@ -544,7 +455,6 @@ class ToolsetManager:
             session.commit()
 
     def _generate_manifest(self, toolset_id: str) -> dict[str, Any]:
-        """Generate manifest YAML data from database state."""
         with db_session() as session:
             toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
@@ -570,21 +480,19 @@ class ToolsetManager:
             if tools:
                 manifest["tools"] = []
                 for tool in tools:
-                    # Strip toolset prefix from tool_id
                     tool_id_short = tool.tool_id
                     if tool_id_short.startswith(f"{toolset_id}:"):
                         tool_id_short = tool_id_short[len(toolset_id) + 1 :]
 
                     tool_data: dict[str, Any] = {
                         "id": tool_id_short,
-                        "name": tool.name,
                         "entrypoint": tool.entrypoint,
                     }
 
+                    if tool.name and tool.name != tool_id_short:
+                        tool_data["name"] = tool.name
                     if tool.description:
                         tool_data["description"] = tool.description
-                    if tool.input_schema:
-                        tool_data["input_schema"] = json.loads(tool.input_schema)
                     if tool.requires_confirmation:
                         tool_data["requires_confirmation"] = True
 
@@ -629,12 +537,10 @@ class ToolsetManager:
             return manifest
 
 
-# Singleton instance
 _toolset_manager: ToolsetManager | None = None
 
 
 def get_toolset_manager() -> ToolsetManager:
-    """Get the global toolset manager instance."""
     global _toolset_manager
     if _toolset_manager is None:
         _toolset_manager = ToolsetManager()

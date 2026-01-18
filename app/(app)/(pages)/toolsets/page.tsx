@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Package,
   Wrench,
@@ -71,9 +71,9 @@ function ToolsetCard({
   onUninstall,
   isToggling,
 }: ToolsetCardProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [tools, setTools] = React.useState<ToolInfo[]>([]);
-  const [isLoadingTools, setIsLoadingTools] = React.useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
 
   const handleOpenChange = async (open: boolean) => {
     if (!open) {
@@ -236,18 +236,18 @@ function UninstallDialog({
 }
 
 export default function ToolsetsPage() {
-  const [toolsets, setToolsets] = React.useState<ToolsetInfo[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [togglingId, setTogglingId] = React.useState<string | null>(null);
-  const [uninstallDialogOpen, setUninstallDialogOpen] = React.useState(false);
+  const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
   const [uninstallingToolset, setUninstallingToolset] =
-    React.useState<ToolsetInfo | null>(null);
-  const [isUninstalling, setIsUninstalling] = React.useState(false);
-  const [isImporting, setIsImporting] = React.useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+    useState<ToolsetInfo | null>(null);
+  const [isUninstalling, setIsUninstalling] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadToolsets = React.useCallback(async () => {
+  const loadToolsets = useCallback(async () => {
     try {
       const response = await listToolsets();
       setToolsets(response.toolsets);
@@ -260,7 +260,7 @@ export default function ToolsetsPage() {
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadToolsets();
   }, [loadToolsets]);
 

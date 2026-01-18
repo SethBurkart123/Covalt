@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
@@ -20,6 +21,8 @@ from .streaming import (
     parse_model_id,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ContinueMessageRequest(BaseModel):
     messageId: str
@@ -36,19 +39,15 @@ class RetryMessageRequest(BaseModel):
 
 
 class AttachmentInput(BaseModel):
-    """Incoming attachment with base64 data (for new attachments)."""
-
     id: str
-    type: str  # "image" | "file" | "audio" | "video"
+    type: str
     name: str
     mimeType: str
     size: int
-    data: str  # base64-encoded file content
+    data: str
 
 
 class ExistingAttachmentInput(BaseModel):
-    """Existing attachment (just metadata, file already saved)."""
-
     id: str
     type: str
     name: str
@@ -195,7 +194,7 @@ async def continue_message(
         )
 
     except Exception as e:
-        print(f"[continue_message] Error: {e}")
+        logger.error(f"[continue_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
@@ -309,7 +308,7 @@ async def retry_message(
         )
 
     except Exception as e:
-        print(f"[retry_message] Error: {e}")
+        logger.error(f"[retry_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
@@ -382,15 +381,15 @@ async def edit_user_message(
                 all_attachments.append(
                     Attachment(
                         id=existing_att.id,
-                        type=existing_att.type,  # type: ignore
+                        type=existing_att.type,
                         name=existing_att.name,
                         mimeType=existing_att.mimeType,
                         size=existing_att.size,
                     )
                 )
             else:
-                print(
-                    f"[edit_user_message] Warning: Could not find existing attachment "
+                logger.warning(
+                    f"[edit_user_message] Could not find existing attachment "
                     f"'{existing_att.name}' in manifest {original_manifest_id}"
                 )
 
@@ -411,7 +410,7 @@ async def edit_user_message(
             all_attachments.append(
                 Attachment(
                     id=new_att.id,
-                    type=new_att.type,  # type: ignore
+                    type=new_att.type,
                     name=new_att.name,
                     mimeType=new_att.mimeType,
                     size=new_att.size,
@@ -526,7 +525,7 @@ async def edit_user_message(
         )
 
     except Exception as e:
-        print(f"[edit_user_message] Error: {e}")
+        logger.error(f"[edit_user_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)

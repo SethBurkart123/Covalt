@@ -52,10 +52,10 @@ Logical tool registry (builtin + toolset tools).
 |--------|------|-------------|
 | `tool_id` | TEXT PK | Stable identifier (e.g., `write_file`, `mytools:analyze`) |
 | `toolset_id` | TEXT FK NULL | NULL for builtin tools |
-| `name` | TEXT | Display name |
-| `description` | TEXT | Tool description (shown to model) |
+| `name` | TEXT | Display name (can be overridden by YAML) |
+| `description` | TEXT | Tool description (can be overridden by YAML) |
 | `category` | TEXT | Grouping category |
-| `input_schema` | TEXT | JSON schema for arguments |
+| `input_schema` | TEXT | DEPRECATED - schema is now inferred from @tool decorator |
 | `requires_confirmation` | BOOL | Needs user approval before run |
 | `enabled` | BOOL | Tool is active |
 | `entrypoint` | TEXT | For python tools: `module:function` |
@@ -236,38 +236,14 @@ description: Example toolset with analysis tools
 
 tools:
   - id: analyze_data
-    name: Analyze Data
-    description: Analyze a data file and return statistics
     entrypoint: tools.analyze:run
-    category: analysis
-    input_schema:
-      type: object
-      properties:
-        filename:
-          type: string
-          description: File to analyze
-      required: [filename]
-    requires_confirmation: false
     renderer:
       type: html
       artifact: artifacts/results.html
       data: "$return"
 
   - id: transform_file
-    name: Transform File
-    description: Transform a file using a template
     entrypoint: tools.transform:run
-    category: transform
-    input_schema:
-      type: object
-      properties:
-        input:
-          type: string
-        output:
-          type: string
-        template:
-          type: string
-      required: [input, output]
     renderer:
       type: code
       file: "$args.output"
@@ -313,28 +289,36 @@ Tools are discovered by their `entrypoint` in the `tools` table:
 
 ### 4.2 Tool Function Signature
 
+Tools are defined using the `@tool` decorator from `agno_toolset`. The decorator:
+- Infers JSON Schema from type hints (including Pydantic models)
+- Captures metadata (name, description, requires_confirmation, category)
+- Makes the function discoverable by the executor
+
+Context (workspace, chat_id, etc.) is accessed via `get_context()` instead of function arguments.
+
 ```python
-def run(
-    workspace: Path,      # Absolute path to chat's workspace/ directory
-    **kwargs              # Arguments from input_schema
-) -> dict:
+from agno_toolset import tool, get_context
+
+@tool(
+    name="Analyze Data",
+    description="Analyze a data file and return statistics",
+    category="analysis",
+)
+def analyze_data(filename: str) -> dict:
     """
-    Execute the tool.
-    
     Args:
-        workspace: Path to the chat's materialized workspace directory.
-                   Tool can read/write files here freely.
-        **kwargs: Arguments matching the tool's input_schema.
+        filename: File to analyze
     
     Returns:
         JSON-serializable dict. This becomes $return for renderer interpolation.
     """
-    # Example: read a file, process it, write output
-    input_file = workspace / kwargs["filename"]
+    ctx = get_context()  # Access workspace, chat_id, toolset_id
+    
+    input_file = ctx.workspace / filename
     data = input_file.read_text()
     result = process(data)
     
-    output_file = workspace / "output.json"
+    output_file = ctx.workspace / "output.json"
     output_file.write_text(json.dumps(result))
     
     return {
@@ -344,15 +328,35 @@ def run(
     }
 ```
 
+For complex input schemas, use Pydantic models:
+
+```python
+from pydantic import BaseModel, Field
+from agno_toolset import tool
+
+class TransformConfig(BaseModel):
+    input: str = Field(description="Input file path")
+    output: str = Field(description="Output file path")
+    template: str = Field(description="Template to apply")
+
+@tool(name="Transform File", description="Transform a file using a template")
+def transform_file(config: TransformConfig) -> dict:
+    ctx = get_context()
+    # ... implementation
+```
+
 ### 4.3 Execution Flow
 
 1. Materialize workspace to latest manifest state
 2. Import tool module, get function by entrypoint
-3. Call function with `workspace=` and kwargs from tool call args
-4. Capture return value (or exception)
-5. Snapshot workspace to create new manifest
-6. Generate render plan from tool's render config + return value
-7. Persist tool_calls row with result and render plan
+3. Extract metadata from `@tool` decorator (schema, name, description)
+4. Set context via `set_context()` (workspace, chat_id, toolset_id)
+5. Call function with kwargs from tool call args
+6. Clear context via `clear_context()`
+7. Capture return value (or exception)
+8. Snapshot workspace to create new manifest
+9. Generate render plan from tool's render config + return value
+10. Persist tool_calls row with result and render plan
 
 ### 4.4 Error Handling
 

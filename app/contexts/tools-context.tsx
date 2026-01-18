@@ -29,19 +29,14 @@ export type { McpServerStatus };
 interface ToolsContextType {
   availableTools: ToolInfo[];
   activeToolIds: string[];
-  /** Tools grouped by category (toolsets/MCP), plus ungrouped built-in tools */
   groupedTools: GroupedTools;
   toggleTool: (toolId: string) => void;
   toggleToolset: (category: string) => void;
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
-  /** Loading state for available tools list (use this for tools page) */
   isLoadingTools: boolean;
-  /** Loading state for active tool IDs (chat-specific) */
   isLoadingActiveTools: boolean;
-  /** MCP servers with real-time status from WebSocket */
   mcpServers: McpServerStatus[];
-  /** Manually refresh the tools list */
   refreshTools: () => void;
 }
 
@@ -130,7 +125,6 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     availableTools.forEach((tool) => {
       const category = tool.category;
       if (!category || category === "auto") {
-        // Built-in tools have no category - they go in ungrouped
         ungrouped.push(tool);
         return;
       }

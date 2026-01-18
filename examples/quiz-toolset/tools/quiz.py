@@ -1,25 +1,50 @@
 """
 Quiz tool for creating interactive multiple-choice quizzes.
 
-The model provides the questions; this tool validates them and returns
-the data for the HTML artifact renderer.
+Uses Pydantic for schema validation - the complex nested structure is
+automatically inferred as JSON Schema by the @tool decorator.
 """
 
-from pathlib import Path
-from typing import Any
+from pydantic import BaseModel, Field
+
+from agno_toolset import tool
 
 
-def create_quiz(workspace: Path, title: str, questions: list[dict[str, Any]]) -> dict:
+class QuizQuestion(BaseModel):
+    """A single quiz question with multiple choice answers."""
+
+    question: str = Field(description="The question text")
+    answers: list[str] = Field(
+        min_length=4,
+        max_length=4,
+        description="Exactly 4 answer options",
+    )
+    correct_index: int = Field(
+        ge=0,
+        le=3,
+        alias="correctIndex",
+        description="Index (0-3) of the correct answer",
+    )
+
+
+@tool(
+    name="Create Quiz",
+    description=(
+        "Create an interactive multiple-choice quiz. The model provides the quiz "
+        "title and an array of questions. Each question has a question text, exactly "
+        "4 answer options, and a correctIndex (0-3) indicating which answer is correct. "
+        "The quiz is rendered as an interactive HTML artifact where the user can take "
+        "the quiz one question at a time with immediate feedback."
+    ),
+    category="content",
+)
+def create_quiz(title: str, questions: list[QuizQuestion]) -> dict:
     """
     Create an interactive multiple-choice quiz.
 
     Args:
-        workspace: Path to the chat's workspace directory (unused for this tool)
         title: Title of the quiz
-        questions: List of question objects, each with:
-            - question: str - The question text
-            - answers: list[str] - Exactly 4 answer options
-            - correctIndex: int - Index (0-3) of the correct answer
+        questions: Array of quiz questions
 
     Returns:
         Dict with validated quiz data for the HTML renderer
@@ -30,39 +55,16 @@ def create_quiz(workspace: Path, title: str, questions: list[dict[str, Any]]) ->
     if not questions or len(questions) == 0:
         raise ValueError("At least one question is required")
 
+    # LLM sends dicts, convert to Pydantic models for validation
     validated_questions = []
-
-    for i, q in enumerate(questions):
-        # Validate question text
-        if not isinstance(q.get("question"), str) or not q["question"].strip():
-            raise ValueError(f"Question {i + 1}: question text is required")
-
-        # Validate answers
-        answers = q.get("answers", [])
-        if not isinstance(answers, list) or len(answers) != 4:
-            raise ValueError(f"Question {i + 1}: exactly 4 answers are required")
-
-        for j, ans in enumerate(answers):
-            if not isinstance(ans, str) or not ans.strip():
-                raise ValueError(
-                    f"Question {i + 1}, answer {j + 1}: answer text is required"
-                )
-
-        # Validate correctIndex
-        correct_index = q.get("correctIndex")
-        if not isinstance(correct_index, int) or correct_index < 0 or correct_index > 3:
-            raise ValueError(f"Question {i + 1}: correctIndex must be an integer 0-3")
-
-        validated_questions.append(
-            {
-                "question": q["question"].strip(),
-                "answers": [ans.strip() for ans in answers],
-                "correctIndex": correct_index,
-            }
-        )
+    for q in questions:
+        if isinstance(q, dict):
+            validated_questions.append(QuizQuestion.model_validate(q))
+        else:
+            validated_questions.append(q)
 
     return {
         "title": title.strip(),
-        "questions": validated_questions,
+        "questions": [q.model_dump(by_alias=True) for q in validated_questions],
         "questionCount": len(validated_questions),
     }
