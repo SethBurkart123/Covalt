@@ -130,13 +130,7 @@ function MarkdownRendererInner({
   const components: Partial<Components> = useMemo(() => ({
     ...MemoizedComponents,
     pre: CodeBlock,
-    code: ({ node, ...props }: MdProps<'code'>) => {
-      const parent = (node as unknown as { parent?: { type?: string; tagName?: string } })?.parent;
-      if (parent?.type === 'element' && parent?.tagName === 'pre') {
-        return <code {...props} />;
-      }
-      return <InlineCode {...props} />;
-    },
+    code: InlineCode,
   }), []);
   
   return (
