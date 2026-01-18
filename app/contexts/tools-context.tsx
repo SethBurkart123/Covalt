@@ -38,6 +38,7 @@ interface ToolsContextType {
   isLoadingActiveTools: boolean;
   mcpServers: McpServerStatus[];
   refreshTools: () => void;
+  removeMcpServer: (serverId: string) => void;
 }
 
 const ToolsContext = React.createContext<ToolsContextType | undefined>(
@@ -46,14 +47,13 @@ const ToolsContext = React.createContext<ToolsContextType | undefined>(
 
 export function ToolsProvider({ children }: { children: React.ReactNode }) {
   const { chatId } = useChat();
-  const { mcpServers } = useMcpStatus();
+  const { mcpServers, removeMcpServer } = useMcpStatus();
 
   const [availableTools, setAvailableTools] = React.useState<ToolInfo[]>([]);
   const [activeToolIds, setActiveToolIds] = React.useState<string[]>([]);
   const [isLoadingTools, setIsLoadingTools] = React.useState(true);
   const [isLoadingActiveTools, setIsLoadingActiveTools] = React.useState(true);
 
-  // Track connected server IDs to detect changes
   const connectedServerIds = React.useMemo(
     () =>
       mcpServers
@@ -77,14 +77,11 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Initial load
   React.useEffect(() => {
     loadTools();
   }, [loadTools]);
 
-  // Reload tools when connected MCP servers change
   React.useEffect(() => {
-    // Skip the initial empty state
     if (connectedServerIds !== "") {
       loadTools();
     }
@@ -94,19 +91,17 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     const loadActiveTools = async () => {
       setIsLoadingActiveTools(true);
       try {
-        if (!chatId) {
-          const response = await getDefaultTools();
-          setActiveToolIds(response.toolIds || []);
-        } else {
+        if (chatId) {
           try {
             const config = await getChatAgentConfig({ body: { id: chatId } });
             setActiveToolIds(config.toolIds || []);
+            return;
           } catch (error) {
             console.error("Failed to load chat config:", error);
-            const response = await getDefaultTools();
-            setActiveToolIds(response.toolIds || []);
           }
         }
+        const response = await getDefaultTools();
+        setActiveToolIds(response.toolIds || []);
       } catch (error) {
         console.error("Failed to load active tools:", error);
         setActiveToolIds([]);
@@ -226,6 +221,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       isLoadingActiveTools,
       mcpServers,
       refreshTools: loadTools,
+      removeMcpServer,
     }),
     [
       availableTools,
@@ -237,6 +233,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       isToolsetPartiallyActive,
       isLoadingTools,
       isLoadingActiveTools,
+      removeMcpServer,
       mcpServers,
       loadTools,
     ]

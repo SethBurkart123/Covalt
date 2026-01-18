@@ -46,6 +46,7 @@ interface WebSocketContextType {
   mcpServers: McpServerStatus[];
   isConnected: boolean;
   reconnect: () => void;
+  removeMcpServer: (serverId: string) => void;
   onWorkspaceFilesChanged: (callback: WorkspaceFilesChangedCallback) => () => void;
 }
 
@@ -227,15 +228,20 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     };
   }, [connect, cleanup, scheduleReconnect]);
 
+  const removeMcpServer = useCallback((serverId: string) => {
+    setMcpServers((prev) => prev.filter((s) => s.id !== serverId));
+  }, []);
+
   const value = useMemo<WebSocketContextType>(
     () => ({
       status,
       mcpServers,
       isConnected: status === "connected",
       reconnect,
+      removeMcpServer,
       onWorkspaceFilesChanged,
     }),
-    [status, mcpServers, reconnect, onWorkspaceFilesChanged]
+    [status, mcpServers, reconnect, removeMcpServer, onWorkspaceFilesChanged]
   );
 
   return (
@@ -254,7 +260,7 @@ export function useWebSocket() {
 }
 
 export function useMcpStatus() {
-  const { mcpServers, isConnected } = useWebSocket();
-  return { mcpServers, isConnected };
+  const { mcpServers, isConnected, removeMcpServer } = useWebSocket();
+  return { mcpServers, isConnected, removeMcpServer };
 }
 

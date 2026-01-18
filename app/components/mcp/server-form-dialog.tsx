@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Wrench,
   Loader2,
   FileJson,
   Code,
   Server,
+  Download,
 } from "lucide-react";
 import {
   addMcpServer,
   updateMcpServer,
   getMcpServerConfig,
+  getMcpServers,
   type MCPServerConfig,
+  type ScannedServer,
 } from "@/python/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,6 +41,12 @@ import { KeyValueInput } from "@/components/ui/key-value-input";
 import type { ServerFormData, ServerType } from "./types";
 import { emptyFormData } from "./types";
 import { configToFormData, parseCommandString } from "./utils";
+import { AppImportForm, type AppImportFormRef } from "./app-import-form";
+import {
+  ImportConflictDialog,
+  generateUniqueName,
+  type ConflictResolution,
+} from "./import-conflict-dialog";
 
 interface ServerFormDialogProps {
   open: boolean;
@@ -52,13 +61,22 @@ export function ServerFormDialog({
   editingServerId,
   onSuccess,
 }: ServerFormDialogProps) {
-  const [mode, setMode] = useState<"form" | "json">("form");
+  const [mode, setMode] = useState<"form" | "json" | "import">("form");
   const [formData, setFormData] = useState<ServerFormData>(emptyFormData);
   const [jsonInput, setJsonInput] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [conflictServer, setConflictServer] = useState<ScannedServer | null>(null);
+  const existingIdsRef = useRef<Set<string>>(new Set());
+  const [selectedImportCount, setSelectedImportCount] = useState(0);
+  const importFormRef = useRef<AppImportFormRef>(null);
+  const importQueueRef = useRef<ScannedServer[]>([]);
+  const importOpsRef = useRef<
+    Array<{ id: string; config: MCPServerConfig; isUpdate: boolean }>
+  >([]);
 
   const isEditing = !!editingServerId;
 
@@ -86,8 +104,117 @@ export function ServerFormDialog({
       setError(null);
       setJsonError(null);
       setMode("form");
+      setConflictServer(null);
+      setSelectedImportCount(0);
+      existingIdsRef.current = new Set();
+      importQueueRef.current = [];
+      importOpsRef.current = [];
     }
   }, [open, editingServerId]);
+
+  const runImportOps = useCallback(async () => {
+    const ops = importOpsRef.current;
+    importOpsRef.current = [];
+    importQueueRef.current = [];
+
+    if (ops.length > 0) {
+      const results = await Promise.allSettled(
+        ops.map(({ id, config, isUpdate }) =>
+          isUpdate
+            ? updateMcpServer({ body: { id, config } })
+            : addMcpServer({ body: { id, config } })
+        )
+      );
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          console.error(`Failed to import server ${ops[idx].id}:`, r.reason);
+        }
+      });
+    }
+
+    onSuccess();
+    onOpenChange(false);
+    setIsSubmitting(false);
+  }, [onSuccess, onOpenChange]);
+
+  const showNextConflictOrFinish = useCallback(() => {
+    setConflictServer(null);
+
+    while (importQueueRef.current.length > 0) {
+      const server = importQueueRef.current[0];
+      if (existingIdsRef.current.has(server.id)) {
+        setConflictServer(server);
+        return;
+      }
+
+      importQueueRef.current.shift();
+      importOpsRef.current.push({
+        id: server.id,
+        config: server.config as MCPServerConfig,
+        isUpdate: false,
+      });
+      existingIdsRef.current.add(server.id);
+    }
+
+    void runImportOps();
+  }, [runImportOps]);
+
+  // Start import process
+  const startImport = useCallback(async () => {
+    const servers = importFormRef.current?.getSelectedServers();
+    if (!servers || servers.length === 0) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const response = await getMcpServers();
+      existingIdsRef.current = new Set(response.servers.map((s) => s.id));
+      importQueueRef.current = [...servers];
+      importOpsRef.current = [];
+      showNextConflictOrFinish();
+    } catch (e) {
+      console.error("Failed to start import:", e);
+      setError("Failed to check existing servers");
+      setIsSubmitting(false);
+    }
+  }, [showNextConflictOrFinish]);
+
+  const handleConflictCancel = useCallback(() => {
+    setConflictServer(null);
+    setIsSubmitting(false);
+    existingIdsRef.current = new Set();
+    importQueueRef.current = [];
+    importOpsRef.current = [];
+  }, []);
+
+  const handleConflictResolve = useCallback(
+    (resolution: ConflictResolution) => {
+      if (!conflictServer) return;
+
+      const server = conflictServer;
+      importQueueRef.current.shift();
+
+      if (resolution === "rename") {
+        const id = generateUniqueName(server.id, existingIdsRef.current);
+        importOpsRef.current.push({
+          id,
+          config: server.config as MCPServerConfig,
+          isUpdate: false,
+        });
+        existingIdsRef.current.add(id);
+      } else if (resolution === "overwrite") {
+        importOpsRef.current.push({
+          id: server.id,
+          config: server.config as MCPServerConfig,
+          isUpdate: true,
+        });
+      }
+
+      showNextConflictOrFinish();
+    },
+    [conflictServer, showNextConflictOrFinish]
+  );
 
   const parseHeadersString = (
     headersStr: string
@@ -175,18 +302,24 @@ export function ServerFormDialog({
         throw new Error("No servers found in JSON");
       }
 
-      for (const [id, rawConfig] of Object.entries(servers)) {
-        const config = rawConfig as MCPServerConfig;
-        try {
-          await addMcpServer({ body: { id, config } });
-        } catch {
+      const results = await Promise.allSettled(
+        Object.entries(servers).map(async ([id, rawConfig]) => {
+          const config = rawConfig as MCPServerConfig;
           try {
+            await addMcpServer({ body: { id, config } });
+          } catch {
             await updateMcpServer({ body: { id, config } });
-          } catch (e) {
-            console.error(`Failed to import server ${id}:`, e);
           }
+        })
+      );
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          console.error(
+            `Failed to import server ${Object.keys(servers)[idx]}:`,
+            r.reason
+          );
         }
-      }
+      });
 
       onSuccess();
       onOpenChange(false);
@@ -196,14 +329,15 @@ export function ServerFormDialog({
       } else {
         setError(e instanceof Error ? e.message : "Failed to import servers");
       }
-    } finally {
       setIsSubmitting(false);
+      return;
     }
+    setIsSubmitting(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit MCP Server" : "Add MCP Server"}
@@ -216,30 +350,42 @@ export function ServerFormDialog({
         </DialogHeader>
 
         {!isEditing && (
-          <div className="flex gap-2 p-1 bg-muted rounded-lg">
+          <div className="flex gap-1 p-1 bg-muted rounded-lg overflow-hidden">
             <button
               onClick={() => setMode("form")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                "flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-sm font-medium rounded-md transition-colors min-w-0",
                 mode === "form"
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Wrench className="size-4" />
-              Form
+              <Wrench className="size-4 shrink-0" />
+              <span className="truncate">Form</span>
             </button>
             <button
               onClick={() => setMode("json")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                "flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-sm font-medium rounded-md transition-colors min-w-0",
                 mode === "json"
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <FileJson className="size-4" />
-              Import JSON
+              <FileJson className="size-4 shrink-0" />
+              <span className="truncate">JSON</span>
+            </button>
+            <button
+              onClick={() => setMode("import")}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-sm font-medium rounded-md transition-colors min-w-0",
+                mode === "import"
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Download className="size-4 shrink-0" />
+              <span className="truncate">From App</span>
             </button>
           </div>
         )}
@@ -260,30 +406,54 @@ export function ServerFormDialog({
             setFormData={setFormData}
             isEditing={isEditing}
           />
-        ) : (
+        ) : mode === "json" ? (
           <JsonImportForm
             jsonInput={jsonInput}
             setJsonInput={setJsonInput}
             jsonError={jsonError}
             setJsonError={setJsonError}
           />
+        ) : (
+          <AppImportForm
+            ref={importFormRef}
+            onSelectionChange={setSelectedImportCount}
+          />
         )}
+
+        {/* Conflict resolution dialog */}
+        <ImportConflictDialog
+          open={!!conflictServer}
+          serverId={conflictServer?.id ?? ""}
+          suggestedName={conflictServer ? generateUniqueName(conflictServer.id, existingIdsRef.current) : ""}
+          onResolve={handleConflictResolve}
+          onCancel={handleConflictCancel}
+        />
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={mode === "form" ? handleFormSubmit : handleJsonSubmit}
-            disabled={isSubmitting || isLoadingConfig}
-          >
-            {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-            {isEditing
-              ? "Update Server"
-              : mode === "json"
-                ? "Import"
-                : "Add Server"}
-          </Button>
+          {mode !== "import" ? (
+            <Button
+              onClick={mode === "form" ? handleFormSubmit : handleJsonSubmit}
+              disabled={isSubmitting || isLoadingConfig}
+            >
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+              {isEditing
+                ? "Update Server"
+                : mode === "json"
+                  ? "Import"
+                  : "Add Server"}
+            </Button>
+          ) : (
+            <Button
+              onClick={startImport}
+              disabled={isSubmitting || isLoadingConfig || selectedImportCount === 0}
+            >
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+              {selectedImportCount > 0 ? `Import (${selectedImportCount})` : "Import"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
