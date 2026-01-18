@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { X, FileText, Music, Video, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UploadProgressRing } from "@/components/ui/upload-progress-ring";
@@ -242,7 +242,7 @@ export const AttachmentPreview = memo<AttachmentPreviewProps>(({
     [onRetry]
   );
 
-  if (!attachments || attachments.length === 0) {
+  if (attachments.length === 0) {
     return null;
   }
 

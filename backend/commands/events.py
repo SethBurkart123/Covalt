@@ -1,13 +1,3 @@
-"""
-WebSocket event handler for real-time updates.
-
-Provides a general-purpose WebSocket connection that broadcasts:
-- MCP server status changes
-- (Future: other app-wide events)
-
-Uses zynk's @message decorator for typed WebSocket handling.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -26,45 +16,33 @@ _clients_lock = asyncio.Lock()
 
 
 class McpServerStatus(BaseModel):
-    """Status update for a single MCP server."""
-
     id: str
-    status: str  # "connecting" | "connected" | "error" | "disconnected"
+    status: str
     error: Optional[str] = None
     tool_count: int = 0
 
 
 class McpServersSnapshot(BaseModel):
-    """Full snapshot of all MCP servers."""
-
     servers: List[McpServerStatus]
 
 
 class WorkspaceFilesChanged(BaseModel):
-    """Notification that workspace files have changed."""
-
     chat_id: str
-    changed_paths: List[str]  # Paths that were modified/created
-    deleted_paths: List[str]  # Paths that were deleted
+    changed_paths: List[str]
+    deleted_paths: List[str]
 
 
 class Ping(BaseModel):
-    """Client ping to keep connection alive."""
-
     pass
 
 
 class ServerEvents:
-    """Events sent from server to client."""
-
     mcp_status: McpServerStatus
     mcp_servers: McpServersSnapshot
     workspace_files_changed: WorkspaceFilesChanged
 
 
 class ClientEvents:
-    """Events sent from client to server."""
-
     ping: Ping
 
 
@@ -74,7 +52,6 @@ EventsWebSocket = WebSocket[ServerEvents, ClientEvents]
 def _mcp_status_callback(
     server_id: str, status: ServerStatus, error: str | None, tool_count: int
 ) -> None:
-    """Callback invoked by MCPManager on status changes."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -88,7 +65,6 @@ def _mcp_status_callback(
 async def _broadcast_mcp_status(
     server_id: str, status: str, error: str | None, tool_count: int
 ) -> None:
-    """Broadcast MCP status change to all connected clients."""
     status_update = McpServerStatus(
         id=server_id,
         status=status,
@@ -115,7 +91,6 @@ async def broadcast_workspace_files_changed(
     changed_paths: list[str],
     deleted_paths: list[str],
 ) -> None:
-    """Broadcast workspace file changes to all connected clients."""
     event = WorkspaceFilesChanged(
         chat_id=chat_id,
         changed_paths=changed_paths,
@@ -137,7 +112,6 @@ async def broadcast_workspace_files_changed(
 
 
 def _get_mcp_servers_snapshot() -> McpServersSnapshot:
-    """Get current snapshot of all MCP servers."""
     mcp = get_mcp_manager()
     servers = mcp.get_servers()
 
@@ -155,24 +129,12 @@ def _get_mcp_servers_snapshot() -> McpServersSnapshot:
 
 
 def _register_mcp_callback() -> None:
-    """Register our callback with the MCP manager (idempotent)."""
     mcp = get_mcp_manager()
     mcp.add_status_callback(_mcp_status_callback)
 
 
 @message
 async def events(ws: EventsWebSocket) -> None:
-    """
-    WebSocket handler for real-time app events.
-
-    On connect:
-    - Sends current MCP server snapshot
-    - Registers for status updates
-
-    Broadcasts:
-    - mcp_status: Individual server status changes
-    - mcp_servers: Full server list (on connect)
-    """
     _register_mcp_callback()
 
     async with _clients_lock:

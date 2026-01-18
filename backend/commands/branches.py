@@ -104,11 +104,11 @@ async def continue_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        # Get message path up to (but not including) the original message
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
 
         chat_messages = []
         for m in messages:
@@ -139,7 +139,6 @@ async def continue_message(
                 )
             )
 
-        # Extract existing content (strip error blocks)
         if original_msg.content and isinstance(original_msg.content, str):
             raw = original_msg.content.strip()
             if raw.startswith("["):
@@ -170,7 +169,6 @@ async def continue_message(
         db.set_active_leaf(sess, body.chatId, new_msg_id)
         original_msg_id = original_msg.id
 
-    # Materialize to original message's state so we continue from where it left off
     db.materialize_to_branch(body.chatId, original_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
@@ -230,7 +228,6 @@ async def retry_message(
     channel: Channel,
     body: RetryMessageRequest,
 ) -> None:
-    """Create sibling message and retry generation."""
     parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
         if body.modelId:
@@ -244,10 +241,11 @@ async def retry_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
 
         chat_messages = []
         for m in messages:
@@ -290,7 +288,6 @@ async def retry_message(
         db.set_active_leaf(sess, body.chatId, new_msg_id)
         parent_msg_id = original_msg.parent_message_id
 
-    # Materialize workspace to parent message's state (before the original attempt)
     if parent_msg_id:
         db.materialize_to_branch(body.chatId, parent_msg_id)
 
@@ -361,12 +358,11 @@ async def edit_user_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
-
-        # Get manifest from the original message (where the existing attachments live)
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
         original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
 
         all_attachments: List[Attachment] = []
@@ -393,7 +389,6 @@ async def edit_user_message(
                     )
                 )
             else:
-                # Log warning but don't add attachment if content not found
                 print(
                     f"[edit_user_message] Warning: Could not find existing attachment "
                     f"'{existing_att.name}' in manifest {original_manifest_id}"
@@ -406,10 +401,8 @@ async def edit_user_message(
             if pending_path.exists():
                 content = pending_path.read_bytes()
                 files_to_add.append((new_att.name, content))
-                # Clean up pending file
                 pending_path.unlink()
             elif new_att.data:
-                # Fallback: use base64 data (backward compatibility)
                 import base64
 
                 content = base64.b64decode(new_att.data)
@@ -429,12 +422,11 @@ async def edit_user_message(
             workspace_manager = get_workspace_manager(body.chatId)
             manifest_id, file_renames = workspace_manager.add_files(
                 files=files_to_add,
-                parent_manifest_id=None,  # Start fresh for edit (don't inherit old files)
+                parent_manifest_id=None,
                 source="user_upload",
-                source_ref=None,  # Will update after creating message
+                source_ref=None,
             )
 
-            # Update attachment names based on renames
             for att in all_attachments:
                 if att.name in file_renames:
                     att.name = file_renames[att.name]
@@ -473,7 +465,6 @@ async def edit_user_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages in history
             msg_attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -515,7 +506,6 @@ async def edit_user_message(
 
         db.set_active_leaf(sess, body.chatId, assistant_msg_id)
 
-    # Materialize workspace to the new user message's state (branch switch)
     db.materialize_to_branch(body.chatId, new_user_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
@@ -568,12 +558,10 @@ async def edit_user_message(
 async def switch_to_sibling(
     body: SwitchToSiblingRequest,
 ) -> None:
-    """Switch active branch to different sibling."""
     with db.db_session() as sess:
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
         db.set_active_leaf(sess, body.chatId, leaf_id)
 
-    # Materialize workspace to the target branch's state
     db.materialize_to_branch(body.chatId, leaf_id)
 
 
@@ -581,7 +569,6 @@ async def switch_to_sibling(
 async def get_message_siblings(
     body: GetMessageSiblingsRequest,
 ) -> List[MessageSiblingInfo]:
-    """Get all sibling messages for navigation UI."""
     with db.db_session() as sess:
         message = sess.get(db.Message, body.messageId)
         if not message:

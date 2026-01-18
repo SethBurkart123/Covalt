@@ -1,16 +1,4 @@
-"""
-Workspace Manager - handles per-chat CAS (Content-Addressable Storage) workspaces.
-
-Each chat has:
-- workspace/  - materialized working directory (latest leaf state)
-- blobs/      - content-addressed file storage
-
-Provides:
-- store_file: hash and store content, return hash
-- create_manifest: create a manifest from files
-- materialize: copy files from blob store into workspace
-- snapshot: capture workspace state as a new manifest
-"""
+"""Workspace Manager - handles per-chat CAS (Content-Addressable Storage) workspaces."""
 
 from __future__ import annotations
 
@@ -31,40 +19,34 @@ logger = logging.getLogger(__name__)
 
 
 def get_chats_directory() -> Path:
-    """Get the base directory for all chat data."""
     chats_dir = get_db_directory() / "chats"
     chats_dir.mkdir(parents=True, exist_ok=True)
     return chats_dir
 
 
 def get_chat_directory(chat_id: str) -> Path:
-    """Get the directory for a specific chat."""
     chat_dir = get_chats_directory() / chat_id
     chat_dir.mkdir(parents=True, exist_ok=True)
     return chat_dir
 
 
 def get_workspace_directory(chat_id: str) -> Path:
-    """Get the materialized workspace directory for a chat."""
     workspace_dir = get_chat_directory(chat_id) / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     return workspace_dir
 
 
 def get_blobs_directory(chat_id: str) -> Path:
-    """Get the blob storage directory for a chat."""
     blobs_dir = get_chat_directory(chat_id) / "blobs"
     blobs_dir.mkdir(parents=True, exist_ok=True)
     return blobs_dir
 
 
 def _compute_hash(content: bytes) -> str:
-    """Compute SHA-256 hash of content."""
     return hashlib.sha256(content).hexdigest()
 
 
 def _get_blob_path(chat_id: str, file_hash: str) -> Path:
-    """Get the path for a blob file (uses first 2 chars as subdirectory)."""
     blobs_dir = get_blobs_directory(chat_id)
     subdir = blobs_dir / file_hash[:2]
     subdir.mkdir(parents=True, exist_ok=True)
@@ -72,35 +54,12 @@ def _get_blob_path(chat_id: str, file_hash: str) -> Path:
 
 
 class WorkspaceManager:
-    """
-    Manages workspace versioning for a chat using content-addressable storage.
-
-    Usage:
-        manager = WorkspaceManager(chat_id)
-
-        # Store a file
-        file_hash = manager.store_file(content)
-
-        manifest_id = manager.snapshot(source="tool_run", source_ref="tool_call_123")
-
-        manager.materialize(manifest_id)
-    """
-
     def __init__(self, chat_id: str):
         self.chat_id = chat_id
         self.workspace_dir = get_workspace_directory(chat_id)
         self.blobs_dir = get_blobs_directory(chat_id)
 
     def store_file(self, content: bytes) -> str:
-        """
-        Store content in blob storage by its hash.
-
-        Args:
-            content: File content as bytes
-
-        Returns:
-            SHA-256 hash of the content
-        """
         file_hash = _compute_hash(content)
         blob_path = _get_blob_path(self.chat_id, file_hash)
 
@@ -111,43 +70,15 @@ class WorkspaceManager:
         return file_hash
 
     def store_file_from_path(self, source_path: Path) -> str:
-        """
-        Store a file from disk into blob storage.
-
-        Args:
-            source_path: Path to the file to store
-
-        Returns:
-            SHA-256 hash of the content
-        """
-        content = source_path.read_bytes()
-        return self.store_file(content)
+        return self.store_file(source_path.read_bytes())
 
     def get_blob(self, file_hash: str) -> bytes | None:
-        """
-        Retrieve content from blob storage.
-
-        Args:
-            file_hash: SHA-256 hash of the content
-
-        Returns:
-            File content, or None if not found
-        """
         blob_path = _get_blob_path(self.chat_id, file_hash)
         if blob_path.exists():
             return blob_path.read_bytes()
         return None
 
     def get_manifest(self, manifest_id: str) -> dict[str, Any] | None:
-        """
-        Get a manifest by ID.
-
-        Args:
-            manifest_id: Manifest ID
-
-        Returns:
-            Manifest dict with files, parent_id, etc., or None if not found
-        """
         with db_session() as session:
             manifest = (
                 session.query(WorkspaceManifest)
@@ -173,16 +104,6 @@ class WorkspaceManager:
         pre_manifest_id: str | None,
         post_manifest_id: str | None,
     ) -> tuple[list[str], list[str]]:
-        """
-        Compare two manifests and return changed and deleted file paths.
-
-        Args:
-            pre_manifest_id: Manifest ID before changes (can be None)
-            post_manifest_id: Manifest ID after changes (can be None)
-
-        Returns:
-            Tuple of (changed_paths, deleted_paths)
-        """
         pre_files: dict[str, str] = {}
         post_files: dict[str, str] = {}
 
@@ -210,8 +131,6 @@ class WorkspaceManager:
         return changed, deleted
 
     def get_active_manifest_id(self) -> str | None:
-        """Get the active manifest ID for this chat."""
-        # First check if we have a local override (for chats not yet in DB)
         if hasattr(self, "_local_manifest_id"):
             return self._local_manifest_id
 
@@ -222,7 +141,6 @@ class WorkspaceManager:
             return None
 
     def set_active_manifest_id(self, manifest_id: str | None) -> None:
-        """Set the active manifest ID for this chat."""
         with db_session() as session:
             chat = session.query(Chat).filter(Chat.id == self.chat_id).first()
             if chat:
@@ -238,18 +156,6 @@ class WorkspaceManager:
         source: str = "initial",
         source_ref: str | None = None,
     ) -> str:
-        """
-        Create a new manifest.
-
-        Args:
-            files: Dict mapping relative paths to content hashes
-            parent_id: Optional parent manifest ID (for branching)
-            source: Source type ("initial", "user_upload", "tool_run", "branch", "edit")
-            source_ref: Optional reference (message_id, tool_call_id, etc.)
-
-        Returns:
-            New manifest ID
-        """
         manifest_id = str(uuid.uuid4())
 
         with db_session() as session:
@@ -271,18 +177,6 @@ class WorkspaceManager:
         return manifest_id
 
     def materialize(self, manifest_id: str | None = None) -> bool:
-        """
-        Materialize workspace to a specific manifest state.
-
-        Clears the workspace directory and copies files from blob storage
-        according to the manifest.
-
-        Args:
-            manifest_id: Manifest to materialize. If None, uses active manifest.
-
-        Returns:
-            True if successful, False if manifest not found
-        """
         if manifest_id is None:
             manifest_id = self.get_active_manifest_id()
 
@@ -323,20 +217,6 @@ class WorkspaceManager:
         source_ref: str | None = None,
         set_active: bool = True,
     ) -> str:
-        """
-        Snapshot current workspace state as a new manifest.
-
-        Walks the workspace directory, stores any new/changed files in blob
-        storage, and creates a new manifest.
-
-        Args:
-            source: Source type for the manifest
-            source_ref: Optional reference (message_id, tool_call_id)
-            set_active: Whether to set this as the active manifest
-
-        Returns:
-            New manifest ID
-        """
         parent_id = self.get_active_manifest_id()
         files: dict[str, str] = {}
 
@@ -365,18 +245,6 @@ class WorkspaceManager:
         source: str = "user_upload",
         source_ref: str | None = None,
     ) -> str:
-        """
-        Add or update a single file and create a new manifest.
-
-        Args:
-            rel_path: Relative path in workspace
-            content: File content
-            source: Source type
-            source_ref: Optional reference
-
-        Returns:
-            New manifest ID
-        """
         target = self.workspace_dir / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
@@ -411,25 +279,6 @@ class WorkspaceManager:
         set_active: bool = True,
         inherit_active: bool = False,
     ) -> tuple[str, dict[str, str]]:
-        """
-        Add multiple files to workspace with collision handling.
-
-        Files are added at the workspace root. If a filename already exists,
-        it's renamed with a numeric suffix (e.g., data.csv -> data_1.csv).
-
-        Args:
-            files: List of (filename, content) tuples
-            parent_manifest_id: Parent manifest to branch from (None = start fresh)
-            source: Source type for manifest
-            source_ref: Optional reference (message_id, etc.)
-            set_active: Whether to set this as the active manifest
-            inherit_active: If True and parent_manifest_id is None, inherit from
-                active manifest. If False, None means start with empty manifest.
-
-        Returns:
-            Tuple of (new_manifest_id, rename_map)
-            rename_map: {original_name: final_name} - only includes renamed files
-        """
         if parent_manifest_id is None and inherit_active:
             parent_manifest_id = self.get_active_manifest_id()
 
@@ -450,11 +299,9 @@ class WorkspaceManager:
                     f"Renamed '{original_name}' -> '{final_name}' due to collision"
                 )
 
-            # Store in blob storage only - don't write directly to workspace
             file_hash = self.store_file(content)
             current_files[final_name] = file_hash
 
-        # Create new manifest
         manifest_id = self.create_manifest(
             files=current_files,
             parent_id=parent_manifest_id,
@@ -474,20 +321,9 @@ class WorkspaceManager:
         return manifest_id, rename_map
 
     def _resolve_collision(self, filename: str, existing_files: dict[str, str]) -> str:
-        """
-        Resolve filename collision by adding numeric suffix.
-
-        Args:
-            filename: Original filename (e.g., "data.csv")
-            existing_files: Dict of existing file paths
-
-        Returns:
-            Final filename, possibly with suffix (e.g., "data_1.csv")
-        """
         if filename not in existing_files:
             return filename
 
-        # Split into base and extension
         if "." in filename:
             base, ext = filename.rsplit(".", 1)
             ext = "." + ext
@@ -495,7 +331,6 @@ class WorkspaceManager:
             base = filename
             ext = ""
 
-        # Find next available number
         counter = 1
         while True:
             candidate = f"{base}_{counter}{ext}"
@@ -504,16 +339,6 @@ class WorkspaceManager:
             counter += 1
 
     def read_file_from_manifest(self, manifest_id: str, rel_path: str) -> bytes | None:
-        """
-        Read a file's content from a specific manifest (via blob storage).
-
-        Args:
-            manifest_id: Manifest ID
-            rel_path: Relative path in the manifest
-
-        Returns:
-            File content, or None if not found
-        """
         manifest = self.get_manifest(manifest_id)
         if not manifest:
             return None
@@ -526,27 +351,23 @@ class WorkspaceManager:
         return self.get_blob(file_hash)
 
     def list_files(self) -> list[str]:
-        """List all files in the current workspace."""
         return [
             str(p.relative_to(self.workspace_dir))
             for p in self._walk_files(self.workspace_dir)
         ]
 
     def read_file(self, rel_path: str) -> bytes | None:
-        """Read a file from the workspace."""
         file_path = self.workspace_dir / rel_path
         if file_path.exists() and file_path.is_file():
             return file_path.read_bytes()
         return None
 
     def write_file(self, rel_path: str, content: bytes) -> None:
-        """Write a file to the workspace (does not create manifest)."""
         target = self.workspace_dir / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
 
     def delete_file(self, rel_path: str) -> bool:
-        """Delete a file from the workspace (does not create manifest)."""
         file_path = self.workspace_dir / rel_path
         if file_path.exists() and file_path.is_file():
             file_path.unlink()
@@ -554,7 +375,6 @@ class WorkspaceManager:
         return False
 
     def _walk_files(self, directory: Path) -> list[Path]:
-        """Walk directory and return all file paths (excluding hidden files)."""
         files = []
         if not directory.exists():
             return files
@@ -566,7 +386,6 @@ class WorkspaceManager:
         return sorted(files)
 
     def cleanup(self) -> None:
-        """Clean up unreferenced blobs."""
         referenced: set[str] = set()
         with db_session() as session:
             manifests = (
@@ -591,25 +410,22 @@ class WorkspaceManager:
                 if not any(subdir.iterdir()):
                     subdir.rmdir()
 
-        if removed > 0:
+        if removed:
             logger.info(
                 f"Cleaned up {removed} unreferenced blobs for chat {self.chat_id[:8]}..."
             )
 
 
-# Cache of workspace managers per chat_id
 _workspace_managers: dict[str, WorkspaceManager] = {}
 
 
 def get_workspace_manager(chat_id: str) -> WorkspaceManager:
-    """Get a workspace manager for a chat (cached per chat_id)."""
     if chat_id not in _workspace_managers:
         _workspace_managers[chat_id] = WorkspaceManager(chat_id)
     return _workspace_managers[chat_id]
 
 
 def clear_workspace_manager_cache(chat_id: str | None = None) -> None:
-    """Clear workspace manager cache for a chat or all chats."""
     if chat_id:
         _workspace_managers.pop(chat_id, None)
     else:
@@ -617,8 +433,6 @@ def clear_workspace_manager_cache(chat_id: str | None = None) -> None:
 
 
 def delete_chat_workspace(chat_id: str) -> None:
-    """Delete all workspace data for a chat."""
-    # Clear cached workspace manager
     clear_workspace_manager_cache(chat_id)
 
     chat_dir = get_chat_directory(chat_id)

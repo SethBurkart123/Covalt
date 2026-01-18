@@ -9,7 +9,6 @@ export function ToolCallRouter(props: ToolCallRendererProps) {
     return <DefaultToolCall {...props} />;
   }
 
-  const rendererName = props.renderPlan?.renderer || props.renderer;
-  const Renderer = getToolCallRenderer(rendererName);
+  const Renderer = getToolCallRenderer(props.renderPlan?.renderer || props.renderer);
   return <Renderer {...props} />;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import { memo, useEffect, useRef, useCallback } from "react";
 import ChatMessage from "./ChatMessage";
 import { Message, MessageSibling, Attachment, PendingAttachment } from "@/lib/types/chat";
 import ChatMessageEditor from "./ChatMessageEditor";
@@ -36,7 +36,7 @@ interface MessageRowProps {
   chatId?: string;
 }
 
-const MessageRow = React.memo(function MessageRow({
+const MessageRow = memo(function MessageRow({
   message,
   siblings,
   isStreaming,
@@ -253,4 +253,4 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   );
 };
 
-export default React.memo(ChatMessageList);
+export default memo(ChatMessageList);

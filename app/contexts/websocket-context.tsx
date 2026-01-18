@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { getBaseUrl } from "@/python/_internal";
 
 export interface McpServerStatus {
@@ -49,26 +49,22 @@ interface WebSocketContextType {
   onWorkspaceFilesChanged: (callback: WorkspaceFilesChangedCallback) => () => void;
 }
 
-const WebSocketContext = React.createContext<WebSocketContextType | undefined>(
-  undefined
-);
+const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 const RECONNECT_DELAY = 3000;
 const PING_INTERVAL = 30000;
 
-export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = React.useState<WebSocketStatus>("disconnected");
-  const [mcpServers, setMcpServers] = React.useState<McpServerStatus[]>([]);
+export function WebSocketProvider({ children }: { children: ReactNode }) {
+  const [status, setStatus] = useState<WebSocketStatus>("disconnected");
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
 
-  const wsRef = React.useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const pingIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
-  const mountedRef = React.useRef(true);
-  const workspaceCallbacksRef = React.useRef<Set<WorkspaceFilesChangedCallback>>(
-    new Set()
-  );
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
+  const workspaceCallbacksRef = useRef<Set<WorkspaceFilesChangedCallback>>(new Set());
 
-  const connect = React.useCallback(() => {
+  const connect = useCallback(() => {
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
       wsRef.current?.readyState === WebSocket.CONNECTING
@@ -124,7 +120,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const handleMessage = React.useCallback(
+  const handleMessage = useCallback(
     (message: { event: string; data: unknown }) => {
       switch (message.event) {
         case "mcp_servers": {
@@ -163,14 +159,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const cleanup = React.useCallback(() => {
+  const cleanup = useCallback(() => {
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
     }
   }, []);
 
-  const scheduleReconnect = React.useCallback(() => {
+  const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
@@ -182,7 +178,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }, RECONNECT_DELAY);
   }, [connect]);
 
-  const reconnect = React.useCallback(() => {
+  const reconnect = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -195,7 +191,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     connect();
   }, [connect, cleanup]);
 
-  const onWorkspaceFilesChanged = React.useCallback(
+  const onWorkspaceFilesChanged = useCallback(
     (callback: WorkspaceFilesChangedCallback) => {
       workspaceCallbacksRef.current.add(callback);
       return () => {
@@ -205,7 +201,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     mountedRef.current = true;
 
     const timeout = setTimeout(() => {
@@ -231,7 +227,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
   }, [connect, cleanup, scheduleReconnect]);
 
-  const value = React.useMemo<WebSocketContextType>(
+  const value = useMemo<WebSocketContextType>(
     () => ({
       status,
       mcpServers,
@@ -250,8 +246,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useWebSocket() {
-  const context = React.useContext(WebSocketContext);
-  if (context === undefined) {
+  const context = useContext(WebSocketContext);
+  if (!context) {
     throw new Error("useWebSocket must be used within a WebSocketProvider");
   }
   return context;

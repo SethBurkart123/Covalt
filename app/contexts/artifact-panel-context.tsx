@@ -1,13 +1,13 @@
 "use client";
 
-import React, {
+import {
   createContext,
   useContext,
   useState,
   useCallback,
   useRef,
   useEffect,
-  ReactNode,
+  type ReactNode,
 } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useChat } from "@/contexts/chat-context";

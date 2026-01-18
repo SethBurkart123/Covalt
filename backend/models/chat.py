@@ -29,8 +29,6 @@ class ContentBlock(BaseModel):
 
 
 class Attachment(BaseModel):
-    """Model for file attachments on messages."""
-
     id: str
     type: Literal["image", "file", "audio", "video"]
     name: str

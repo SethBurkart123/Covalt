@@ -27,22 +27,15 @@ export function MarkdownArtifact({
 
   const filePath = renderPlan?.config?.file;
   const hasFile = !!filePath && !!chatId;
-
   const fileState = filePath ? getFileState(filePath) : undefined;
-  const fileContent = fileState?.content;
-  const isLoadingFile = fileState?.isLoading ?? false;
 
   const title = (toolArgs.title as string) || filePath || toolName;
-  const id = toolCallId || `${toolName}-${title}`;
 
-  let content = "";
-  if (filePath && fileContent) {
-    content = fileContent;
-  } else if (renderPlan?.config?.content) {
-    content = String(renderPlan.config.content);
-  } else if (toolResult) {
-    content = toolResult;
-  }
+  const content = filePath && fileState?.content
+    ? fileState.content
+    : renderPlan?.config?.content
+      ? String(renderPlan.config.content)
+      : toolResult || "";
 
   const handleClick = () => {
     if (!isCompleted) return;
@@ -52,14 +45,17 @@ export function MarkdownArtifact({
     }
     
     if (!content && !fileState) return;
-    open(id, title,
+    open(
+      toolCallId || `${toolName}-${title}`,
+      title,
       <div className="flex-1 overflow-auto p-4 px-8">
         <MarkdownRenderer content={content} />
       </div>,
-      filePath);
+      filePath
+    );
   };
 
-  const isLoading = !isCompleted || (hasFile && isLoadingFile);
+  const isLoading = !isCompleted || (hasFile && (fileState?.isLoading ?? false));
 
   return (
     <Collapsible
