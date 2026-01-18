@@ -1,7 +1,7 @@
-import React from "react";
-import { FileCode2, Copy, Check } from "lucide-react";
+import { useState } from "react";
+import { FileCode2, Copy, Check, Loader2, Pencil } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
-import { useTheme } from "@/contexts/theme-context";
+import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -11,6 +11,7 @@ import {
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
+import { EditableCodeViewer } from "./EditableCodeViewer";
 
 function extensionToLanguage(ext?: string): string | undefined {
   if (!ext) return undefined;
@@ -60,39 +61,9 @@ function inferLanguage(toolArgs: Record<string, unknown>): string {
   return inferred || "text";
 }
 
-function useResolvedTheme(): "light" | "dark" {
-  const { theme } = useTheme();
-  const [systemPreference, setSystemPreference] = React.useState<"light" | "dark">(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light",
-  );
-
-  React.useEffect(() => {
-    if (theme !== "system" || typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      setSystemPreference(mediaQuery.matches ? "dark" : "light");
-    };
-
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    } else if (mediaQuery.addListener) {
-      mediaQuery.addListener(handleChange);
-      return () => mediaQuery.removeListener(handleChange);
-    }
-  }, [theme]);
-
-  return theme === "system" ? systemPreference : theme;
-}
-
 function CodeViewer({ code, language }: { code: string; language: string }) {
   const resolvedTheme = useResolvedTheme();
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(code);
@@ -125,10 +96,10 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
           code={code.replace(/\n$/, "")}
           language={language || "text"}
         >
-          {({ className, style, tokens, getLineProps, getTokenProps }: any) => (
+          {({ className, style, tokens, getLineProps, getTokenProps }) => (
             <div className="flex">
               <div className="flex-shrink-0">
-                {tokens.map((_line: any, i: number) => (
+                {tokens.map((_, i) => (
                   <div
                     key={i}
                     className="select-none text-muted-foreground px-3 py-1 text-right border-r border-border/50"
@@ -142,13 +113,13 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
                 className={cn("m-0 p-0 !bg-transparent overflow-x-scroll flex-1", className)}
                 style={style}
               >
-                {tokens.map((line: any, i: number) => (
+                {tokens.map((line, i) => (
                   <div
                     key={i}
                     {...getLineProps({ line })}
                     className="px-3 py-1"
                   >
-                    {line.map((token: any, key: number) => (
+                    {line.map((token, key) => (
                       <span key={key} {...getTokenProps({ token })} />
                     ))}
                   </div>
@@ -162,6 +133,22 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
   );
 }
 
+function FileCodeViewer({ filePath, language, fallbackCode }: { filePath: string; language: string; fallbackCode: string }) {
+  const { getFileState } = useArtifactPanel();
+  const fileState = getFileState(filePath);
+  
+  if (fileState?.isLoading && !fileState?.content) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground p-8">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading file...
+      </div>
+    );
+  }
+  
+  return <CodeViewer code={fileState?.content ?? fallbackCode} language={language} />;
+}
+
 export function CodeArtifact({
   toolName,
   toolArgs,
@@ -171,32 +158,72 @@ export function CodeArtifact({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  renderPlan,
+  chatId,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { open, openFile, getFileState } = useArtifactPanel();
+
+  const filePath = renderPlan?.config?.file;
+  const hasFile = !!filePath && !!chatId;
+  const fileState = filePath ? getFileState(filePath) : undefined;
 
   const title =
     (toolArgs.title as string) ||
     (toolArgs.filename as string) ||
+    filePath ||
     toolName;
-  const id = toolCallId || `${toolName}-${title}`;
 
-  const code = typeof toolResult === "string" && toolResult.length > 0
-    ? toolResult
-    : (toolArgs.code as string) || "";
+  const code = filePath && fileState?.content
+    ? fileState.content
+    : renderPlan?.config?.content
+      ? String(renderPlan.config.content)
+      : typeof toolResult === "string" && toolResult.length > 0
+        ? toolResult
+        : (toolArgs.code as string) || "";
 
-  const language = inferLanguage(toolArgs);
+  const language = renderPlan?.config?.language === "auto" 
+    ? inferLanguage({ ...toolArgs, filename: filePath })
+    : (renderPlan?.config?.language || inferLanguage(toolArgs));
+
+  const isEditable = renderPlan?.config?.editable === true && !!filePath && !!chatId;
 
   const handleClick = () => {
-    if (!isCompleted || !code) return;
-    open(id, title, <CodeViewer code={code} language={language} />);
+    if (!isCompleted) return;
+    
+    if (hasFile && filePath) {
+      openFile(filePath);
+    }
+    
+    if (isEditable && filePath) {
+      open(
+        toolCallId || `${toolName}-${title}`,
+        title,
+        <EditableCodeViewer
+          language={language}
+          filePath={filePath}
+        />,
+        filePath
+      );
+    } else if (hasFile && filePath) {
+      open(
+        toolCallId || `${toolName}-${title}`,
+        title,
+        <FileCodeViewer filePath={filePath} language={language} fallbackCode={code} />,
+        filePath
+      );
+    } else if (code) {
+      open(toolCallId || `${toolName}-${title}`, title, <CodeViewer code={code} language={language} />);
+    }
   };
+
+  const isLoading = !isCompleted || (hasFile && fileState?.isLoading);
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted}
+      shimmer={isLoading}
       disableToggle
       data-toolcall
     >
@@ -205,8 +232,13 @@ export function CodeArtifact({
           <CollapsibleIcon icon={FileCode2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
           <span className="text-xs text-muted-foreground">{language}</span>
-          {!isCompleted && (
-            <span className="text-xs text-muted-foreground">generating...</span>
+          {isEditable && !isLoading && (
+            <span title="Editable">
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </span>
+          )}
+          {isLoading && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>
       </CollapsibleTrigger>

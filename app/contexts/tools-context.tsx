@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useChat } from "@/contexts/chat-context";
 import {
   useMcpStatus,
@@ -19,37 +20,41 @@ export interface ToolsByCategory {
   [category: string]: ToolInfo[];
 }
 
+export interface GroupedTools {
+  ungrouped: ToolInfo[];
+  byCategory: ToolsByCategory;
+}
+
 export type { McpServerStatus };
 
 interface ToolsContextType {
   availableTools: ToolInfo[];
   activeToolIds: string[];
-  toolsByCategory: ToolsByCategory;
+  groupedTools: GroupedTools;
   toggleTool: (toolId: string) => void;
   toggleToolset: (category: string) => void;
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
-  isLoading: boolean;
-  /** MCP servers with real-time status from WebSocket */
+  isLoadingTools: boolean;
+  isLoadingActiveTools: boolean;
   mcpServers: McpServerStatus[];
-  /** Manually refresh the tools list */
   refreshTools: () => void;
+  removeMcpServer: (serverId: string) => void;
 }
 
-const ToolsContext = React.createContext<ToolsContextType | undefined>(
-  undefined
-);
+const ToolsContext = createContext<ToolsContextType | undefined>(undefined);
 
-export function ToolsProvider({ children }: { children: React.ReactNode }) {
+export function ToolsProvider({ children }: { children: ReactNode }) {
   const { chatId } = useChat();
-  const { mcpServers } = useMcpStatus();
+  const { mcpServers, removeMcpServer } = useMcpStatus();
 
-  const [availableTools, setAvailableTools] = React.useState<ToolInfo[]>([]);
-  const [activeToolIds, setActiveToolIds] = React.useState<string[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [availableTools, setAvailableTools] = useState<ToolInfo[]>([]);
+  const [activeToolIds, setActiveToolIds] = useState<string[]>([]);
+  const [isLoadingTools, setIsLoadingTools] = useState(true);
+  const [isLoadingActiveTools, setIsLoadingActiveTools] = useState(true);
+  const hasLoadedToolsOnce = useRef(false);
 
-  // Track connected server IDs to detect changes
-  const connectedServerIds = React.useMemo(
+  const connectedServerIds = useMemo(
     () =>
       mcpServers
         .filter((s) => s.status === "connected")
@@ -59,71 +64,81 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     [mcpServers]
   );
 
-  const loadTools = React.useCallback(async () => {
+  const loadTools = useCallback(async () => {
+    if (!hasLoadedToolsOnce.current) {
+      setIsLoadingTools(true);
+    }
     try {
       const response = await getAvailableTools();
       setAvailableTools(response?.tools || []);
+      hasLoadedToolsOnce.current = true;
     } catch (error) {
       console.error("Failed to load available tools:", error);
       setAvailableTools([]);
+    } finally {
+      setIsLoadingTools(false);
     }
   }, []);
 
-  // Initial load
-  React.useEffect(() => {
+  useEffect(() => {
     loadTools();
   }, [loadTools]);
 
-  // Reload tools when connected MCP servers change
-  React.useEffect(() => {
-    // Skip the initial empty state
+  useEffect(() => {
     if (connectedServerIds !== "") {
       loadTools();
     }
   }, [connectedServerIds, loadTools]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const loadActiveTools = async () => {
-      setIsLoading(true);
+      setIsLoadingActiveTools(true);
       try {
-        if (!chatId) {
-          const response = await getDefaultTools();
-          setActiveToolIds(response.toolIds || []);
-        } else {
+        let toolIds: string[] | undefined;
+        if (chatId) {
           try {
             const config = await getChatAgentConfig({ body: { id: chatId } });
-            setActiveToolIds(config.toolIds || []);
+            toolIds = config.toolIds || [];
           } catch (error) {
             console.error("Failed to load chat config:", error);
-            const response = await getDefaultTools();
-            setActiveToolIds(response.toolIds || []);
           }
         }
+        if (!toolIds) {
+          const response = await getDefaultTools();
+          toolIds = response.toolIds || [];
+        }
+        setActiveToolIds(toolIds);
       } catch (error) {
         console.error("Failed to load active tools:", error);
         setActiveToolIds([]);
       } finally {
-        setIsLoading(false);
+        setIsLoadingActiveTools(false);
       }
     };
 
     loadActiveTools();
   }, [chatId]);
 
-  const toolsByCategory = React.useMemo(() => {
-    const grouped: ToolsByCategory = {};
+  const groupedTools = useMemo(() => {
+    const ungrouped: ToolInfo[] = [];
+    const byCategory: ToolsByCategory = {};
+
     availableTools.forEach((tool) => {
-      const category = tool.category || "Other";
-      if (category === "auto") return;
-      if (!grouped[category]) {
-        grouped[category] = [];
+      const category = tool.category;
+      if (!category || category === "auto") {
+        ungrouped.push(tool);
+        return;
       }
-      grouped[category].push(tool);
+      if (!byCategory[category]) {
+        byCategory[category] = [];
+      }
+      byCategory[category].push(tool);
     });
-    return grouped;
+
+    return { ungrouped, byCategory };
   }, [availableTools]);
 
-  const persistTools = React.useCallback(
+  const persistTools = useCallback(
     async (newToolIds: string[]) => {
       try {
         if (chatId) {
@@ -140,7 +155,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     [chatId]
   );
 
-  const toggleTool = React.useCallback(
+  const toggleTool = useCallback(
     async (toolId: string) => {
       const newActiveToolIds = activeToolIds.includes(toolId)
         ? activeToolIds.filter((id) => id !== toolId)
@@ -157,30 +172,30 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     [activeToolIds, persistTools]
   );
 
-  const isToolsetActive = React.useCallback(
+  const isToolsetActive = useCallback(
     (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return false;
       return tools.every((tool) => activeToolIds.includes(tool.id));
     },
-    [toolsByCategory, activeToolIds]
+    [groupedTools.byCategory, activeToolIds]
   );
 
-  const isToolsetPartiallyActive = React.useCallback(
+  const isToolsetPartiallyActive = useCallback(
     (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return false;
       const activeCount = tools.filter((tool) =>
         activeToolIds.includes(tool.id)
       ).length;
       return activeCount > 0 && activeCount < tools.length;
     },
-    [toolsByCategory, activeToolIds]
+    [groupedTools.byCategory, activeToolIds]
   );
 
-  const toggleToolset = React.useCallback(
+  const toggleToolset = useCallback(
     async (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return;
 
       const toolIds = tools.map((t) => t.id);
@@ -196,33 +211,41 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
         setActiveToolIds(activeToolIds);
       }
     },
-    [toolsByCategory, activeToolIds, isToolsetActive, persistTools]
+    [groupedTools.byCategory, activeToolIds, isToolsetActive, persistTools]
   );
 
-  const value = React.useMemo<ToolsContextType>(
+  const refreshTools = useCallback(() => {
+    void loadTools();
+  }, [loadTools]);
+
+  const value = useMemo<ToolsContextType>(
     () => ({
       availableTools,
       activeToolIds,
-      toolsByCategory,
+      groupedTools,
       toggleTool,
       toggleToolset,
       isToolsetActive,
       isToolsetPartiallyActive,
-      isLoading,
+      isLoadingTools,
+      isLoadingActiveTools,
       mcpServers,
-      refreshTools: loadTools,
+      refreshTools,
+      removeMcpServer,
     }),
     [
       availableTools,
       activeToolIds,
-      toolsByCategory,
+      groupedTools,
       toggleTool,
       toggleToolset,
       isToolsetActive,
       isToolsetPartiallyActive,
-      isLoading,
+      isLoadingTools,
+      isLoadingActiveTools,
+      removeMcpServer,
       mcpServers,
-      loadTools,
+      refreshTools,
     ]
   );
 
@@ -232,7 +255,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useTools() {
-  const context = React.useContext(ToolsContext);
+  const context = useContext(ToolsContext);
   if (context === undefined) {
     throw new Error("useTools must be used within a ToolsProvider");
   }

@@ -23,11 +23,8 @@ from ..models.chat import (
     UpdateChatModelInput,
 )
 from ..services.agent_factory import update_agent_model, update_agent_tools
-from ..services.file_storage import (
-    delete_chat_attachments,
-    get_extension_from_mime,
-    load_attachment,
-)
+from ..services.file_storage import get_extension_from_mime
+from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
 from ..services.tool_registry import get_tool_registry
@@ -45,7 +42,7 @@ async def get_all_chats() -> AllChatsData:
                 createdAt=r.createdAt,
                 updatedAt=r.updatedAt,
                 starred=r.starred,
-                messages=[],  # do not load heavy messages list here
+                messages=[],
             )
             chats[chat.id or "unknown"] = chat
     return AllChatsData(chats=chats)
@@ -57,7 +54,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
 
-    # Handle agent config
     agent_config = None
     if body.agentConfig:
         agent_config = {
@@ -69,7 +65,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
             "description": body.agentConfig.description,
         }
     else:
-        # Use default config
         agent_config = db.get_default_agent_config()
 
     with db.db_session() as sess:
@@ -81,7 +76,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
             createdAt=now,
             updatedAt=now,
         )
-        # Set agent config
         db.update_chat_agent_config(sess, chatId=chatId, config=agent_config)
     return ChatData(
         id=chatId,
@@ -106,7 +100,6 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
             updatedAt=now,
         )
 
-        # Rehydrate
         chatRow = sess.get(db.Chat, body.id)
         if not chatRow:
             return ChatData(id=body.id, title="New Chat", messages=[])
@@ -126,7 +119,7 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
 async def delete_chat(body: ChatId) -> None:
     with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
-    delete_chat_attachments(body.id)
+    delete_chat_workspace(body.id)
     return None
 
 
@@ -158,37 +151,18 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 
 @command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
-    """
-    Update active tools for a chat session.
-
-    Args:
-        body: Contains chatId and list of tool IDs to activate
-    """
     update_agent_tools(body.chatId, body.toolIds)
     return None
 
 
 @command
 async def update_chat_model(body: UpdateChatModelInput) -> None:
-    """
-    Switch the model/provider for a chat session.
-
-    Args:
-        body: Contains chatId, provider, and modelId
-    """
     update_agent_model(body.chatId, body.provider, body.modelId)
     return None
 
 
 @command
 async def get_available_tools() -> AvailableToolsResponse:
-    """
-    Get all available tools (builtin and MCP).
-
-    Returns:
-        Response with:
-        - tools: Flat list of all tools
-    """
     tool_registry = get_tool_registry()
     mcp = await ensure_mcp_initialized()
 
@@ -198,7 +172,6 @@ async def get_available_tools() -> AvailableToolsResponse:
             id=tool["id"],
             name=tool.get("name"),
             description=tool.get("description"),
-            category=tool.get("category"),
             renderer=tool.get("renderer"),
             editable_args=tool.get("editable_args"),
             requires_confirmation=tool.get("requires_confirmation"),
@@ -238,28 +211,28 @@ async def get_available_tools() -> AvailableToolsResponse:
         if server["status"] == "connected":
             all_mcp_tools.extend(tools)
 
-    all_tools = builtin_tools + all_mcp_tools
+    toolset_data = tool_registry.list_toolset_tools()
+    toolset_tools = [
+        ToolInfo(
+            id=tool["id"],
+            name=tool.get("name"),
+            description=tool.get("description"),
+            category=tool.get("toolset_name") or tool.get("toolset_id"),
+            requires_confirmation=tool.get("requires_confirmation", False),
+        )
+        for tool in toolset_data
+    ]
 
-    return AvailableToolsResponse(
-        tools=all_tools
-    )
+    all_tools = builtin_tools + all_mcp_tools + toolset_tools
+
+    return AvailableToolsResponse(tools=all_tools)
 
 
 @command
 async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
-    """
-    Get agent configuration for a chat (tools, provider, model).
-
-    Args:
-        body: Contains chatId
-
-    Returns:
-        Chat's agent configuration
-    """
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, body.id)
         if not config:
-            # No config yet, return defaults
             config = db.get_default_agent_config()
 
     return ChatAgentConfigResponse(
@@ -271,15 +244,6 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
 
 @command
 async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
-    """
-    Generate and update title for a chat based on its first message.
-
-    Args:
-        body: Contains chatId
-
-    Returns:
-        Dict with the new title or None if generation failed
-    """
     title = generate_title_for_chat(body.id)
     if title:
         with db.db_session() as sess:
@@ -292,27 +256,20 @@ class GetAttachmentInput(BaseModel):
     chatId: str
     attachmentId: str
     mimeType: str
+    name: str
 
 
 class AttachmentDataResponse(BaseModel):
-    data: str  # base64 encoded file content
+    data: str
     mimeType: str
 
 
 @command
 async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
-    """
-    Load an attachment file and return it as base64.
-
-    Args:
-        body: Contains chatId, attachmentId, and mimeType
-
-    Returns:
-        Base64-encoded file data with mime type
-    """
-    extension = get_extension_from_mime(body.mimeType)
-    file_bytes = load_attachment(body.chatId, body.attachmentId, extension)
+    workspace_manager = get_workspace_manager(body.chatId)
+    file_bytes = workspace_manager.read_file(body.name)
+    if not file_bytes:
+        raise FileNotFoundError(f"Attachment '{body.name}' not found in workspace")
     return AttachmentDataResponse(
-        data=base64.b64encode(file_bytes).decode("utf-8"),
-        mimeType=body.mimeType
+        data=base64.b64encode(file_bytes).decode("utf-8"), mimeType=body.mimeType
     )

@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -20,25 +20,49 @@ export function MarkdownArtifact({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  renderPlan,
+  chatId,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
-  const title = (toolArgs.title as string) || toolName;
-  const id = toolCallId || `${toolName}-${title}`;
+  const { open, openFile, getFileState } = useArtifactPanel();
+
+  const filePath = renderPlan?.config?.file;
+  const hasFile = !!filePath && !!chatId;
+  const fileState = filePath ? getFileState(filePath) : undefined;
+
+  const title = (toolArgs.title as string) || filePath || toolName;
+
+  const content = filePath && fileState?.content
+    ? fileState.content
+    : renderPlan?.config?.content
+      ? String(renderPlan.config.content)
+      : toolResult || "";
 
   const handleClick = () => {
-    if (!isCompleted || !toolResult) return;
-    open(id, title,
+    if (!isCompleted) return;
+    
+    if (hasFile && filePath) {
+      openFile(filePath);
+    }
+    
+    if (!content && !fileState) return;
+    open(
+      toolCallId || `${toolName}-${title}`,
+      title,
       <div className="flex-1 overflow-auto p-4 px-8">
-        <MarkdownRenderer content={toolResult} />
-      </div>);
+        <MarkdownRenderer content={content} />
+      </div>,
+      filePath
+    );
   };
+
+  const isLoading = !isCompleted || (hasFile && (fileState?.isLoading ?? false));
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted}
+      shimmer={isLoading}
       disableToggle
       data-toolcall
     >
@@ -48,8 +72,8 @@ export function MarkdownArtifact({
           <span className="text-sm font-medium text-foreground">
             {title}
           </span>
-          {!isCompleted && (
-            <span className="text-xs text-muted-foreground">generating...</span>
+          {isLoading && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>
       </CollapsibleTrigger>

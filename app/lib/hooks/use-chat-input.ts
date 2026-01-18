@@ -14,7 +14,6 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
-import { linkAttachments } from "@/python/api";
 import { addRecentModel } from "@/lib/utils";
 
 async function fileToBase64(file: File): Promise<string> {
@@ -244,8 +243,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
   const handleSubmit = useCallback(
     async (inputText: string, attachments: Attachment[]) => {
-      const hasContent = inputText.trim() || attachments.length > 0;
-      if (!hasContent || isLoading || !canSendMessage) return;
+      if ((!inputText.trim() && attachments.length === 0) || isLoading || !canSendMessage) return;
 
       const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
@@ -254,7 +252,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       abortControllerRef.current = new AbortController();
       let sessionId: string | null = null;
-      let attachmentsLinked = false;
 
       try {
         const response = await api.streamChat(
@@ -287,22 +284,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
             if (id && streamingMessageIdRef.current) {
               registerStream(id, streamingMessageIdRef.current);
             }
-            if (id && attachments.length > 0 && !attachmentsLinked) {
-              attachmentsLinked = true;
-              try {
-                await linkAttachments({
-                  body: {
-                    chatId: id,
-                    attachments: attachments.map(a => ({
-                      id: a.id,
-                      mimeType: a.mimeType,
-                    })),
-                  },
-                });
-              } catch (e) {
-                console.error("Failed to link attachments:", e);
-              }
-            }
           },
           onMessageId: (id) => {
             streamingMessageIdRef.current = id;
@@ -317,7 +298,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
           trackModel();
-          // Preserve streaming content before unregistering to prevent message disappearing
           preserveStreamingMessage(result);
           unregisterStream(finalChatId);
         }
@@ -346,8 +326,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
-      
-      const message = baseMessages[idx];
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -365,7 +343,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
         preserveStreamingMessage(result);
         unregisterStream(chatId);
-        trackModel(message?.modelUsed);
+        trackModel(baseMessages[idx]?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
         unregisterStream(chatId);
@@ -381,9 +359,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
-      
-      const newBaseMessages = baseMessages.slice(0, idx);
-      setBaseMessages(newBaseMessages);
+
+      setBaseMessages(baseMessages.slice(0, idx));
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -400,7 +377,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           onThinkTagDetected,
         });
 
-        // Preserve streaming content before unregistering to prevent message disappearing
         preserveStreamingMessage(result);
         unregisterStream(chatId);
         trackModel();
@@ -460,9 +436,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       }
     });
 
-    const userMessage = createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined);
-    const newBaseMessages = [...baseMessages.slice(0, idx), userMessage];
-    setBaseMessages(newBaseMessages);
+    setBaseMessages([
+      ...baseMessages.slice(0, idx),
+      createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined),
+    ]);
     setEditingMessageId(null);
     setEditingAttachments([]);
 
@@ -489,7 +466,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         onThinkTagDetected,
       });
 
-      // Preserve streaming content before unregistering to prevent message disappearing
       preserveStreamingMessage(result);
       unregisterStream(chatId);
       trackModel();
@@ -534,11 +510,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [chatId, reloadMessages, unregisterStream]);
 
   const setMessages = useCallback((messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
-    if (typeof messagesOrUpdater === "function") {
-      setBaseMessages(messagesOrUpdater);
-    } else {
-      setBaseMessages(messagesOrUpdater);
-    }
+    setBaseMessages(messagesOrUpdater);
   }, []);
 
   return {

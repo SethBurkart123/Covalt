@@ -18,12 +18,13 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
-    get_attachment_path,
     get_extension_from_mime,
-    save_attachment_from_base64,
+    get_pending_attachment_path,
 )
 from ..services.tool_registry import get_tool_registry
+from ..services.toolset_executor import get_toolset_executor
 from ..services import stream_broadcaster as broadcaster
+from ..services.workspace_manager import get_workspace_manager
 
 import logging
 
@@ -40,7 +41,6 @@ _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
 
 
 def extract_error_message(error_content: str) -> str:
-    """Extract a clean error message from litellm/provider error strings for cleaner display."""
     if not error_content:
         return "Unknown error"
 
@@ -50,10 +50,8 @@ def extract_error_message(error_content: str) -> str:
             json_str = error_content[json_start:]
             data = json.loads(json_str)
             if isinstance(data, dict):
-                # {"error": {"message": "..."}} format
                 if "error" in data and isinstance(data["error"], dict):
                     return data["error"].get("message", error_content)
-                # {"message": "..."} format
                 if "message" in data:
                     return data["message"]
     except (json.JSONDecodeError, ValueError):
@@ -62,12 +60,29 @@ def extract_error_message(error_content: str) -> str:
     return error_content
 
 
-class BroadcastingChannel:
-    """
-    Wrapper around a channel that also broadcasts events to all subscribers.
-    This allows sync code to call send_model() while broadcasting happens async.
-    """
+def is_toolset_tool(tool_name: str) -> bool:
+    return (
+        ":" in tool_name
+        and not tool_name.startswith("mcp:")
+        and not tool_name.startswith("-")
+    )
 
+
+def parse_tool_result(result: Any) -> dict[str, Any]:
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"result": parsed}
+        except json.JSONDecodeError:
+            return {"result": result}
+    return {"result": result}
+
+
+class BroadcastingChannel:
     def __init__(self, channel: Any, chat_id: str):
         self._channel = channel
         self._chat_id = chat_id
@@ -75,7 +90,6 @@ class BroadcastingChannel:
         self._pending_broadcasts: list = []
 
     def send_model(self, event: ChatEvent) -> None:
-        """Send event to the originating channel and schedule broadcast."""
         self._channel.send_model(event)
 
         if self._chat_id:
@@ -88,37 +102,30 @@ class BroadcastingChannel:
             self._pending_broadcasts.append(task)
 
     async def flush_broadcasts(self) -> None:
-        """Wait for all pending broadcasts to complete. Call before unregister_stream."""
         if self._pending_broadcasts:
             await asyncio.gather(*self._pending_broadcasts, return_exceptions=True)
             self._pending_broadcasts.clear()
 
 
-# Maps run_id -> asyncio.Event for signaling when approval is received
 _approval_events: Dict[str, asyncio.Event] = {}
 
-# Global storage for pending approval responses
 _approval_responses: Dict[
     str, Dict[str, Any]
 ] = {}  # approval_id -> {approved: bool, edited_args: dict}
 
 
 class AttachmentInput(BaseModel):
-    """Incoming attachment with base64 data (used for edit flow)."""
-
     id: str
-    type: str  # "image" | "file" | "audio" | "video"
+    type: str
     name: str
     mimeType: str
     size: int
-    data: str  # base64-encoded file content
+    data: str
 
 
 class AttachmentMeta(BaseModel):
-    """Attachment metadata without base64 data (files are pre-uploaded)."""
-
     id: str
-    type: str  # "image" | "file" | "audio" | "video"
+    type: str
     name: str
     mimeType: str
     size: int
@@ -129,11 +136,10 @@ class StreamChatRequest(BaseModel):
     modelId: Optional[str] = None
     chatId: Optional[str] = None
     toolIds: List[str] = []
-    attachments: List[AttachmentMeta] = []  # Pre-uploaded attachment metadata
+    attachments: List[AttachmentMeta] = []
 
 
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
-    """Parse 'provider:model' format."""
     if not model_id:
         return "", ""
     if ":" in model_id:
@@ -142,60 +148,65 @@ def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     return "", model_id
 
 
-# TODO: Add file size limit validation (e.g., 50MB per file)
-def process_and_save_attachments(
-    chat_id: str, attachments: List[AttachmentInput]
-) -> List[Attachment]:
-    """
-    Process incoming attachments: save files to disk and return metadata list.
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
-    Args:
-        chat_id: The chat ID for organizing files
-        attachments: List of incoming attachments with base64 data
+AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
+    "image/*",
+    "audio/*",
+    "video/*",
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "application/json",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+]
 
-    Returns:
-        List of Attachment metadata (without the base64 data)
-    """
-    saved_attachments: List[Attachment] = []
 
-    for att in attachments:
-        extension = get_extension_from_mime(att.mimeType)
-        save_attachment_from_base64(chat_id, att.id, att.data, extension)
-
-        saved_attachments.append(
-            Attachment(
-                id=att.id,
-                type=att.type,
-                name=att.name,
-                mimeType=att.mimeType,
-                size=att.size,
-            )
-        )
-
-    return saved_attachments
+def is_allowed_attachment_mime(mime_type: str) -> bool:
+    if not mime_type:
+        return False
+    if mime_type.startswith("image/"):
+        return "image/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    if mime_type.startswith("audio/"):
+        return "audio/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    if mime_type.startswith("video/"):
+        return "video/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
 
 
 def load_attachments_as_agno_media(
     chat_id: str, attachments: List[Attachment]
 ) -> tuple[Sequence[Image], Sequence[File], Sequence[Audio], Sequence[Video]]:
-    """
-    Load attachment files from disk and convert to Agno media objects.
-
-    Args:
-        chat_id: The chat ID
-        attachments: List of attachment metadata
-
-    Returns:
-        Tuple of (images, files, audio, videos) Agno media objects
-    """
     images: List[Image] = []
     files: List[File] = []
     audio: List[Audio] = []
     videos: List[Video] = []
 
+    workspace_manager = get_workspace_manager(chat_id)
+
     for att in attachments:
-        extension = get_extension_from_mime(att.mimeType)
-        filepath = get_attachment_path(chat_id, att.id, extension)
+        if att.size > MAX_ATTACHMENT_BYTES:
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): {att.size} bytes exceeds {MAX_ATTACHMENT_BYTES}"
+            )
+            continue
+
+        if not is_allowed_attachment_mime(att.mimeType):
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): MIME '{att.mimeType}' not allowed for Agno"
+            )
+            continue
+
+        workspace_path = workspace_manager.workspace_dir / att.name
+
+        if not workspace_path.exists():
+            logger.warning(
+                f"[attachments] Skipping {att.id} ({att.name}): file not found in workspace"
+            )
+            continue
+
+        filepath = workspace_path
 
         if att.type == "image":
             images.append(Image(filepath=filepath))
@@ -203,18 +214,13 @@ def load_attachments_as_agno_media(
             audio.append(Audio(filepath=filepath))
         elif att.type == "video":
             videos.append(Video(filepath=filepath))
-        else:  # "file" type
+        else:
             files.append(File(filepath=filepath, name=att.name))
 
     return images, files, audio, videos
 
 
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
-    """
-    Create chat and config if needed, and ensure model/provider are up to date.
-
-    Returns the chat_id.
-    """
     if not chat_id:
         chat_id = str(uuid.uuid4())
         with db.db_session() as sess:
@@ -237,8 +243,6 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         return chat_id
 
-    # Existing chat: ensure agent config exists and, if a model_id was provided,
-    # update the provider/model to match the current selection.
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
@@ -271,13 +275,12 @@ def save_user_msg(
     chat_id: str,
     parent_id: Optional[str] = None,
     attachments: Optional[List[Attachment]] = None,
+    manifest_id: Optional[str] = None,
 ):
-    """Save user message to db with optional attachments."""
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         now = datetime.utcnow().isoformat()
 
-        # Serialize attachments to JSON if present
         attachments_json = None
         if attachments:
             attachments_json = json.dumps([att.model_dump() for att in attachments])
@@ -289,9 +292,10 @@ def save_user_msg(
             content=msg.content,
             createdAt=msg.createdAt or now,
             parent_message_id=parent_id,
-            is_complete=True,  # User messages are always complete
+            is_complete=True,
             sequence=sequence,
             attachments=attachments_json,
+            manifest_id=manifest_id,
         )
         sess.add(message)
         sess.commit()
@@ -301,7 +305,6 @@ def save_user_msg(
 
 
 def init_assistant_msg(chat_id: str, parent_id: str) -> str:
-    """Create empty assistant message, return id."""
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
         sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
@@ -339,7 +342,6 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
 
 
 def save_msg_content(msg_id: str, content: str):
-    """Update message content."""
     with db.db_session() as sess:
         db.update_message_content(sess, messageId=msg_id, content=content)
 
@@ -348,7 +350,6 @@ def convert_to_agno_messages(
     chat_msg: ChatMessage,
     chat_id: Optional[str] = None,
 ) -> List[Message]:
-    """Convert our ChatMessage format to Agno Message format."""
     if chat_msg.role == "user":
         content = chat_msg.content
         if isinstance(content, list):
@@ -454,7 +455,6 @@ def convert_to_agno_messages(
 
 
 def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
-    """Load existing message content for continuation."""
     try:
         with db.db_session() as sess:
             message = sess.get(db.Message, msg_id)
@@ -484,7 +484,6 @@ async def handle_content_stream(
     raw_ch: Any,
     chat_id: str = "",
 ):
-    """Handle the content streaming from an agent run."""
     ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
 
     agno_messages = []
@@ -611,6 +610,17 @@ async def handle_content_stream(
                     flush_text()
                     flush_reasoning()
 
+                    render_plan = None
+                    if is_toolset_tool(chunk.tool.tool_name):
+                        toolset_executor = get_toolset_executor()
+                        parsed_result = parse_tool_result(chunk.tool.result)
+                        render_plan = toolset_executor.generate_render_plan(
+                            chunk.tool.tool_name,
+                            chunk.tool.tool_args or {},
+                            parsed_result,
+                            chat_id,
+                        )
+
                     tool_block = {
                         "type": "tool_call",
                         "id": chunk.tool.tool_call_id,
@@ -622,6 +632,9 @@ async def handle_content_stream(
                         "isCompleted": True,
                         "renderer": registry.get_renderer(chunk.tool.tool_name),
                     }
+
+                    if render_plan is not None:
+                        tool_block["renderPlan"] = render_plan
 
                     existing_index = next(
                         (
@@ -863,12 +876,6 @@ class RespondToToolApprovalInput(BaseModel):
 
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    """
-    Respond to a tool approval request using Agno's native HITL API.
-
-    This stores the approval response and signals the waiting streaming handler
-    to continue the run with updated tool confirmations.
-    """
     run_id = body.runId
 
     _approval_responses[run_id] = {
@@ -885,7 +892,6 @@ async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
 
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
-    """Cancel an active streaming run. Returns {cancelled: bool}"""
     message_id = body.messageId
 
     if message_id not in _active_runs:
@@ -929,38 +935,69 @@ async def stream_chat(
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
     saved_attachments: List[Attachment] = []
+    manifest_id: Optional[str] = None
+    file_renames: Dict[str, str] = {}
+
     if body.attachments:
         logger.info(
-            f"[stream] Linking {len(body.attachments)} attachments for chat {chat_id}"
+            f"[stream] Processing {len(body.attachments)} attachments for chat {chat_id}"
         )
-        from ..services.file_storage import move_pending_to_chat
 
+        files_to_add: List[tuple[str, bytes]] = []
         for att in body.attachments:
             extension = get_extension_from_mime(att.mimeType)
-            try:
-                move_pending_to_chat(att.id, extension, chat_id)
-            except FileNotFoundError:
-                # File might already exist in chat folder (retry, or linked via linkAttachments)
-                existing_path = get_attachment_path(chat_id, att.id, extension)
-                if not existing_path.exists():
-                    logger.warning(
-                        f"[stream] Attachment {att.id} not found in pending or chat folder"
-                    )
-                    continue
+            pending_path = get_pending_attachment_path(att.id, extension)
 
-            saved_attachments.append(
-                Attachment(
-                    id=att.id,
-                    type=att.type,
-                    name=att.name,
-                    mimeType=att.mimeType,
-                    size=att.size,
+            if pending_path.exists():
+                content = pending_path.read_bytes()
+                files_to_add.append((att.name, content))
+                logger.info(f"[stream] Loaded pending file: {att.name}")
+            else:
+                logger.warning(
+                    f"[stream] Attachment {att.id} ({att.name}) not found in pending storage"
                 )
+                continue
+
+        if files_to_add:
+            with db.db_session() as sess:
+                chat = sess.get(db.Chat, chat_id)
+                parent_msg_id = chat.active_leaf_message_id if chat else None
+                parent_manifest_id = None
+                if parent_msg_id:
+                    parent_manifest_id = db.get_manifest_for_message(
+                        sess, parent_msg_id
+                    )
+
+            workspace_manager = get_workspace_manager(chat_id)
+            manifest_id, file_renames = workspace_manager.add_files(
+                files=files_to_add,
+                parent_manifest_id=parent_manifest_id,
+                source="user_upload",
+                source_ref=messages[-1].id if messages else None,
             )
 
-        logger.info(
-            f"[stream] Linked {len(saved_attachments)} attachments to chat {chat_id}"
-        )
+            for att in body.attachments:
+                final_name = file_renames.get(att.name, att.name)
+                saved_attachments.append(
+                    Attachment(
+                        id=att.id,
+                        type=att.type,
+                        name=final_name,
+                        mimeType=att.mimeType,
+                        size=att.size,
+                    )
+                )
+
+            for att in body.attachments:
+                extension = get_extension_from_mime(att.mimeType)
+                pending_path = get_pending_attachment_path(att.id, extension)
+                if pending_path.exists():
+                    pending_path.unlink()
+
+            logger.info(
+                f"[stream] Added {len(files_to_add)} files to workspace, "
+                f"{len(file_renames)} renamed"
+            )
 
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
@@ -975,10 +1012,13 @@ async def stream_chat(
             chat_id,
             parent_id,
             attachments=saved_attachments if saved_attachments else None,
+            manifest_id=manifest_id,
         )
         parent_id = messages[-1].id
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
+    channel.send_model(
+        ChatEvent(event="RunStarted", sessionId=chat_id, fileRenames=file_renames)
+    )
 
     assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 
@@ -1038,42 +1078,27 @@ async def stream_chat(
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
-# ============ Multi-Frontend Stream Commands ============
-
-
 class ActiveStreamInfo(BaseModel):
-    """Information about an active stream."""
-
     chatId: str
     messageId: str
-    status: str  # streaming, paused_hitl, completed, error, interrupted
+    status: str
     errorMessage: Optional[str] = None
 
 
 class ActiveStreamsResponse(BaseModel):
-    """Response containing all active streams."""
-
     streams: List[ActiveStreamInfo]
 
 
 class SubscribeToStreamRequest(BaseModel):
-    """Request to subscribe to a stream."""
-
     chatId: str
 
 
 class ClearStreamRequest(BaseModel):
-    """Request to clear a stream record (after user acknowledges)."""
-
     chatId: str
 
 
 @command
 async def get_active_streams() -> ActiveStreamsResponse:
-    """
-    Get all active and recently completed/errored streams.
-    Used by frontend on initialization to discover running streams.
-    """
     streams = await broadcaster.get_all_active_streams()
     return ActiveStreamsResponse(
         streams=[
@@ -1093,12 +1118,6 @@ async def subscribe_to_stream(
     channel: Channel,
     body: SubscribeToStreamRequest,
 ) -> None:
-    """
-    Subscribe to events for an already-running stream.
-
-    This allows new frontends (or page reloads) to receive
-    live events for an existing stream.
-    """
     chat_id = body.chatId
 
     queue = await broadcaster.subscribe(chat_id)
@@ -1126,9 +1145,5 @@ async def subscribe_to_stream(
 
 @command
 async def clear_stream_record(body: ClearStreamRequest) -> dict:
-    """
-    Clear a stream record from the database.
-    Called when user acknowledges an interrupted/error stream.
-    """
     await broadcaster.clear_stream_record(body.chatId)
     return {"success": True}

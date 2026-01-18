@@ -1,0 +1,28 @@
+manifest_version: "1"
+
+id: file-tools
+name: File Tools
+version: "1.0.0"
+description: Basic file manipulation tools for reading, writing, and listing files in the workspace
+
+tools:
+  - id: write_file
+    entrypoint: tools.files:write_file
+    renderer:
+      type: code
+      file: "$args.path"
+      language: auto
+      editable: true
+
+  - id: read_file
+    entrypoint: tools.files:read_file
+    renderer:
+      type: code
+      file: "$args.path"
+      language: auto
+
+  - id: list_files
+    entrypoint: tools.files:list_files
+
+  - id: delete_file
+    entrypoint: tools.files:delete_file

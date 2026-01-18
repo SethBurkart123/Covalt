@@ -14,28 +14,21 @@ class ToolCall(BaseModel):
 
 
 class ContentBlock(BaseModel):
-    # Allow extra fields on content blocks so we can attach
-    # metadata like timestamps or tracebacks to error blocks
     model_config = ConfigDict(extra="allow")
-    type: str  # "text", "tool_call", "reasoning"
-    # For text blocks
+    type: str
     content: Optional[str] = None
-    # For tool_call blocks
     id: Optional[str] = None
     toolName: Optional[str] = None
     toolArgs: Optional[Dict[str, Any]] = None
     toolResult: Optional[str] = None
     isCompleted: Optional[bool] = None
     renderer: Optional[str] = None
-    # For tool approval
     requiresApproval: Optional[bool] = None
     approvalId: Optional[str] = None
-    approvalStatus: Optional[str] = None  # "pending", "approved", "denied"
+    approvalStatus: Optional[str] = None
 
 
 class Attachment(BaseModel):
-    """Model for file attachments on messages."""
-
     id: str
     type: Literal["image", "file", "audio", "video"]
     name: str
@@ -46,9 +39,9 @@ class Attachment(BaseModel):
 class ChatMessage(BaseModel):
     id: str
     role: str
-    content: Union[str, List[ContentBlock]]  # Support both formats
+    content: Union[str, List[ContentBlock]]
     createdAt: Optional[str] = None
-    toolCalls: Optional[List[ToolCall]] = None  # Deprecated, for migration
+    toolCalls: Optional[List[ToolCall]] = None
     attachments: Optional[List[Attachment]] = None
 
 
@@ -100,16 +93,14 @@ class ChatStreamRequest(BaseModel):
 
 
 class ChatEvent(BaseModel):
-    # Discriminator field for event name
     event: str
-    # Optional fields
     content: Optional[str] = None
     reasoningContent: Optional[str] = None
     sessionId: Optional[str] = None
     tool: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    # For seeding existing content blocks on continuation
     blocks: Optional[List[Dict[str, Any]]] = None
+    fileRenames: Optional[Dict[str, str]] = None
 
 
 class ToolApprovalResponse(BaseModel):
@@ -134,7 +125,6 @@ class ToolInfo(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
-    # Additional fields for MCP tools
     inputSchema: Optional[Dict[str, Any]] = None
     renderer: Optional[str] = None
     editable_args: Optional[List[str]] = None
@@ -153,6 +143,7 @@ class MCPToolsetInfo(BaseModel):
 
 class AvailableToolsResponse(BaseModel):
     tools: List[ToolInfo] = Field(default_factory=list)
+
 
 class ModelInfo(BaseModel):
     provider: str

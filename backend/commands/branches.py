@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
@@ -12,12 +13,15 @@ from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
     get_extension_from_mime,
-    save_attachment_from_base64,
+    get_pending_attachment_path,
 )
+from ..services.workspace_manager import get_workspace_manager
 from .streaming import (
     handle_content_stream,
     parse_model_id,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ContinueMessageRequest(BaseModel):
@@ -35,19 +39,15 @@ class RetryMessageRequest(BaseModel):
 
 
 class AttachmentInput(BaseModel):
-    """Incoming attachment with base64 data (for new attachments)."""
-
     id: str
-    type: str  # "image" | "file" | "audio" | "video"
+    type: str
     name: str
     mimeType: str
     size: int
-    data: str  # base64-encoded file content
+    data: str
 
 
 class ExistingAttachmentInput(BaseModel):
-    """Existing attachment (just metadata, file already saved)."""
-
     id: str
     type: str
     name: str
@@ -88,6 +88,7 @@ async def continue_message(
 ) -> None:
     """Continue incomplete assistant message by creating a sibling branch."""
     existing_blocks: List[Dict[str, Any]] = []
+    original_msg_id: Optional[str] = None
 
     with db.db_session() as sess:
         if body.modelId:
@@ -102,11 +103,11 @@ async def continue_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        # Get message path up to (but not including) the original message
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
 
         chat_messages = []
         for m in messages:
@@ -117,7 +118,6 @@ async def continue_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages
             attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -138,7 +138,6 @@ async def continue_message(
                 )
             )
 
-        # Extract existing content (strip error blocks)
         if original_msg.content and isinstance(original_msg.content, str):
             raw = original_msg.content.strip()
             if raw.startswith("["):
@@ -167,6 +166,9 @@ async def continue_message(
         )
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
+        original_msg_id = original_msg.id
+
+    db.materialize_to_branch(body.chatId, original_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(
@@ -192,7 +194,7 @@ async def continue_message(
         )
 
     except Exception as e:
-        print(f"[continue_message] Error: {e}")
+        logger.error(f"[continue_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
@@ -225,7 +227,7 @@ async def retry_message(
     channel: Channel,
     body: RetryMessageRequest,
 ) -> None:
-    """Create sibling message and retry generation."""
+    parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
@@ -238,10 +240,11 @@ async def retry_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
 
         chat_messages = []
         for m in messages:
@@ -252,7 +255,6 @@ async def retry_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages
             attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -283,6 +285,10 @@ async def retry_message(
         )
 
         db.set_active_leaf(sess, body.chatId, new_msg_id)
+        parent_msg_id = original_msg.parent_message_id
+
+    if parent_msg_id:
+        db.materialize_to_branch(body.chatId, parent_msg_id)
 
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
@@ -293,7 +299,6 @@ async def retry_message(
             tool_ids=body.toolIds,
         )
 
-        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,
@@ -303,7 +308,7 @@ async def retry_message(
         )
 
     except Exception as e:
-        print(f"[retry_message] Error: {e}")
+        logger.error(f"[retry_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, new_msg_id)
@@ -337,6 +342,9 @@ async def edit_user_message(
     body: EditUserMessageRequest,
 ) -> None:
     """Edit user message by creating sibling with new content."""
+    file_renames: Dict[str, str] = {}
+    manifest_id: Optional[str] = None
+
     with db.db_session() as sess:
         if body.modelId:
             provider, model = parse_model_id(body.modelId)
@@ -349,48 +357,78 @@ async def edit_user_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        if original_msg.parent_message_id:
-            messages = db.get_message_path(sess, original_msg.parent_message_id)
-        else:
-            messages = []
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
+        original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
 
         all_attachments: List[Attachment] = []
 
-        # Keep existing attachments (already in chat folder)
-        for existing_att in body.existingAttachments:
-            all_attachments.append(
-                Attachment(
-                    id=existing_att.id,
-                    type=existing_att.type,  # type: ignore
-                    name=existing_att.name,
-                    mimeType=existing_att.mimeType,
-                    size=existing_att.size,
-                )
-            )
+        files_to_add: List[tuple[str, bytes]] = []
 
-        # Process new attachments - try pending storage first, then base64 fallback
-        from ..services.file_storage import move_pending_to_chat
+        for existing_att in body.existingAttachments:
+            content = None
+            if original_manifest_id:
+                workspace_manager = get_workspace_manager(body.chatId)
+                content = workspace_manager.read_file_from_manifest(
+                    original_manifest_id, existing_att.name
+                )
+
+            if content:
+                files_to_add.append((existing_att.name, content))
+                all_attachments.append(
+                    Attachment(
+                        id=existing_att.id,
+                        type=existing_att.type,
+                        name=existing_att.name,
+                        mimeType=existing_att.mimeType,
+                        size=existing_att.size,
+                    )
+                )
+            else:
+                logger.warning(
+                    f"[edit_user_message] Could not find existing attachment "
+                    f"'{existing_att.name}' in manifest {original_manifest_id}"
+                )
 
         for new_att in body.newAttachments:
             extension = get_extension_from_mime(new_att.mimeType)
-            try:
-                move_pending_to_chat(new_att.id, extension, body.chatId)
-            except FileNotFoundError:
-                # Fallback: save from base64 data (backward compatibility)
-                if new_att.data:
-                    save_attachment_from_base64(
-                        body.chatId, new_att.id, new_att.data, extension
-                    )
+            pending_path = get_pending_attachment_path(new_att.id, extension)
+
+            if pending_path.exists():
+                content = pending_path.read_bytes()
+                files_to_add.append((new_att.name, content))
+                pending_path.unlink()
+            elif new_att.data:
+                import base64
+
+                content = base64.b64decode(new_att.data)
+                files_to_add.append((new_att.name, content))
 
             all_attachments.append(
                 Attachment(
                     id=new_att.id,
-                    type=new_att.type,  # type: ignore
+                    type=new_att.type,
                     name=new_att.name,
                     mimeType=new_att.mimeType,
                     size=new_att.size,
                 )
             )
+
+        if files_to_add:
+            workspace_manager = get_workspace_manager(body.chatId)
+            manifest_id, file_renames = workspace_manager.add_files(
+                files=files_to_add,
+                parent_manifest_id=None,
+                source="user_upload",
+                source_ref=None,
+            )
+
+            for att in all_attachments:
+                if att.name in file_renames:
+                    att.name = file_renames[att.name]
 
         new_user_msg_id = db.create_branch_message(
             sess,
@@ -406,11 +444,17 @@ async def edit_user_message(
             user_msg = sess.get(db.Message, new_user_msg_id)
             if user_msg:
                 user_msg.attachments = attachments_json
+                if manifest_id:
+                    user_msg.manifest_id = manifest_id
+                sess.commit()
+        elif manifest_id:
+            user_msg = sess.get(db.Message, new_user_msg_id)
+            if user_msg:
+                user_msg.manifest_id = manifest_id
                 sess.commit()
 
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
-        # Build chat messages with attachments for history
         chat_messages = []
         for m in messages:
             content = m.content
@@ -420,7 +464,6 @@ async def edit_user_message(
                 except Exception:
                     pass
 
-            # Load attachments for user messages in history
             msg_attachments = None
             if m.role == "user" and m.attachments:
                 try:
@@ -441,7 +484,6 @@ async def edit_user_message(
                 )
             )
 
-        # Add the new user message with its attachments
         chat_messages.append(
             ChatMessage(
                 id=new_user_msg_id,
@@ -463,6 +505,8 @@ async def edit_user_message(
 
         db.set_active_leaf(sess, body.chatId, assistant_msg_id)
 
+    db.materialize_to_branch(body.chatId, new_user_msg_id)
+
     channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
@@ -472,7 +516,6 @@ async def edit_user_message(
             tool_ids=body.toolIds,
         )
 
-        # Attachments are now included in chat_messages and handled during conversion
         await handle_content_stream(
             agent,
             chat_messages,
@@ -482,7 +525,7 @@ async def edit_user_message(
         )
 
     except Exception as e:
-        print(f"[edit_user_message] Error: {e}")
+        logger.error(f"[edit_user_message] Error: {e}")
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
@@ -514,17 +557,17 @@ async def edit_user_message(
 async def switch_to_sibling(
     body: SwitchToSiblingRequest,
 ) -> None:
-    """Switch active branch to different sibling."""
     with db.db_session() as sess:
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
         db.set_active_leaf(sess, body.chatId, leaf_id)
+
+    db.materialize_to_branch(body.chatId, leaf_id)
 
 
 @command
 async def get_message_siblings(
     body: GetMessageSiblingsRequest,
 ) -> List[MessageSiblingInfo]:
-    """Get all sibling messages for navigation UI."""
     with db.db_session() as sess:
         message = sess.get(db.Message, body.messageId)
         if not message:
