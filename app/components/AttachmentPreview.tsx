@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { X, FileText, Music, Video, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UploadProgressRing } from "@/components/ui/upload-progress-ring";
@@ -19,7 +19,7 @@ interface AttachmentPreviewProps {
   onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
   readonly?: boolean;
-  chatId?: string; // For loading saved attachments from backend
+  chatId?: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -88,6 +88,7 @@ const AttachmentItem = memo<{
         chatId,
         attachmentId: attachment.id,
         mimeType: attachment.mimeType,
+        name: attachment.name,
       },
     })
       .then((response) => {
@@ -241,7 +242,7 @@ export const AttachmentPreview = memo<AttachmentPreviewProps>(({
     [onRetry]
   );
 
-  if (!attachments || attachments.length === 0) {
+  if (attachments.length === 0) {
     return null;
   }
 

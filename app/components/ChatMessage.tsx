@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -42,33 +42,29 @@ function ChatMessage({
 }: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Effect to place the cursor indicator at the end of streaming text
   useEffect(() => {
-    if (!contentRef.current) return;
+    const content = contentRef.current;
+    if (!content) return;
 
-    const existingIndicators = contentRef.current.querySelectorAll(
+    const existingIndicators = content.querySelectorAll(
       ".inline-typewriter-indicator"
     );
     existingIndicators.forEach((el) => el.remove());
 
-    // Show cursor indicator if streaming and has content
     const hasContent =
       typeof content === "string"
         ? content !== ""
         : Array.isArray(content) && content.length > 0;
 
     if (isStreaming && hasContent) {
-      // Find the last text node
       const walker = document.createTreeWalker(
-        contentRef.current,
+        content,
         NodeFilter.SHOW_TEXT,
         {
           acceptNode: (node) => {
             if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
-            const parentEl = (
-              node as unknown as ChildNode & { parentElement: Element | null }
-            ).parentElement;
-            if (parentEl && parentEl.closest("[data-toolcall]")) {
+            const parentEl = node.parentElement;
+            if (parentEl?.closest("[data-toolcall]")) {
               return NodeFilter.FILTER_REJECT;
             }
             return NodeFilter.FILTER_ACCEPT;
@@ -97,18 +93,13 @@ function ChatMessage({
     }
 
     return () => {
-      if (contentRef.current) {
-        const indicators = contentRef.current.querySelectorAll(
-          ".inline-typewriter-indicator"
-        );
-        indicators.forEach((el) => el.remove());
-      }
+      const indicators = content.querySelectorAll(
+        ".inline-typewriter-indicator"
+      );
+      indicators.forEach((el) => el.remove());
     };
   }, [isStreaming, content]);
 
-  // Always show actions if we have a message (Copy is always available)
-  const showActions = !!message;
-  
   return (
     <div
       className={clsx(
@@ -141,7 +132,6 @@ function ChatMessage({
           >
             {Array.isArray(content) && (
               <>
-                {/* Show indicator when run started but no content yet */}
                 {content.length === 1 &&
                 content[0].type === "text" &&
                 content[0].content === "" &&
@@ -158,7 +148,6 @@ function ChatMessage({
                       for (let i = 0; i < blocks.length; i++) {
                         const block = blocks[i];
 
-                        // Check if this is a text block
                         if (block.type === "text") {
                           const text = block.content;
                           if (text && text.trim() !== "") {
@@ -204,7 +193,6 @@ function ChatMessage({
                           continue;
                         }
 
-                        // For tool_call or reasoning blocks, check if we can group with consecutive ones
                         if (
                           block.type === "tool_call" ||
                           block.type === "reasoning"
@@ -213,7 +201,6 @@ function ChatMessage({
                           const group: ContentBlock[] = [];
                           let j = i;
 
-                          // Gather consecutive tool_call/reasoning blocks (allowing whitespace text in between)
                           while (j < blocks.length) {
                             const b = blocks[j];
                             if (
@@ -231,7 +218,7 @@ function ChatMessage({
                             break;
                           }
 
-                          i = j - 1; // for-loop will increment
+                          i = j - 1;
 
                           const groupItems = group.map((b, idx) => {
                             if (b.type === "tool_call") {
@@ -251,10 +238,11 @@ function ChatMessage({
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}
                                   isLast={idx === group.length - 1}
+                                  renderPlan={b.renderPlan}
+                                  chatId={chatId}
                                 />
                               );
                             } else if (b.type === "reasoning") {
-                              // reasoning block
                               return (
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
@@ -270,7 +258,6 @@ function ChatMessage({
                             return null;
                           });
 
-                          // Render single item standalone, or multiple items in a grouped container
                           if (group.length === 1) {
                             rendered.push(groupItems[0]);
                           } else if (group.length > 1) {
@@ -298,7 +285,7 @@ function ChatMessage({
           </div>
         )}
         
-        {showActions && (!isStreaming) && (
+        {message && !isStreaming && (
           <div className={clsx(
             "flex items-center gap-1 transition-opacity duration-200 px-1 pointer-events-auto",
             role === "user" ? "justify-end" : "justify-start",
@@ -309,7 +296,7 @@ function ChatMessage({
                 : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100"
           )}>
             <MessageActions
-              message={message!}
+              message={message}
               siblings={siblings || []}
               onContinue={onContinue}
               onRetry={onRetry}
@@ -325,17 +312,10 @@ function ChatMessage({
 }
 
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
-  // If streaming status changed, re-render
-  if (prevProps.isStreaming !== nextProps.isStreaming) {
+  if (prevProps.isStreaming !== nextProps.isStreaming || nextProps.isStreaming) {
     return false;
   }
   
-  // If this message is currently streaming, always re-render to show updates
-  if (nextProps.isStreaming) {
-    return false;
-  }
-  
-  // If not streaming, compare other props
   return (
     prevProps.role === nextProps.role &&
     prevProps.content === nextProps.content &&
@@ -347,4 +327,4 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   );
 }
 
-export default React.memo(ChatMessage, arePropsEqual);
+export default memo(ChatMessage, arePropsEqual);

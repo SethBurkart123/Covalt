@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
-import { PlusIcon, Settings, Wrench } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Package, PlusIcon, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -18,10 +18,6 @@ import { useStreaming } from "@/contexts/streaming-context";
 import { groupChatsByTimePeriod } from "@/lib/utils/chat-grouping";
 import { ChatItem } from "@/components/ChatItem";
 
-/**
- * Sidebar that shows all stored chats and offers
- * a "New Chat" button. Uses the central ChatContext for data.
- */
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter();
   const {
@@ -36,8 +32,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   } = useChat();
   const { getStreamState, markChatAsSeen } = useStreaming();
 
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [editTitle, setEditTitle] = React.useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const handleRenameConfirm = async (id: string) => {
     if (editTitle.trim()) {
@@ -52,7 +48,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setEditTitle("");
   };
 
-  const chatGroups = React.useMemo(
+  const chatGroups = useMemo(
     () => groupChatsByTimePeriod(chatIds, chatsData),
     [chatIds, chatsData]
   );
@@ -94,34 +90,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           ) : (
             chatGroups.map((group) => (
-              <React.Fragment key={group.label}>
+              <div key={group.label} className="contents">
                 <SidebarMenuItem>
                   <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground">
                     {group.label}
                   </div>
                 </SidebarMenuItem>
                 {group.chatIds.map((id) => {
-                  const isActive = currentChatId === id;
-                  const title =
-                    chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
+                  const title = chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
                   const streamState = getStreamState(id);
-                  const isStreaming = streamState?.isStreaming ?? false;
-                  const isPausedForApproval =
-                    streamState?.isPausedForApproval ?? false;
-                  const hasError =
-                    streamState?.status === "error" ||
-                    streamState?.status === "interrupted";
-                  const hasUnseenUpdate = streamState?.hasUnseenUpdate ?? false;
-
                   return (
                     <ChatItem
                       key={id}
                       title={title}
-                      isActive={isActive}
-                      isStreaming={isStreaming}
-                      isPausedForApproval={isPausedForApproval}
-                      hasError={hasError}
-                      hasUnseenUpdate={hasUnseenUpdate}
+                      isActive={currentChatId === id}
+                      isStreaming={streamState?.isStreaming ?? false}
+                      isPausedForApproval={streamState?.isPausedForApproval ?? false}
+                      hasError={streamState?.status === "error" || streamState?.status === "interrupted"}
+                      hasUnseenUpdate={streamState?.hasUnseenUpdate ?? false}
                       isEditing={editingId === id}
                       editTitle={editTitle}
                       onEditTitleChange={setEditTitle}
@@ -141,21 +127,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     />
                   );
                 })}
-              </React.Fragment>
+              </div>
             ))
           )}
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-full before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
+      <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-[calc(100%-1px)] before:w-full before:bg-gradient-to-b before:from-transparent dark:before:to-background before:to-sidebar">
         <SidebarMenu className="space-y-2">
           <SidebarMenuItem>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => router.push("/tools")}
+              onClick={() => router.push("/toolsets")}
             >
-              <Wrench className="size-4" />
-              Tools
+              <Package className="size-4" />
+              Toolsets
             </button>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -166,19 +152,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </button>
           </SidebarMenuItem>
         </SidebarMenu>
-
-        {/* <div className="flex justify-between items-center w-full">
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <button
-              className="p-3 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              aria-label="Settings"
-              onClick={() => router.push('/settings')}
-            >
-              <Settings className="size-4" />
-            </button>
-          </div>
-        </div> */}
       </SidebarFooter>
     </Sidebar>
   );

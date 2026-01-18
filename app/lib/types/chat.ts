@@ -21,24 +21,35 @@ export interface Attachment {
   name: string;
   mimeType: string;
   size: number;
-  data?: string; // base64 encoded data (optional, used for local preview before backend reload)
+  data?: string;
 }
 
-// For pending attachments (before upload) - includes base64 data
 export interface PendingAttachment extends Attachment {
-  data: string; // base64 encoded file content
-  previewUrl?: string; // blob URL for local preview (images only)
+  data: string;
+  previewUrl?: string;
 }
 
-// Upload status tracking
 export type UploadStatus = "pending" | "uploading" | "uploaded" | "error";
 
-// For attachments that are being uploaded
 export interface UploadingAttachment extends Omit<Attachment, "data"> {
   uploadStatus: UploadStatus;
-  uploadProgress: number; // 0-100
+  uploadProgress: number;
   uploadError?: string;
-  previewUrl?: string; // blob URL for local preview (images only)
+  previewUrl?: string;
+}
+
+export interface RenderPlan {
+  renderer: "code" | "document" | "html" | "frame" | string;
+  config: {
+    file?: string;
+    content?: string;
+    language?: string;
+    editable?: boolean;
+    artifact?: string;
+    data?: unknown;
+    url?: string;
+    port?: number;
+  };
 }
 
 export type ContentBlock =
@@ -56,6 +67,7 @@ export type ContentBlock =
       toolCallId?: string;
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
       editableArgs?: string[] | boolean;
+      renderPlan?: RenderPlan;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | { type: "error"; content: string };

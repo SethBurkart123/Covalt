@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -21,6 +21,7 @@ class Chat(Base):
     agent_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     active_leaf_message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     starred: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    active_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     messages: Mapped[List["Message"]] = relationship(
         back_populates="chat", cascade="all, delete-orphan"
@@ -42,8 +43,8 @@ class Message(Base):
     is_complete: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     model_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # JSON string of attachment metadata (id, type, name, mimeType, size)
     attachments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
 
@@ -54,7 +55,6 @@ class ProviderSettings(Base):
     provider: Mapped[str] = mapped_column(String, primary_key=True)
     api_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     base_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # JSON string with provider-specific options
     extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -78,8 +78,6 @@ class Model(Base):
 
 
 class ActiveStream(Base):
-    """Tracks currently active streaming sessions for multi-frontend support."""
-
     __tablename__ = "active_streams"
 
     chat_id: Mapped[str] = mapped_column(
@@ -87,41 +85,155 @@ class ActiveStream(Base):
     )
     message_id: Mapped[str] = mapped_column(String, nullable=False)
     run_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Status: "streaming", "paused_hitl", "completed", "error", "interrupted"
     status: Mapped[str] = mapped_column(String, default="streaming", nullable=False)
     started_at: Mapped[str] = mapped_column(String, nullable=False)
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
-    # Optional error message if status is "error"
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-class McpServer(Base):
-    """MCP server configuration stored in database."""
+class ToolsetMcpServer(Base):
+    """MCP server configuration belonging to a toolset."""
 
-    __tablename__ = "mcp_servers"
+    __tablename__ = "toolset_mcp_servers"
 
-    # Identity
     id: Mapped[str] = mapped_column(String, primary_key=True)
-
-    # Server type: "stdio" | "sse" | "streamable-http"
+    toolset_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=False
+    )
     server_type: Mapped[str] = mapped_column(String, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-    # For stdio servers
     command: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    args: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    args: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cwd: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-
-    # For HTTP/SSE servers
     url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    headers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON dict
-
-    # Common config
-    env: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON dict
+    headers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    env: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requires_confirmation: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
-    tool_overrides: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
-
-    # Metadata
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class Toolset(Base):
+    """A toolset aggregates tools from various providers (MCP servers, Python modules, etc.)."""
+
+    __tablename__ = "toolsets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    version: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    user_mcp: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    installed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    manifest_version: Mapped[str] = mapped_column(String, default="1", nullable=False)
+
+    files: Mapped[List["ToolsetFile"]] = relationship(
+        back_populates="toolset", cascade="all, delete-orphan"
+    )
+    tools: Mapped[List["Tool"]] = relationship(
+        back_populates="toolset", cascade="all, delete-orphan"
+    )
+    mcp_servers: Mapped[List["ToolsetMcpServer"]] = relationship(
+        backref="toolset", cascade="all, delete-orphan"
+    )
+    overrides: Mapped[List["ToolOverride"]] = relationship(
+        back_populates="toolset", cascade="all, delete-orphan"
+    )
+
+
+class ToolsetFile(Base):
+    __tablename__ = "toolset_files"
+
+    toolset_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), primary_key=True
+    )
+    path: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    sha256: Mapped[str] = mapped_column(String, nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    stored_path: Mapped[str] = mapped_column(String, nullable=False)
+
+    toolset: Mapped[Toolset] = relationship(back_populates="files")
+
+
+class Tool(Base):
+    __tablename__ = "tools"
+
+    tool_id: Mapped[str] = mapped_column(String, primary_key=True)
+    toolset_id: Mapped[Optional[str]] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    input_schema: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requires_confirmation: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    entrypoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    toolset: Mapped[Optional[Toolset]] = relationship(back_populates="tools")
+
+
+class WorkspaceManifest(Base):
+    __tablename__ = "workspace_manifests"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        String, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    files: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source: Mapped[str] = mapped_column(String, default="initial", nullable=False)
+    source_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class ToolCall(Base):
+    __tablename__ = "tool_calls"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(
+        String, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[str] = mapped_column(String, nullable=False)
+    tool_id: Mapped[str] = mapped_column(String, nullable=False)
+    args: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    render_plan: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    finished_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    pre_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    post_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class ToolOverride(Base):
+    """Override configuration for a tool within a toolset."""
+
+    __tablename__ = "tool_overrides"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    toolset_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=False
+    )
+    tool_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    renderer: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    renderer_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    name_override: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    description_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requires_confirmation: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    toolset: Mapped[Toolset] = relationship(back_populates="overrides")
+
+    __table_args__ = (
+        UniqueConstraint("toolset_id", "tool_id", name="uq_toolset_tool_override"),
+    )

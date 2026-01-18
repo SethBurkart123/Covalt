@@ -1,0 +1,14 @@
+manifest_version: "1"
+
+id: quiz-toolset
+name: Quiz Toolset
+version: "1.0.0"
+description: Create interactive multiple-choice quizzes that users can take in the artifact panel
+
+tools:
+  - id: create_quiz
+    entrypoint: tools.quiz:create_quiz
+    renderer:
+      type: html
+      artifact: artifacts/quiz.html
+      data: "$return"

@@ -13,11 +13,12 @@ export const TRANSITION = {
 }
 
 export function ArtifactPanel() {
-  const { isOpen, artifacts, activeId, setActive, remove, close } = useArtifactPanel();
+  const { isOpen, artifacts, activeId, setActive, remove, close, clearFiles } = useArtifactPanel();
   const activeArtifact = artifacts.find((a) => a.id === activeId);
   
   const displayArtifactsRef = useRef(artifacts);
   const displayActiveRef = useRef(activeArtifact);
+  const wasOpenRef = useRef(isOpen);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -38,7 +39,12 @@ export function ArtifactPanel() {
     observerRef.current?.disconnect();
     observerRef.current = null;
     setAnimatingWidth(null);
-  }, []);
+    
+    if (wasOpenRef.current && !isOpen) {
+      clearFiles();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, clearFiles]);
   
   useEffect(() => {
     return () => observerRef.current?.disconnect();

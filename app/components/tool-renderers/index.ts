@@ -6,7 +6,9 @@ import { CodeArtifact } from "./CodeArtifact";
 
 registerToolCallRenderer("default", DefaultToolCall);
 registerToolCallRenderer("markdown", MarkdownArtifact);
+registerToolCallRenderer("document", MarkdownArtifact);
 registerToolCallRenderer("html", HtmlArtifact);
 registerToolCallRenderer("code", CodeArtifact);
 
 export { DefaultToolCall, MarkdownArtifact, HtmlArtifact, CodeArtifact };
+export { EditableCodeViewer } from "./EditableCodeViewer";
