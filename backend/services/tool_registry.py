@@ -189,7 +189,6 @@ def get_tool_registry() -> ToolRegistry:
     global _tool_registry
     if _tool_registry is None:
         _tool_registry = ToolRegistry()
-        import backend.services.builtin_tools  # noqa: F401
     return _tool_registry
 
 
