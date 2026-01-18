@@ -12,6 +12,7 @@ Provides commands for managing toolsets:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from typing import Any, Dict, List, Optional
@@ -37,7 +38,6 @@ class ToolInfo(BaseModel):
     tool_id: str
     name: str
     description: Optional[str] = None
-    category: str = "utility"
     requires_confirmation: bool = False
     enabled: bool = True
 
@@ -229,7 +229,6 @@ async def get_toolset(body: ToolsetIdRequest) -> ToolsetDetailInfo:
                 tool_id=t["tool_id"],
                 name=t["name"],
                 description=t.get("description"),
-                category=t.get("category", "utility"),
                 requires_confirmation=t.get("requires_confirmation", False),
                 enabled=t.get("enabled", True),
             )
@@ -458,7 +457,6 @@ async def update_workspace_file(
     """
     manager = get_workspace_manager(body.chat_id)
 
-    # Decode base64 content
     try:
         content = base64.b64decode(body.content)
     except Exception as e:
@@ -484,7 +482,6 @@ async def update_workspace_file(
 
     # Broadcast file change to connected clients
     try:
-        import asyncio
         from .events import broadcast_workspace_files_changed
 
         asyncio.create_task(

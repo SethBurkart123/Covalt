@@ -13,7 +13,6 @@ from backend.services.tool_registry import tool
 @tool(
     name="Calculator",
     description="Perform basic mathematical calculations",
-    category="utility",
 )
 def calculate(expression: str) -> str:
     """
@@ -45,7 +44,6 @@ def calculate(expression: str) -> str:
 @tool(
     name="Echo",
     description="Echo back the input (for testing)",
-    category="utility",
 )
 def echo(message: str) -> str:
     """
@@ -65,7 +63,6 @@ def echo(message: str) -> str:
 @tool(
     name="Write Artifact",
     description="Create a markdown artifact (requires approval)",
-    category="content",
     renderer="markdown",
     editable_args=["content"],
     requires_confirmation=True,
@@ -89,7 +86,6 @@ def write_artifact(title: str, content: str) -> str:
 @tool(
     name="Write HTML Artifact",
     description="Create an HTML artifact (requires approval)",
-    category="content",
     renderer="html",
     editable_args=["html"],
     requires_confirmation=True,

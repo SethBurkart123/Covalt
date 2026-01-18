@@ -120,7 +120,6 @@ class ToolsetExecutor:
                 "toolset_id": tool.toolset_id,
                 "name": tool.name,
                 "description": tool.description,
-                "category": tool.category,
                 "input_schema": json.loads(tool.input_schema)
                 if tool.input_schema
                 else None,
@@ -249,14 +248,12 @@ class ToolsetExecutor:
         )
 
         try:
-            workspace_path = workspace_manager.workspace_dir
-
             if asyncio.iscoroutinefunction(tool_fn):
-                result = await tool_fn(workspace=workspace_path, **args)
+                result = await tool_fn(workspace=workspace_manager.workspace_dir, **args)
             else:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
-                    None, lambda: tool_fn(workspace=workspace_path, **args)
+                    None, lambda: tool_fn(workspace=workspace_manager.workspace_dir, **args)
                 )
 
             if not isinstance(result, dict):
@@ -528,9 +525,9 @@ class ToolsetExecutor:
                     "id": t.tool_id,
                     "name": t.name,
                     "description": t.description,
-                    "category": t.category or t.toolset_id,
                     "requires_confirmation": t.requires_confirmation,
                     "toolset_id": t.toolset_id,
+                    "toolset_name": t.toolset.name if t.toolset else t.toolset_id,
                 }
                 for t in tools
             ]

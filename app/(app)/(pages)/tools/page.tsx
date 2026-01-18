@@ -83,7 +83,11 @@ const emptyFormData: ServerFormData = {
 };
 
 function StatusBadge({ status }: { status: McpServerStatus["status"] }) {
-  const config = {
+  const {
+    icon: Icon,
+    label,
+    className,
+  } = {
     connected: {
       icon: CheckCircle2,
       label: "Connected",
@@ -106,19 +110,17 @@ function StatusBadge({ status }: { status: McpServerStatus["status"] }) {
     },
   }[status];
 
-  const Icon = config.icon;
-
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full border",
-        config.className
+        className
       )}
     >
       <Icon
         className={cn("size-3", status === "connecting" && "animate-spin")}
       />
-      {config.label}
+      {label}
     </span>
   );
 }
@@ -219,11 +221,12 @@ function configToFormData(
   config: Record<string, unknown>
 ): ServerFormData {
   let serverType: ServerType = "stdio";
-  if (config.type && typeof config.type === "string") {
-    const type = config.type;
-    if (type === "sse" || type === "streamable-http" || type === "stdio") {
-      serverType = type;
-    }
+  if (
+    config.type &&
+    typeof config.type === "string" &&
+    (config.type === "sse" || config.type === "streamable-http" || config.type === "stdio")
+  ) {
+    serverType = config.type;
   }
 
   let fullCommand = (config.command as string) || "";
@@ -798,38 +801,38 @@ function McpServerCard({
   const toolCount = server.toolCount ?? tools.length ?? 0;
   const hasTools = server.status === "connected" && tools.length > 0;
 
-  const ActionButtons = (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      {showReconnectButton && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleReconnect}
-          disabled={isReconnecting}
-        >
-          <RefreshCw
-            className={cn("size-3", isReconnecting && "animate-spin")}
-          />
-          Reconnect
-        </Button>
-      )}
-      <Button variant="ghost" size="icon" onClick={onEdit}>
-        <Pencil className="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        className="text-destructive hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </div>
-  );
-
   return (
     <Collapsible defaultOpen={false} disableToggle={!hasTools}>
-      <CollapsibleTrigger rightContent={ActionButtons}>
+      <CollapsibleTrigger
+        rightContent={
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {showReconnectButton && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                <RefreshCw
+                  className={cn("size-3", isReconnecting && "animate-spin")}
+                />
+                Reconnect
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={onEdit}>
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        }
+      >
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -905,14 +908,7 @@ function BuiltinToolCard({ tool }: { tool: ToolInfo }) {
         <Wrench className="size-4 text-muted-foreground" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="font-medium text-sm">{tool.name || tool.id}</h3>
-          {tool.category && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {tool.category}
-            </span>
-          )}
-        </div>
+        <h3 className="font-medium text-sm mb-1">{tool.name || tool.id}</h3>
         {tool.description && (
           <p className="text-sm text-muted-foreground line-clamp-2">
             {tool.description}
@@ -971,7 +967,6 @@ export default function ToolsPage() {
 
   return (
     <div className="container mx-auto max-w-4xl py-8 px-4">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Tools</h1>
         <p className="text-muted-foreground">
@@ -985,7 +980,6 @@ export default function ToolsPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* MCP Servers Section */}
           <section>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -1027,7 +1021,6 @@ export default function ToolsPage() {
             )}
           </section>
 
-          {/* Builtin Tools Section */}
           {builtinTools.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -1046,7 +1039,6 @@ export default function ToolsPage() {
             </section>
           )}
 
-          {/* Empty state */}
           {mcpServers.length === 0 && builtinTools.length === 0 && (
             <div className="text-center py-12">
               <Wrench className="size-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -1056,7 +1048,6 @@ export default function ToolsPage() {
         </div>
       )}
 
-      {/* Dialogs */}
       <ServerFormDialog
         open={formDialogOpen}
         onOpenChange={setFormDialogOpen}

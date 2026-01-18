@@ -19,12 +19,18 @@ export interface ToolsByCategory {
   [category: string]: ToolInfo[];
 }
 
+export interface GroupedTools {
+  ungrouped: ToolInfo[];
+  byCategory: ToolsByCategory;
+}
+
 export type { McpServerStatus };
 
 interface ToolsContextType {
   availableTools: ToolInfo[];
   activeToolIds: string[];
-  toolsByCategory: ToolsByCategory;
+  /** Tools grouped by category (toolsets/MCP), plus ungrouped built-in tools */
+  groupedTools: GroupedTools;
   toggleTool: (toolId: string) => void;
   toggleToolset: (category: string) => void;
   isToolsetActive: (category: string) => boolean;
@@ -110,17 +116,24 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     loadActiveTools();
   }, [chatId]);
 
-  const toolsByCategory = React.useMemo(() => {
-    const grouped: ToolsByCategory = {};
+  const groupedTools = React.useMemo(() => {
+    const ungrouped: ToolInfo[] = [];
+    const byCategory: ToolsByCategory = {};
+    
     availableTools.forEach((tool) => {
-      const category = tool.category || "Other";
-      if (category === "auto") return;
-      if (!grouped[category]) {
-        grouped[category] = [];
+      const category = tool.category;
+      if (!category || category === "auto") {
+        // Built-in tools have no category - they go in ungrouped
+        ungrouped.push(tool);
+        return;
       }
-      grouped[category].push(tool);
+      if (!byCategory[category]) {
+        byCategory[category] = [];
+      }
+      byCategory[category].push(tool);
     });
-    return grouped;
+    
+    return { ungrouped, byCategory };
   }, [availableTools]);
 
   const persistTools = React.useCallback(
@@ -159,28 +172,28 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
 
   const isToolsetActive = React.useCallback(
     (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return false;
       return tools.every((tool) => activeToolIds.includes(tool.id));
     },
-    [toolsByCategory, activeToolIds]
+    [groupedTools.byCategory, activeToolIds]
   );
 
   const isToolsetPartiallyActive = React.useCallback(
     (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return false;
       const activeCount = tools.filter((tool) =>
         activeToolIds.includes(tool.id)
       ).length;
       return activeCount > 0 && activeCount < tools.length;
     },
-    [toolsByCategory, activeToolIds]
+    [groupedTools.byCategory, activeToolIds]
   );
 
   const toggleToolset = React.useCallback(
     async (category: string) => {
-      const tools = toolsByCategory[category];
+      const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return;
 
       const toolIds = tools.map((t) => t.id);
@@ -196,14 +209,14 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
         setActiveToolIds(activeToolIds);
       }
     },
-    [toolsByCategory, activeToolIds, isToolsetActive, persistTools]
+    [groupedTools.byCategory, activeToolIds, isToolsetActive, persistTools]
   );
 
   const value = React.useMemo<ToolsContextType>(
     () => ({
       availableTools,
       activeToolIds,
-      toolsByCategory,
+      groupedTools,
       toggleTool,
       toggleToolset,
       isToolsetActive,
@@ -215,7 +228,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     [
       availableTools,
       activeToolIds,
-      toolsByCategory,
+      groupedTools,
       toggleTool,
       toggleToolset,
       isToolsetActive,
