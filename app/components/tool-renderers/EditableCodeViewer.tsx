@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { debounce } from "lodash";
-import { useTheme } from "@/contexts/theme-context";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
+import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import { Loader2, Check, AlertCircle, Cloud, CloudOff, Trash2 } from "lucide-react";
 
 export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
@@ -12,31 +12,6 @@ export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 interface EditableCodeViewerProps {
   language: string;
   filePath: string;
-}
-
-function useResolvedTheme(): "light" | "dark" {
-  const { theme } = useTheme();
-  const [systemPreference, setSystemPreference] = useState<"light" | "dark">(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-  );
-
-  useEffect(() => {
-    if (theme !== "system" || typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      setSystemPreference(mediaQuery.matches ? "dark" : "light");
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [theme]);
-
-  return theme === "system" ? systemPreference : theme;
 }
 
 export function EditableCodeViewer({
