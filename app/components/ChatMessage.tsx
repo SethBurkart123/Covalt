@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -43,9 +43,10 @@ function ChatMessage({
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!contentRef.current) return;
+    const content = contentRef.current;
+    if (!content) return;
 
-    const existingIndicators = contentRef.current.querySelectorAll(
+    const existingIndicators = content.querySelectorAll(
       ".inline-typewriter-indicator"
     );
     existingIndicators.forEach((el) => el.remove());
@@ -57,7 +58,7 @@ function ChatMessage({
 
     if (isStreaming && hasContent) {
       const walker = document.createTreeWalker(
-        contentRef.current,
+        content,
         NodeFilter.SHOW_TEXT,
         {
           acceptNode: (node) => {
@@ -92,12 +93,10 @@ function ChatMessage({
     }
 
     return () => {
-      if (contentRef.current) {
-        const indicators = contentRef.current.querySelectorAll(
-          ".inline-typewriter-indicator"
-        );
-        indicators.forEach((el) => el.remove());
-      }
+      const indicators = content.querySelectorAll(
+        ".inline-typewriter-indicator"
+      );
+      indicators.forEach((el) => el.remove());
     };
   }, [isStreaming, content]);
 
@@ -315,11 +314,7 @@ function ChatMessage({
 }
 
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
-  if (prevProps.isStreaming !== nextProps.isStreaming) {
-    return false;
-  }
-  
-  if (nextProps.isStreaming) {
+  if (prevProps.isStreaming !== nextProps.isStreaming || nextProps.isStreaming) {
     return false;
   }
   
@@ -334,4 +329,4 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   );
 }
 
-export default React.memo(ChatMessage, arePropsEqual);
+export default memo(ChatMessage, arePropsEqual);

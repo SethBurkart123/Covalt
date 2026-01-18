@@ -20,14 +20,10 @@ import {
   respondToThinkingTagPrompt,
   toggleStarChat,
 } from "@/python/api";
-import { createChannel } from "@/python/_internal";
-import type { BridgeError } from "@/python/_internal";
+import { createChannel, type BridgeError } from "@/python/_internal";
 
-// Initialize the bridge - call this once at app startup
-// The backend runs on port 8000 as configured in backend/main.py
 initBridge("http://127.0.0.1:8000");
 
-// Type for streaming chat events from the backend
 interface StreamingChatEvent {
   event: string;
   content?: string;
@@ -38,10 +34,6 @@ interface StreamingChatEvent {
   error?: string;
 }
 
-/**
- * Creates a streaming Response from a zynk channel.
- * Handles SSE encoding, event subscription, and cleanup.
- */
 function createStreamingResponse(
   channelName: string,
   body: Record<string, unknown>,
@@ -50,11 +42,9 @@ function createStreamingResponse(
 
   const stream = new ReadableStream<Uint8Array>({
     start: (controller) => {
-      const enqueueLine = (line: string) =>
-        controller.enqueue(encoder.encode(line));
       const sendEvent = (event: string, data: Record<string, unknown>) => {
-        enqueueLine(`event: ${event}\n`);
-        enqueueLine(`data: ${JSON.stringify(data)}\n\n`);
+        controller.enqueue(encoder.encode(`event: ${event}\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
       const channel = createChannel<StreamingChatEvent>(channelName, { body });
@@ -79,16 +69,13 @@ function createStreamingResponse(
         }
       });
 
-      channel.onClose(() => {
-        controller.close();
-      });
+      channel.onClose(() => controller.close());
 
       channel.onError((error: BridgeError) => {
         sendEvent("RunError", { error: error.message });
         controller.close();
       });
     },
-    cancel: () => {},
   });
 
   return new Response(stream, {

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# Chat operations
 from .chats import (
     append_message,
     create_branch_message,
@@ -23,8 +22,6 @@ from .chats import (
     update_chat_agent_config,
     update_message_content,
 )
-
-# Core database functionality
 from .core import (
     db_session,
     get_db_path,
@@ -32,8 +29,6 @@ from .core import (
     session,
     set_db_path,
 )
-
-# Model operations
 from .model_ops import (
     get_all_model_settings,
     get_model_settings,
@@ -41,8 +36,6 @@ from .model_ops import (
     save_model_settings,
     upsert_model_settings,
 )
-
-# Models
 from .models import (
     Base,
     Chat,
@@ -52,15 +45,11 @@ from .models import (
     ProviderSettings,
     UserSettings,
 )
-
-# Provider operations
 from .providers import (
     get_all_provider_settings,
     get_provider_settings,
     save_provider_settings,
 )
-
-# User settings operations
 from .settings import (
     get_auto_title_settings,
     get_default_general_settings,
@@ -74,13 +63,11 @@ from .settings import (
 )
 
 __all__ = [
-    # Core
     "init_database",
     "session",
     "db_session",
     "get_db_path",
     "set_db_path",
-    # Models
     "Base",
     "Chat",
     "McpServer",
@@ -88,7 +75,6 @@ __all__ = [
     "Model",
     "ProviderSettings",
     "UserSettings",
-    # Chats
     "list_chats",
     "get_chat_messages",
     "create_chat",
@@ -109,17 +95,14 @@ __all__ = [
     "get_default_agent_config",
     "get_manifest_for_message",
     "set_message_manifest",
-    # Providers
     "get_provider_settings",
     "get_all_provider_settings",
     "save_provider_settings",
-    # Model Operations
     "get_model_settings",
     "get_all_model_settings",
     "save_model_settings",
     "upsert_model_settings",
     "get_reasoning_from_model",
-    # Settings
     "get_user_setting",
     "set_user_setting",
     "get_default_tool_ids",

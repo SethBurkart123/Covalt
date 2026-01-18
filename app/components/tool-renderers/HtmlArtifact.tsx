@@ -40,8 +40,7 @@ ${trimmed}
 }
 
 function HtmlArtifactContent({ html, data }: { html: string; data?: unknown }) {
-  const htmlContent = buildHtml(html, data);
-  const blobUrl = URL.createObjectURL(new Blob([htmlContent], { type: "text/html" }));
+  const blobUrl = URL.createObjectURL(new Blob([buildHtml(html, data)], { type: "text/html" }));
   return (
     <iframe 
       src={blobUrl} 
@@ -64,37 +63,32 @@ export function HtmlArtifact({
   isFirst = false,
   isLast = false,
   renderPlan,
-  chatId: _chatId,
 }: ToolCallRendererProps) {
   const { open } = useArtifactPanel();
 
   const title = (toolArgs.title as string) || toolName;
-  const id = toolCallId || `${toolName}-${title}`;
 
-  let html = "";
-  if (typeof renderPlan?.config?.content === "string" && renderPlan.config.content.length > 0) {
-    html = renderPlan.config.content;
-  } else if (typeof toolResult === "string" && toolResult.length > 0) {
-    html = toolResult;
-  } else {
-    html = (toolArgs.html as string) || "";
-  }
-
-  const dataToInject = renderPlan?.config?.data;
+  const html = typeof renderPlan?.config?.content === "string" && renderPlan.config.content.length > 0
+    ? renderPlan.config.content
+    : typeof toolResult === "string" && toolResult.length > 0
+      ? toolResult
+      : (toolArgs.html as string) || "";
 
   const handleClick = () => {
     if (!isCompleted || !html) return;
-    open(id, title, <HtmlArtifactContent html={html} data={dataToInject} />);
+    open(
+      toolCallId || `${toolName}-${title}`,
+      title,
+      <HtmlArtifactContent html={html} data={renderPlan?.config?.data} />
+    );
   };
-
-  const isLoading = !isCompleted;
 
   return (
     <Collapsible
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={isLoading}
+      shimmer={!isCompleted}
       disableToggle
       data-toolcall
     >
@@ -102,7 +96,7 @@ export function HtmlArtifact({
         <CollapsibleHeader>
           <CollapsibleIcon icon={Code2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
-          {isLoading && (
+          {!isCompleted && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
         </CollapsibleHeader>

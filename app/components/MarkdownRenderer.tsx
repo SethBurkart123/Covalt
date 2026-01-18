@@ -1,4 +1,5 @@
-import React, { memo, useMemo, useRef, Suspense } from 'react';
+import { memo, useMemo, Suspense, useState, isValidElement } from 'react';
+import type { ReactElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -12,27 +13,27 @@ import type { Components, ExtraProps } from 'react-markdown';
 type MdProps<T extends keyof React.JSX.IntrinsicElements> = React.ComponentPropsWithoutRef<T> & ExtraProps;
 
 const MemoizedComponents: Partial<Components> = {
-  h1: memo(({ node, className, ...props }: MdProps<'h1'>) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />),
-  h2: memo(({ node, className, ...props }: MdProps<'h2'>) => <h2 className="scroll-m-20 border-b pb-2 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />),
-  h3: memo(({ node, className, ...props }: MdProps<'h3'>) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />),
-  h4: memo(({ node, className, ...props }: MdProps<'h4'>) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />),
-  p: memo(({ node, className, ...props }: MdProps<'p'>) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />),
-  blockquote: memo(({ node, className, ...props }: MdProps<'blockquote'>) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />),
-  ul: memo(({ node, className, ...props }: MdProps<'ul'>) => <ul className="!my-1 list-disc pl-[1.625em]" {...props} />),
-  ol: memo(({ node, className, ...props }: MdProps<'ol'>) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />),
-  table: memo(({ node, className, ...props }: MdProps<'table'>) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>),
-  th: memo(({ node, className, ...props }: MdProps<'th'>) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
-  td: memo(({ node, className, ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />),
-  a: memo(({ node, className, ...props }: MdProps<'a'>) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />),
-  pre: memo(({ node, className, ...props }: MdProps<'pre'>) => <pre {...props} />),
-  img: memo(({ node, className, ...props }: MdProps<'img'>) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />),
-  hr: memo(({ node, className, ...props }: MdProps<'hr'>) => <hr className="!my-8" {...props} />),
-  input: memo(({ node, className, type, checked, ...props }: MdProps<'input'>) => {
+  h1: ({ ...props }: MdProps<'h1'>) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />,
+  h2: ({ ...props }: MdProps<'h2'>) => <h2 className="scroll-m-20 border-b pb-2 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />,
+  h3: ({ ...props }: MdProps<'h3'>) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />,
+  h4: ({ ...props }: MdProps<'h4'>) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />,
+  p: ({ ...props }: MdProps<'p'>) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />,
+  blockquote: ({ ...props }: MdProps<'blockquote'>) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />,
+  ul: ({ ...props }: MdProps<'ul'>) => <ul className="!my-1 list-disc pl-[1.625em]" {...props} />,
+  ol: ({ ...props }: MdProps<'ol'>) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />,
+  table: ({ ...props }: MdProps<'table'>) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>,
+  th: ({ ...props }: MdProps<'th'>) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,
+  td: ({ ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,
+  a: ({ ...props }: MdProps<'a'>) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />,
+  pre: ({ ...props }: MdProps<'pre'>) => <pre {...props} />,
+  img: ({ ...props }: MdProps<'img'>) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />,
+  hr: ({ ...props }: MdProps<'hr'>) => <hr className="!my-8" {...props} />,
+  input: ({ type, checked, className, ...props }: MdProps<'input'>) => {
     if (type === 'checkbox') {
       return <Checkbox checked={!!checked} className={`mr-2 ${className}`} disabled />;
     }
     return <input type={type} className={className} {...props} />;
-  }),
+  },
 };
 
 interface HighlightRenderProps {
@@ -43,14 +44,15 @@ interface HighlightRenderProps {
   getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
 }
 
-const CodeBlock = memo(({ node, children, ...props }: MdProps<'pre'>) => {
-  const codeElement = children as React.ReactElement<{ children?: string; className?: string }> | undefined;
-  if (!codeElement || !React.isValidElement(codeElement)) {
-    return <pre {...props}>{children}</pre>;
+const CodeBlock = memo(({ children }: MdProps<'pre'>) => {
+  const [copied, setCopied] = useState(false);
+  const resolvedTheme = useResolvedTheme();
+  
+  if (!isValidElement(children)) {
+    return <pre>{children}</pre>;
   }
   
-  const [copied, setCopied] = React.useState(false);
-  const resolvedTheme = useResolvedTheme();
+  const codeElement = children as ReactElement<{ children?: string; className?: string }>;
   
   const codeString = String(codeElement.props.children || '').replace(/\n$/, '');
   const language = /language-(\w+)/.exec(codeElement.props.className || '')?.[1] ?? 'text';
@@ -112,13 +114,11 @@ const CodeBlock = memo(({ node, children, ...props }: MdProps<'pre'>) => {
   );
 });
 
-const InlineCode = memo(({ node, className, children, ...props }: MdProps<'code'>) => {
-  return (
-    <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
-      {children}
-    </code>
-  );
-});
+const InlineCode = memo(({ children, ...props }: MdProps<'code'>) => (
+  <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
+    {children}
+  </code>
+));
 
 function MarkdownRendererInner({ 
   content, 
@@ -127,8 +127,6 @@ function MarkdownRendererInner({
   content: string;
   fontSize?: string;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
   const components: Partial<Components> = useMemo(() => ({
     ...MemoizedComponents,
     pre: CodeBlock,
@@ -141,19 +139,13 @@ function MarkdownRendererInner({
     },
   }), []);
   
-  const remarkPlugins = useMemo(() => [
-    remarkGfm,
-    remarkMath
-  ], []);
-  
   return (
     <div 
-      ref={containerRef}
       className="prose prose-neutral dark:prose-invert max-w-none"
       style={{ fontSize }}
     >
       <ReactMarkdown 
-        remarkPlugins={remarkPlugins} 
+        remarkPlugins={[remarkGfm, remarkMath]} 
         rehypePlugins={[rehypeKatex]}
         components={components}
       >

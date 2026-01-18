@@ -91,23 +91,21 @@ export function EditableCodeViewer({
 
   const handleChange = useCallback(
     (value: string | undefined) => {
-      const newContent = value ?? "";
-      
-      if (newContent === syncedContent) {
+      if ((value ?? "") === syncedContent) {
         setLocalContent(null);
         setSaveStatus("idle");
         debouncedSave.cancel();
       } else {
-        setLocalContent(newContent);
+        setLocalContent(value ?? "");
         setSaveStatus("unsaved");
-        debouncedSave(newContent, filePath);
+        debouncedSave(value ?? "", filePath);
       }
     },
     [filePath, syncedContent, debouncedSave]
   );
 
   const forceSave = useCallback(async () => {
-    if (isDeleted || !hasUnsavedChanges) return;
+    if (isDeleted || !hasUnsavedChanges || !localContent) return;
 
     debouncedSave.cancel();
     isSavingRef.current = true;
@@ -115,7 +113,7 @@ export function EditableCodeViewer({
     setErrorMessage(null);
 
     try {
-      await saveFile(filePath, localContent!);
+      await saveFile(filePath, localContent);
       setLocalContent(null);
       setLastSyncedVersion((v) => v + 1);
       setSaveStatus("saved");

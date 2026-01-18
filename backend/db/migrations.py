@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 def run_migrations() -> None:
-    """Run database migrations for schema changes."""
     engine = _get_engine()
     if engine is None:
         return
@@ -19,7 +18,6 @@ def run_migrations() -> None:
     existing_tables = inspector.get_table_names()
 
     with engine.connect() as conn:
-        # Add starred column to chats table
         if "chats" in existing_tables:
             chats_columns = [col["name"] for col in inspector.get_columns("chats")]
             if "starred" not in chats_columns:
@@ -38,7 +36,6 @@ def run_migrations() -> None:
                 conn.commit()
                 logger.info("Added active_manifest_id column to chats table")
 
-        # Add toolset_id column to mcp_servers table
         if "mcp_servers" in existing_tables:
             mcp_columns = [col["name"] for col in inspector.get_columns("mcp_servers")]
             if "toolset_id" not in mcp_columns:

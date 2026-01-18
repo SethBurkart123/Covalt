@@ -42,7 +42,7 @@ async def get_all_chats() -> AllChatsData:
                 createdAt=r.createdAt,
                 updatedAt=r.updatedAt,
                 starred=r.starred,
-                messages=[],  # do not load heavy messages list here
+                messages=[],
             )
             chats[chat.id or "unknown"] = chat
     return AllChatsData(chats=chats)
@@ -100,7 +100,6 @@ async def update_chat(body: UpdateChatInput) -> ChatData:
             updatedAt=now,
         )
 
-        # Rehydrate
         chatRow = sess.get(db.Chat, body.id)
         if not chatRow:
             return ChatData(id=body.id, title="New Chat", messages=[])
@@ -152,37 +151,18 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 
 @command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
-    """
-    Update active tools for a chat session.
-
-    Args:
-        body: Contains chatId and list of tool IDs to activate
-    """
     update_agent_tools(body.chatId, body.toolIds)
     return None
 
 
 @command
 async def update_chat_model(body: UpdateChatModelInput) -> None:
-    """
-    Switch the model/provider for a chat session.
-
-    Args:
-        body: Contains chatId, provider, and modelId
-    """
     update_agent_model(body.chatId, body.provider, body.modelId)
     return None
 
 
 @command
 async def get_available_tools() -> AvailableToolsResponse:
-    """
-    Get all available tools (builtin, MCP, and toolset).
-
-    Returns:
-        Response with:
-        - tools: Flat list of all tools
-    """
     tool_registry = get_tool_registry()
     mcp = await ensure_mcp_initialized()
 
@@ -250,15 +230,6 @@ async def get_available_tools() -> AvailableToolsResponse:
 
 @command
 async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
-    """
-    Get agent configuration for a chat (tools, provider, model).
-
-    Args:
-        body: Contains chatId
-
-    Returns:
-        Chat's agent configuration
-    """
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, body.id)
         if not config:
@@ -273,15 +244,6 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
 
 @command
 async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
-    """
-    Generate and update title for a chat based on its first message.
-
-    Args:
-        body: Contains chatId
-
-    Returns:
-        Dict with the new title or None if generation failed
-    """
     title = generate_title_for_chat(body.id)
     if title:
         with db.db_session() as sess:
@@ -292,27 +254,18 @@ async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
 
 class GetAttachmentInput(BaseModel):
     chatId: str
-    attachmentId: str  # Kept for backwards compatibility in API schema
+    attachmentId: str
     mimeType: str
-    name: str  # Filename in workspace
+    name: str
 
 
 class AttachmentDataResponse(BaseModel):
-    data: str  # base64 encoded file content
+    data: str
     mimeType: str
 
 
 @command
 async def get_attachment(body: GetAttachmentInput) -> AttachmentDataResponse:
-    """
-    Load an attachment file and return it as base64.
-
-    Args:
-        body: Contains chatId, name (filename), and mimeType
-
-    Returns:
-        Base64-encoded file data with mime type
-    """
     workspace_manager = get_workspace_manager(body.chatId)
     file_bytes = workspace_manager.read_file(body.name)
     if not file_bytes:

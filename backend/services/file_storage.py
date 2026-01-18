@@ -1,10 +1,4 @@
-"""File storage utilities for chat attachments.
-
-This module handles:
-1. Pending uploads: Temporary storage before files are added to workspace
-
-For file storage, use WorkspaceManager.add_files().
-"""
+"""File storage utilities for pending chat attachments."""
 
 from __future__ import annotations
 
@@ -17,7 +11,6 @@ AttachmentType = Literal["image", "file", "audio", "video"]
 
 
 def get_media_type(mime_type: str) -> AttachmentType:
-    """Map MIME type to attachment type category."""
     if mime_type.startswith("image/"):
         return "image"
     if mime_type.startswith("audio/"):
@@ -28,7 +21,6 @@ def get_media_type(mime_type: str) -> AttachmentType:
 
 
 def get_extension_from_mime(mime_type: str) -> str:
-    """Extract file extension from MIME type."""
     mime_to_ext = {
         # Images
         "image/jpeg": "jpg",
@@ -62,46 +54,26 @@ def get_extension_from_mime(mime_type: str) -> str:
 
 
 def get_pending_uploads_dir() -> Path:
-    """Get directory for temporary (pending) uploads before they're added to workspace."""
     return get_pending_uploads_directory()
 
 
 def get_pending_attachment_path(attachment_id: str, extension: str) -> Path:
-    """Get file path for a pending (temp) attachment."""
     return get_pending_uploads_dir() / f"{attachment_id}.{extension}"
 
 
 def save_pending_attachment(
     attachment_id: str, file_data: bytes, extension: str
 ) -> Path:
-    """
-    Save attachment to pending/temp storage.
-
-    Args:
-        attachment_id: Unique ID for the attachment
-        file_data: Raw bytes of the file
-        extension: File extension (without dot)
-
-    Returns:
-        Path to the saved file
-    """
     path = get_pending_attachment_path(attachment_id, extension)
     path.write_bytes(file_data)
     return path
 
 
 def pending_attachment_exists(attachment_id: str, extension: str) -> bool:
-    """Check if a pending attachment exists."""
     return get_pending_attachment_path(attachment_id, extension).exists()
 
 
 def delete_pending_attachment(attachment_id: str, extension: str) -> bool:
-    """
-    Delete a pending attachment.
-
-    Returns:
-        True if file was deleted, False if it didn't exist
-    """
     path = get_pending_attachment_path(attachment_id, extension)
     if path.exists():
         path.unlink()
@@ -110,12 +82,6 @@ def delete_pending_attachment(attachment_id: str, extension: str) -> bool:
 
 
 def cleanup_pending_uploads() -> int:
-    """
-    Clean up all pending uploads. Called manually when needed.
-
-    Returns:
-        Number of files deleted
-    """
     pending_dir = get_pending_uploads_dir()
     count = 0
     if pending_dir.exists():

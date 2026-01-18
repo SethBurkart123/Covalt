@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   File,
   Folder,
@@ -82,7 +82,7 @@ interface FileNodeProps {
 }
 
 function FileNode({ node, depth, onFileClick }: FileNodeProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   if (node.isDirectory) {
     return (
@@ -146,11 +146,11 @@ function FilePreviewDialog({
   chatId,
   filePath,
 }: FilePreviewDialogProps) {
-  const [content, setContent] = React.useState<string | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [content, setContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open || !filePath) {
       setContent(null);
       setError(null);
@@ -161,16 +161,13 @@ function FilePreviewDialog({
     setError(null);
 
     getWorkspaceFile({ body: { chatId, path: filePath } })
-      .then((response) => {
-        setContent(atob(response.content));
-      })
-      .catch((err: Error) => {
-        setError(err.message || "Failed to load file");
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then((response) => setContent(atob(response.content)))
+      .catch((err: Error) => setError(err.message || "Failed to load file"))
+      .finally(() => setIsLoading(false));
   }, [open, chatId, filePath]);
+
+  const fileName = filePath?.split("/").pop() || "File";
+  const isTextFile = /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(fileName);
 
   const handleDownload = () => {
     if (!content || !filePath) return;
@@ -178,15 +175,12 @@ function FilePreviewDialog({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filePath.split("/").pop() || "file";
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  const fileName = filePath?.split("/").pop() || "File";
-  const isTextFile = /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(fileName);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -243,12 +237,12 @@ interface WorkspaceBrowserProps {
 }
 
 export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
-  const [files, setFiles] = React.useState<string[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [previewPath, setPreviewPath] = React.useState<string | null>(null);
+  const [files, setFiles] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
 
-  const loadFiles = React.useCallback(async () => {
+  const loadFiles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -256,18 +250,18 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
       const response = await getWorkspaceFiles({ body: { chatId } });
       setFiles(response.files);
     } catch (err) {
-      console.error("Failed to load workspace files:", err);
       setError("Failed to load files");
+      console.error("Failed to load workspace files:", err);
     } finally {
       setIsLoading(false);
     }
   }, [chatId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadFiles();
   }, [loadFiles]);
 
-  const fileTree = React.useMemo(() => buildFileTree(files), [files]);
+  const fileTree = useMemo(() => buildFileTree(files), [files]);
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -327,4 +321,4 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
   );
 }
 
-export default WorkspaceBrowser;
+

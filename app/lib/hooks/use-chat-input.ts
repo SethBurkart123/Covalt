@@ -513,11 +513,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [chatId, reloadMessages, unregisterStream]);
 
   const setMessages = useCallback((messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
-    if (typeof messagesOrUpdater === "function") {
-      setBaseMessages(messagesOrUpdater);
-    } else {
-      setBaseMessages(messagesOrUpdater);
-    }
+    setBaseMessages(messagesOrUpdater);
   }, []);
 
   return {

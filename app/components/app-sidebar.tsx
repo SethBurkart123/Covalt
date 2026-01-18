@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import { useState, useMemo } from "react";
 import { Package, PlusIcon, Settings, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -32,8 +32,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   } = useChat();
   const { getStreamState, markChatAsSeen } = useStreaming();
 
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [editTitle, setEditTitle] = React.useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const handleRenameConfirm = async (id: string) => {
     if (editTitle.trim()) {
@@ -48,7 +48,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setEditTitle("");
   };
 
-  const chatGroups = React.useMemo(
+  const chatGroups = useMemo(
     () => groupChatsByTimePeriod(chatIds, chatsData),
     [chatIds, chatsData]
   );
@@ -90,34 +90,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           ) : (
             chatGroups.map((group) => (
-              <React.Fragment key={group.label}>
+              <div key={group.label} className="contents">
                 <SidebarMenuItem>
                   <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground">
                     {group.label}
                   </div>
                 </SidebarMenuItem>
                 {group.chatIds.map((id) => {
-                  const isActive = currentChatId === id;
-                  const title =
-                    chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
+                  const title = chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
                   const streamState = getStreamState(id);
-                  const isStreaming = streamState?.isStreaming ?? false;
-                  const isPausedForApproval =
-                    streamState?.isPausedForApproval ?? false;
-                  const hasError =
-                    streamState?.status === "error" ||
-                    streamState?.status === "interrupted";
-                  const hasUnseenUpdate = streamState?.hasUnseenUpdate ?? false;
-
                   return (
                     <ChatItem
                       key={id}
                       title={title}
-                      isActive={isActive}
-                      isStreaming={isStreaming}
-                      isPausedForApproval={isPausedForApproval}
-                      hasError={hasError}
-                      hasUnseenUpdate={hasUnseenUpdate}
+                      isActive={currentChatId === id}
+                      isStreaming={streamState?.isStreaming ?? false}
+                      isPausedForApproval={streamState?.isPausedForApproval ?? false}
+                      hasError={streamState?.status === "error" || streamState?.status === "interrupted"}
+                      hasUnseenUpdate={streamState?.hasUnseenUpdate ?? false}
                       isEditing={editingId === id}
                       editTitle={editTitle}
                       onEditTitleChange={setEditTitle}
@@ -137,7 +127,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     />
                   );
                 })}
-              </React.Fragment>
+              </div>
             ))
           )}
         </SidebarMenu>

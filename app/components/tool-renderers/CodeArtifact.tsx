@@ -1,4 +1,4 @@
-import React from "react";
+import { useState } from "react";
 import { FileCode2, Copy, Check, Loader2, Pencil } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import { useResolvedTheme } from "@/hooks/use-resolved-theme";
@@ -12,14 +12,6 @@ import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
 import { EditableCodeViewer } from "./EditableCodeViewer";
-
-interface HighlightRenderProps {
-  className: string;
-  style: React.CSSProperties;
-  tokens: Array<Array<{ types: string[]; content: string; empty?: boolean }>>;
-  getLineProps: (props: { line: Array<{ types: string[]; content: string }> }) => React.HTMLAttributes<HTMLDivElement>;
-  getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
-}
 
 function extensionToLanguage(ext?: string): string | undefined {
   if (!ext) return undefined;
@@ -71,7 +63,7 @@ function inferLanguage(toolArgs: Record<string, unknown>): string {
 
 function CodeViewer({ code, language }: { code: string; language: string }) {
   const resolvedTheme = useResolvedTheme();
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(code);
@@ -104,7 +96,7 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
           code={code.replace(/\n$/, "")}
           language={language || "text"}
         >
-          {({ className, style, tokens, getLineProps, getTokenProps }: HighlightRenderProps) => (
+          {({ className, style, tokens, getLineProps, getTokenProps }) => (
             <div className="flex">
               <div className="flex-shrink-0">
                 {tokens.map((_, i) => (
@@ -145,10 +137,7 @@ function FileCodeViewer({ filePath, language, fallbackCode }: { filePath: string
   const { getFileState } = useArtifactPanel();
   const fileState = getFileState(filePath);
   
-  const code = fileState?.content ?? fallbackCode;
-  const isLoading = fileState?.isLoading && !fileState?.content;
-  
-  if (isLoading) {
+  if (fileState?.isLoading && !fileState?.content) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground p-8">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -157,7 +146,7 @@ function FileCodeViewer({ filePath, language, fallbackCode }: { filePath: string
     );
   }
   
-  return <CodeViewer code={code} language={language} />;
+  return <CodeViewer code={fileState?.content ?? fallbackCode} language={language} />;
 }
 
 export function CodeArtifact({
@@ -183,7 +172,6 @@ export function CodeArtifact({
     (toolArgs.filename as string) ||
     filePath ||
     toolName;
-  const id = toolCallId || `${toolName}-${title}`;
 
   const code = filePath && fileState?.content
     ? fileState.content
@@ -208,7 +196,7 @@ export function CodeArtifact({
     
     if (isEditable && filePath) {
       open(
-        id,
+        toolCallId || `${toolName}-${title}`,
         title,
         <EditableCodeViewer
           language={language}
@@ -218,13 +206,13 @@ export function CodeArtifact({
       );
     } else if (hasFile && filePath) {
       open(
-        id,
+        toolCallId || `${toolName}-${title}`,
         title,
         <FileCodeViewer filePath={filePath} language={language} fallbackCode={code} />,
         filePath
       );
     } else if (code) {
-      open(id, title, <CodeViewer code={code} language={language} />);
+      open(toolCallId || `${toolName}-${title}`, title, <CodeViewer code={code} language={language} />);
     }
   };
 
