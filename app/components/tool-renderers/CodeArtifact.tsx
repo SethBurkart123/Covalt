@@ -1,7 +1,7 @@
 import React from "react";
 import { FileCode2, Copy, Check, Loader2, Pencil } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
-import { useTheme } from "@/contexts/theme-context";
+import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -69,36 +69,6 @@ function inferLanguage(toolArgs: Record<string, unknown>): string {
   return inferred || "text";
 }
 
-function useResolvedTheme(): "light" | "dark" {
-  const { theme } = useTheme();
-  const [systemPreference, setSystemPreference] = React.useState<"light" | "dark">(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light",
-  );
-
-  React.useEffect(() => {
-    if (theme !== "system" || typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      setSystemPreference(mediaQuery.matches ? "dark" : "light");
-    };
-
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    } else if (mediaQuery.addListener) {
-      mediaQuery.addListener(handleChange);
-      return () => mediaQuery.removeListener(handleChange);
-    }
-  }, [theme]);
-
-  return theme === "system" ? systemPreference : theme;
-}
-
 function CodeViewer({ code, language }: { code: string; language: string }) {
   const resolvedTheme = useResolvedTheme();
   const [copied, setCopied] = React.useState(false);
@@ -137,7 +107,7 @@ function CodeViewer({ code, language }: { code: string; language: string }) {
           {({ className, style, tokens, getLineProps, getTokenProps }: HighlightRenderProps) => (
             <div className="flex">
               <div className="flex-shrink-0">
-                {tokens.map((_line, i) => (
+                {tokens.map((_, i) => (
                   <div
                     key={i}
                     className="select-none text-muted-foreground px-3 py-1 text-right border-r border-border/50"
@@ -206,10 +176,7 @@ export function CodeArtifact({
 
   const filePath = renderPlan?.config?.file;
   const hasFile = !!filePath && !!chatId;
-
   const fileState = filePath ? getFileState(filePath) : undefined;
-  const fileContent = fileState?.content;
-  const isLoadingFile = fileState?.isLoading ?? false;
 
   const title =
     (toolArgs.title as string) ||
@@ -218,16 +185,13 @@ export function CodeArtifact({
     toolName;
   const id = toolCallId || `${toolName}-${title}`;
 
-  let code = "";
-  if (filePath && fileContent) {
-    code = fileContent;
-  } else if (renderPlan?.config?.content) {
-    code = String(renderPlan.config.content);
-  } else if (typeof toolResult === "string" && toolResult.length > 0) {
-    code = toolResult;
-  } else {
-    code = (toolArgs.code as string) || "";
-  }
+  const code = filePath && fileState?.content
+    ? fileState.content
+    : renderPlan?.config?.content
+      ? String(renderPlan.config.content)
+      : typeof toolResult === "string" && toolResult.length > 0
+        ? toolResult
+        : (toolArgs.code as string) || "";
 
   const language = renderPlan?.config?.language === "auto" 
     ? inferLanguage({ ...toolArgs, filename: filePath })
@@ -242,14 +206,13 @@ export function CodeArtifact({
       openFile(filePath);
     }
     
-    if (isEditable && filePath && chatId) {
+    if (isEditable && filePath) {
       open(
         id,
         title,
         <EditableCodeViewer
           language={language}
           filePath={filePath}
-          chatId={chatId}
         />,
         filePath
       );
@@ -260,13 +223,12 @@ export function CodeArtifact({
         <FileCodeViewer filePath={filePath} language={language} fallbackCode={code} />,
         filePath
       );
-    } else {
-      if (!code) return;
+    } else if (code) {
       open(id, title, <CodeViewer code={code} language={language} />);
     }
   };
 
-  const isLoading = !isCompleted || (hasFile && isLoadingFile);
+  const isLoading = !isCompleted || (hasFile && fileState?.isLoading);
 
   return (
     <Collapsible
