@@ -7,6 +7,10 @@ export {
   generateUniqueName,
   type ConflictResolution,
 } from "./import-conflict-dialog";
+export { McpServerInspectorDialog } from "./server-inspector-dialog";
+export { ToolList } from "./tool-list";
+export { ToolTester } from "./tool-tester";
+export { SchemaFormField } from "./schema-form-field";
 export type { ServerFormData, ServerType } from "./types";
 export { emptyFormData } from "./types";
 export { configToFormData, parseCommandString } from "./utils";

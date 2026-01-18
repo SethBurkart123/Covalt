@@ -21,8 +21,12 @@ import {
   uninstallToolset,
   exportToolset,
   importToolset,
+  getMcpServers,
+  reconnectMcpServer,
+  testMcpTool,
   type ToolsetInfo,
   type ToolInfo,
+  type MCPToolInfo,
 } from "@/python/api";
 import { useTools } from "@/contexts/tools-context";
 import { cn } from "@/lib/utils";
@@ -40,7 +44,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { McpServerCard } from "@/components/mcp";
+import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
 
 function ToolCard({ tool }: { tool: ToolInfo }) {
@@ -259,6 +263,10 @@ export default function InstalledPanel({
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectingServerId, setInspectingServerId] = useState<string | null>(null);
+  const [inspectorTools, setInspectorTools] = useState<MCPToolInfo[]>([]);
+
   const mcpTools = useMemo(() => {
     const byServer: Record<string, ChatToolInfo[]> = {};
     availableTools.forEach((tool) => {
@@ -270,6 +278,55 @@ export default function InstalledPanel({
     });
     return byServer;
   }, [availableTools]);
+
+  const inspectingServer = useMemo(
+    () => mcpServers.find((s) => s.id === inspectingServerId) || null,
+    [mcpServers, inspectingServerId]
+  );
+
+  const reloadInspectorTools = useCallback(async (serverId: string) => {
+    try {
+      const response = await getMcpServers();
+      const serverInfo = response.servers.find((s) => s.id === serverId);
+      setInspectorTools(serverInfo?.tools || []);
+    } catch (err) {
+      console.error("Failed to load MCP server tools:", err);
+      setInspectorTools([]);
+    }
+  }, []);
+
+  const handleInspectServer = useCallback(async (serverId: string) => {
+    setInspectingServerId(serverId);
+    setInspectorOpen(true);
+    await reloadInspectorTools(serverId);
+  }, [reloadInspectorTools]);
+
+  const handleInspectorReconnect = useCallback(async () => {
+    if (!inspectingServerId) return;
+    await reconnectMcpServer({ body: { id: inspectingServerId } });
+    await reloadInspectorTools(inspectingServerId);
+  }, [inspectingServerId, reloadInspectorTools]);
+
+  const handleTestTool = useCallback(
+    async (
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>
+    ): Promise<{ success: boolean; result?: string; error?: string; durationMs?: number }> => {
+      try {
+        const result = await testMcpTool({
+          body: { serverId, toolName, arguments: args },
+        });
+        return result;
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+    []
+  );
 
   const loadToolsets = useCallback(async () => {
     try {
@@ -303,11 +360,8 @@ export default function InstalledPanel({
   const handleExport = async (toolset: ToolsetInfo) => {
     try {
       const response = await exportToolset({ body: { id: toolset.id } });
-      const byteCharacters = atob(response.data);
-      const byteNumbers = Array.from(byteCharacters, (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(
-        new Blob([new Uint8Array(byteNumbers)], { type: "application/zip" })
-      );
+      const bytes = Uint8Array.from(atob(response.data), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
       const a = document.createElement("a");
       a.href = url;
       a.download = response.filename;
@@ -366,25 +420,17 @@ export default function InstalledPanel({
   const isLoading = isLoadingTools || isLoadingToolsets;
   const hasNoContent = mcpServers.length === 0 && toolsets.length === 0;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
 
-  return (
-    <div className={cn("space-y-8", hasNoContent && "space-y-6")}>
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        accept=".zip"
-        className="hidden"
-      />
-
-      {hasNoContent ? (
+    if (hasNoContent) {
+      return (
         <div className="border border-dashed border-border rounded-xl p-12 text-center">
           <div className="flex justify-center gap-3 mb-4">
             <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
@@ -407,52 +453,90 @@ export default function InstalledPanel({
             Import Toolset
           </Button>
         </div>
-      ) : (
-        <>
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <Server className="size-4 text-muted-foreground" />
+      );
+    }
+
+    return (
+      <>
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Server className="size-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              MCP Servers
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              ({mcpServers.length})
+            </span>
+          </div>
+
+          {mcpServers.length > 0 ? (
+            <div className="space-y-2">
+              {mcpServers.map((server) => (
+                <McpServerCard
+                  key={server.id}
+                  server={server}
+                  toolCount={mcpTools[server.id]?.length || 0}
+                  onEdit={() => onEditServer(server.id)}
+                  onDelete={() => onDeleteServer(server.id)}
+                  onInspect={() => handleInspectServer(server.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-dashed border-border rounded-lg p-6 text-center">
+              <Plug className="size-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                No MCP servers configured. Click &quot;Add Server&quot; to connect one.
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Package className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                MCP Servers
+                Toolsets
               </h2>
               <span className="text-xs text-muted-foreground">
-                ({mcpServers.length})
+                ({toolsets.length})
               </span>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleImportClick}
+              disabled={isImporting}
+            >
+              {isImporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
+              Import
+            </Button>
+          </div>
 
-            {mcpServers.length > 0 ? (
-              <div className="space-y-2">
-                {mcpServers.map((server) => (
-                  <McpServerCard
-                    key={server.id}
-                    server={server}
-                    tools={mcpTools[server.id] || []}
-                    onEdit={() => onEditServer(server.id)}
-                    onDelete={() => onDeleteServer(server.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="border border-dashed border-border rounded-lg p-6 text-center">
-                <Plug className="size-8 mx-auto mb-2 text-muted-foreground/50" />
-                <p className="text-sm text-muted-foreground">
-                  No MCP servers configured. Click &quot;Add Server&quot; to connect one.
-                </p>
-              </div>
-            )}
-          </section>
-
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Package className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Toolsets
-                </h2>
-                <span className="text-xs text-muted-foreground">
-                  ({toolsets.length})
-                </span>
-              </div>
+          {toolsets.length > 0 ? (
+            <div className="space-y-2">
+              {toolsets.map((toolset) => (
+                <ToolsetCard
+                  key={toolset.id}
+                  toolset={toolset}
+                  onToggle={() => handleToggle(toolset)}
+                  onExport={() => handleExport(toolset)}
+                  onUninstall={() => handleUninstallClick(toolset)}
+                  isToggling={togglingId === toolset.id}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-dashed border-border rounded-lg p-6 text-center">
+              <Package className="size-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground mb-3">
+                No toolsets installed
+              </p>
               <Button
                 variant="outline"
                 size="sm"
@@ -464,55 +548,49 @@ export default function InstalledPanel({
                 ) : (
                   <Upload className="size-4" />
                 )}
-                Import
+                Import Toolset
               </Button>
             </div>
+          )}
+        </section>
+      </>
+    );
+  };
 
-            {toolsets.length > 0 ? (
-              <div className="space-y-2">
-                {toolsets.map((toolset) => (
-                  <ToolsetCard
-                    key={toolset.id}
-                    toolset={toolset}
-                    onToggle={() => handleToggle(toolset)}
-                    onExport={() => handleExport(toolset)}
-                    onUninstall={() => handleUninstallClick(toolset)}
-                    isToggling={togglingId === toolset.id}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="border border-dashed border-border rounded-lg p-6 text-center">
-                <Package className="size-8 mx-auto mb-2 text-muted-foreground/50" />
-                <p className="text-sm text-muted-foreground mb-3">
-                  No toolsets installed
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleImportClick}
-                  disabled={isImporting}
-                >
-                  {isImporting ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Upload className="size-4" />
-                  )}
-                  Import Toolset
-                </Button>
-              </div>
-            )}
-          </section>
+  return (
+    <div className={cn("space-y-8", hasNoContent && "space-y-6")}>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".zip"
+        className="hidden"
+      />
 
-          <UninstallDialog
-            open={uninstallDialogOpen}
-            onOpenChange={setUninstallDialogOpen}
-            toolset={uninstallingToolset}
-            onConfirm={handleUninstallConfirm}
-            isUninstalling={isUninstalling}
-          />
-        </>
-      )}
+      {renderContent()}
+
+      <UninstallDialog
+        open={uninstallDialogOpen}
+        onOpenChange={setUninstallDialogOpen}
+        toolset={uninstallingToolset}
+        onConfirm={handleUninstallConfirm}
+        isUninstalling={isUninstalling}
+      />
+
+      <McpServerInspectorDialog
+        open={inspectorOpen}
+        onOpenChange={setInspectorOpen}
+        server={inspectingServer}
+        tools={inspectorTools}
+        onEdit={() => {
+          if (inspectingServerId) onEditServer(inspectingServerId);
+        }}
+        onDelete={() => {
+          if (inspectingServerId) onDeleteServer(inspectingServerId);
+        }}
+        onReconnect={handleInspectorReconnect}
+        onTestTool={handleTestTool}
+      />
     </div>
   );
 }
