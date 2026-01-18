@@ -19,7 +19,7 @@ from agno_toolset import ToolContext, clear_context, get_tool_metadata, set_cont
 
 from .. import db
 from ..db import db_session
-from ..db.models import Tool, ToolCall, ToolRenderConfig, Toolset
+from ..db.models import Tool, ToolCall, ToolOverride, Toolset
 from .toolset_manager import get_toolset_directory
 from .workspace_manager import WorkspaceManager, get_workspace_manager
 
@@ -96,15 +96,15 @@ class ToolsetExecutor:
         if tool_id in self._tool_metadata:
             return self._tool_metadata[tool_id]
 
-        with db_session() as session:
-            tool = session.query(Tool).filter(Tool.tool_id == tool_id).first()
+        with db_session() as sess:
+            tool = sess.query(Tool).filter(Tool.tool_id == tool_id).first()
             if tool is None:
                 return None
 
-            render_config = (
-                session.query(ToolRenderConfig)
-                .filter(ToolRenderConfig.tool_id == tool_id)
-                .order_by(ToolRenderConfig.priority.desc())
+            override = (
+                sess.query(ToolOverride)
+                .filter(ToolOverride.toolset_id == tool.toolset_id)
+                .filter(ToolOverride.tool_id == tool_id)
                 .first()
             )
 
@@ -120,10 +120,12 @@ class ToolsetExecutor:
                 "enabled": tool.enabled,
                 "entrypoint": tool.entrypoint,
                 "render_config": {
-                    "renderer": render_config.renderer,
-                    "config": json.loads(render_config.config),
+                    "renderer": override.renderer,
+                    "config": json.loads(override.renderer_config)
+                    if override.renderer_config
+                    else {},
                 }
-                if render_config
+                if override and override.renderer
                 else None,
             }
 

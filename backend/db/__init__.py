@@ -39,10 +39,11 @@ from .model_ops import (
 from .models import (
     Base,
     Chat,
-    McpServer,
     Message,
     Model,
     ProviderSettings,
+    ToolOverride,
+    ToolsetMcpServer,
     UserSettings,
 )
 from .providers import (
@@ -70,10 +71,11 @@ __all__ = [
     "set_db_path",
     "Base",
     "Chat",
-    "McpServer",
     "Message",
     "Model",
     "ProviderSettings",
+    "ToolOverride",
+    "ToolsetMcpServer",
     "UserSettings",
     "list_chats",
     "get_chat_messages",

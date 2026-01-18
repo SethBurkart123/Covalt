@@ -44,7 +44,7 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
       <Wrench className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm truncate">
-          {tool.name || tool.id.split(":").pop()}
+          {tool.name || tool.id?.split(":").pop()}
         </p>
         {tool.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
@@ -249,7 +249,8 @@ export default function ToolsetsPage() {
 
   const loadToolsets = useCallback(async () => {
     try {
-      const response = await listToolsets();
+      // Filter out user_mcp toolsets (those show in Tools page as MCP servers)
+      const response = await listToolsets({ body: { userMcp: false } });
       setToolsets(response.toolsets);
       setError(null);
     } catch (err) {
