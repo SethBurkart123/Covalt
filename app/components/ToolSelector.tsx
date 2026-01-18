@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { memo, useMemo } from "react";
 import { Loader2, Wrench } from "lucide-react";
 import { useTools, type McpServerStatus } from "@/contexts/tools-context";
 import { Switch } from "@/components/ui/switch";
@@ -47,7 +47,7 @@ interface ToolSelectorProps {
   children: React.ReactNode;
 }
 
-export const ToolSelector = React.memo(function ToolSelector({ children }: ToolSelectorProps) {
+export const ToolSelector = memo(function ToolSelector({ children }: ToolSelectorProps) {
   const {
     groupedTools,
     activeToolIds,
@@ -55,11 +55,11 @@ export const ToolSelector = React.memo(function ToolSelector({ children }: ToolS
     toggleToolset,
     isToolsetActive,
     isToolsetPartiallyActive,
-    isLoading,
+    isLoadingTools,
     mcpServers,
   } = useTools();
 
-  const mcpStatusMap = React.useMemo(() => {
+  const mcpStatusMap = useMemo(() => {
     const map: Record<string, McpServerStatus["status"]> = {};
     mcpServers.forEach((s) => {
       map[s.id] = s.status;
@@ -67,7 +67,7 @@ export const ToolSelector = React.memo(function ToolSelector({ children }: ToolS
     return map;
   }, [mcpServers]);
 
-  const categories = React.useMemo(() => {
+  const categories = useMemo(() => {
     const toolCategories = new Set(Object.keys(groupedTools.byCategory));
     mcpServers.forEach((server) => {
       if (!toolCategories.has(server.id)) {
@@ -93,7 +93,7 @@ export const ToolSelector = React.memo(function ToolSelector({ children }: ToolS
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        {isLoading ? (
+        {isLoadingTools ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>

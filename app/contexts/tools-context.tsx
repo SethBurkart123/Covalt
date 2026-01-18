@@ -35,7 +35,10 @@ interface ToolsContextType {
   toggleToolset: (category: string) => void;
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
-  isLoading: boolean;
+  /** Loading state for available tools list (use this for tools page) */
+  isLoadingTools: boolean;
+  /** Loading state for active tool IDs (chat-specific) */
+  isLoadingActiveTools: boolean;
   /** MCP servers with real-time status from WebSocket */
   mcpServers: McpServerStatus[];
   /** Manually refresh the tools list */
@@ -52,7 +55,8 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
 
   const [availableTools, setAvailableTools] = React.useState<ToolInfo[]>([]);
   const [activeToolIds, setActiveToolIds] = React.useState<string[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoadingTools, setIsLoadingTools] = React.useState(true);
+  const [isLoadingActiveTools, setIsLoadingActiveTools] = React.useState(true);
 
   // Track connected server IDs to detect changes
   const connectedServerIds = React.useMemo(
@@ -66,12 +70,15 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loadTools = React.useCallback(async () => {
+    setIsLoadingTools(true);
     try {
       const response = await getAvailableTools();
       setAvailableTools(response?.tools || []);
     } catch (error) {
       console.error("Failed to load available tools:", error);
       setAvailableTools([]);
+    } finally {
+      setIsLoadingTools(false);
     }
   }, []);
 
@@ -90,7 +97,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const loadActiveTools = async () => {
-      setIsLoading(true);
+      setIsLoadingActiveTools(true);
       try {
         if (!chatId) {
           const response = await getDefaultTools();
@@ -109,7 +116,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to load active tools:", error);
         setActiveToolIds([]);
       } finally {
-        setIsLoading(false);
+        setIsLoadingActiveTools(false);
       }
     };
 
@@ -221,7 +228,8 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       toggleToolset,
       isToolsetActive,
       isToolsetPartiallyActive,
-      isLoading,
+      isLoadingTools,
+      isLoadingActiveTools,
       mcpServers,
       refreshTools: loadTools,
     }),
@@ -233,7 +241,8 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       toggleToolset,
       isToolsetActive,
       isToolsetPartiallyActive,
-      isLoading,
+      isLoadingTools,
+      isLoadingActiveTools,
       mcpServers,
       loadTools,
     ]

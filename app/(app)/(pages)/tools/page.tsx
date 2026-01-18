@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import { useState, useEffect, useMemo } from "react";
+import type React from "react";
 import {
   Server,
   Wrench,
@@ -261,15 +262,14 @@ function configToFormData(
 }
 
 function parseCommandString(cmdStr: string): { command: string; args: string[] } {
-  const trimmed = cmdStr.trim();
-  if (!trimmed) return { command: "", args: [] };
+  if (!cmdStr.trim()) return { command: "", args: [] };
 
   const tokens: string[] = [];
   let current = "";
   let inQuote = false;
   let quoteChar = "";
 
-  for (const char of trimmed) {
+  for (const char of cmdStr.trim()) {
     if (!inQuote && (char === '"' || char === "'")) {
       inQuote = true;
       quoteChar = char;
@@ -304,17 +304,17 @@ function ServerFormDialog({
   editingServerId,
   onSuccess,
 }: ServerFormDialogProps) {
-  const [mode, setMode] = React.useState<"form" | "json">("form");
-  const [formData, setFormData] = React.useState<ServerFormData>(emptyFormData);
-  const [jsonInput, setJsonInput] = React.useState("");
-  const [jsonError, setJsonError] = React.useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [isLoadingConfig, setIsLoadingConfig] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [mode, setMode] = useState<"form" | "json">("form");
+  const [formData, setFormData] = useState<ServerFormData>(emptyFormData);
+  const [jsonInput, setJsonInput] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isEditing = !!editingServerId;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (open && editingServerId) {
       setIsLoadingConfig(true);
       setError(null);
@@ -724,7 +724,7 @@ function DeleteDialog({
   serverId,
   onSuccess,
 }: DeleteDialogProps) {
-  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -781,9 +781,9 @@ function McpServerCard({
   onEdit,
   onDelete,
 }: McpServerCardProps) {
-  const [isReconnecting, setIsReconnecting] = React.useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
-  const handleReconnect = async (e: React.MouseEvent) => {
+  const handleReconnect = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     setIsReconnecting(true);
     try {
@@ -798,7 +798,7 @@ function McpServerCard({
   const showReconnectButton =
     server.status === "error" || server.status === "disconnected";
 
-  const toolCount = server.toolCount ?? tools.length ?? 0;
+  const toolCount = server.toolCount ?? tools.length;
   const hasTools = server.status === "connected" && tools.length > 0;
 
   return (
@@ -920,16 +920,14 @@ function BuiltinToolCard({ tool }: { tool: ToolInfo }) {
 }
 
 export default function ToolsPage() {
-  const { availableTools, mcpServers, isLoading, refreshTools } = useTools();
+  const { availableTools, mcpServers, isLoadingTools, refreshTools } = useTools();
 
-  const [formDialogOpen, setFormDialogOpen] = React.useState(false);
-  const [editingServerId, setEditingServerId] = React.useState<string | null>(
-    null
-  );
-  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [deletingServerId, setDeletingServerId] = React.useState("");
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingServerId, setEditingServerId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingServerId, setDeletingServerId] = useState("");
 
-  const mcpTools = React.useMemo(() => {
+  const mcpTools = useMemo(() => {
     const byServer: Record<string, ToolInfo[]> = {};
     availableTools.forEach((tool) => {
       if (tool.id.startsWith("mcp:")) {
@@ -941,7 +939,7 @@ export default function ToolsPage() {
     return byServer;
   }, [availableTools]);
 
-  const builtinTools = React.useMemo(
+  const builtinTools = useMemo(
     () => availableTools.filter((t) => !t.id.startsWith("mcp:")),
     [availableTools]
   );
@@ -974,7 +972,7 @@ export default function ToolsPage() {
         </p>
       </div>
 
-      {isLoading ? (
+      {isLoadingTools ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
