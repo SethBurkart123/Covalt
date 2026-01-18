@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -91,10 +91,15 @@ class ActiveStream(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-class McpServer(Base):
-    __tablename__ = "mcp_servers"
+class ToolsetMcpServer(Base):
+    """MCP server configuration belonging to a toolset."""
+
+    __tablename__ = "toolset_mcp_servers"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    toolset_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=False
+    )
     server_type: Mapped[str] = mapped_column(String, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     command: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -106,15 +111,12 @@ class McpServer(Base):
     requires_confirmation: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
-    tool_overrides: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-
-    toolset_id: Mapped[Optional[str]] = mapped_column(
-        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=True
-    )
 
 
 class Toolset(Base):
+    """A toolset aggregates tools from various providers (MCP servers, Python modules, etc.)."""
+
     __tablename__ = "toolsets"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -122,6 +124,7 @@ class Toolset(Base):
     version: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    user_mcp: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     installed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     source_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     source_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -133,8 +136,11 @@ class Toolset(Base):
     tools: Mapped[List["Tool"]] = relationship(
         back_populates="toolset", cascade="all, delete-orphan"
     )
-    mcp_servers: Mapped[List["McpServer"]] = relationship(
+    mcp_servers: Mapped[List["ToolsetMcpServer"]] = relationship(
         backref="toolset", cascade="all, delete-orphan"
+    )
+    overrides: Mapped[List["ToolOverride"]] = relationship(
+        back_populates="toolset", cascade="all, delete-orphan"
     )
 
 
@@ -170,22 +176,6 @@ class Tool(Base):
     entrypoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     toolset: Mapped[Optional[Toolset]] = relationship(back_populates="tools")
-    render_configs: Mapped[List["ToolRenderConfig"]] = relationship(
-        back_populates="tool", cascade="all, delete-orphan"
-    )
-
-
-class ToolRenderConfig(Base):
-    __tablename__ = "tool_render_configs"
-
-    tool_id: Mapped[str] = mapped_column(
-        String, ForeignKey("tools.tool_id", ondelete="CASCADE"), primary_key=True
-    )
-    priority: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
-    renderer: Mapped[str] = mapped_column(String, nullable=False)
-    config: Mapped[str] = mapped_column(Text, nullable=False)
-
-    tool: Mapped[Tool] = relationship(back_populates="render_configs")
 
 
 class WorkspaceManifest(Base):
@@ -220,3 +210,30 @@ class ToolCall(Base):
     finished_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pre_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     post_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class ToolOverride(Base):
+    """Override configuration for a tool within a toolset."""
+
+    __tablename__ = "tool_overrides"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    toolset_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=False
+    )
+    tool_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    renderer: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    renderer_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    name_override: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    description_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requires_confirmation: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    toolset: Mapped[Toolset] = relationship(back_populates="overrides")
+
+    __table_args__ = (
+        UniqueConstraint("toolset_id", "tool_id", name="uq_toolset_tool_override"),
+    )

@@ -29,9 +29,14 @@ class ToolsetInfo(BaseModel):
     version: str
     description: Optional[str] = None
     enabled: bool = True
+    user_mcp: bool = False
     installed_at: Optional[str] = None
     source_type: Optional[str] = None
     tool_count: int = 0
+
+
+class ListToolsetsRequest(BaseModel):
+    user_mcp: Optional[bool] = None
 
 
 class ToolsetDetailInfo(ToolsetInfo):
@@ -113,9 +118,11 @@ class UpdateWorkspaceFileResponse(BaseModel):
 
 
 @command
-async def list_toolsets() -> ToolsetsResponse:
+async def list_toolsets(body: Optional[ListToolsetsRequest] = None) -> ToolsetsResponse:
+    """List toolsets, optionally filtered by user_mcp flag."""
     manager = get_toolset_manager()
-    toolsets = manager.list_toolsets()
+    user_mcp_filter = body.user_mcp if body else None
+    toolsets = manager.list_toolsets(user_mcp=user_mcp_filter)
 
     return ToolsetsResponse(
         toolsets=[
@@ -125,6 +132,7 @@ async def list_toolsets() -> ToolsetsResponse:
                 version=t["version"],
                 description=t.get("description"),
                 enabled=t["enabled"],
+                user_mcp=t.get("user_mcp", False),
                 installed_at=t.get("installed_at"),
                 source_type=t.get("source_type"),
                 tool_count=0,
@@ -334,3 +342,109 @@ async def update_workspace_file(
         manifest_id=manifest_id,
         path=body.path,
     )
+
+
+class SetToolOverrideRequest(BaseModel):
+    """Request to set/update a tool override."""
+
+    toolset_id: str
+    tool_id: str  # e.g., "perplexity:search" for MCP or "my-toolset:my-tool" for Python
+    renderer: Optional[str] = None
+    renderer_config: Optional[Dict[str, Any]] = None
+    name_override: Optional[str] = None
+    description_override: Optional[str] = None
+    requires_confirmation: Optional[bool] = None
+    enabled: Optional[bool] = None
+
+
+class ToolOverrideResponse(BaseModel):
+    """Response after setting a tool override."""
+
+    toolset_id: str
+    tool_id: str
+    renderer: Optional[str] = None
+    renderer_config: Optional[Dict[str, Any]] = None
+    name_override: Optional[str] = None
+    description_override: Optional[str] = None
+    requires_confirmation: Optional[bool] = None
+    enabled: bool = True
+
+
+@command
+async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideResponse:
+    """
+    Set or update override configuration for a tool.
+
+    This allows customizing how a tool appears and behaves without
+    modifying the underlying tool definition. Overrides can set:
+    - renderer and renderer_config for custom UI display
+    - name_override and description_override for display text
+    - requires_confirmation to control approval workflow
+    - enabled to hide/show the tool
+    """
+    import json
+    import uuid
+
+    from ..db import db_session
+    from ..db.models import ToolOverride, Toolset
+
+    with db_session() as sess:
+        toolset = sess.query(Toolset).filter(Toolset.id == body.toolset_id).first()
+        if not toolset:
+            raise ValueError(f"Toolset '{body.toolset_id}' not found")
+
+        existing = (
+            sess.query(ToolOverride)
+            .filter(ToolOverride.toolset_id == body.toolset_id)
+            .filter(ToolOverride.tool_id == body.tool_id)
+            .first()
+        )
+
+        if existing:
+            if body.renderer is not None:
+                existing.renderer = body.renderer
+            if body.renderer_config is not None:
+                existing.renderer_config = json.dumps(body.renderer_config)
+            if body.name_override is not None:
+                existing.name_override = body.name_override
+            if body.description_override is not None:
+                existing.description_override = body.description_override
+            if body.requires_confirmation is not None:
+                existing.requires_confirmation = body.requires_confirmation
+            if body.enabled is not None:
+                existing.enabled = body.enabled
+
+            override = existing
+        else:
+            override = ToolOverride(
+                id=str(uuid.uuid4()),
+                toolset_id=body.toolset_id,
+                tool_id=body.tool_id,
+                renderer=body.renderer,
+                renderer_config=json.dumps(body.renderer_config)
+                if body.renderer_config
+                else None,
+                name_override=body.name_override,
+                description_override=body.description_override,
+                requires_confirmation=body.requires_confirmation,
+                enabled=body.enabled if body.enabled is not None else True,
+            )
+            sess.add(override)
+
+        sess.commit()
+
+        # Refresh to get the final state
+        sess.refresh(override)
+
+        return ToolOverrideResponse(
+            toolset_id=override.toolset_id,
+            tool_id=override.tool_id,
+            renderer=override.renderer,
+            renderer_config=json.loads(override.renderer_config)
+            if override.renderer_config
+            else None,
+            name_override=override.name_override,
+            description_override=override.description_override,
+            requires_confirmation=override.requires_confirmation,
+            enabled=override.enabled,
+        )

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from zynk import command
 
 from ..services.mcp_manager import get_mcp_manager
+from ..services.toolset_manager import get_toolset_manager
 
 
 class MCPServerConfig(BaseModel):
@@ -39,7 +40,7 @@ class MCPToolInfo(BaseModel):
     description: Optional[str] = None
     inputSchema: Optional[Dict[str, Any]] = None
     renderer: Optional[str] = None
-    editable_args: Optional[List[str]] = None
+    renderer_config: Optional[Dict[str, Any]] = None
     requires_confirmation: bool = True
 
 
@@ -103,7 +104,7 @@ async def get_mcp_servers() -> MCPServersResponse:
                 description=t.get("description"),
                 inputSchema=t.get("inputSchema"),
                 renderer=t.get("renderer"),
-                editable_args=t.get("editable_args"),
+                renderer_config=t.get("renderer_config"),
                 requires_confirmation=t.get("requires_confirmation", True),
             )
             for t in mcp.get_server_tools(server_id)
@@ -128,14 +129,22 @@ async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
     """
     Add a new MCP server and connect to it.
 
+    This creates a user_mcp toolset to wrap the MCP server,
+    then adds the server to that toolset.
+
     Args:
         body: Contains server ID and configuration
 
     Returns:
         Server info with connection status
     """
+    toolset_manager = get_toolset_manager()
+    toolset_manager.create_user_mcp_toolset(body.id)
+
     mcp = get_mcp_manager()
-    await mcp.add_server(body.id, body.config.model_dump(exclude_none=True))
+    await mcp.add_server(
+        body.id, body.config.model_dump(exclude_none=True), toolset_id=body.id
+    )
 
     server_data = next((s for s in mcp.get_servers() if s["id"] == body.id), None)
     if not server_data:
@@ -148,7 +157,6 @@ async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
             description=t.get("description"),
             inputSchema=t.get("inputSchema"),
             renderer=t.get("renderer"),
-            editable_args=t.get("editable_args"),
             requires_confirmation=t.get("requires_confirmation", True),
         )
         for t in mcp.get_server_tools(body.id)
@@ -189,7 +197,7 @@ async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
             description=t.get("description"),
             inputSchema=t.get("inputSchema"),
             renderer=t.get("renderer"),
-            editable_args=t.get("editable_args"),
+            renderer_config=t.get("renderer_config"),
             requires_confirmation=t.get("requires_confirmation", True),
         )
         for t in mcp.get_server_tools(body.id)
@@ -210,6 +218,8 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
     """
     Disconnect and remove an MCP server.
 
+    This also removes the associated user_mcp toolset.
+
     Args:
         body: Contains server ID
 
@@ -218,6 +228,10 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
     """
     mcp = get_mcp_manager()
     await mcp.remove_server(body.id)
+
+    toolset_manager = get_toolset_manager()
+    toolset_manager.uninstall(body.id)
+
     return {"success": True}
 
 
@@ -225,12 +239,12 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
 async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
     """
     Get a single MCP server's configuration for editing.
-    
+
     Returns unsanitized config with actual environment variable values.
-    
+
     Args:
         body: Contains server ID
-        
+
     Returns:
         Server configuration dict
     """
@@ -266,7 +280,7 @@ async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
             description=t.get("description"),
             inputSchema=t.get("inputSchema"),
             renderer=t.get("renderer"),
-            editable_args=t.get("editable_args"),
+            renderer_config=t.get("renderer_config"),
             requires_confirmation=t.get("requires_confirmation", True),
         )
         for t in mcp.get_server_tools(body.id)

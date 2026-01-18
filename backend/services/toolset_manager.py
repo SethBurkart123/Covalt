@@ -15,11 +15,11 @@ import yaml
 from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import (
-    McpServer,
     Tool,
+    ToolOverride,
     Toolset,
     ToolsetFile,
-    ToolRenderConfig,
+    ToolsetMcpServer,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,9 +115,13 @@ class ToolsetManager:
     def __init__(self) -> None:
         self.toolsets_dir = get_toolsets_directory()
 
-    def list_toolsets(self) -> list[dict[str, Any]]:
-        with db_session() as session:
-            toolsets = session.query(Toolset).all()
+    def list_toolsets(self, user_mcp: bool | None = None) -> list[dict[str, Any]]:
+        """List toolsets, optionally filtered by user_mcp flag."""
+        with db_session() as sess:
+            query = sess.query(Toolset)
+            if user_mcp is not None:
+                query = query.filter(Toolset.user_mcp == user_mcp)
+            toolsets = query.all()
             return [
                 {
                     "id": t.id,
@@ -125,6 +129,7 @@ class ToolsetManager:
                     "version": t.version,
                     "description": t.description,
                     "enabled": t.enabled,
+                    "user_mcp": t.user_mcp,
                     "installed_at": t.installed_at,
                     "source_type": t.source_type,
                 }
@@ -295,37 +300,34 @@ class ToolsetManager:
         return zip_buffer.getvalue()
 
     def enable_toolset(self, toolset_id: str, enabled: bool = True) -> bool:
-        with db_session() as session:
-            toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
+        with db_session() as sess:
+            toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
                 return False
 
             toolset.enabled = enabled
 
-            session.query(Tool).filter(Tool.toolset_id == toolset_id).update(
+            sess.query(Tool).filter(Tool.toolset_id == toolset_id).update(
                 {"enabled": enabled}
             )
 
-            session.query(McpServer).filter(McpServer.toolset_id == toolset_id).update(
-                {"enabled": enabled}
-            )
+            sess.query(ToolsetMcpServer).filter(
+                ToolsetMcpServer.toolset_id == toolset_id
+            ).update({"enabled": enabled})
 
-            session.commit()
+            sess.commit()
 
         logger.info(f"{'Enabled' if enabled else 'Disabled'} toolset '{toolset_id}'")
         return True
 
     def uninstall(self, toolset_id: str) -> bool:
-        with db_session() as session:
-            toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
+        with db_session() as sess:
+            toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
                 return False
 
-            session.delete(toolset)
-
-            session.query(McpServer).filter(McpServer.toolset_id == toolset_id).delete()
-
-            session.commit()
+            sess.delete(toolset)
+            sess.commit()
 
         toolset_dir = get_toolset_directory(toolset_id)
         if toolset_dir.exists():
@@ -367,20 +369,24 @@ class ToolsetManager:
         file_records: list[dict[str, Any]],
         source_type: str,
         source_ref: str | None,
+        user_mcp: bool = False,
     ) -> None:
-        with db_session() as session:
+        import uuid
+
+        with db_session() as sess:
             toolset = Toolset(
                 id=manifest.id,
                 name=manifest.name,
                 version=manifest.version,
                 description=manifest.description,
                 enabled=True,
+                user_mcp=user_mcp,
                 installed_at=datetime.now().isoformat(),
                 source_type=source_type,
                 source_ref=source_ref,
                 manifest_version=manifest.manifest_version,
             )
-            session.add(toolset)
+            sess.add(toolset)
 
             for fr in file_records:
                 tf = ToolsetFile(
@@ -391,7 +397,7 @@ class ToolsetManager:
                     size=fr["size"],
                     stored_path=fr["stored_path"],
                 )
-                session.add(tf)
+                sess.add(tf)
 
             for tool_def in manifest.tools:
                 tool_id = f"{manifest.id}:{tool_def['id']}"
@@ -405,19 +411,20 @@ class ToolsetManager:
                     enabled=True,
                     entrypoint=tool_def["entrypoint"],
                 )
-                session.add(tool)
+                sess.add(tool)
 
                 renderer = tool_def.get("renderer")
                 if renderer:
-                    render_config = ToolRenderConfig(
+                    override = ToolOverride(
+                        id=str(uuid.uuid4()),
+                        toolset_id=manifest.id,
                         tool_id=tool_id,
-                        priority=0,
                         renderer=renderer.get("type", "code"),
-                        config=json.dumps(
+                        renderer_config=json.dumps(
                             {k: v for k, v in renderer.items() if k != "type"}
                         ),
                     )
-                    session.add(render_config)
+                    sess.add(override)
 
             for mcp_def in manifest.mcp_servers:
                 server_id = mcp_def.get("id")
@@ -432,8 +439,9 @@ class ToolsetManager:
                 else:
                     continue
 
-                mcp_server = McpServer(
+                mcp_server = ToolsetMcpServer(
                     id=server_id,
+                    toolset_id=manifest.id,
                     server_type=server_type,
                     enabled=True,
                     command=mcp_def.get("command"),
@@ -448,22 +456,21 @@ class ToolsetManager:
                     env=json.dumps(mcp_def.get("env")) if mcp_def.get("env") else None,
                     requires_confirmation=mcp_def.get("requires_confirmation", True),
                     created_at=datetime.now().isoformat(),
-                    toolset_id=manifest.id,
                 )
-                session.add(mcp_server)
+                sess.add(mcp_server)
 
-            session.commit()
+            sess.commit()
 
     def _generate_manifest(self, toolset_id: str) -> dict[str, Any]:
-        with db_session() as session:
-            toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
+        with db_session() as sess:
+            toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
             if toolset is None:
                 raise ValueError(f"Toolset '{toolset_id}' not found")
 
-            tools = session.query(Tool).filter(Tool.toolset_id == toolset_id).all()
+            tools = sess.query(Tool).filter(Tool.toolset_id == toolset_id).all()
             mcp_servers = (
-                session.query(McpServer)
-                .filter(McpServer.toolset_id == toolset_id)
+                sess.query(ToolsetMcpServer)
+                .filter(ToolsetMcpServer.toolset_id == toolset_id)
                 .all()
             )
 
@@ -496,17 +503,17 @@ class ToolsetManager:
                     if tool.requires_confirmation:
                         tool_data["requires_confirmation"] = True
 
-                    render_configs = (
-                        session.query(ToolRenderConfig)
-                        .filter(ToolRenderConfig.tool_id == tool.tool_id)
-                        .order_by(ToolRenderConfig.priority.desc())
-                        .all()
+                    override = (
+                        sess.query(ToolOverride)
+                        .filter(ToolOverride.toolset_id == toolset_id)
+                        .filter(ToolOverride.tool_id == tool.tool_id)
+                        .first()
                     )
 
-                    if render_configs:
-                        rc = render_configs[0]
-                        renderer_data = {"type": rc.renderer}
-                        renderer_data.update(json.loads(rc.config))
+                    if override and override.renderer:
+                        renderer_data: dict[str, Any] = {"type": override.renderer}
+                        if override.renderer_config:
+                            renderer_data.update(json.loads(override.renderer_config))
                         tool_data["renderer"] = renderer_data
 
                     manifest["tools"].append(tool_data)
@@ -535,6 +542,28 @@ class ToolsetManager:
                     manifest["mcp_servers"].append(server_data)
 
             return manifest
+
+    def create_user_mcp_toolset(self, server_id: str) -> str:
+        """Create a user_mcp toolset for a standalone MCP server."""
+        with db_session() as sess:
+            existing = sess.query(Toolset).filter(Toolset.id == server_id).first()
+            if existing:
+                raise ValueError(f"Toolset '{server_id}' already exists")
+
+            toolset = Toolset(
+                id=server_id,
+                name=server_id,
+                version="1.0.0",
+                enabled=True,
+                user_mcp=True,
+                installed_at=datetime.now().isoformat(),
+                manifest_version="1",
+            )
+            sess.add(toolset)
+            sess.commit()
+
+        logger.info(f"Created user_mcp toolset '{server_id}'")
+        return server_id
 
 
 _toolset_manager: ToolsetManager | None = None

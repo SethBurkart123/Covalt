@@ -16,7 +16,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool as MCPTool
 
 from ..db import db_session
-from ..db.models import McpServer
+from ..db.models import ToolOverride, Toolset, ToolsetMcpServer
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ StatusCallback = Callable[[str, ServerStatus, str | None, int], None]
 class MCPServerState:
     id: str
     server_type: str
+    toolset_id: str
     enabled: bool = True
     command: str | None = None
     args: list[str] | None = None
@@ -44,8 +45,6 @@ class MCPServerState:
     headers: dict[str, str] | None = None
     env: dict[str, str] | None = None
     requires_confirmation: bool = True
-    tool_overrides: dict[str, Any] | None = None
-    toolset_id: str | None = None
     status: ServerStatus = "disconnected"
     error: str | None = None
     tools: list[MCPTool] = field(default_factory=list)
@@ -54,10 +53,11 @@ class MCPServerState:
     _connection_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-def _db_row_to_state(row: McpServer) -> MCPServerState:
+def _db_row_to_state(row: ToolsetMcpServer) -> MCPServerState:
     return MCPServerState(
         id=row.id,
         server_type=row.server_type,
+        toolset_id=row.toolset_id,
         enabled=row.enabled,
         command=row.command,
         args=json.loads(row.args) if row.args else None,
@@ -66,8 +66,6 @@ def _db_row_to_state(row: McpServer) -> MCPServerState:
         headers=json.loads(row.headers) if row.headers else None,
         env=json.loads(row.env) if row.env else None,
         requires_confirmation=row.requires_confirmation,
-        tool_overrides=json.loads(row.tool_overrides) if row.tool_overrides else None,
-        toolset_id=row.toolset_id,
     )
 
 
@@ -85,8 +83,6 @@ def _state_to_config_dict(state: MCPServerState) -> dict[str, Any]:
         config["headers"] = state.headers
     if state.env:
         config["env"] = state.env
-    if state.tool_overrides:
-        config["toolOverrides"] = state.tool_overrides
     config["requiresConfirmation"] = state.requires_confirmation
     return config
 
@@ -115,17 +111,28 @@ class MCPManager:
 
     def _load_servers_from_db(self) -> dict[str, MCPServerState]:
         servers: dict[str, MCPServerState] = {}
-        with db_session() as session:
-            rows = session.query(McpServer).filter(McpServer.enabled.is_(True)).all()
+        with db_session() as sess:
+            rows = (
+                sess.query(ToolsetMcpServer)
+                .join(Toolset, ToolsetMcpServer.toolset_id == Toolset.id)
+                .filter(ToolsetMcpServer.enabled.is_(True))
+                .filter(Toolset.enabled.is_(True))
+                .all()
+            )
             for row in rows:
                 servers[row.id] = _db_row_to_state(row)
         return servers
 
     def _save_server_to_db(self, state: MCPServerState) -> None:
-        with db_session() as session:
-            existing = session.query(McpServer).filter(McpServer.id == state.id).first()
+        with db_session() as sess:
+            existing = (
+                sess.query(ToolsetMcpServer)
+                .filter(ToolsetMcpServer.id == state.id)
+                .first()
+            )
             if existing:
                 existing.server_type = state.server_type
+                existing.toolset_id = state.toolset_id
                 existing.enabled = state.enabled
                 existing.command = state.command
                 existing.args = json.dumps(state.args) if state.args else None
@@ -134,12 +141,10 @@ class MCPManager:
                 existing.headers = json.dumps(state.headers) if state.headers else None
                 existing.env = json.dumps(state.env) if state.env else None
                 existing.requires_confirmation = state.requires_confirmation
-                existing.tool_overrides = (
-                    json.dumps(state.tool_overrides) if state.tool_overrides else None
-                )
             else:
-                new_server = McpServer(
+                new_server = ToolsetMcpServer(
                     id=state.id,
+                    toolset_id=state.toolset_id,
                     server_type=state.server_type,
                     enabled=state.enabled,
                     command=state.command,
@@ -149,20 +154,39 @@ class MCPManager:
                     headers=json.dumps(state.headers) if state.headers else None,
                     env=json.dumps(state.env) if state.env else None,
                     requires_confirmation=state.requires_confirmation,
-                    tool_overrides=(
-                        json.dumps(state.tool_overrides)
-                        if state.tool_overrides
-                        else None
-                    ),
                     created_at=datetime.now().isoformat(),
                 )
-                session.add(new_server)
-            session.commit()
+                sess.add(new_server)
+            sess.commit()
 
     def _delete_server_from_db(self, server_id: str) -> None:
-        with db_session() as session:
-            session.query(McpServer).filter(McpServer.id == server_id).delete()
-            session.commit()
+        with db_session() as sess:
+            sess.query(ToolsetMcpServer).filter(
+                ToolsetMcpServer.id == server_id
+            ).delete()
+            sess.commit()
+
+    def _get_tool_overrides(self, toolset_id: str) -> dict[str, dict[str, Any]]:
+        """Get tool overrides for a toolset from the database."""
+        overrides: dict[str, dict[str, Any]] = {}
+        with db_session() as sess:
+            rows = (
+                sess.query(ToolOverride)
+                .filter(ToolOverride.toolset_id == toolset_id)
+                .all()
+            )
+            for row in rows:
+                overrides[row.tool_id] = {
+                    "renderer": row.renderer,
+                    "renderer_config": json.loads(row.renderer_config)
+                    if row.renderer_config
+                    else None,
+                    "name_override": row.name_override,
+                    "description_override": row.description_override,
+                    "requires_confirmation": row.requires_confirmation,
+                    "enabled": row.enabled,
+                }
+        return overrides
 
     async def initialize(self) -> None:
         async with self._lock:
@@ -484,22 +508,27 @@ class MCPManager:
         if not state or state.status != "connected":
             return []
 
-        tool_overrides = state.tool_overrides or {}
+        tool_overrides = self._get_tool_overrides(state.toolset_id)
 
         result = []
         for tool in state.tools:
-            overrides = tool_overrides.get(tool.name, {})
+            tool_id = f"{server_id}:{tool.name}"
+            overrides = tool_overrides.get(tool_id, {})
+
+            if not overrides.get("enabled", True):
+                continue
 
             tool_info = {
-                "id": f"mcp:{server_id}:{tool.name}",
-                "name": tool.name,
-                "description": tool.description,
+                "id": f"mcp:{tool_id}",
+                "name": overrides.get("name_override") or tool.name,
+                "description": overrides.get("description_override")
+                or tool.description,
                 "inputSchema": tool.inputSchema,
                 "renderer": overrides.get("renderer"),
-                "editable_args": overrides.get("editable_args"),
-                "requires_confirmation": overrides.get(
-                    "requires_confirmation", state.requires_confirmation
-                ),
+                "renderer_config": overrides.get("renderer_config"),
+                "requires_confirmation": overrides.get("requires_confirmation")
+                if overrides.get("requires_confirmation") is not None
+                else state.requires_confirmation,
             }
             result.append(tool_info)
 
@@ -530,8 +559,12 @@ class MCPManager:
         if not mcp_tool:
             return None
 
-        tool_overrides = state.tool_overrides or {}
-        overrides = tool_overrides.get(tool_name, {})
+        tool_overrides = self._get_tool_overrides(state.toolset_id)
+        tool_id = f"{server_id}:{tool_name}"
+        overrides = tool_overrides.get(tool_id, {})
+
+        if not overrides.get("enabled", True):
+            return None
 
         async def mcp_tool_entrypoint(**kwargs: Any) -> str:
             try:
@@ -540,18 +573,20 @@ class MCPManager:
                 logger.error(f"MCP tool {server_id}:{tool_name} error: {e}")
                 return f"Error calling tool: {e}"
 
-        mcp_tool_entrypoint.__name__ = f"{server_id}:{tool_name}"
-        mcp_tool_entrypoint.__doc__ = mcp_tool.description
+        mcp_tool_entrypoint.__name__ = tool_id
+        mcp_tool_entrypoint.__doc__ = (
+            overrides.get("description_override") or mcp_tool.description
+        )
 
         return Function(
-            name=f"{server_id}:{tool_name}",
-            description=mcp_tool.description,
+            name=tool_id,
+            description=overrides.get("description_override") or mcp_tool.description,
             parameters=mcp_tool.inputSchema,
             entrypoint=mcp_tool_entrypoint,
             skip_entrypoint_processing=True,
-            requires_confirmation=overrides.get(
-                "requires_confirmation", state.requires_confirmation
-            ),
+            requires_confirmation=overrides.get("requires_confirmation")
+            if overrides.get("requires_confirmation") is not None
+            else state.requires_confirmation,
         )
 
     async def call_tool(
@@ -588,7 +623,9 @@ class MCPManager:
                 self._set_status(server_id, "error", _extract_error_message(e))
             raise
 
-    async def add_server(self, server_id: str, config: dict[str, Any]) -> None:
+    async def add_server(
+        self, server_id: str, config: dict[str, Any], toolset_id: str
+    ) -> None:
         if server_id in self._servers:
             raise ValueError(f"Server {server_id} already exists")
 
@@ -599,6 +636,7 @@ class MCPManager:
         state = MCPServerState(
             id=server_id,
             server_type=server_type,
+            toolset_id=toolset_id,
             enabled=True,
             command=config.get("command"),
             args=config.get("args"),
@@ -607,7 +645,6 @@ class MCPManager:
             headers=config.get("headers"),
             env=config.get("env"),
             requires_confirmation=config.get("requiresConfirmation", True),
-            tool_overrides=config.get("toolOverrides"),
             status="connecting",
         )
 
@@ -636,7 +673,6 @@ class MCPManager:
         state.headers = config.get("headers")
         state.env = config.get("env")
         state.requires_confirmation = config.get("requiresConfirmation", True)
-        state.tool_overrides = config.get("toolOverrides")
 
         self._save_server_to_db(state)
         await self._connect_server(server_id)
