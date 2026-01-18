@@ -1,24 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import Editor, { loader } from "@monaco-editor/react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Editor from "@monaco-editor/react";
 import { debounce } from "lodash";
 import { useTheme } from "@/contexts/theme-context";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { Loader2, Check, AlertCircle, Cloud, CloudOff, Trash2 } from "lucide-react";
-
-loader.config({
-  paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs",
-  },
-});
 
 export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 interface EditableCodeViewerProps {
   language: string;
   filePath: string;
-  chatId: string;
 }
 
 function useResolvedTheme(): "light" | "dark" {

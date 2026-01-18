@@ -38,6 +38,7 @@ interface ArtifactPanelContextValue {
   remove: (id: string) => void;
   openFile: (filePath: string) => void;
   closeFile: (filePath: string) => void;
+  clearFiles: () => void;
   getFileState: (filePath: string) => FileState | undefined;
   saveFile: (filePath: string, content: string) => Promise<void>;
 }
@@ -162,6 +163,10 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearFiles = useCallback(() => {
+    setOpenFiles(new Map());
+  }, []);
+
   const getFileState = useCallback(
     (filePath: string): FileState | undefined => {
       return openFiles.get(filePath);
@@ -190,14 +195,12 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
     [chatId]
   );
 
-  // Open artifact (with optional file tracking)
   const open = useCallback(
     (id: string, title: string, content: ReactNode, filePath?: string) => {
       const isFirstArtifact = artifacts.length === 0;
       setArtifacts((prev) => {
         const existing = prev.find((a) => a.id === id);
         if (existing) {
-          // Update existing artifact
           return prev.map((a) =>
             a.id === id ? { ...a, title, content, filePath } : a
           );
@@ -213,43 +216,26 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
     [artifacts.length, sidebarOpen, setSidebarOpen]
   );
 
-  // Close all artifacts and files
   const close = useCallback(() => {
     setArtifacts([]);
     setActiveId(null);
-    setOpenFiles(new Map());
     if (wasSidebarOpenRef.current) {
       setSidebarOpen(true);
       wasSidebarOpenRef.current = null;
     }
   }, [setSidebarOpen]);
 
-  // Set active artifact
   const setActive = useCallback((id: string) => {
     setActiveId(id);
   }, []);
 
-  // Remove artifact and close its associated file
   const remove = useCallback(
     (id: string) => {
       setArtifacts((prev) => {
-        const artifactToRemove = prev.find((a) => a.id === id);
         const next = prev.filter((a) => a.id !== id);
-
-        // Close the associated file if this artifact had one
-        if (artifactToRemove?.filePath) {
-          // Check if any other artifact is using this file
-          const otherArtifactUsesFile = next.some(
-            (a) => a.filePath === artifactToRemove.filePath
-          );
-          if (!otherArtifactUsesFile) {
-            closeFile(artifactToRemove.filePath);
-          }
-        }
 
         if (next.length === 0) {
           setActiveId(null);
-          setOpenFiles(new Map());
           if (wasSidebarOpenRef.current) {
             setSidebarOpen(true);
             wasSidebarOpenRef.current = null;
@@ -260,10 +246,9 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [activeId, setSidebarOpen, closeFile]
+    [activeId, setSidebarOpen]
   );
 
-  // Clear artifacts when chat changes
   useEffect(() => {
     if (prevChatIdRef.current !== "" && prevChatIdRef.current !== chatId) {
       close();
@@ -283,6 +268,7 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
         remove,
         openFile,
         closeFile,
+        clearFiles,
         getFileState,
         saveFile,
       }}
