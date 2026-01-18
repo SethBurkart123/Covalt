@@ -1,5 +1,3 @@
-"""MCP Server Manager - handles connections to MCP servers."""
-
 from __future__ import annotations
 
 import asyncio

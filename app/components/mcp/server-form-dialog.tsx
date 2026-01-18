@@ -171,12 +171,11 @@ export function ServerFormDialog({
         );
       }
 
-      const serverEntries = Object.entries(servers);
-      if (serverEntries.length === 0) {
+      if (Object.keys(servers).length === 0) {
         throw new Error("No servers found in JSON");
       }
 
-      for (const [id, rawConfig] of serverEntries) {
+      for (const [id, rawConfig] of Object.entries(servers)) {
         const config = rawConfig as MCPServerConfig;
         try {
           await addMcpServer({ body: { id, config } });

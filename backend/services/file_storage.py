@@ -1,5 +1,3 @@
-"""File storage utilities for pending chat attachments."""
-
 from __future__ import annotations
 
 from pathlib import Path

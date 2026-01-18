@@ -1,15 +1,3 @@
-"""
-Toolset management endpoints.
-
-Provides commands for managing toolsets:
-- List installed toolsets
-- Import toolset from ZIP
-- Export toolset to ZIP
-- Enable/disable toolsets
-- Uninstall toolsets
-- Workspace file operations
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -27,14 +15,7 @@ from ..services.workspace_manager import get_workspace_manager
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-
 class ToolInfo(BaseModel):
-    """Information about a tool."""
-
     tool_id: str
     name: str
     description: Optional[str] = None
@@ -43,8 +24,6 @@ class ToolInfo(BaseModel):
 
 
 class ToolsetInfo(BaseModel):
-    """Information about a toolset."""
-
     id: str
     name: str
     version: str
@@ -56,33 +35,23 @@ class ToolsetInfo(BaseModel):
 
 
 class ToolsetDetailInfo(ToolsetInfo):
-    """Detailed toolset information including tools."""
-
     tools: List[ToolInfo] = []
 
 
 class ToolsetsResponse(BaseModel):
-    """Response for list_toolsets."""
-
     toolsets: List[ToolsetInfo]
 
 
 class ToolsetIdRequest(BaseModel):
-    """Request containing just a toolset ID."""
-
     id: str
 
 
 class EnableToolsetRequest(BaseModel):
-    """Request to enable/disable a toolset."""
-
     id: str
     enabled: bool
 
 
 class ImportToolsetResult(BaseModel):
-    """Result of importing a toolset."""
-
     id: str
     name: str
     version: str
@@ -90,94 +59,61 @@ class ImportToolsetResult(BaseModel):
 
 
 class ExportToolsetResponse(BaseModel):
-    """Response containing exported toolset ZIP as base64."""
-
     filename: str
-    data: str  # Base64 encoded ZIP
-
-
-# Workspace models
+    data: str
 
 
 class WorkspaceFileInfo(BaseModel):
-    """Information about a file in the workspace."""
-
     path: str
     size: int
 
 
 class WorkspaceFilesRequest(BaseModel):
-    """Request for workspace file operations."""
-
     chat_id: str
 
 
 class WorkspaceFilesResponse(BaseModel):
-    """Response listing workspace files."""
-
     files: List[str]
 
 
 class WorkspaceFileRequest(BaseModel):
-    """Request for a specific workspace file."""
-
     chat_id: str
     path: str
 
 
 class WorkspaceFileResponse(BaseModel):
-    """Response with workspace file content."""
-
     path: str
-    content: str  # Base64 encoded for binary safety
+    content: str
     size: int
 
 
 class WorkspaceManifestRequest(BaseModel):
-    """Request for workspace manifest."""
-
     chat_id: str
-    manifest_id: Optional[str] = None  # None = active manifest
+    manifest_id: Optional[str] = None
 
 
 class WorkspaceManifestResponse(BaseModel):
-    """Response with workspace manifest info."""
-
     id: str
     chat_id: str
     parent_id: Optional[str] = None
-    files: Dict[str, str]  # path -> hash
+    files: Dict[str, str]
     created_at: Optional[str] = None
     source: str
 
 
 class UpdateWorkspaceFileRequest(BaseModel):
-    """Request to update/create a file in the workspace."""
-
     chat_id: str
     path: str
-    content: str  # Base64 encoded
+    content: str
 
 
 class UpdateWorkspaceFileResponse(BaseModel):
-    """Response after updating a workspace file."""
-
     manifest_id: str
     path: str
 
 
-# =============================================================================
-# Toolset Commands
-# =============================================================================
-
-
 @command
 async def list_toolsets() -> ToolsetsResponse:
-    """
-    List all installed toolsets.
-
-    Returns list of toolsets with their basic info.
-    """
     manager = get_toolset_manager()
     toolsets = manager.list_toolsets()
 
@@ -200,15 +136,6 @@ async def list_toolsets() -> ToolsetsResponse:
 
 @command
 async def get_toolset(body: ToolsetIdRequest) -> ToolsetDetailInfo:
-    """
-    Get detailed information about a toolset including its tools.
-
-    Args:
-        body: Contains toolset ID
-
-    Returns:
-        Toolset info with list of tools
-    """
     manager = get_toolset_manager()
     toolset = manager.get_toolset(body.id)
 
@@ -237,22 +164,12 @@ async def get_toolset(body: ToolsetIdRequest) -> ToolsetDetailInfo:
     )
 
 
-# 100MB max for toolset ZIP
 MAX_TOOLSET_SIZE = "100MB"
 ALLOWED_TOOLSET_TYPES = ["application/zip", "application/x-zip-compressed"]
 
 
 @upload(max_size=MAX_TOOLSET_SIZE, allowed_types=ALLOWED_TOOLSET_TYPES)
 async def import_toolset(file: UploadFile) -> ImportToolsetResult:
-    """
-    Import a toolset from a ZIP file upload.
-
-    Args:
-        file: Uploaded ZIP file
-
-    Returns:
-        Imported toolset info
-    """
     content = await file.read()
     manager = get_toolset_manager()
 
@@ -266,7 +183,6 @@ async def import_toolset(file: UploadFile) -> ImportToolsetResult:
     if toolset is None:
         raise RuntimeError(f"Toolset '{toolset_id}' not found after import")
 
-    # Reload MCP servers in case the toolset added any
     mcp_manager = get_mcp_manager()
     new_servers = await mcp_manager.reload_from_db()
     if new_servers:
@@ -284,15 +200,6 @@ async def import_toolset(file: UploadFile) -> ImportToolsetResult:
 
 @command
 async def export_toolset(body: ToolsetIdRequest) -> ExportToolsetResponse:
-    """
-    Export a toolset to a ZIP file.
-
-    Args:
-        body: Contains toolset ID
-
-    Returns:
-        Base64 encoded ZIP file data
-    """
     manager = get_toolset_manager()
     toolset = manager.get_toolset(body.id)
 
@@ -310,15 +217,6 @@ async def export_toolset(body: ToolsetIdRequest) -> ExportToolsetResponse:
 
 @command
 async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
-    """
-    Enable or disable a toolset.
-
-    Args:
-        body: Contains toolset ID and enabled state
-
-    Returns:
-        Success status
-    """
     manager = get_toolset_manager()
     success = manager.enable_toolset(body.id, body.enabled)
 
@@ -336,17 +234,6 @@ async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
 
 @command
 async def uninstall_toolset(body: ToolsetIdRequest) -> Dict[str, bool]:
-    """
-    Uninstall a toolset.
-
-    Removes all database records and files for the toolset.
-
-    Args:
-        body: Contains toolset ID
-
-    Returns:
-        Success status
-    """
     manager = get_toolset_manager()
     success = manager.uninstall(body.id)
 
@@ -356,22 +243,8 @@ async def uninstall_toolset(body: ToolsetIdRequest) -> Dict[str, bool]:
     return {"success": True}
 
 
-# =============================================================================
-# Workspace Commands
-# =============================================================================
-
-
 @command
 async def get_workspace_files(body: WorkspaceFilesRequest) -> WorkspaceFilesResponse:
-    """
-    List all files in a chat's workspace.
-
-    Args:
-        body: Contains chat ID
-
-    Returns:
-        List of file paths
-    """
     manager = get_workspace_manager(body.chat_id)
     files = manager.list_files()
 
@@ -380,15 +253,6 @@ async def get_workspace_files(body: WorkspaceFilesRequest) -> WorkspaceFilesResp
 
 @command
 async def get_workspace_file(body: WorkspaceFileRequest) -> WorkspaceFileResponse:
-    """
-    Read a file from a chat's workspace.
-
-    Args:
-        body: Contains chat ID and file path
-
-    Returns:
-        File content (base64 encoded)
-    """
     manager = get_workspace_manager(body.chat_id)
     content = manager.read_file(body.path)
 
@@ -406,21 +270,9 @@ async def get_workspace_file(body: WorkspaceFileRequest) -> WorkspaceFileRespons
 async def get_workspace_manifest(
     body: WorkspaceManifestRequest,
 ) -> WorkspaceManifestResponse:
-    """
-    Get a workspace manifest for a chat.
-
-    Args:
-        body: Contains chat ID and optional manifest ID
-
-    Returns:
-        Manifest info including file mappings
-    """
     manager = get_workspace_manager(body.chat_id)
 
-    manifest_id = body.manifest_id
-    if manifest_id is None:
-        manifest_id = manager.get_active_manifest_id()
-
+    manifest_id = body.manifest_id or manager.get_active_manifest_id()
     if manifest_id is None:
         raise ValueError("No active manifest for this chat")
 
@@ -438,23 +290,13 @@ async def get_workspace_manifest(
     )
 
 
+MAX_EDITABLE_FILE_SIZE = 5 * 1024 * 1024
+
+
 @command
 async def update_workspace_file(
     body: UpdateWorkspaceFileRequest,
 ) -> UpdateWorkspaceFileResponse:
-    """
-    Update or create a file in a chat's workspace.
-
-    Creates a new manifest with source="edit" and updates the chat's
-    active_manifest_id. The file is written to the workspace directory
-    and stored in blob storage.
-
-    Args:
-        body: Contains chat ID, file path, and base64-encoded content
-
-    Returns:
-        New manifest ID and the file path
-    """
     manager = get_workspace_manager(body.chat_id)
 
     try:
@@ -462,12 +304,11 @@ async def update_workspace_file(
     except Exception as e:
         raise ValueError(f"Invalid base64 content: {e}")
 
-    # Check file size (5MB limit for editable files)
-    max_size = 5 * 1024 * 1024  # 5MB
-    if len(content) > max_size:
-        raise ValueError(f"File too large: {len(content)} bytes (max {max_size})")
+    if len(content) > MAX_EDITABLE_FILE_SIZE:
+        raise ValueError(
+            f"File too large: {len(content)} bytes (max {MAX_EDITABLE_FILE_SIZE})"
+        )
 
-    # Add/update the file in workspace, creating a new manifest
     manifest_id = manager.add_file(
         rel_path=body.path,
         content=content,
@@ -480,7 +321,6 @@ async def update_workspace_file(
         f"new manifest {manifest_id[:8]}..."
     )
 
-    # Broadcast file change to connected clients
     try:
         from .events import broadcast_workspace_files_changed
 

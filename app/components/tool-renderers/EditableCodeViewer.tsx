@@ -34,8 +34,6 @@ export function EditableCodeViewer({
   
   const isSavingRef = useRef(false);
 
-  const editorContent = localContent ?? syncedContent;
-
   const hasUnsavedChanges = localContent !== null;
   const externallyChanged = version > lastSyncedVersion;
   const isDesynced = externallyChanged && hasUnsavedChanges && !isSavingRef.current;
@@ -245,7 +243,7 @@ export function EditableCodeViewer({
         <Editor
           height="100%"
           language={language}
-          value={editorContent}
+          value={localContent ?? syncedContent}
           onChange={handleChange}
           theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
           options={{

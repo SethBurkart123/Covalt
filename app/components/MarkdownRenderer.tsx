@@ -44,7 +44,7 @@ interface HighlightRenderProps {
   getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
 }
 
-const CodeBlock = memo(({ children }: MdProps<'pre'>) => {
+const CodeBlock = memo(function CodeBlock({ children }: MdProps<'pre'>) {
   const [copied, setCopied] = useState(false);
   const resolvedTheme = useResolvedTheme();
   
@@ -114,11 +114,13 @@ const CodeBlock = memo(({ children }: MdProps<'pre'>) => {
   );
 });
 
-const InlineCode = memo(({ children, ...props }: MdProps<'code'>) => (
-  <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
-    {children}
-  </code>
-));
+const InlineCode = memo(function InlineCode({ children, ...props }: MdProps<'code'>) {
+  return (
+    <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
+      {children}
+    </code>
+  );
+});
 
 function MarkdownRendererInner({ 
   content, 

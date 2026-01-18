@@ -19,6 +19,7 @@ dependencies = [
     "httpx>=0.28.1",
     "agno>=2.3.20",
     "zynk",
+    "agno-toolset",
 ]
 
 [dependency-groups]
@@ -28,6 +29,7 @@ dev = [
 
 [tool.uv.sources]
 zynk = { path = "zynk" }
+agno-toolset = { path = "agno-toolset" }
 
 [tool.ruff]
 target-version = "py312"

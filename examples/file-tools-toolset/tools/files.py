@@ -1,26 +1,26 @@
 """
 File manipulation tools for the workspace.
 
-Each tool receives a `workspace` Path argument pointing to the chat's
-materialized workspace directory.
+Each tool uses get_context() to access the chat's workspace directory.
 """
 
-from pathlib import Path
+from agno_toolset import get_context, tool
 
 
-def write_file(workspace: Path, path: str, content: str) -> dict:
+@tool(name="Write File", description="Write content to a file in the workspace")
+def write_file(path: str, content: str) -> dict:
     """
     Write content to a file in the workspace.
 
     Args:
-        workspace: Path to the chat's workspace directory
-        path: Relative file path
-        content: Content to write
+        path: File path relative to workspace (e.g., "src/main.py")
+        content: Content to write to the file
 
     Returns:
         Dict with written path and size
     """
-    target = workspace / path
+    ctx = get_context()
+    target = ctx.workspace / path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content)
 
@@ -31,18 +31,19 @@ def write_file(workspace: Path, path: str, content: str) -> dict:
     }
 
 
-def read_file(workspace: Path, path: str) -> dict:
+@tool(name="Read File", description="Read the contents of a file from the workspace")
+def read_file(path: str) -> dict:
     """
     Read content from a file in the workspace.
 
     Args:
-        workspace: Path to the chat's workspace directory
-        path: Relative file path
+        path: File path relative to workspace
 
     Returns:
         Dict with path, content, and size
     """
-    target = workspace / path
+    ctx = get_context()
+    target = ctx.workspace / path
 
     if not target.exists():
         return {
@@ -65,18 +66,22 @@ def read_file(workspace: Path, path: str) -> dict:
     }
 
 
-def list_files(workspace: Path, directory: str = "") -> dict:
+@tool(
+    name="List Files",
+    description="List all files in the workspace or a specific directory",
+)
+def list_files(directory: str = "") -> dict:
     """
     List files in the workspace or a subdirectory.
 
     Args:
-        workspace: Path to the chat's workspace directory
         directory: Subdirectory to list (empty for root)
 
     Returns:
         Dict with list of files
     """
-    target = workspace / directory if directory else workspace
+    ctx = get_context()
+    target = ctx.workspace / directory if directory else ctx.workspace
 
     if not target.exists():
         return {
@@ -88,7 +93,7 @@ def list_files(workspace: Path, directory: str = "") -> dict:
     dirs = []
 
     for item in sorted(target.iterdir()):
-        rel_path = str(item.relative_to(workspace))
+        rel_path = str(item.relative_to(ctx.workspace))
         if item.is_file():
             files.append(
                 {
@@ -113,18 +118,23 @@ def list_files(workspace: Path, directory: str = "") -> dict:
     }
 
 
-def delete_file(workspace: Path, path: str) -> dict:
+@tool(
+    name="Delete File",
+    description="Delete a file from the workspace",
+    requires_confirmation=True,
+)
+def delete_file(path: str) -> dict:
     """
     Delete a file from the workspace.
 
     Args:
-        workspace: Path to the chat's workspace directory
-        path: Relative file path to delete
+        path: File path relative to workspace to delete
 
     Returns:
         Dict with deletion status
     """
-    target = workspace / path
+    ctx = get_context()
+    target = ctx.workspace / path
 
     if not target.exists():
         return {

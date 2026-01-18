@@ -7,43 +7,7 @@ description: Create interactive multiple-choice quizzes that users can take in t
 
 tools:
   - id: create_quiz
-    name: Create Quiz
-    description: |
-      Create an interactive multiple-choice quiz. The model provides the quiz title and an array of questions.
-      Each question has a question text, exactly 4 answer options, and a correctIndex (0-3) indicating
-      which answer is correct. The quiz is rendered as an interactive HTML artifact where the user can
-      take the quiz one question at a time with immediate feedback.
     entrypoint: tools.quiz:create_quiz
-    category: content
-    input_schema:
-      type: object
-      properties:
-        title:
-          type: string
-          description: Title of the quiz
-        questions:
-          type: array
-          description: Array of quiz questions
-          items:
-            type: object
-            properties:
-              question:
-                type: string
-                description: The question text
-              answers:
-                type: array
-                description: Exactly 4 answer options
-                items:
-                  type: string
-                minItems: 4
-                maxItems: 4
-              correctIndex:
-                type: integer
-                description: Index (0-3) of the correct answer
-                minimum: 0
-                maximum: 3
-            required: [question, answers, correctIndex]
-      required: [title, questions]
     renderer:
       type: html
       artifact: artifacts/quiz.html

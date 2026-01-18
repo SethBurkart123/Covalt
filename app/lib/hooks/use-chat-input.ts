@@ -243,8 +243,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
   const handleSubmit = useCallback(
     async (inputText: string, attachments: Attachment[]) => {
-      const hasContent = inputText.trim() || attachments.length > 0;
-      if (!hasContent || isLoading || !canSendMessage) return;
+      if ((!inputText.trim() && attachments.length === 0) || isLoading || !canSendMessage) return;
 
       const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
@@ -327,8 +326,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
-      
-      const message = baseMessages[idx];
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -346,7 +343,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
         preserveStreamingMessage(result);
         unregisterStream(chatId);
-        trackModel(message?.modelUsed);
+        trackModel(baseMessages[idx]?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
         unregisterStream(chatId);
@@ -362,9 +359,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
-      
-      const newBaseMessages = baseMessages.slice(0, idx);
-      setBaseMessages(newBaseMessages);
+
+      setBaseMessages(baseMessages.slice(0, idx));
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -440,9 +436,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       }
     });
 
-    const userMessage = createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined);
-    const newBaseMessages = [...baseMessages.slice(0, idx), userMessage];
-    setBaseMessages(newBaseMessages);
+    setBaseMessages([
+      ...baseMessages.slice(0, idx),
+      createUserMessage(newContent, editingAttachments.length > 0 ? editingAttachments : undefined),
+    ]);
     setEditingMessageId(null);
     setEditingAttachments([]);
 

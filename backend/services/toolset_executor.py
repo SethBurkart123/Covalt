@@ -1,16 +1,7 @@
-"""
-Toolset Executor - handles execution of Python tools from toolsets.
-
-This module:
-- Loads Python tool modules from installed toolsets
-- Creates agno Function wrappers for toolset tools
-- Manages workspace materialize → execute → snapshot cycle
-- Persists tool call records
-"""
-
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import importlib.util
 import json
 import logging
@@ -23,6 +14,9 @@ from typing import Any, Callable
 
 from agno.tools.function import Function
 
+# Import agno_toolset for context management and decorator metadata
+from agno_toolset import ToolContext, clear_context, get_tool_metadata, set_context
+
 from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolRenderConfig, Toolset
@@ -33,31 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsetExecutor:
-    """
-    Executes Python tools from installed toolsets.
-
-    Handles:
-    - Loading Python modules from toolset directories
-    - Creating agno Function wrappers
-    - Workspace lifecycle (materialize/snapshot)
-    - Tool call persistence
-    """
-
     def __init__(self) -> None:
-        self._loaded_tools: dict[str, tuple[Callable, str]] = {}
+        self._loaded_tools: dict[str, tuple[Callable, str, dict[str, Any] | None]] = {}
         self._tool_metadata: dict[str, dict[str, Any]] = {}
 
-    def _load_tool_module(self, toolset_id: str, entrypoint: str) -> Callable | None:
-        """
-        Load a Python function from a toolset module.
-
-        Args:
-            toolset_id: Toolset ID
-            entrypoint: Module:function string (e.g., "tools.files:write_file")
-
-        Returns:
-            The function, or None if loading fails
-        """
+    def _load_tool_module(
+        self, toolset_id: str, entrypoint: str
+    ) -> tuple[Callable, dict[str, Any] | None] | None:
         try:
             if ":" not in entrypoint:
                 logger.error(f"Invalid entrypoint format: {entrypoint}")
@@ -92,14 +68,31 @@ class ToolsetExecutor:
                 logger.error(f"Function '{func_name}' not found in {module_file}")
                 return None
 
-            return getattr(module, func_name)
+            fn = getattr(module, func_name)
+
+            tool_meta = get_tool_metadata(fn)
+            decorator_data: dict[str, Any] | None = None
+            if tool_meta:
+                decorator_data = {
+                    "name": tool_meta.name,
+                    "description": tool_meta.description,
+                    "schema": tool_meta.schema,
+                    "requires_confirmation": tool_meta.requires_confirmation,
+                    "category": tool_meta.category,
+                }
+            else:
+                logger.warning(
+                    f"Tool {entrypoint} has no @tool decorator. "
+                    "Schema will not be inferred from type hints."
+                )
+
+            return (fn, decorator_data)
 
         except Exception as e:
             logger.error(f"Failed to load tool module {entrypoint}: {e}")
             return None
 
     def _get_tool_from_db(self, tool_id: str) -> dict[str, Any] | None:
-        """Get tool info from database."""
         if tool_id in self._tool_metadata:
             return self._tool_metadata[tool_id]
 
@@ -140,23 +133,6 @@ class ToolsetExecutor:
     def get_tool_function(
         self, tool_id: str, chat_id: str, message_id: str | None = None
     ) -> Function | None:
-        """
-        Get an agno Function wrapper for a toolset tool.
-
-        The wrapper handles:
-        - Workspace materialization before execution
-        - Injecting workspace path into the tool function
-        - Snapshotting workspace after execution
-        - Recording the tool call
-
-        Args:
-            tool_id: Tool ID (e.g., "app-builder:write_file")
-            chat_id: Chat ID for workspace context
-            message_id: Message ID for manifest lookup (uses message tree inheritance)
-
-        Returns:
-            agno Function object, or None if tool not found
-        """
         tool_info = self._get_tool_from_db(tool_id)
         if tool_info is None:
             return None
@@ -170,54 +146,62 @@ class ToolsetExecutor:
 
         cache_key = f"{toolset_id}:{entrypoint}"
         if cache_key not in self._loaded_tools:
-            fn = self._load_tool_module(toolset_id, entrypoint)
-            if fn is None:
+            result = self._load_tool_module(toolset_id, entrypoint)
+            if result is None:
                 return None
-            self._loaded_tools[cache_key] = (fn, toolset_id)
+            fn, decorator_data = result
+            self._loaded_tools[cache_key] = (fn, toolset_id, decorator_data)
 
-        tool_fn, _ = self._loaded_tools[cache_key]
+        tool_fn, _, decorator_data = self._loaded_tools[cache_key]
 
         async def toolset_tool_entrypoint(**kwargs: Any) -> str:
             return await self._execute_tool(
                 tool_id=tool_id,
+                toolset_id=toolset_id,
                 tool_fn=tool_fn,
                 chat_id=chat_id,
                 message_id=message_id,
                 args=kwargs,
             )
 
+        if decorator_data:
+            description = decorator_data.get("description") or tool_info.get(
+                "description"
+            )
+            schema = decorator_data.get("schema") or {
+                "type": "object",
+                "properties": {},
+            }
+            requires_confirmation = decorator_data.get("requires_confirmation", False)
+        else:
+            description = tool_info.get("description")
+            schema = tool_info.get("input_schema") or {
+                "type": "object",
+                "properties": {},
+            }
+            requires_confirmation = tool_info.get("requires_confirmation", False)
+
         toolset_tool_entrypoint.__name__ = tool_id
-        toolset_tool_entrypoint.__doc__ = tool_info.get("description", "")
+        toolset_tool_entrypoint.__doc__ = description or ""
 
         return Function(
             name=tool_id,
-            description=tool_info.get("description"),
-            parameters=tool_info.get("input_schema")
-            or {"type": "object", "properties": {}},
+            description=description,
+            parameters=schema,
             entrypoint=toolset_tool_entrypoint,
             skip_entrypoint_processing=True,
-            requires_confirmation=tool_info.get("requires_confirmation", False),
+            requires_confirmation=requires_confirmation,
         )
 
     async def _execute_tool(
         self,
         tool_id: str,
+        toolset_id: str,
         tool_fn: Callable,
         chat_id: str,
         args: dict[str, Any],
         message_id: str | None = None,
     ) -> str:
-        """
-        Execute a tool with workspace lifecycle management.
-
-        1. Get manifest from message tree (uses active leaf if no message_id)
-        2. Materialize workspace to that manifest
-        3. Execute tool function
-        4. Snapshot workspace
-        5. Update assistant message's manifest_id
-        6. Record tool call
-        7. Return result
-        """
         workspace_manager = get_workspace_manager(chat_id)
         tool_call_id = str(uuid.uuid4())
         started_at = datetime.now().isoformat()
@@ -235,7 +219,6 @@ class ToolsetExecutor:
             else:
                 pre_manifest_id = workspace_manager.get_active_manifest_id()
 
-        # Record tool call as pending
         self._record_tool_call(
             tool_call_id=tool_call_id,
             chat_id=chat_id,
@@ -247,13 +230,21 @@ class ToolsetExecutor:
             message_id=actual_message_id,
         )
 
+        ctx = ToolContext(
+            workspace=workspace_manager.workspace_dir,
+            chat_id=chat_id,
+            toolset_id=toolset_id,
+        )
+        set_context(ctx)
+
         try:
             if asyncio.iscoroutinefunction(tool_fn):
-                result = await tool_fn(workspace=workspace_manager.workspace_dir, **args)
+                result = await tool_fn(**args)
             else:
+                ctx_copy = contextvars.copy_context()
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
-                    None, lambda: tool_fn(workspace=workspace_manager.workspace_dir, **args)
+                    None, lambda: ctx_copy.run(tool_fn, **args)
                 )
 
             if not isinstance(result, dict):
@@ -298,7 +289,6 @@ class ToolsetExecutor:
 
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_id}: {e}")
-
             try:
                 post_manifest_id = workspace_manager.snapshot(
                     source="tool_run",
@@ -316,6 +306,9 @@ class ToolsetExecutor:
 
             return f"Error executing tool: {e}"
 
+        finally:
+            clear_context()
+
     def _record_tool_call(
         self,
         tool_call_id: str,
@@ -327,7 +320,6 @@ class ToolsetExecutor:
         pre_manifest_id: str | None = None,
         message_id: str | None = None,
     ) -> None:
-        """Record a tool call in the database."""
         with db_session() as session:
             tool_call = ToolCall(
                 id=tool_call_id,
@@ -351,7 +343,6 @@ class ToolsetExecutor:
         error: str | None = None,
         post_manifest_id: str | None = None,
     ) -> None:
-        """Update a tool call record."""
         with db_session() as session:
             tool_call = (
                 session.query(ToolCall).filter(ToolCall.id == tool_call_id).first()
@@ -376,7 +367,6 @@ class ToolsetExecutor:
         result: dict[str, Any],
         chat_id: str,
     ) -> dict[str, Any] | None:
-        """Public wrapper to generate render plans for toolset tools."""
         return self._generate_render_plan(tool_id, args, result, chat_id)
 
     def _generate_render_plan(
@@ -386,11 +376,6 @@ class ToolsetExecutor:
         result: dict[str, Any],
         chat_id: str,
     ) -> dict[str, Any] | None:
-        """
-        Generate a render plan for a tool call result.
-
-        Applies interpolation to the render config.
-        """
         tool_info = self._get_tool_from_db(tool_id)
         if not tool_info or not tool_info.get("render_config"):
             return None
@@ -423,16 +408,6 @@ class ToolsetExecutor:
         }
 
     def _interpolate(self, obj: Any, context: dict[str, Any]) -> Any:
-        """
-        Recursively interpolate $var expressions in config.
-
-        Supports:
-        - $args.name -> context["args"]["name"]
-        - $return.path -> context["return"]["path"]
-        - $chat_id -> context["chat_id"]
-        - $workspace -> context["workspace"]
-        - $toolset -> context["toolset"]
-        """
         if isinstance(obj, str):
             return self._interpolate_string(obj, context)
         elif isinstance(obj, dict):
@@ -442,7 +417,6 @@ class ToolsetExecutor:
         return obj
 
     def _interpolate_string(self, s: str, context: dict[str, Any]) -> Any:
-        """Interpolate a single string value."""
         if s.startswith("$") and "." not in s[1:] and s[1:] in context:
             return context[s[1:]]
 
@@ -481,16 +455,6 @@ class ToolsetExecutor:
         return re.sub(r"\$(\w+(?:\.\w+)*)", replace_var, s)
 
     def _load_artifact_content(self, toolset_id: str, artifact_path: str) -> str | None:
-        """
-        Load HTML artifact content from a toolset's artifact directory.
-
-        Args:
-            toolset_id: The toolset ID
-            artifact_path: Path to the artifact (e.g., "artifacts/quiz.html")
-
-        Returns:
-            The HTML content as a string, or None if not found
-        """
         if not toolset_id:
             return None
 
@@ -511,7 +475,6 @@ class ToolsetExecutor:
             return None
 
     def list_toolset_tools(self) -> list[dict[str, Any]]:
-        """List all enabled tools from installed toolsets."""
         with db_session() as session:
             tools = (
                 session.query(Tool)
@@ -533,17 +496,14 @@ class ToolsetExecutor:
             ]
 
     def clear_cache(self) -> None:
-        """Clear loaded modules and metadata cache."""
         self._loaded_tools.clear()
         self._tool_metadata.clear()
 
 
-# Singleton instance
 _toolset_executor: ToolsetExecutor | None = None
 
 
 def get_toolset_executor() -> ToolsetExecutor:
-    """Get the global toolset executor instance."""
     global _toolset_executor
     if _toolset_executor is None:
         _toolset_executor = ToolsetExecutor()

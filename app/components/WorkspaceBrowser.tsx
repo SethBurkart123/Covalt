@@ -320,5 +320,3 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
     </div>
   );
 }
-
-
