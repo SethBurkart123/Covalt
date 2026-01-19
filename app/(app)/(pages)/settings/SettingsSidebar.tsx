@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { Boxes, Settings, Cog } from "lucide-react";
+import type { ReactNode } from "react";
+import { Boxes, Settings, Palette } from "lucide-react";
 
 export type TabKey = "general" | "providers" | "appearance";
 
@@ -10,7 +10,13 @@ interface SettingsSidebarProps {
   onChangeTab?: (key: TabKey) => void;
 }
 
-const SIDEBAR_ITEMS = [
+interface SidebarItemConfig {
+  icon: ReactNode;
+  label: string;
+  active: TabKey;
+}
+
+const SIDEBAR_ITEMS: SidebarItemConfig[] = [
   {
     icon: <Settings size={16} />,
     label: "General",
@@ -22,7 +28,7 @@ const SIDEBAR_ITEMS = [
     active: "providers",
   },
   {
-    icon: <Cog size={16} />,
+    icon: <Palette size={16} />,
     label: "Appearance",
     active: "appearance",
   },
@@ -41,7 +47,7 @@ export default function SettingsSidebar({
             icon={item.icon}
             label={item.label}
             active={activeTab === item.active}
-            onClick={() => onChangeTab?.(item.active as TabKey)}
+            onClick={() => onChangeTab?.(item.active)}
             clickable={!!onChangeTab}
           />
         ))}
@@ -50,19 +56,21 @@ export default function SettingsSidebar({
   );
 }
 
+interface SidebarItemProps {
+  icon: ReactNode;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  clickable?: boolean;
+}
+
 function SidebarItem({
   icon,
   label,
   active,
   onClick,
   clickable,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-  clickable?: boolean;
-}) {
+}: SidebarItemProps) {
   return (
     <div
       onClick={onClick}

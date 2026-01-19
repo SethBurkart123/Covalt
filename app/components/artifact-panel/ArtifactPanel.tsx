@@ -66,7 +66,7 @@ export function ArtifactPanel() {
       onAnimationComplete={handleAnimationComplete}
     >
       <div 
-        className="h-full bg-card/80 border-l border-border rounded-l-2xl flex flex-col overflow-hidden"
+        className="h-full bg-card/80 border-l border-border rounded-l-xl flex flex-col overflow-hidden"
         style={animatingWidth ? { width: animatingWidth } : undefined}
       >
         <div className="flex border-b border-border overflow-x-auto p-2 gap-2 px-4">
