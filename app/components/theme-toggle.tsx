@@ -5,16 +5,12 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedMode, setMode } = useTheme();
 
   return (
     <button
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        // Use the center of the button as the origin point
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2;
-        setTheme(theme === "light" ? "dark" : "light", x, y);
+      onClick={() => {
+        setMode(resolvedMode === "light" ? "dark" : "light");
       }}
       className="p-3 relative rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >

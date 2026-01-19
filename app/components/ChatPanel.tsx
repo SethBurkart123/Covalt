@@ -197,7 +197,12 @@ export default function ChatPanel() {
           {!(messages.length === 0 && !chatId) ? (
             <>
               <div className="overflow-y-scroll flex-1">
-                <div className="top-0 right-8 sticky h-4 bg-gradient-to-b dark:from-[#30242A] from-[#FFFBF5] to-transparent z-20" />
+                <div
+                  className="top-0 right-8 sticky h-4 z-20 pointer-events-none [mask-image:linear-gradient(to_bottom,black,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black,transparent)]"
+                >
+                  <div className="absolute inset-0 bg-sidebar" />
+                  <div className="absolute inset-0 dark:bg-card/30 bg-background dark:block" />
+                </div>
                 <div className="flex-1 px-4 py-6 max-w-[50rem] w-full mx-auto">
                   <ChatMessageList
                     messages={messages}

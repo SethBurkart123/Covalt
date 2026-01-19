@@ -2,7 +2,7 @@ import { useId } from "react";
 import { CheckIcon, MinusIcon } from "lucide-react";
 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useTheme } from "@/contexts/theme-context";
+import { useTheme, type ThemeMode } from "@/contexts/theme-context";
 
 const items = [
   {
@@ -219,8 +219,8 @@ const items = [
   },
 ];
 
-function mapThemeToValue(theme: "light" | "dark" | "system"): string {
-  switch (theme) {
+function mapModeToValue(mode: ThemeMode): string {
+  switch (mode) {
     case "light":
       return "1";
     case "dark":
@@ -230,7 +230,7 @@ function mapThemeToValue(theme: "light" | "dark" | "system"): string {
   }
 }
 
-function mapValueToTheme(value: string): "light" | "dark" | "system" {
+function mapValueToMode(value: string): ThemeMode {
   switch (value) {
     case "1":
       return "light";
@@ -245,11 +245,11 @@ function mapValueToTheme(value: string): "light" | "dark" | "system" {
 
 export default function ThemeToggle() {
   const id = useId();
-  const { theme, setTheme } = useTheme();
+  const { mode, setMode } = useTheme();
 
   const handleValueChange = (value: string) => {
-    const newTheme = mapValueToTheme(value);
-    setTheme(newTheme);
+    const newMode = mapValueToMode(value);
+    setMode(newMode);
   };
 
   return (
@@ -259,11 +259,11 @@ export default function ThemeToggle() {
       </legend>
       <RadioGroup
         className="flex gap-3"
-        value={mapThemeToValue(theme)}
+        value={mapModeToValue(mode)}
         onValueChange={handleValueChange}
       >
         {items.map((item) => {
-          const isChecked = item.value === mapThemeToValue(theme);
+          const isChecked = item.value === mapModeToValue(mode);
           return (
             <label
               className={`rounded-lg border ${

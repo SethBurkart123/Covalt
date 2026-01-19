@@ -343,7 +343,7 @@ body {
   
   background: var(--sidebar);
   ::selection {
-    background-color: #f58d737a;
+    background-color: var(--border);
   }
 }
 
