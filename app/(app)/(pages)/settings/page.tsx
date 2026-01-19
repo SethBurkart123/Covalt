@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePageTitle } from "@/contexts/page-title-context";
 import SettingsSidebar, { type TabKey } from "./SettingsSidebar";
 import ProvidersPanel from "./providers/ProvidersPanel";
 import AutoTitlePanel from "./AutoTitlePanel";
 import ModelSettingsPanel from "./ModelSettingsPanel";
-import ThemeToggle from "@/components/ThemeToggle";
+import { AppearancePanel } from "./appearance/AppearancePanel";
 
 export default function SettingsPage() {
   const { setTitle } = usePageTitle();
@@ -28,11 +28,7 @@ export default function SettingsPage() {
       case "providers":
         return <ProvidersPanel />;
       case "appearance":
-        return (
-          <div className="py-8">
-            <ThemeToggle />
-          </div>
-        );
+        return <AppearancePanel />;
       default:
         return <ProvidersPanel />;
     }
