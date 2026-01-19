@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
+import httpx
 from pydantic import BaseModel, Field
 from zynk import command
 
@@ -229,6 +230,45 @@ def _expand_path(path: str) -> Path:
     return Path(os.path.expandvars(os.path.expanduser(path)))
 
 
+def _detect_mcp_transport(
+    url: str, timeout: float = 5.0
+) -> Literal["sse", "streamable-http"]:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "agno-probe", "version": "1.0.0"},
+        },
+    }
+
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        try:
+            response = client.post(
+                url,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
+            )
+        except httpx.HTTPError:
+            return "sse"
+
+    content_type = response.headers.get("content-type", "").lower()
+    if response.status_code == 200 and (
+        "application/json" in content_type or "text/event-stream" in content_type
+    ):
+        return "streamable-http"
+
+    if response.status_code == 405:
+        return "sse"
+
+    return "sse"
+
+
 def _parse_claude_desktop_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     config: Dict[str, Any] = {"requiresConfirmation": True}
 
@@ -258,8 +298,9 @@ def _parse_claude_code_server(raw: Dict[str, Any]) -> Dict[str, Any]:
             config["cwd"] = raw["cwd"]
     else:
         if "url" in raw:
-            config["url"] = raw["url"]
-            config["transport"] = "sse"
+            url = raw["url"]
+            config["url"] = url
+            config["transport"] = _detect_mcp_transport(url)
 
     if "env" in raw:
         config["env"] = raw["env"]
@@ -274,8 +315,9 @@ def _parse_opencode_server(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     if server_type == "remote":
         if "url" in raw:
-            config["url"] = raw["url"]
-            config["transport"] = "sse"
+            url = raw["url"]
+            config["url"] = url
+            config["transport"] = _detect_mcp_transport(url)
     else:
         cmd = raw.get("command", [])
         if isinstance(cmd, list) and len(cmd) > 0:
@@ -293,8 +335,9 @@ def _parse_cursor_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     config: Dict[str, Any] = {"requiresConfirmation": True}
 
     if "url" in raw:
-        config["url"] = raw["url"]
-        config["transport"] = "sse"
+        url = raw["url"]
+        config["url"] = url
+        config["transport"] = _detect_mcp_transport(url)
     else:
         if "command" in raw:
             config["command"] = raw["command"]
@@ -344,7 +387,9 @@ def _scan_source(source_key: str) -> SourceScanResult:
                 if not isinstance(raw_config, dict):
                     continue
 
-                servers.append(ScannedServer(id=server_id, config=parser(raw_config)))
+                servers.append(
+                    ScannedServer(id=server_id, config=MCPServerConfig(**parser(raw_config)))
+                )
 
             return SourceScanResult(servers=servers, error=None)
 
