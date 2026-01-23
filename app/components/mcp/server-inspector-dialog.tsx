@@ -53,7 +53,7 @@ const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
   requires_auth: {
     icon: KeyRound,
     label: "Auth Required",
-    className: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    className: "bg-primary/10 text-primary border-primary/20",
   },
 };
 
