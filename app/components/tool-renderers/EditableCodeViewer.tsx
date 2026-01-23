@@ -11,21 +11,29 @@ export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 interface EditableCodeViewerProps {
   language: string;
-  filePath: string;
+  filePath?: string;
+  content?: string;
+  readOnly?: boolean;
 }
 
 export function EditableCodeViewer({
   language,
   filePath,
+  content,
+  readOnly = false,
 }: EditableCodeViewerProps) {
   const resolvedTheme = useResolvedTheme();
   const { getFileState, saveFile } = useArtifactPanel();
 
-  const fileState = getFileState(filePath);
-  const syncedContent = fileState?.content ?? "";
-  const isLoading = fileState?.isLoading ?? true;
-  const isDeleted = fileState?.isDeleted ?? false;
-  const version = fileState?.version ?? 0;
+  const isContentMode = !filePath && content !== undefined;
+  
+  const fileState = filePath ? getFileState(filePath) : undefined;
+  const syncedContent = isContentMode ? content : (fileState?.content ?? "");
+  const isLoading = isContentMode ? false : (fileState?.isLoading ?? true);
+  const isDeleted = isContentMode ? false : (fileState?.isDeleted ?? false);
+  const version = isContentMode ? 0 : (fileState?.version ?? 0);
+  
+  const effectiveReadOnly = readOnly || isContentMode;
 
   const [localContent, setLocalContent] = useState<string | null>(null);
   const [lastSyncedVersion, setLastSyncedVersion] = useState(0);
@@ -89,6 +97,8 @@ export function EditableCodeViewer({
 
   const handleChange = useCallback(
     (value: string | undefined) => {
+      if (effectiveReadOnly || !filePath) return;
+      
       if ((value ?? "") === syncedContent) {
         setLocalContent(null);
         setSaveStatus("idle");
@@ -99,11 +109,11 @@ export function EditableCodeViewer({
         debouncedSave(value ?? "", filePath);
       }
     },
-    [filePath, syncedContent, debouncedSave]
+    [filePath, syncedContent, debouncedSave, effectiveReadOnly]
   );
 
   const forceSave = useCallback(async () => {
-    if (isDeleted || !hasUnsavedChanges || !localContent) return;
+    if (isDeleted || !hasUnsavedChanges || !localContent || !filePath) return;
 
     debouncedSave.cancel();
     isSavingRef.current = true;
@@ -149,7 +159,7 @@ export function EditableCodeViewer({
     debouncedSave.cancel();
   }, [version, debouncedSave]);
 
-  if (isLoading && !syncedContent) {
+  if (!isContentMode && isLoading && !syncedContent) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -186,58 +196,60 @@ export function EditableCodeViewer({
         </div>
       )}
 
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/30 text-xs">
-        <span className="text-muted-foreground font-mono truncate">
-          {filePath}
-        </span>
-        <div className="flex items-center gap-2">
-          {!isDeleted && !isDesynced && saveStatus === "idle" && (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Cloud size={14} />
-              <span>Synced</span>
-            </div>
-          )}
-          {!isDeleted && !isDesynced && saveStatus === "unsaved" && (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <div className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>Unsaved</span>
-            </div>
-          )}
-          {!isDeleted && saveStatus === "saving" && (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
-              <span>Saving...</span>
-            </div>
-          )}
-          {!isDeleted && !isDesynced && saveStatus === "saved" && (
-            <div className="flex items-center gap-1 text-green-500">
-              <Check size={14} />
-              <span>Saved</span>
-            </div>
-          )}
-          {!isDeleted && saveStatus === "error" && (
-            <div
-              className="flex items-center gap-1 text-red-500"
-              title={errorMessage || "Save failed"}
-            >
-              <AlertCircle size={14} />
-              <span>Error</span>
-            </div>
-          )}
-          {isDesynced && (
-            <div className="flex items-center gap-1 text-amber-500">
-              <CloudOff size={14} />
-              <span>Desynced</span>
-            </div>
-          )}
-          {isDeleted && (
-            <div className="flex items-center gap-1 text-red-500">
-              <Trash2 size={14} />
-              <span>Deleted</span>
-            </div>
-          )}
+      {filePath && (
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/30 text-xs">
+          <span className="text-muted-foreground font-mono truncate">
+            {filePath}
+          </span>
+          <div className="flex items-center gap-2">
+            {!isDeleted && !isDesynced && saveStatus === "idle" && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Cloud size={14} />
+                <span>Synced</span>
+              </div>
+            )}
+            {!isDeleted && !isDesynced && saveStatus === "unsaved" && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>Unsaved</span>
+              </div>
+            )}
+            {!isDeleted && saveStatus === "saving" && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" />
+                <span>Saving...</span>
+              </div>
+            )}
+            {!isDeleted && !isDesynced && saveStatus === "saved" && (
+              <div className="flex items-center gap-1 text-green-500">
+                <Check size={14} />
+                <span>Saved</span>
+              </div>
+            )}
+            {!isDeleted && saveStatus === "error" && (
+              <div
+                className="flex items-center gap-1 text-red-500"
+                title={errorMessage || "Save failed"}
+              >
+                <AlertCircle size={14} />
+                <span>Error</span>
+              </div>
+            )}
+            {isDesynced && (
+              <div className="flex items-center gap-1 text-amber-500">
+                <CloudOff size={14} />
+                <span>Desynced</span>
+              </div>
+            )}
+            {isDeleted && (
+              <div className="flex items-center gap-1 text-red-500">
+                <Trash2 size={14} />
+                <span>Deleted</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 min-h-0">
         <Editor
@@ -254,7 +266,7 @@ export function EditableCodeViewer({
             wordWrap: "on",
             automaticLayout: true,
             tabSize: 2,
-            readOnly: isDeleted,
+            readOnly: effectiveReadOnly || isDeleted,
             padding: { top: 8 },
           }}
           loading={
