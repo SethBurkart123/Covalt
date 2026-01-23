@@ -50,7 +50,7 @@ const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
   requires_auth: {
     icon: KeyRound,
     label: "Needs Auth",
-    className: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    className: "bg-primary/10 text-primary border-primary/20",
   },
 };
 
@@ -268,7 +268,7 @@ export function McpServerCard({
                 e.stopPropagation();
                 onEdit();
               }}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary"
             >
               <Pencil className="size-3" />
               Configure Headers
@@ -280,7 +280,7 @@ export function McpServerCard({
               size="sm"
               onClick={handleAuthenticate}
               disabled={isAuthenticating}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary"
             >
               {isAuthenticating ? (
                 <Loader2 className="size-3 animate-spin" />
