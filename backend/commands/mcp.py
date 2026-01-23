@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from zynk import command
 
 from ..services.mcp_manager import get_mcp_manager
+from ..services.oauth_manager import get_oauth_manager
 from ..services.toolset_manager import get_toolset_manager
 
 
@@ -41,7 +42,7 @@ class MCPToolInfo(BaseModel):
 
 class MCPServerInfo(BaseModel):
     id: str
-    status: Literal["connecting", "connected", "error", "disconnected"]
+    status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]
     error: Optional[str] = None
     toolCount: int = 0
     tools: List[MCPToolInfo] = Field(default_factory=list)
@@ -388,7 +389,9 @@ def _scan_source(source_key: str) -> SourceScanResult:
                     continue
 
                 servers.append(
-                    ScannedServer(id=server_id, config=MCPServerConfig(**parser(raw_config)))
+                    ScannedServer(
+                        id=server_id, config=MCPServerConfig(**parser(raw_config))
+                    )
                 )
 
             return SourceScanResult(servers=servers, error=None)
@@ -446,3 +449,138 @@ async def test_mcp_tool(body: TestMCPToolInput) -> TestMCPToolResult:
             error=str(e),
             durationMs=duration_ms,
         )
+
+
+class ProbeOAuthInput(BaseModel):
+    url: str
+
+
+class ProbeOAuthResult(BaseModel):
+    requiresOAuth: bool
+    providerName: Optional[str] = None
+    resourceMetadataUrl: Optional[str] = None
+    error: Optional[str] = None
+
+
+@command
+async def probe_mcp_oauth(body: ProbeOAuthInput) -> ProbeOAuthResult:
+    """Check if an MCP server URL requires OAuth."""
+    oauth = get_oauth_manager()
+    result = await oauth.probe_oauth_requirement(body.url)
+
+    return ProbeOAuthResult(
+        requiresOAuth=result.get("requiresOAuth", False),
+        providerName=result.get("providerName"),
+        resourceMetadataUrl=result.get("resourceMetadataUrl"),
+        error=result.get("error"),
+    )
+
+
+class StartOAuthInput(BaseModel):
+    serverId: str
+    serverUrl: str
+    callbackPort: int = 3000
+
+
+class StartOAuthResult(BaseModel):
+    success: bool
+    authUrl: Optional[str] = None
+    state: Optional[str] = None
+    error: Optional[str] = None
+
+
+@command
+async def start_mcp_oauth(body: StartOAuthInput) -> StartOAuthResult:
+    """Start OAuth flow for an MCP server."""
+    oauth = get_oauth_manager()
+
+    try:
+        result = await oauth.start_oauth_flow(
+            server_id=body.serverId,
+            server_url=body.serverUrl,
+            callback_port=body.callbackPort,
+        )
+        return StartOAuthResult(
+            success=True,
+            authUrl=result.get("authUrl"),
+            state=result.get("state"),
+        )
+    except Exception as e:
+        return StartOAuthResult(
+            success=False,
+            error=str(e),
+        )
+
+
+class OAuthStatusResult(BaseModel):
+    status: Literal["none", "pending", "authenticated", "error"]
+    hasTokens: bool = False
+    error: Optional[str] = None
+
+
+@command
+async def get_mcp_oauth_status(body: MCPServerId) -> OAuthStatusResult:
+    """Get the OAuth status for an MCP server."""
+    oauth = get_oauth_manager()
+    result = oauth.get_oauth_status(body.id)
+
+    return OAuthStatusResult(
+        status=result.get("status", "none"),
+        hasTokens=result.get("hasTokens", False),
+        error=result.get("error"),
+    )
+
+
+class RevokeOAuthResult(BaseModel):
+    success: bool
+    error: Optional[str] = None
+
+
+@command
+async def revoke_mcp_oauth(body: MCPServerId) -> RevokeOAuthResult:
+    """Revoke OAuth tokens for an MCP server."""
+    oauth = get_oauth_manager()
+
+    try:
+        await oauth.revoke_oauth(body.id)
+        return RevokeOAuthResult(success=True)
+    except Exception as e:
+        return RevokeOAuthResult(success=False, error=str(e))
+
+
+class OAuthCallbackInput(BaseModel):
+    code: str
+    state: str
+
+
+class OAuthCallbackErrorInput(BaseModel):
+    state: str
+    error: str
+    errorDescription: Optional[str] = None
+
+
+class OAuthCallbackResult(BaseModel):
+    success: bool
+    error: Optional[str] = None
+
+
+@command
+async def complete_mcp_oauth_callback(body: OAuthCallbackInput) -> OAuthCallbackResult:
+    """Complete an OAuth callback."""
+    oauth = get_oauth_manager()
+    found = oauth.complete_oauth_callback(body.code, body.state)
+    return OAuthCallbackResult(
+        success=found,
+        error=None if found else "No pending OAuth flow found for this state",
+    )
+
+
+@command
+async def fail_mcp_oauth_callback(body: OAuthCallbackErrorInput) -> OAuthCallbackResult:
+    """Record an OAuth callback failure."""
+    oauth = get_oauth_manager()
+    found = oauth.fail_oauth_callback(body.state, body.error, body.errorDescription)
+    return OAuthCallbackResult(
+        success=found,
+        error=None if found else "No pending OAuth flow found for this state",
+    )

@@ -136,7 +136,7 @@ class MCPToolsetInfo(BaseModel):
 
     id: str  # e.g., "mcp:github"
     name: str  # e.g., "github"
-    status: Literal["connecting", "connected", "error", "disconnected"]
+    status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]
     error: Optional[str] = None
     tools: List[ToolInfo] = Field(default_factory=list)
 

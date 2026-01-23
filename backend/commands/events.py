@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 from zynk import WebSocket, message
@@ -18,18 +18,22 @@ _clients_lock = asyncio.Lock()
 class McpServerStatus(BaseModel):
     id: str
     status: str
-    error: Optional[str] = None
+    error: str | None = None
     tool_count: int = 0
+    oauth_status: str | None = None
+    oauth_provider_name: str | None = None
+    auth_hint: str | None = None
+    config: dict[str, Any] | None = None
 
 
 class McpServersSnapshot(BaseModel):
-    servers: List[McpServerStatus]
+    servers: list[McpServerStatus]
 
 
 class WorkspaceFilesChanged(BaseModel):
     chat_id: str
-    changed_paths: List[str]
-    deleted_paths: List[str]
+    changed_paths: list[str]
+    deleted_paths: list[str]
 
 
 class Ping(BaseModel):
@@ -63,13 +67,21 @@ def _mcp_status_callback(
 
 
 async def _broadcast_mcp_status(
-    server_id: str, status: str, error: str | None, tool_count: int
+    server_id: str, status: ServerStatus, error: str | None, tool_count: int
 ) -> None:
+    mcp = get_mcp_manager()
+    server_data = next((s for s in mcp.get_servers() if s["id"] == server_id), None)
+    extra = server_data or {}
+
     status_update = McpServerStatus(
         id=server_id,
         status=status,
         error=error,
         tool_count=tool_count,
+        oauth_status=extra.get("oauthStatus"),
+        oauth_provider_name=extra.get("oauthProviderName"),
+        auth_hint=extra.get("authHint"),
+        config=extra.get("config"),
     )
 
     async with _clients_lock:
@@ -122,6 +134,10 @@ def _get_mcp_servers_snapshot() -> McpServersSnapshot:
                 status=s["status"],
                 error=s.get("error"),
                 tool_count=s.get("toolCount", 0),
+                oauth_status=s.get("oauthStatus"),
+                oauth_provider_name=s.get("oauthProviderName"),
+                auth_hint=s.get("authHint"),
+                config=s.get("config"),
             )
             for s in servers
         ]

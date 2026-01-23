@@ -212,6 +212,27 @@ class ToolCall(Base):
     post_manifest_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class OAuthToken(Base):
+    """Stored OAuth credentials for MCP servers."""
+
+    __tablename__ = "oauth_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    server_id: Mapped[str] = mapped_column(
+        String, ForeignKey("toolset_mcp_servers.id", ondelete="CASCADE"), nullable=False
+    )
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_type: Mapped[str] = mapped_column(String, default="Bearer", nullable=False)
+    expires_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    scope: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    client_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    client_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    client_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class ToolOverride(Base):
     """Override configuration for a tool within a toolset."""
 
