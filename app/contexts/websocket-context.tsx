@@ -5,9 +5,16 @@ import { getBaseUrl } from "@/python/_internal";
 
 export interface McpServerStatus {
   id: string;
-  status: "connecting" | "connected" | "error" | "disconnected";
+  status: "connecting" | "connected" | "error" | "disconnected" | "requires_auth";
   error?: string | null;
   toolCount: number;
+  oauthStatus?: "none" | "pending" | "authenticated" | "error";
+  oauthProviderName?: string | null;
+  authHint?: "oauth" | "token" | null;
+  config?: {
+    url?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface McpServersSnapshot {

@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
+import httpx
 from agno.tools.function import Function
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -17,10 +19,14 @@ from mcp.types import Tool as MCPTool
 
 from ..db import db_session
 from ..db.models import ToolOverride, Toolset, ToolsetMcpServer
+from .oauth_manager import get_oauth_manager
 
 logger = logging.getLogger(__name__)
 
-ServerStatus = Literal["connecting", "connected", "error", "disconnected"]
+ServerStatus = Literal[
+    "connecting", "connected", "error", "disconnected", "requires_auth"
+]
+OAuthStatus = Literal["none", "pending", "authenticated", "error"]
 
 
 def _extract_error_message(e: BaseException) -> str:
@@ -51,6 +57,9 @@ class MCPServerState:
     session: ClientSession | None = None
     _cleanup_task: asyncio.Task | None = None
     _connection_event: asyncio.Event = field(default_factory=asyncio.Event)
+    oauth_status: OAuthStatus = "none"
+    oauth_provider_name: str | None = None
+    auth_hint: str | None = None
 
 
 def _db_row_to_state(row: ToolsetMcpServer) -> MCPServerState:
@@ -283,8 +292,34 @@ class MCPManager:
         )
 
         async def run_connection():
+            read_fd, write_fd = os.pipe()
+            stderr_file = os.fdopen(write_fd, "w")
+            captured_stderr: list[str] = []
+
+            async def read_stderr():
+                loop = asyncio.get_event_loop()
+                read_file = os.fdopen(read_fd, "r")
+                try:
+                    while True:
+                        line = await loop.run_in_executor(None, read_file.readline)
+                        if not line:
+                            break
+                        line = line.rstrip("\n")
+                        if line:
+                            captured_stderr.append(line)
+                            logger.debug(f"MCP {server_id} stderr: {line}")
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        read_file.close()
+                    except Exception:
+                        pass
+
+            stderr_task = asyncio.create_task(read_stderr())
+
             try:
-                async with stdio_client(params) as (read, write):
+                async with stdio_client(params, errlog=stderr_file) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         state.session = session
@@ -302,21 +337,47 @@ class MCPManager:
                             try:
                                 await asyncio.wait_for(session.send_ping(), timeout=5.0)
                             except Exception:
-                                self._set_status(
-                                    server_id,
-                                    "error",
-                                    "Connection lost",
+                                error_msg = (
+                                    "\n".join(captured_stderr[-20:])
+                                    if captured_stderr
+                                    else "Connection lost"
                                 )
+                                self._set_status(server_id, "error", error_msg)
                                 break
 
             except asyncio.CancelledError:
-                logger.info(f"MCP connection {server_id} cancelled")
                 raise
             except Exception as e:
-                logger.error(f"MCP connection {server_id} error: {e}")
-                self._set_status(server_id, "error", _extract_error_message(e))
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+                stderr_task.cancel()
+                try:
+                    await stderr_task
+                except asyncio.CancelledError:
+                    pass
+
+                error_msg = (
+                    "\n".join(captured_stderr[-20:])
+                    if captured_stderr
+                    else _extract_error_message(e)
+                )
+                logger.error(f"MCP connection {server_id} error: {error_msg}")
+                self._set_status(server_id, "error", error_msg)
                 state.session = None
                 state._connection_event.set()
+            finally:
+                stderr_task.cancel()
+                try:
+                    await stderr_task
+                except asyncio.CancelledError:
+                    pass
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
         state._cleanup_task = asyncio.create_task(run_connection())
 
@@ -351,11 +412,11 @@ class MCPManager:
                             await asyncio.sleep(10)
                             try:
                                 await asyncio.wait_for(session.send_ping(), timeout=5.0)
-                            except Exception:
+                            except Exception as e:
                                 self._set_status(
                                     server_id,
                                     "error",
-                                    "Connection lost",
+                                    _extract_error_message(e),
                                 )
                                 break
 
@@ -378,36 +439,60 @@ class MCPManager:
         state = self._servers[server_id]
         state._connection_event.clear()
 
+        oauth = get_oauth_manager()
+        has_oauth_tokens = oauth.has_valid_tokens(server_id)
+
+        async def require_auth() -> bool:
+            if not state.url:
+                return False
+            probe = await oauth.probe_oauth_requirement(state.url)
+            if not probe.get("requiresOAuth"):
+                return False
+            state.oauth_status = "none"
+            state.oauth_provider_name = probe.get("providerName")
+            state.auth_hint = probe.get("authHint")
+            self._set_status(server_id, "requires_auth")
+            state._connection_event.set()
+            return True
+
         async def run_connection():
             try:
-                async with streamable_http_client(state.url or "") as (read, write, _):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        state.session = session
-                        tools_result = await session.list_tools()
-                        state.tools = tools_result.tools
-                        self._set_status(server_id, "connected")
-                        logger.info(
-                            f"MCP server {server_id} (HTTP) connected with "
-                            f"{len(state.tools)} tool(s)"
-                        )
-                        state._connection_event.set()
+                if not has_oauth_tokens and await require_auth():
+                    return
 
-                        while state.status == "connected":
-                            await asyncio.sleep(10)
-                            try:
-                                await asyncio.wait_for(session.send_ping(), timeout=5.0)
-                            except Exception:
-                                self._set_status(
-                                    server_id,
-                                    "error",
-                                    "Connection lost",
-                                )
-                                break
+                if has_oauth_tokens:
+                    oauth_provider = oauth.create_oauth_provider(
+                        server_id, state.url or ""
+                    )
+                    state.oauth_status = "authenticated"
+
+                    async with httpx.AsyncClient(
+                        auth=oauth_provider, timeout=30.0
+                    ) as http_client:
+                        async with streamable_http_client(
+                            state.url or "", http_client=http_client
+                        ) as (read, write, _):
+                            await self._run_mcp_session(server_id, state, read, write)
+                else:
+                    # Standard connection without OAuth
+                    async with streamable_http_client(state.url or "") as (
+                        read,
+                        write,
+                        _,
+                    ):
+                        await self._run_mcp_session(server_id, state, read, write)
 
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                error_str = str(e).lower()
+                if (
+                    not has_oauth_tokens
+                    and ("401" in error_str or "unauthorized" in error_str)
+                    and await require_auth()
+                ):
+                    return
+
                 logger.error(f"MCP HTTP connection {server_id} error: {e}")
                 self._set_status(server_id, "error", _extract_error_message(e))
                 state.session = None
@@ -416,9 +501,37 @@ class MCPManager:
         state._cleanup_task = asyncio.create_task(run_connection())
 
         try:
-            await asyncio.wait_for(state._connection_event.wait(), timeout=5.0)
+            await asyncio.wait_for(state._connection_event.wait(), timeout=10.0)
         except asyncio.TimeoutError:
             logger.warning(f"MCP server {server_id} connection timeout")
+
+    async def _run_mcp_session(
+        self,
+        server_id: str,
+        state: MCPServerState,
+        read: Any,
+        write: Any,
+    ) -> None:
+        """Run the MCP session after connection is established."""
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            state.session = session
+            tools_result = await session.list_tools()
+            state.tools = tools_result.tools
+            self._set_status(server_id, "connected")
+            logger.info(
+                f"MCP server {server_id} (HTTP) connected with "
+                f"{len(state.tools)} tool(s)"
+            )
+            state._connection_event.set()
+
+            while state.status == "connected":
+                await asyncio.sleep(10)
+                try:
+                    await asyncio.wait_for(session.send_ping(), timeout=5.0)
+                except Exception as e:
+                    self._set_status(server_id, "error", _extract_error_message(e))
+                    break
 
     async def reconnect(self, server_id: str) -> None:
         state = self._servers.get(server_id)
@@ -486,6 +599,9 @@ class MCPManager:
                     "toolCount": len(state.tools),
                     "serverType": state.server_type,
                     "config": config,
+                    "oauthStatus": state.oauth_status,
+                    "oauthProviderName": state.oauth_provider_name,
+                    "authHint": state.auth_hint,
                 }
             )
         return result

@@ -11,6 +11,7 @@ import {
   XCircle,
   AlertCircle,
   X,
+  KeyRound,
 } from "lucide-react";
 import {
   Dialog,
@@ -24,6 +25,7 @@ import { StatusBadge, type StatusConfig } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { ToolList } from "./tool-list";
 import { ToolTester } from "./tool-tester";
+import { McpErrorDisplay } from "./mcp-error-display";
 import type { McpServerStatus } from "@/contexts/tools-context";
 import type { MCPToolInfo } from "@/python/api";
 
@@ -47,6 +49,11 @@ const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
     icon: AlertCircle,
     label: "Disconnected",
     className: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
+  },
+  requires_auth: {
+    icon: KeyRound,
+    label: "Auth Required",
+    className: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   },
 };
 
@@ -113,7 +120,11 @@ export function McpServerInspectorDialog({
 
   const selectedTool = tools.find((t) => t.id === selectedToolId) || null;
   const isConnected = server.status === "connected";
-  const showReconnectButton = server.status === "error" || server.status === "disconnected";
+  const showReconnectButton =
+    server.status === "error" || server.status === "disconnected";
+  const showErrorDetails =
+    (server.status === "error" || server.status === "disconnected") &&
+    !!server.error;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,43 +218,64 @@ export function McpServerInspectorDialog({
               )}
             </div>
           </div>
+        ) : server.status === "connecting" ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <Loader2 className="size-12 text-muted-foreground/50 animate-spin mb-4" />
+            <p className="text-lg font-medium">Connecting to server...</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Please wait while we establish the connection
+            </p>
+          </div>
+        ) : showErrorDetails ? (
+          <div className="flex-1 flex min-h-0">
+            <div className="w-80 flex-shrink-0 flex flex-col items-center justify-center text-center p-8 border-r border-border">
+              <Plug className="size-12 text-muted-foreground/50 mb-4" />
+              <p className="text-lg font-medium">Server not connected</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                An error occurred while connecting.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                <RefreshCw
+                  className={cn("size-4", isReconnecting && "animate-spin")}
+                />
+                Reconnect
+              </Button>
+            </div>
+
+            <div className="flex-1 p-6 overflow-auto min-w-0">
+              <McpErrorDisplay error={server.error ?? ""} />
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-            {server.status === "connecting" ? (
-              <>
-                <Loader2 className="size-12 text-muted-foreground/50 animate-spin mb-4" />
-                <p className="text-lg font-medium">Connecting to server...</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Please wait while we establish the connection
-                </p>
-              </>
-            ) : server.status === "error" || server.status === "disconnected" ? (
-              <>
-                <Plug className="size-12 text-muted-foreground/50 mb-4" />
-                <p className="text-lg font-medium">Server not connected</p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                  {server.error || "The server is disconnected. Click reconnect to try again."}
-                </p>
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={handleReconnect}
-                  disabled={isReconnecting}
-                >
-                  <RefreshCw
-                    className={cn("size-4", isReconnecting && "animate-spin")}
-                  />
-                  Reconnect
-                </Button>
-              </>
-            ) : (
-              <>
-                <Plug className="size-12 text-muted-foreground/50 mb-4" />
-                <p className="text-lg font-medium">No tools available</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  This server doesn&apos;t expose any tools
-                </p>
-              </>
+            <Plug className="size-12 text-muted-foreground/50 mb-4" />
+            <p className="text-lg font-medium">
+              {server.status === "error" || server.status === "disconnected"
+                ? "Server not connected"
+                : "No tools available"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {server.status === "error" || server.status === "disconnected"
+                ? "The server is disconnected. Click reconnect to try again."
+                : "This server doesn't expose any tools"}
+            </p>
+            {(server.status === "error" || server.status === "disconnected") && (
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                <RefreshCw
+                  className={cn("size-4", isReconnecting && "animate-spin")}
+                />
+                Reconnect
+              </Button>
             )}
           </div>
         )}

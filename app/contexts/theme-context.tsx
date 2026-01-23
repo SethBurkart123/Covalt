@@ -55,10 +55,12 @@ const STORAGE_CUSTOM_THEMES_KEY = "theme-custom-themes";
 const STORAGE_ACTIVE_STYLES_KEY = "theme-active-styles";
 
 function getSystemPreference(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function resolveMode(mode: ThemeMode): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
   return mode === "system" ? getSystemPreference() : mode;
 }
 
@@ -134,9 +136,10 @@ function applyDarkModeClass(isDark: boolean): void {
 }
 
 function readStoredCustomThemes(): CustomTheme[] {
-  const raw = localStorage.getItem(STORAGE_CUSTOM_THEMES_KEY);
-  if (!raw) return [];
+  if (typeof window === "undefined") return [];
   try {
+    const raw = localStorage.getItem(STORAGE_CUSTOM_THEMES_KEY);
+    if (!raw) return [];
     return JSON.parse(raw) as CustomTheme[];
   } catch {
     return [];
@@ -144,6 +147,16 @@ function readStoredCustomThemes(): CustomTheme[] {
 }
 
 function readInitialThemeState(): ThemeState {
+  if (typeof window === "undefined") {
+    return {
+      mode: "system",
+      resolvedMode: "light",
+      preset: "default",
+      styles: { light: {}, dark: {} },
+      customThemes: [],
+    };
+  }
+
   const savedMode = localStorage.getItem(STORAGE_MODE_KEY) as ThemeMode | null;
   const mode: ThemeMode = savedMode ?? "system";
   const resolvedMode = resolveMode(mode);
@@ -178,16 +191,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [state.resolvedMode, state.styles, state.preset]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_MODE_KEY, state.mode);
-    localStorage.setItem(STORAGE_PRESET_KEY, state.preset);
-    localStorage.setItem(STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(state.customThemes));
+    try {
+      localStorage.setItem(STORAGE_MODE_KEY, state.mode);
+      localStorage.setItem(STORAGE_PRESET_KEY, state.preset);
+      localStorage.setItem(STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(state.customThemes));
 
-    if (state.preset !== "default") {
-      const activeStyles = state.styles[state.resolvedMode];
-      localStorage.setItem(STORAGE_ACTIVE_STYLES_KEY, JSON.stringify(activeStyles));
-    } else {
-      localStorage.removeItem(STORAGE_ACTIVE_STYLES_KEY);
-    }
+      if (state.preset !== "default") {
+        const activeStyles = state.styles[state.resolvedMode];
+        localStorage.setItem(STORAGE_ACTIVE_STYLES_KEY, JSON.stringify(activeStyles));
+      } else {
+        localStorage.removeItem(STORAGE_ACTIVE_STYLES_KEY);
+      }
+    } catch {}
   }, [state.mode, state.preset, state.customThemes, state.styles, state.resolvedMode]);
 
   const setMode = useCallback((mode: ThemeMode) => {

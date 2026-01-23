@@ -20,6 +20,7 @@ dependencies = [
     "agno>=2.3.20",
     "zynk",
     "agno-toolset",
+    "cryptography>=46.0.3",
 ]
 
 [dependency-groups]
