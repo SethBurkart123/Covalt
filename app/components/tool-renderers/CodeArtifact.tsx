@@ -1,7 +1,4 @@
-import { useState } from "react";
-import { FileCode2, Copy, Check, Loader2, Pencil } from "lucide-react";
-import { Highlight, themes } from "prism-react-renderer";
-import { useResolvedTheme } from "@/hooks/use-resolved-theme";
+import { FileCode2, Loader2, Pencil } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -10,7 +7,6 @@ import {
 } from "@/components/ui/collapsible";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-import { cn } from "@/lib/utils";
 import { EditableCodeViewer } from "./EditableCodeViewer";
 
 function extensionToLanguage(ext?: string): string | undefined {
@@ -61,93 +57,6 @@ function inferLanguage(toolArgs: Record<string, unknown>): string {
   return inferred || "text";
 }
 
-function CodeViewer({ code, language }: { code: string; language: string }) {
-  const resolvedTheme = useResolvedTheme();
-  const [copied, setCopied] = useState(false);
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="w-full relative">
-      <div className="h-0 sticky top-0">
-        <div className="pt-2 pr-2">
-          <button
-            onClick={copyToClipboard}
-            className="flex ml-auto items-center gap-2 text-xs px-2 py-1 rounded border border-border bg-background/50 hover:bg-background transition-colors"
-            title="Copy code"
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden">
-        <Highlight
-          theme={
-            resolvedTheme === "dark"
-              ? themes.gruvboxMaterialDark
-              : themes.gruvboxMaterialLight
-          }
-          code={code.replace(/\n$/, "")}
-          language={language || "text"}
-        >
-          {({ className, style, tokens, getLineProps, getTokenProps }) => (
-            <div className="flex">
-              <div className="flex-shrink-0">
-                {tokens.map((_, i) => (
-                  <div
-                    key={i}
-                    className="select-none text-muted-foreground px-3 py-1 text-right border-r border-border/50"
-                    style={{ width: "3.5rem", minWidth: "3.5rem" }}
-                  >
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-              <pre
-                className={cn("m-0 p-0 !bg-transparent overflow-x-scroll flex-1", className)}
-                style={style}
-              >
-                {tokens.map((line, i) => (
-                  <div
-                    key={i}
-                    {...getLineProps({ line })}
-                    className="px-3 py-1"
-                  >
-                    {line.map((token, key) => (
-                      <span key={key} {...getTokenProps({ token })} />
-                    ))}
-                  </div>
-                ))}
-              </pre>
-            </div>
-          )}
-        </Highlight>
-      </div>
-    </div>
-  );
-}
-
-function FileCodeViewer({ filePath, language, fallbackCode }: { filePath: string; language: string; fallbackCode: string }) {
-  const { getFileState } = useArtifactPanel();
-  const fileState = getFileState(filePath);
-  
-  if (fileState?.isLoading && !fileState?.content) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground p-8">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        Loading file...
-      </div>
-    );
-  }
-  
-  return <CodeViewer code={fileState?.content ?? fallbackCode} language={language} />;
-}
 
 export function CodeArtifact({
   toolName,
@@ -208,11 +117,11 @@ export function CodeArtifact({
       open(
         toolCallId || `${toolName}-${title}`,
         title,
-        <FileCodeViewer filePath={filePath} language={language} fallbackCode={code} />,
+        <EditableCodeViewer readOnly language={language} filePath={filePath} />,
         filePath
       );
     } else if (code) {
-      open(toolCallId || `${toolName}-${title}`, title, <CodeViewer code={code} language={language} />);
+      open(toolCallId || `${toolName}-${title}`, title, <EditableCodeViewer content={code} language={language} />);
     }
   };
 
