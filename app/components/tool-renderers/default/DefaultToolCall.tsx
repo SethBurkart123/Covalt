@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Check, X, Wrench } from "lucide-react";
 import { respondToToolApproval } from "@/python/api";
 import {
@@ -11,72 +11,8 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-
-function ArgumentsDisplay({
-  args,
-  editableArgs,
-  editedValues,
-  onValueChange,
-}: {
-  args: Record<string, unknown>;
-  editableArgs?: string[] | boolean;
-  editedValues?: Record<string, unknown>;
-  onValueChange?: (key: string, value: unknown) => void;
-}) {
-  const isEditable = (key: string) => {
-    if (!editableArgs || !onValueChange) return false;
-    if (editableArgs === true) return true;
-    return Array.isArray(editableArgs) && editableArgs.includes(key);
-  };
-
-  return (
-    <div className="space-y-2">
-      {Object.entries(args).map(([key, value]) => {
-        const editable = isEditable(key);
-        const displayValue = editedValues?.[key] ?? value;
-        const isMultiline = typeof displayValue === "string" && displayValue.includes("\n");
-
-        return (
-          <div key={key}>
-            <div className="text-xs font-medium text-muted-foreground mb-1">
-              {key} <span className="italic opacity-50">{editable && "(editable)"}</span>
-            </div>
-            {editable && onValueChange ? (
-              isMultiline ? (
-                <textarea
-                  className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[80px]"
-                  value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue, null, 2)}
-                  onChange={(e) => onValueChange(key, e.target.value)}
-                />
-              ) : (
-                <input
-                  type="text"
-                  className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary"
-                  value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue)}
-                  onChange={(e) => onValueChange(key, e.target.value)}
-                />
-              )
-            ) : (
-              <div className="w-full bg-background/5 text-sm px-3 py-2 rounded border border-border">
-                {typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue, null, 2)}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function DefaultResultRenderer({ content }: { content: string }) {
-  return (
-    <pre className="w-full text-xs bg-muted p-2 rounded overflow-x-auto !mt-1 !mb-0 max-h-64 overflow-y-auto">
-      <code className="!bg-transparent">
-        {typeof content === "string" ? content : JSON.stringify(content, null, 2)}
-      </code>
-    </pre>
-  );
-}
+import { ArgumentsDisplay } from "./ArgumentsDisplay";
+import { ResultRenderer } from "./ResultRenderer";
 
 export function DefaultToolCall({
   toolName,
@@ -235,7 +171,7 @@ export function DefaultToolCall({
             <div className="text-xs font-medium text-muted-foreground mb-2">
               Result
             </div>
-            <DefaultResultRenderer content={toolResult} />
+            <ResultRenderer content={toolResult} />
           </div>
         )}
       </CollapsibleContent>
