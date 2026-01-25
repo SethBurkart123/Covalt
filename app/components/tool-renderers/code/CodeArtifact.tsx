@@ -1,3 +1,5 @@
+"use client";
+
 import { FileCode2, Loader2 } from "lucide-react";
 import {
   Collapsible,
@@ -6,57 +8,9 @@ import {
   CollapsibleHeader,
 } from "@/components/ui/collapsible";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
+import { EditableCodeViewer } from "@/components/EditableCodeViewer";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-import { EditableCodeViewer } from "./EditableCodeViewer";
-
-function extensionToLanguage(ext?: string): string | undefined {
-  if (!ext) return undefined;
-  const normalized = ext.replace(/^\./, "").toLowerCase();
-  switch (normalized) {
-    case "js":
-      return "javascript";
-    case "jsx":
-      return "jsx";
-    case "ts":
-      return "typescript";
-    case "tsx":
-      return "tsx";
-    case "json":
-      return "json";
-    case "html":
-      return "html";
-    case "css":
-      return "css";
-    case "md":
-      return "markdown";
-    case "yml":
-    case "yaml":
-      return "yaml";
-    case "py":
-      return "python";
-    case "sh":
-      return "bash";
-    default:
-      return normalized;
-  }
-}
-
-function inferLanguage(toolArgs: Record<string, unknown>): string {
-  const fromArgs = (toolArgs.language as string) || (toolArgs.lang as string);
-  if (typeof fromArgs === "string" && fromArgs.trim()) return fromArgs.trim();
-
-  const filename = toolArgs.filename as string;
-  if (typeof filename === "string" && filename.includes(".")) {
-    const ext = filename.split(".").pop();
-    const inferred = extensionToLanguage(ext);
-    if (inferred) return inferred;
-  }
-
-  const ext = toolArgs.extension as string;
-  const inferred = extensionToLanguage(typeof ext === "string" ? ext : undefined);
-  return inferred || "text";
-}
-
+import { inferLanguage } from "./utils";
 
 export function CodeArtifact({
   toolName,
