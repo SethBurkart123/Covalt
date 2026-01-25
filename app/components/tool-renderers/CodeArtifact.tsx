@@ -1,4 +1,4 @@
-import { FileCode2, Loader2, Pencil } from "lucide-react";
+import { FileCode2, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -140,12 +140,6 @@ export function CodeArtifact({
         <CollapsibleHeader>
           <CollapsibleIcon icon={FileCode2} />
           <span className="text-sm font-medium text-foreground">{title}</span>
-          <span className="text-xs text-muted-foreground">{language}</span>
-          {isEditable && !isLoading && (
-            <span title="Editable">
-              <Pencil className="h-3 w-3 text-muted-foreground" />
-            </span>
-          )}
           {isLoading && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
