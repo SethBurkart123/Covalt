@@ -26,6 +26,11 @@ import { cn } from "@/lib/utils";
 import { ToolList } from "./tool-list";
 import { ToolTester } from "./tool-tester";
 import { McpErrorDisplay } from "./mcp-error-display";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 import type { McpServerStatus } from "@/contexts/tools-context";
 import type { MCPToolInfo } from "@/python/api";
 
@@ -86,16 +91,12 @@ export function McpServerInspectorDialog({
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    if (open && tools.length > 0 && !selectedToolId) {
+    if (!open) {
+      setSelectedToolId(null);
+    } else if (tools.length > 0 && !selectedToolId) {
       setSelectedToolId(tools[0].id);
     }
   }, [open, tools, selectedToolId]);
-
-  useEffect(() => {
-    if (!open) {
-      setSelectedToolId(null);
-    }
-  }, [open]);
 
   const handleReconnect = useCallback(async () => {
     setIsReconnecting(true);
@@ -118,11 +119,12 @@ export function McpServerInspectorDialog({
 
   if (!server) return null;
 
-  const isConnected = server.status === "connected";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[90vw] sm:!max-w-[90vw] w-full h-[85vh] p-0 flex flex-col overflow-hidden gap-0 [&>button:last-child]:hidden">
+      <DialogContent
+        className="!max-w-[90vw] sm:!max-w-[90vw] w-full h-[85vh] p-0 flex flex-col overflow-hidden gap-0 [&>button:last-child]:hidden"
+        overlayClose
+      >
         <DialogHeader className="px-5 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
@@ -188,18 +190,22 @@ export function McpServerInspectorDialog({
           </div>
         </DialogHeader>
 
-        {isConnected && tools.length > 0 ? (
-          <div className="flex-1 flex min-h-0">
-            <div className="w-80 border-r border-border overflow-auto flex-shrink-0">
-              <ToolList
-                tools={tools}
-                selectedToolId={selectedToolId}
-                onSelectTool={setSelectedToolId}
-              />
-            </div>
+        {server.status === "connected" && tools.length > 0 ? (
+          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
+            <ResizablePanel defaultSize="25%" minSize="15%">
+              <div className="h-full overflow-auto border-r border-border">
+                <ToolList
+                  tools={tools}
+                  selectedToolId={selectedToolId}
+                  onSelectTool={setSelectedToolId}
+                />
+              </div>
+            </ResizablePanel>
 
-            <div className="flex-1 min-w-0">
-              {tools.find((t) => t.id === selectedToolId) ? (
+            <ResizableHandle />
+
+            <ResizablePanel defaultSize="75%" minSize="30%">
+              {selectedToolId ? (
                 <ToolTester
                   tool={tools.find((t) => t.id === selectedToolId)!}
                   serverId={server.id}
@@ -210,8 +216,8 @@ export function McpServerInspectorDialog({
                   Select a tool to inspect
                 </div>
               )}
-            </div>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         ) : server.status === "connecting" ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
             <Loader2 className="size-12 text-muted-foreground/50 animate-spin mb-4" />
@@ -220,7 +226,7 @@ export function McpServerInspectorDialog({
               Please wait while we establish the connection
             </p>
           </div>
-        ) : (server.status === "error" || server.status === "disconnected") && !!server.error ? (
+        ) : (server.status === "error" || server.status === "disconnected") && server.error ? (
           <div className="flex-1 flex min-h-0">
             <div className="w-80 flex-shrink-0 flex flex-col items-center justify-center text-center p-8 border-r border-border">
               <Plug className="size-12 text-muted-foreground/50 mb-4" />
@@ -242,7 +248,7 @@ export function McpServerInspectorDialog({
             </div>
 
             <div className="flex-1 p-6 overflow-auto min-w-0">
-              <McpErrorDisplay error={server.error ?? ""} />
+              <McpErrorDisplay error={server.error} />
             </div>
           </div>
         ) : (
