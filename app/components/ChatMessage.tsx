@@ -46,17 +46,9 @@ function ChatMessage({
     const content = contentRef.current;
     if (!content) return;
 
-    const existingIndicators = content.querySelectorAll(
-      ".inline-typewriter-indicator"
-    );
-    existingIndicators.forEach((el) => el.remove());
+    content.querySelectorAll(".inline-typewriter-indicator").forEach((el) => el.remove());
 
-    const hasContent =
-      typeof content === "string"
-        ? content !== ""
-        : Array.isArray(content) && content.length > 0;
-
-    if (isStreaming && hasContent) {
+    if (isStreaming) {
       const walker = document.createTreeWalker(
         content,
         NodeFilter.SHOW_TEXT,
@@ -93,10 +85,7 @@ function ChatMessage({
     }
 
     return () => {
-      const indicators = content.querySelectorAll(
-        ".inline-typewriter-indicator"
-      );
-      indicators.forEach((el) => el.remove());
+      content.querySelectorAll(".inline-typewriter-indicator").forEach((el) => el.remove());
     };
   }, [isStreaming, content]);
 
@@ -312,11 +301,9 @@ function ChatMessage({
 }
 
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
-  if (prevProps.isStreaming !== nextProps.isStreaming || nextProps.isStreaming) {
-    return false;
-  }
-  
   return (
+    !nextProps.isStreaming &&
+    prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.role === nextProps.role &&
     prevProps.content === nextProps.content &&
     prevProps.message?.id === nextProps.message?.id &&

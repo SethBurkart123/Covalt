@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -70,19 +70,19 @@ export default function ModelChipSelector({
         models,
         providerDef: PROVIDER_MAP[provider],
       }))
-      .sort((a, b) => {
-        const aName = a.providerDef?.name || a.provider;
-        const bName = b.providerDef?.name || b.provider;
-        return aName.localeCompare(bName);
-      });
+      .sort((a, b) =>
+        (a.providerDef?.name || a.provider).localeCompare(
+          b.providerDef?.name || b.provider
+        )
+      );
   }, [unselectedModels]);
-
-  const shouldCollapse = !showAll && selectedModels.length > SHOW_MORE_THRESHOLD;
 
   const handleSelect = (provider: string, modelId: string) => {
     onAdd(provider, modelId);
     setOpen(false);
   };
+
+  const shouldCollapse = !showAll && selectedModels.length > SHOW_MORE_THRESHOLD;
 
   if (selectedModels.length === 0 && unselectedModels.length === 0) {
     return (
@@ -118,21 +118,15 @@ export default function ModelChipSelector({
               <CommandInput placeholder="Search models..." />
               <CommandList className="max-h-64">
                 <CommandEmpty>No models available.</CommandEmpty>
-                {groupedUnselected.map((group) => {
-                  const providerName =
-                    group.providerDef?.name || group.provider;
-
-                  return (
+                {groupedUnselected.map((group) => (
                     <Fragment key={group.provider}>
-                      <CommandGroup heading={providerName}>
+                      <CommandGroup heading={group.providerDef?.name || group.provider}>
                         {group.models.map((model) => {
-                          const modelKey = getModelKey(model);
-                          const modelProviderDef = PROVIDER_MAP[model.provider];
-                          const ProviderIcon = modelProviderDef?.icon;
+                          const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
 
                           return (
                             <CommandItem
-                              key={modelKey}
+                              key={getModelKey(model)}
                               value={`${model.provider}:${model.modelId}:${model.displayName}`}
                               onSelect={() =>
                                 handleSelect(model.provider, model.modelId)
@@ -154,8 +148,7 @@ export default function ModelChipSelector({
                         })}
                       </CommandGroup>
                     </Fragment>
-                  );
-                })}
+                ))}
               </CommandList>
             </Command>
           </PopoverContent>
@@ -163,13 +156,11 @@ export default function ModelChipSelector({
 
         <AnimatePresence mode="popLayout">
           {selectedModels.map((model) => {
-            const modelKey = getModelKey(model);
-            const modelProviderDef = PROVIDER_MAP[model.provider];
-            const ProviderIcon = modelProviderDef?.icon;
+            const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
 
             return (
               <motion.div
-                key={modelKey}
+                key={getModelKey(model)}
                 layout
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}

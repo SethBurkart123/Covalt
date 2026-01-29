@@ -60,17 +60,14 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
     }
   }
 
-  const sortNodes = (nodes: FileTreeNode[]): FileTreeNode[] => {
-    return nodes.sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) {
-        return a.isDirectory ? -1 : 1;
-      }
+  const sortNodes = (nodes: FileTreeNode[]): FileTreeNode[] =>
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
       return a.name.localeCompare(b.name);
     }).map((node) => ({
       ...node,
       children: node.children ? sortNodes(node.children) : undefined,
     }));
-  };
 
   return sortNodes(root);
 }
@@ -162,15 +159,13 @@ function FilePreviewDialog({
 
     getWorkspaceFile({ body: { chatId, path: filePath } })
       .then((response) => setContent(atob(response.content)))
-      .catch((err: Error) => setError(err.message || "Failed to load file"))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [open, chatId, filePath]);
 
-  const fileName = filePath?.split("/").pop() || "File";
-  const isTextFile = /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(fileName);
-
   const handleDownload = () => {
     if (!content || !filePath) return;
+    const fileName = filePath.split("/").pop() || "File";
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -181,6 +176,9 @@ function FilePreviewDialog({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  const fileName = filePath?.split("/").pop() || "File";
+  const isTextFile = /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(fileName);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -247,8 +245,7 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
     setError(null);
 
     try {
-      const response = await getWorkspaceFiles({ body: { chatId } });
-      setFiles(response.files);
+      setFiles((await getWorkspaceFiles({ body: { chatId } })).files);
     } catch (err) {
       setError("Failed to load files");
       console.error("Failed to load workspace files:", err);

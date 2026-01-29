@@ -36,9 +36,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [editTitle, setEditTitle] = useState("");
 
   const handleRenameConfirm = async (id: string) => {
-    if (editTitle.trim()) {
-      await renameChat(id, editTitle.trim());
-    }
+    if (editTitle.trim()) await renameChat(id, editTitle.trim());
     setEditingId(null);
     setEditTitle("");
   };
@@ -97,12 +95,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                 </SidebarMenuItem>
                 {group.chatIds.map((id) => {
-                  const title = chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`;
                   const streamState = getStreamState(id);
                   return (
                     <ChatItem
                       key={id}
-                      title={title}
+                      title={chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`}
                       isActive={currentChatId === id}
                       isStreaming={streamState?.isStreaming ?? false}
                       isPausedForApproval={streamState?.isPausedForApproval ?? false}
@@ -119,7 +116,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       }}
                       onRename={() => {
                         setEditingId(id);
-                        setEditTitle(title);
+                        setEditTitle(chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`);
                       }}
                       onDelete={() => deleteChat(id)}
                       isStarred={chatsData[id]?.starred ?? false}

@@ -401,10 +401,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       []
     );
 
-    const uploadedCount = pendingAttachments.filter(att => att.uploadStatus === "uploaded").length;
     const canSubmit =
       canSendMessage && 
-      (input.trim().length > 0 || uploadedCount > 0) &&
+      (input.trim().length > 0 || pendingAttachments.some(att => att.uploadStatus === "uploaded")) &&
       !hasUploadingFiles &&
       !hasUploadErrors;
 

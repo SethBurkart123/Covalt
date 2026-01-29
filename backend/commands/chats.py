@@ -32,10 +32,9 @@ from ..services.tool_registry import get_tool_registry
 
 @command
 async def get_all_chats() -> AllChatsData:
-    chats: Dict[str, ChatData] = {}
     with db.db_session() as sess:
-        for r in db.list_chats(sess):
-            chat = ChatData(
+        chats = {
+            r.id: ChatData(
                 id=r.id,
                 title=r.title,
                 model=r.model,
@@ -44,7 +43,8 @@ async def get_all_chats() -> AllChatsData:
                 starred=r.starred,
                 messages=[],
             )
-            chats[chat.id or "unknown"] = chat
+            for r in db.list_chats(sess)
+        }
     return AllChatsData(chats=chats)
 
 
@@ -54,7 +54,6 @@ async def create_chat(body: CreateChatInput) -> ChatData:
     chatId = body.id or str(uuid.uuid4())
     title = (body.title or "New Chat").strip() or "New Chat"
 
-    agent_config = None
     if body.agentConfig:
         agent_config = {
             "provider": body.agentConfig.provider,
@@ -120,7 +119,6 @@ async def delete_chat(body: ChatId) -> None:
     with db.db_session() as sess:
         db.delete_chat(sess, chatId=body.id)
     delete_chat_workspace(body.id)
-    return None
 
 
 @command
@@ -152,13 +150,11 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 @command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
     update_agent_tools(body.chatId, body.toolIds)
-    return None
 
 
 @command
 async def update_chat_model(body: UpdateChatModelInput) -> None:
     update_agent_model(body.chatId, body.provider, body.modelId)
-    return None
 
 
 @command

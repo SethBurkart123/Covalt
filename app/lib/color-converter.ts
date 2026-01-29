@@ -1,6 +1,5 @@
 import type { ColorFormat } from "./types";
 
-// Helper function to convert hex to RGB
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 	const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
 	const expandedHex = hex.replace(
@@ -18,12 +17,10 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 		: null;
 }
 
-// Helper function to convert RGB to hex
 function rgbToHex(r: number, g: number, b: number): string {
 	return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
-// Helper function to convert RGB to HSL
 function rgbToHsl(
 	r: number,
 	g: number,
@@ -61,12 +58,9 @@ function rgbToHsl(
 	return { h: h * 360, s: s * 100, l: l * 100 };
 }
 
-// Helper function to parse HSL string
 function parseHsl(hslStr: string): { h: number; s: number; l: number } | null {
-	const hslRegex = /hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i;
-	const hslRegexWithSpaces = /hsl\(\s*(\d+)\s+(\d+)%\s+(\d+)%\s*\)/i;
-
-	const match = hslRegex.exec(hslStr) || hslRegexWithSpaces.exec(hslStr);
+	const match = /hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i.exec(hslStr) || 
+	              /hsl\(\s*(\d+)\s+(\d+)%\s+(\d+)%\s*\)/i.exec(hslStr);
 
 	if (!match) {
 		const rawValues = hslStr.split(" ");
@@ -87,60 +81,44 @@ function parseHsl(hslStr: string): { h: number; s: number; l: number } | null {
 	};
 }
 
-// Format color value to specified format
 export function colorFormatter(
 	color: string,
 	targetFormat: ColorFormat,
 	precision = "0",
 ): string {
-	// Handle empty or invalid input
 	if (!color) return "";
 
-	// If color is already in the target format
-	if (
-		(targetFormat === "hex" && color.startsWith("#")) ||
-		(targetFormat === "hsl" && color.startsWith("hsl")) ||
-		(targetFormat === "rgb" && color.startsWith("rgb")) ||
-		(targetFormat === "oklch" && color.startsWith("oklch"))
-	) {
+	if ((targetFormat === "hex" && color.startsWith("#")) ||
+	    (targetFormat === "hsl" && color.startsWith("hsl")) ||
+	    (targetFormat === "rgb" && color.startsWith("rgb")) ||
+	    (targetFormat === "oklch" && color.startsWith("oklch"))) {
 		return color;
 	}
 
-	// Extract RGB values from different formats
-	let r: number;
-	let g: number;
-	let b: number;
+	let r: number, g: number, b: number;
 
 	if (color.startsWith("#")) {
-		// Convert from hex
 		const rgb = hexToRgb(color);
 		if (!rgb) return color;
-		r = rgb.r;
-		g = rgb.g;
-		b = rgb.b;
+		({ r, g, b } = rgb);
 	} else if (color.startsWith("rgb")) {
-		// Parse RGB format
 		const match = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(color);
 		if (!match) return color;
 		r = Number.parseInt(match[1], 10);
 		g = Number.parseInt(match[2], 10);
 		b = Number.parseInt(match[3], 10);
 	} else if (color.startsWith("hsl") || color.includes(" ")) {
-		// Parse HSL format
 		const hsl = parseHsl(color);
 		if (!hsl) return color;
 
-		// Convert HSL to RGB
 		const { h, s, l } = hsl;
 		const c = ((1 - Math.abs((2 * l) / 100 - 1)) * s) / 100;
 		const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
 		const m = l / 100 - c / 2;
 
-		let rp: number;
-		let gp: number;
-		let bp: number;
+		let rp: number, gp: number, bp: number;
 
-		if (h >= 0 && h < 60) {
+		if (h < 60) {
 			[rp, gp, bp] = [c, x, 0];
 		} else if (h >= 60 && h < 120) {
 			[rp, gp, bp] = [x, c, 0];
@@ -158,10 +136,8 @@ export function colorFormatter(
 		g = Math.round((gp + m) * 255);
 		b = Math.round((bp + m) * 255);
 	} else {
-		return color; // Return original if not recognized
+		return color;
 	}
-
-	// Convert to target format
 	switch (targetFormat) {
 		case "hex":
 			return rgbToHex(r, g, b);
@@ -172,21 +148,16 @@ export function colorFormatter(
 			const hRounded = Math.round(h);
 			const sRounded = Math.round(s);
 			const lRounded = Math.round(l);
-
-			if (precision === "0") {
-				return `${hRounded} ${sRounded}% ${lRounded}%`;
-			}
-
-			return `hsl(${hRounded}, ${sRounded}%, ${lRounded}%)`;
+			return precision === "0" 
+				? `${hRounded} ${sRounded}% ${lRounded}%`
+				: `hsl(${hRounded}, ${sRounded}%, ${lRounded}%)`;
 		}
-		case "oklch":
-			// A simplified conversion to oklch format
-			// This is a placeholder - real conversion would require proper color space transformations
-			return `oklch(${(0.2126 * r + 0.7152 * g + 0.0722 * b) / 255} ${
-				Math.sqrt((r - g) * (r - g) + (r - b) * (r - b) + (g - b) * (g - b)) /
-				255 /
-				3
-			} ${(Math.atan2(b - g, r - g) * 180) / Math.PI})`;
+		case "oklch": {
+			const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+			const C = Math.sqrt((r - g) ** 2 + (r - b) ** 2 + (g - b) ** 2) / 255 / 3;
+			const H = (Math.atan2(b - g, r - g) * 180) / Math.PI;
+			return `oklch(${L} ${C} ${H})`;
+		}
 		default:
 			return color;
 	}

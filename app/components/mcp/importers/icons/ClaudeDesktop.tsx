@@ -3,7 +3,7 @@ export default function ClaudeDesktopIcon() {
     <img
       src="/apps/claude-desktop.png"
       alt="Claude Desktop"
-      className="size-5 min-w-5 min-h-5"
+      className="size-5"
     />
   );
 }

@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import shutil
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -28,24 +29,20 @@ SUPPORTED_MANIFEST_VERSIONS = ["1"]
 
 
 def get_toolsets_directory() -> Path:
-    """Get the base directory for installed toolsets."""
     toolsets_dir = get_db_directory() / "toolsets"
     toolsets_dir.mkdir(parents=True, exist_ok=True)
     return toolsets_dir
 
 
 def get_toolset_directory(toolset_id: str) -> Path:
-    """Get the directory for a specific toolset."""
     return get_toolsets_directory() / toolset_id
 
 
 def _compute_hash(content: bytes) -> str:
-    """Compute SHA-256 hash of content."""
     return hashlib.sha256(content).hexdigest()
 
 
 def _classify_file(path: str) -> str:
-    """Classify a file by its path into a kind."""
     if path.startswith("tools/") and path.endswith(".py"):
         return "python"
     if path.startswith("artifacts/"):
@@ -116,7 +113,6 @@ class ToolsetManager:
         self.toolsets_dir = get_toolsets_directory()
 
     def list_toolsets(self, user_mcp: bool | None = None) -> list[dict[str, Any]]:
-        """List toolsets, optionally filtered by user_mcp flag."""
         with db_session() as sess:
             query = sess.query(Toolset)
             if user_mcp is not None:
@@ -139,7 +135,7 @@ class ToolsetManager:
     def get_toolset(self, toolset_id: str) -> dict[str, Any] | None:
         with db_session() as session:
             toolset = session.query(Toolset).filter(Toolset.id == toolset_id).first()
-            if toolset is None:
+            if not toolset:
                 return None
 
             tools = session.query(Tool).filter(Tool.toolset_id == toolset_id).all()
@@ -276,7 +272,7 @@ class ToolsetManager:
 
     def export_to_zip(self, toolset_id: str) -> bytes:
         toolset = self.get_toolset(toolset_id)
-        if toolset is None:
+        if not toolset:
             raise ValueError(f"Toolset '{toolset_id}' not found")
 
         toolset_dir = get_toolset_directory(toolset_id)
@@ -302,19 +298,16 @@ class ToolsetManager:
     def enable_toolset(self, toolset_id: str, enabled: bool = True) -> bool:
         with db_session() as sess:
             toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
-            if toolset is None:
+            if not toolset:
                 return False
 
             toolset.enabled = enabled
-
             sess.query(Tool).filter(Tool.toolset_id == toolset_id).update(
                 {"enabled": enabled}
             )
-
             sess.query(ToolsetMcpServer).filter(
                 ToolsetMcpServer.toolset_id == toolset_id
             ).update({"enabled": enabled})
-
             sess.commit()
 
         logger.info(f"{'Enabled' if enabled else 'Disabled'} toolset '{toolset_id}'")
@@ -323,7 +316,7 @@ class ToolsetManager:
     def uninstall(self, toolset_id: str) -> bool:
         with db_session() as sess:
             toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
-            if toolset is None:
+            if not toolset:
                 return False
 
             sess.delete(toolset)
@@ -357,9 +350,12 @@ class ToolsetManager:
 
         if "/" in path:
             first, rest = path.split("/", 1)
-            if rest and not rest.startswith("/"):
-                if first not in ("tools", "artifacts", "assets"):
-                    return rest
+            if (
+                rest
+                and not rest.startswith("/")
+                and first not in ("tools", "artifacts", "assets")
+            ):
+                return rest
 
         return path
 
@@ -371,8 +367,6 @@ class ToolsetManager:
         source_ref: str | None,
         user_mcp: bool = False,
     ) -> None:
-        import uuid
-
         with db_session() as sess:
             toolset = Toolset(
                 id=manifest.id,
@@ -415,16 +409,17 @@ class ToolsetManager:
 
                 renderer = tool_def.get("renderer")
                 if renderer:
-                    override = ToolOverride(
-                        id=str(uuid.uuid4()),
-                        toolset_id=manifest.id,
-                        tool_id=tool_id,
-                        renderer=renderer.get("type", "code"),
-                        renderer_config=json.dumps(
-                            {k: v for k, v in renderer.items() if k != "type"}
-                        ),
+                    sess.add(
+                        ToolOverride(
+                            id=str(uuid.uuid4()),
+                            toolset_id=manifest.id,
+                            tool_id=tool_id,
+                            renderer=renderer.get("type", "code"),
+                            renderer_config=json.dumps(
+                                {k: v for k, v in renderer.items() if k != "type"}
+                            ),
+                        )
                     )
-                    sess.add(override)
 
             for mcp_def in manifest.mcp_servers:
                 server_id = mcp_def.get("id")
@@ -464,7 +459,7 @@ class ToolsetManager:
     def _generate_manifest(self, toolset_id: str) -> dict[str, Any]:
         with db_session() as sess:
             toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
-            if toolset is None:
+            if not toolset:
                 raise ValueError(f"Toolset '{toolset_id}' not found")
 
             tools = sess.query(Tool).filter(Tool.toolset_id == toolset_id).all()
@@ -505,8 +500,10 @@ class ToolsetManager:
 
                     override = (
                         sess.query(ToolOverride)
-                        .filter(ToolOverride.toolset_id == toolset_id)
-                        .filter(ToolOverride.tool_id == tool.tool_id)
+                        .filter(
+                            ToolOverride.toolset_id == toolset_id,
+                            ToolOverride.tool_id == tool.tool_id,
+                        )
                         .first()
                     )
 
@@ -544,7 +541,6 @@ class ToolsetManager:
             return manifest
 
     def create_user_mcp_toolset(self, server_id: str) -> str:
-        """Create a user_mcp toolset for a standalone MCP server."""
         with db_session() as sess:
             existing = sess.query(Toolset).filter(Toolset.id == server_id).first()
             if existing:

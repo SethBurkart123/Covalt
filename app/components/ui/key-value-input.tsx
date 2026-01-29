@@ -35,9 +35,7 @@ export function KeyValueInput({
   };
 
   const updateRow = (index: number, field: "key" | "value", val: string) => {
-    const updated = [...values];
-    updated[index] = { ...updated[index], [field]: val };
-    onChange(updated);
+    onChange(values.map((v, i) => i === index ? { ...v, [field]: val } : v));
   };
 
   return (

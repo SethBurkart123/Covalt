@@ -22,8 +22,8 @@ export function ArgumentsDisplay({
   return (
     <div className="space-y-2">
       {Object.entries(args).map(([key, value]) => {
-        const editable = isEditable(key);
         const displayValue = editedValues?.[key] ?? value;
+        const editable = isEditable(key);
         const isMultiline = typeof displayValue === "string" && displayValue.includes("\n");
 
         return (

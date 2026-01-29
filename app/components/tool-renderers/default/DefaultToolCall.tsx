@@ -46,21 +46,20 @@ export function DefaultToolCall({
     setEditedValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  const getEditedArgs = () => {
-    if (Object.keys(editedValues).length === 0) return undefined;
-    return { ...toolArgs, ...editedValues };
-  };
-
   const handleApprove = async () => {
     if (!runId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
+    const editedArgs = Object.keys(editedValues).length > 0 
+      ? { [toolCallId]: { ...toolArgs, ...editedValues } }
+      : undefined;
+
     try {
       await respondToToolApproval({
         body: {
           runId,
           approved: true,
           toolDecisions: { [toolCallId]: true },
-          editedArgs: getEditedArgs() ? { [toolCallId]: getEditedArgs()! } : undefined,
+          editedArgs,
         },
       });
       setApprovalStatus("approved");
@@ -90,9 +89,6 @@ export function DefaultToolCall({
     }
   };
 
-  const showChevron = !requiresApproval || approvalStatus !== "pending";
-  const showShimmer = !isCompleted && approvalStatus !== "pending";
-
   return (
     <Collapsible
       open={isOpen}
@@ -100,8 +96,8 @@ export function DefaultToolCall({
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={showShimmer}
-      disableToggle={!showChevron}
+      shimmer={!isCompleted && approvalStatus !== "pending"}
+      disableToggle={!(!requiresApproval || approvalStatus !== "pending")}
       data-toolcall
     >
       <CollapsibleTrigger>

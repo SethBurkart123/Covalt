@@ -11,7 +11,6 @@ export interface ProviderConfig {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
-  // JSON string representing provider-specific options
   extra?: string;
   enabled: boolean;
 }
@@ -23,7 +22,7 @@ export interface ProviderFieldDef {
   label: string;
   type: 'password' | 'text' | 'textarea';
   placeholder?: string;
-  required?: boolean; // default true
+  required?: boolean;
 }
 
 export interface ProviderDefinition {

@@ -1,9 +1,9 @@
 "use client";
 
-import type * as React from "react";
+import { type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-interface ColorSwatchProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ColorSwatchProps extends HTMLAttributes<HTMLDivElement> {
 	color: string;
 	size?: "sm" | "md" | "lg";
 }

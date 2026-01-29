@@ -51,34 +51,32 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
     );
     const selectAllRef = useRef<CheckboxButtonEl>(null);
 
-    useEffect(() => {
-      const doScan = async () => {
-        setIsScanning(true);
-        setScanError(null);
-        try {
-          const results = await scanImportSources();
-          setScanResults(results);
+  useEffect(() => {
+    const scan = async () => {
+      setIsScanning(true);
+      setScanError(null);
+      try {
+        const results = await scanImportSources();
+        setScanResults(results);
 
-          const firstSourceWithServers = IMPORT_SOURCES.find(
-            (source) => (results.results[source.key]?.servers?.length ?? 0) > 0
-          );
-          if (!firstSourceWithServers) return;
+        const firstSourceWithServers = IMPORT_SOURCES.find(
+          (source) => (results.results[source.key]?.servers?.length ?? 0) > 0
+        );
+        if (!firstSourceWithServers) return;
 
-          setSelectedSource(firstSourceWithServers.key);
-          setSelectedServerIds(
-            new Set(
-              results.results[firstSourceWithServers.key].servers.map((s) => s.id)
-            )
-          );
-        } catch (e) {
-          setScanError(e instanceof Error ? e.message : "Failed to scan for apps");
-        } finally {
-          setIsScanning(false);
-        }
-      };
+        setSelectedSource(firstSourceWithServers.key);
+        setSelectedServerIds(
+          new Set(results.results[firstSourceWithServers.key].servers.map((s) => s.id))
+        );
+      } catch (e) {
+        setScanError(e instanceof Error ? e.message : "Failed to scan for apps");
+      } finally {
+        setIsScanning(false);
+      }
+    };
 
-      doScan();
-    }, []);
+    scan();
+  }, []);
 
   const availableSources = useMemo(() => {
     if (!scanResults) return [];
@@ -94,48 +92,39 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
 
   const handleSourceChange = useCallback((sourceKey: string) => {
     setSelectedSource(sourceKey);
-    if (scanResults) {
-      const serverIds = scanResults.results[sourceKey]?.servers?.map((s) => s.id) ?? [];
-      setSelectedServerIds(new Set(serverIds));
-    }
+    if (!scanResults) return;
+    const serverIds = scanResults.results[sourceKey]?.servers?.map((s) => s.id) ?? [];
+    setSelectedServerIds(new Set(serverIds));
   }, [scanResults]);
 
   const handleServerToggle = useCallback((serverId: string, checked: boolean) => {
     setSelectedServerIds((prev) => {
       const next = new Set(prev);
-      if (checked) {
-        next.add(serverId);
-      } else {
-        next.delete(serverId);
-      }
+      checked ? next.add(serverId) : next.delete(serverId);
       return next;
     });
   }, []);
 
   const handleSelectAllToggle = useCallback((checked: boolean) => {
-    if (checked) {
-      setSelectedServerIds(new Set(currentServers.map((s) => s.id)));
-    } else {
-      setSelectedServerIds(new Set());
-    }
+    setSelectedServerIds(checked ? new Set(currentServers.map((s) => s.id)) : new Set());
   }, [currentServers]);
 
   const allSelected =
     currentServers.length > 0 && selectedServerIds.size === currentServers.length;
   const someSelected = selectedServerIds.size > 0 && selectedServerIds.size < currentServers.length;
 
-  const selectedServers = useMemo(() => {
-    return currentServers.filter((s) => selectedServerIds.has(s.id));
-  }, [currentServers, selectedServerIds]);
+  const selectedServers = useMemo(
+    () => currentServers.filter((s) => selectedServerIds.has(s.id)),
+    [currentServers, selectedServerIds]
+  );
 
   const formatCommandPreview = (server: ScannedServer) => {
-    const config = server.config;
-    if (typeof config.url === "string" && config.url.length > 0) {
-      return config.url;
+    if (typeof server.config.url === "string" && server.config.url.length > 0) {
+      return server.config.url;
     }
-    const cmd = typeof config.command === "string" ? config.command : "";
-    const args = Array.isArray(config.args)
-      ? config.args.filter((a): a is string => typeof a === "string")
+    const cmd = typeof server.config.command === "string" ? server.config.command : "";
+    const args = Array.isArray(server.config.args)
+      ? server.config.args.filter((a): a is string => typeof a === "string")
       : [];
     return [cmd, ...args].join(" ");
   };
@@ -187,8 +176,6 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
     );
   }
 
-  const selectedSourceDef = selectedSource ? IMPORT_SOURCE_MAP[selectedSource] : null;
-
   return (
     <div className="space-y-4 overflow-hidden">
       <div className="space-y-2">
@@ -196,12 +183,15 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
         <Select value={selectedSource ?? ""} onValueChange={handleSourceChange}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Select an application">
-              {selectedSourceDef &&
-                <span className="flex items-center gap-2">
-                  <selectedSourceDef.icon />
-                  {selectedSourceDef.name}
-                </span>
-              }
+              {selectedSource && IMPORT_SOURCE_MAP[selectedSource] && (() => {
+                const Icon = IMPORT_SOURCE_MAP[selectedSource].icon;
+                return (
+                  <span className="flex items-center gap-2">
+                    <Icon />
+                    {IMPORT_SOURCE_MAP[selectedSource].name}
+                  </span>
+                );
+              })()}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>

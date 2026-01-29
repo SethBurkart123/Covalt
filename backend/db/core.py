@@ -16,19 +16,16 @@ _db_path_override: Optional[Path] = None
 
 
 def set_db_path(path: Path) -> None:
-    """Override default database path."""
     global _db_path_override
     path.parent.mkdir(parents=True, exist_ok=True)
     _db_path_override = path
 
 
 def get_db_path() -> Path:
-    """Get current database path."""
     return _db_path_override or _get_db_path()
 
 
 def _ensure_engine():
-    """Initialize database engine if not already created."""
     global _engine, _Session
     if _engine is None:
         db_path = get_db_path()
@@ -42,12 +39,10 @@ def _ensure_engine():
 
 
 def _get_engine():
-    """Get the database engine (internal use for migrations)."""
     return _engine
 
 
 def init_database() -> Path:
-    """Ensure the database engine and schema exist. Returns DB path."""
     _ensure_engine()
     from .migrations import run_migrations
 
@@ -56,7 +51,6 @@ def init_database() -> Path:
 
 
 def session() -> Session:
-    """Create a new database session."""
     _ensure_engine()
     assert _Session is not None
     return _Session()
@@ -64,7 +58,6 @@ def session() -> Session:
 
 @contextmanager
 def db_session():
-    """Context manager for database sessions - handles cleanup automatically."""
     sess = session()
     try:
         yield sess

@@ -57,5 +57,5 @@ export const IMPORT_SOURCES: ImportSourceWithIcon[] = [
 ];
 
 export const IMPORT_SOURCE_MAP = Object.fromEntries(
-  IMPORT_SOURCES.map((s) => [s.key, s])
+  IMPORT_SOURCES.map((source) => [source.key, source])
 ) as Record<string, ImportSourceWithIcon>;

@@ -104,7 +104,7 @@ def update_chat(
     updatedAt: Optional[str] = None,
     starred: Optional[bool] = None,
 ) -> None:
-    chat: Optional[Chat] = sess.get(Chat, id)
+    chat = sess.get(Chat, id)
     if not chat:
         return
     if title is not None:
@@ -337,12 +337,11 @@ def _load_attachment_content(
     chat_id: str, message_id: str, filename: str, mime_type: str
 ) -> Optional[bytes]:
     from ..services.workspace_manager import get_workspace_manager
+    from .core import db_session
 
     workspace_manager = get_workspace_manager(chat_id)
     if content := workspace_manager.read_file(filename):
         return content
-
-    from .core import db_session
 
     with db_session() as sess:
         if manifest_id := get_manifest_for_message(sess, message_id):

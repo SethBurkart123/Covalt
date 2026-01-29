@@ -158,25 +158,21 @@ export default function BrowsePanel() {
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {CATEGORIES.map((category) => {
-          const Icon = category.icon;
-          const isActive = activeCategory === category.id;
-          return (
-            <button
-              key={category.id}
-              onClick={() => setActiveCategory(category.id)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
-                isActive
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="size-3.5" />
-              {category.label}
-            </button>
-          );
-        })}
+        {CATEGORIES.map((category) => (
+          <button
+            key={category.id}
+            onClick={() => setActiveCategory(category.id)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
+              activeCategory === category.id
+                ? "bg-foreground text-background"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <category.icon className="size-3.5" />
+            {category.label}
+          </button>
+        ))}
       </div>
 
       <section>

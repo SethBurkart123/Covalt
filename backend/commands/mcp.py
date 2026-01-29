@@ -1,5 +1,3 @@
-"""MCP server management commands."""
-
 from __future__ import annotations
 
 import json
@@ -79,40 +77,30 @@ def _server_info(mcp: Any, server_data: Dict[str, Any]) -> MCPServerInfo:
 
 
 class AddMCPServerInput(BaseModel):
-    """Input for adding a new MCP server."""
-
     id: str
     config: MCPServerConfig
 
 
 class UpdateMCPServerInput(BaseModel):
-    """Input for updating an MCP server."""
-
     id: str
     config: MCPServerConfig
 
 
 class MCPServerId(BaseModel):
-    """Input containing just a server ID."""
-
     id: str
 
 
 @command
 async def get_mcp_servers() -> MCPServersResponse:
-    """Get all MCP servers with their status and tools."""
     mcp = get_mcp_manager()
-
-    servers = [_server_info(mcp, server_data) for server_data in mcp.get_servers()]
-
-    return MCPServersResponse(servers=servers)
+    return MCPServersResponse(
+        servers=[_server_info(mcp, server_data) for server_data in mcp.get_servers()]
+    )
 
 
 @command
 async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
-    """Add a new MCP server and connect to it."""
-    toolset_manager = get_toolset_manager()
-    toolset_manager.create_user_mcp_toolset(body.id)
+    get_toolset_manager().create_user_mcp_toolset(body.id)
 
     mcp = get_mcp_manager()
     await mcp.add_server(
@@ -128,7 +116,6 @@ async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
 
 @command
 async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
-    """Update an MCP server configuration and reconnect."""
     mcp = get_mcp_manager()
     await mcp.update_server(body.id, body.config.model_dump(exclude_none=True))
 
@@ -141,21 +128,14 @@ async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
 
 @command
 async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
-    """Disconnect and remove an MCP server (and its user toolset)."""
-    mcp = get_mcp_manager()
-    await mcp.remove_server(body.id)
-
-    toolset_manager = get_toolset_manager()
-    toolset_manager.uninstall(body.id)
-
+    await get_mcp_manager().remove_server(body.id)
+    get_toolset_manager().uninstall(body.id)
     return {"success": True}
 
 
 @command
 async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
-    """Get a server's config for editing (unsanitized)."""
-    mcp = get_mcp_manager()
-    config = mcp.get_server_config(body.id, sanitize=False)
+    config = get_mcp_manager().get_server_config(body.id, sanitize=False)
     if config is None:
         raise ValueError(f"Server {body.id} not found")
     return config
@@ -163,7 +143,6 @@ async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
 
 @command
 async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
-    """Reconnect to a failed or disconnected MCP server."""
     mcp = get_mcp_manager()
     await mcp.reconnect(body.id)
 
@@ -255,17 +234,16 @@ def _detect_mcp_transport(
                     "Accept": "application/json, text/event-stream",
                 },
             )
+            content_type = response.headers.get("content-type", "").lower()
+            if response.status_code == 200 and (
+                "application/json" in content_type
+                or "text/event-stream" in content_type
+            ):
+                return "streamable-http"
+            if response.status_code == 405:
+                return "sse"
         except httpx.HTTPError:
-            return "sse"
-
-    content_type = response.headers.get("content-type", "").lower()
-    if response.status_code == 200 and (
-        "application/json" in content_type or "text/event-stream" in content_type
-    ):
-        return "streamable-http"
-
-    if response.status_code == 405:
-        return "sse"
+            pass
 
     return "sse"
 
@@ -312,16 +290,13 @@ def _parse_claude_code_server(raw: Dict[str, Any]) -> Dict[str, Any]:
 def _parse_opencode_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     config: Dict[str, Any] = {"requiresConfirmation": True}
 
-    server_type = raw.get("type", "local")
-
-    if server_type == "remote":
+    if raw.get("type", "local") == "remote":
         if "url" in raw:
-            url = raw["url"]
-            config["url"] = url
-            config["transport"] = _detect_mcp_transport(url)
+            config["url"] = raw["url"]
+            config["transport"] = _detect_mcp_transport(raw["url"])
     else:
         cmd = raw.get("command", [])
-        if isinstance(cmd, list) and len(cmd) > 0:
+        if isinstance(cmd, list) and cmd:
             config["command"] = cmd[0]
             if len(cmd) > 1:
                 config["args"] = cmd[1:]
@@ -358,9 +333,6 @@ def _scan_source(source_key: str) -> SourceScanResult:
     if not source_config:
         return SourceScanResult(servers=[], error=f"Unknown source: {source_key}")
 
-    paths = source_config["paths"].get(sys.platform, [])
-    root_key = source_config["root_key"]
-
     parsers = {
         "claude-desktop": _parse_claude_desktop_server,
         "claude-code": _parse_claude_code_server,
@@ -371,6 +343,9 @@ def _scan_source(source_key: str) -> SourceScanResult:
     if not parser:
         return SourceScanResult(servers=[], error=f"Unknown source: {source_key}")
 
+    paths = source_config["paths"].get(sys.platform, [])
+
+    root_key = source_config["root_key"]
     for path_str in paths:
         path = _expand_path(path_str)
         if not path.exists():
@@ -378,21 +353,17 @@ def _scan_source(source_key: str) -> SourceScanResult:
 
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-
             servers_data = data.get(root_key, {})
             if not isinstance(servers_data, dict):
                 continue
 
-            servers: List[ScannedServer] = []
-            for server_id, raw_config in servers_data.items():
-                if not isinstance(raw_config, dict):
-                    continue
-
-                servers.append(
-                    ScannedServer(
-                        id=server_id, config=MCPServerConfig(**parser(raw_config))
-                    )
+            servers = [
+                ScannedServer(
+                    id=server_id, config=MCPServerConfig(**parser(raw_config))
                 )
+                for server_id, raw_config in servers_data.items()
+                if isinstance(raw_config, dict)
+            ]
 
             return SourceScanResult(servers=servers, error=None)
 
@@ -406,13 +377,9 @@ def _scan_source(source_key: str) -> SourceScanResult:
 
 @command
 async def scan_import_sources() -> ScanImportSourcesResponse:
-    """Scan external app configs for MCP servers to import."""
-    results: Dict[str, SourceScanResult] = {}
-
-    for source_key in IMPORT_SOURCE_CONFIGS.keys():
-        results[source_key] = _scan_source(source_key)
-
-    return ScanImportSourcesResponse(results=results)
+    return ScanImportSourcesResponse(
+        results={key: _scan_source(key) for key in IMPORT_SOURCE_CONFIGS.keys()}
+    )
 
 
 class TestMCPToolInput(BaseModel):
@@ -430,24 +397,21 @@ class TestMCPToolResult(BaseModel):
 
 @command
 async def test_mcp_tool(body: TestMCPToolInput) -> TestMCPToolResult:
-    """Invoke an MCP tool with arguments and return its output."""
-    mcp = get_mcp_manager()
-
     start = time.perf_counter()
     try:
-        result = await mcp.call_tool(body.serverId, body.toolName, body.arguments)
-        duration_ms = int((time.perf_counter() - start) * 1000)
+        result = await get_mcp_manager().call_tool(
+            body.serverId, body.toolName, body.arguments
+        )
         return TestMCPToolResult(
             success=True,
             result=result,
-            durationMs=duration_ms,
+            durationMs=int((time.perf_counter() - start) * 1000),
         )
     except Exception as e:
-        duration_ms = int((time.perf_counter() - start) * 1000)
         return TestMCPToolResult(
             success=False,
             error=str(e),
-            durationMs=duration_ms,
+            durationMs=int((time.perf_counter() - start) * 1000),
         )
 
 
@@ -464,10 +428,7 @@ class ProbeOAuthResult(BaseModel):
 
 @command
 async def probe_mcp_oauth(body: ProbeOAuthInput) -> ProbeOAuthResult:
-    """Check if an MCP server URL requires OAuth."""
-    oauth = get_oauth_manager()
-    result = await oauth.probe_oauth_requirement(body.url)
-
+    result = await get_oauth_manager().probe_oauth_requirement(body.url)
     return ProbeOAuthResult(
         requiresOAuth=result.get("requiresOAuth", False),
         providerName=result.get("providerName"),
@@ -491,11 +452,8 @@ class StartOAuthResult(BaseModel):
 
 @command
 async def start_mcp_oauth(body: StartOAuthInput) -> StartOAuthResult:
-    """Start OAuth flow for an MCP server."""
-    oauth = get_oauth_manager()
-
     try:
-        result = await oauth.start_oauth_flow(
+        result = await get_oauth_manager().start_oauth_flow(
             server_id=body.serverId,
             server_url=body.serverUrl,
             callback_port=body.callbackPort,
@@ -506,10 +464,7 @@ async def start_mcp_oauth(body: StartOAuthInput) -> StartOAuthResult:
             state=result.get("state"),
         )
     except Exception as e:
-        return StartOAuthResult(
-            success=False,
-            error=str(e),
-        )
+        return StartOAuthResult(success=False, error=str(e))
 
 
 class OAuthStatusResult(BaseModel):
@@ -520,10 +475,7 @@ class OAuthStatusResult(BaseModel):
 
 @command
 async def get_mcp_oauth_status(body: MCPServerId) -> OAuthStatusResult:
-    """Get the OAuth status for an MCP server."""
-    oauth = get_oauth_manager()
-    result = oauth.get_oauth_status(body.id)
-
+    result = get_oauth_manager().get_oauth_status(body.id)
     return OAuthStatusResult(
         status=result.get("status", "none"),
         hasTokens=result.get("hasTokens", False),
@@ -538,11 +490,8 @@ class RevokeOAuthResult(BaseModel):
 
 @command
 async def revoke_mcp_oauth(body: MCPServerId) -> RevokeOAuthResult:
-    """Revoke OAuth tokens for an MCP server."""
-    oauth = get_oauth_manager()
-
     try:
-        await oauth.revoke_oauth(body.id)
+        await get_oauth_manager().revoke_oauth(body.id)
         return RevokeOAuthResult(success=True)
     except Exception as e:
         return RevokeOAuthResult(success=False, error=str(e))
@@ -566,9 +515,7 @@ class OAuthCallbackResult(BaseModel):
 
 @command
 async def complete_mcp_oauth_callback(body: OAuthCallbackInput) -> OAuthCallbackResult:
-    """Complete an OAuth callback."""
-    oauth = get_oauth_manager()
-    found = oauth.complete_oauth_callback(body.code, body.state)
+    found = get_oauth_manager().complete_oauth_callback(body.code, body.state)
     return OAuthCallbackResult(
         success=found,
         error=None if found else "No pending OAuth flow found for this state",
@@ -577,9 +524,9 @@ async def complete_mcp_oauth_callback(body: OAuthCallbackInput) -> OAuthCallback
 
 @command
 async def fail_mcp_oauth_callback(body: OAuthCallbackErrorInput) -> OAuthCallbackResult:
-    """Record an OAuth callback failure."""
-    oauth = get_oauth_manager()
-    found = oauth.fail_oauth_callback(body.state, body.error, body.errorDescription)
+    found = get_oauth_manager().fail_oauth_callback(
+        body.state, body.error, body.errorDescription
+    )
     return OAuthCallbackResult(
         success=found,
         error=None if found else "No pending OAuth flow found for this state",

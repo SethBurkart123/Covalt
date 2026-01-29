@@ -33,24 +33,16 @@ MAX_FILE_SIZE = "50MB"
 
 
 @upload(max_size=MAX_FILE_SIZE)
-async def upload_attachment(
-    file: UploadFile,
-    id: str,
-) -> UploadAttachmentResult:
+async def upload_attachment(file: UploadFile, id: str) -> UploadAttachmentResult:
     content = await file.read()
-    extension = get_extension_from_mime(file.content_type)
-    media_type = get_media_type(file.content_type)
-
-    save_pending_attachment(id, content, extension)
-
+    save_pending_attachment(id, content, get_extension_from_mime(file.content_type))
     logger.info(
-        f"[upload] Saved pending attachment {id}: {file.filename} "
-        f"({len(content)} bytes, {file.content_type})"
+        f"[upload] Saved pending attachment {id}: {file.filename} ({len(content)} bytes, {file.content_type})"
     )
 
     return UploadAttachmentResult(
         id=id,
-        type=media_type,
+        type=get_media_type(file.content_type),
         name=file.filename,
         mimeType=file.content_type,
         size=len(content),
@@ -59,16 +51,10 @@ async def upload_attachment(
 
 @command
 async def delete_pending_upload(body: DeletePendingRequest) -> dict:
-    extension = get_extension_from_mime(body.mimeType)
-    deleted = delete_pending_attachment(body.id, extension)
-
-    if deleted:
-        logger.info(f"[upload] Deleted pending attachment {body.id}")
-    else:
-        logger.info(
-            f"[upload] Pending attachment {body.id} not found (already deleted)"
-        )
-
+    deleted = delete_pending_attachment(body.id, get_extension_from_mime(body.mimeType))
+    logger.info(
+        f"[upload] {'Deleted' if deleted else 'Pending attachment not found for'} {body.id}"
+    )
     return {"success": True}
 
 

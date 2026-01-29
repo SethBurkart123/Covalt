@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -45,11 +45,11 @@ export default function AutoTitlePanel() {
     try {
       const response = await getAutoTitleSettings();
       setSettings({
-        enabled: response.enabled || false,
-        prompt: response.prompt || "",
+        enabled: response.enabled ?? true,
+        prompt: response.prompt ?? "",
         modelMode: response.modelMode as "current" | "specific",
-        provider: response.provider || "",
-        modelId: response.modelId || "",
+        provider: response.provider ?? "openai",
+        modelId: response.modelId ?? "gpt-4o-mini",
       });
     } catch (e) {
       console.error("Failed to load auto-title settings", e);
@@ -80,15 +80,9 @@ export default function AutoTitlePanel() {
     }
   };
 
-  const selectedModelKey = `${settings.provider}:${settings.modelId}`;
-
   const handleModelChange = (modelKey: string) => {
     const [provider, modelId] = modelKey.split(":", 2);
-    setSettings((prev) => ({
-      ...prev,
-      provider: provider || prev.provider,
-      modelId: modelId || prev.modelId,
-    }));
+    setSettings((prev) => ({ ...prev, provider, modelId }));
   };
 
   if (isLoading) {
@@ -216,7 +210,7 @@ export default function AutoTitlePanel() {
                       {settings.modelMode === "specific" && (
                         <div className="ml-6 mt-2">
                           <ModelSelector
-                            selectedModel={selectedModelKey}
+                            selectedModel={`${settings.provider}:${settings.modelId}`}
                             setSelectedModel={handleModelChange}
                             models={models}
                           />

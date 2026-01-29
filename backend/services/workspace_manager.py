@@ -84,7 +84,7 @@ class WorkspaceManager:
                 .first()
             )
 
-            if manifest is None:
+            if not manifest:
                 return None
 
             return {
@@ -105,26 +105,18 @@ class WorkspaceManager:
         pre_files: dict[str, str] = {}
         post_files: dict[str, str] = {}
 
-        if pre_manifest_id:
-            pre_manifest = self.get_manifest(pre_manifest_id)
-            if pre_manifest:
-                pre_files = pre_manifest["files"]
+        if pre_manifest_id and (pre_manifest := self.get_manifest(pre_manifest_id)):
+            pre_files = pre_manifest["files"]
 
-        if post_manifest_id:
-            post_manifest = self.get_manifest(post_manifest_id)
-            if post_manifest:
-                post_files = post_manifest["files"]
+        if post_manifest_id and (post_manifest := self.get_manifest(post_manifest_id)):
+            post_files = post_manifest["files"]
 
-        changed: list[str] = []
-        deleted: list[str] = []
-
-        for path, file_hash in post_files.items():
-            if path not in pre_files or pre_files[path] != file_hash:
-                changed.append(path)
-
-        for path in pre_files:
-            if path not in post_files:
-                deleted.append(path)
+        changed = [
+            path
+            for path, file_hash in post_files.items()
+            if path not in pre_files or pre_files[path] != file_hash
+        ]
+        deleted = [path for path in pre_files if path not in post_files]
 
         return changed, deleted
 
@@ -133,15 +125,13 @@ class WorkspaceManager:
             return self._local_manifest_id
 
         with db_session() as session:
-            chat = session.query(Chat).filter(Chat.id == self.chat_id).first()
-            if chat:
+            if chat := session.query(Chat).filter(Chat.id == self.chat_id).first():
                 return chat.active_manifest_id
             return None
 
     def set_active_manifest_id(self, manifest_id: str | None) -> None:
         with db_session() as session:
-            chat = session.query(Chat).filter(Chat.id == self.chat_id).first()
-            if chat:
+            if chat := session.query(Chat).filter(Chat.id == self.chat_id).first():
                 chat.active_manifest_id = manifest_id
                 session.commit()
             else:
@@ -175,17 +165,16 @@ class WorkspaceManager:
         return manifest_id
 
     def materialize(self, manifest_id: str | None = None) -> bool:
-        if manifest_id is None:
+        if not manifest_id:
             manifest_id = self.get_active_manifest_id()
 
-        if manifest_id is None:
+        if not manifest_id:
             if self.workspace_dir.exists():
                 shutil.rmtree(self.workspace_dir)
             self.workspace_dir.mkdir(parents=True, exist_ok=True)
             return True
 
-        manifest = self.get_manifest(manifest_id)
-        if manifest is None:
+        if not (manifest := self.get_manifest(manifest_id)):
             logger.warning(f"Manifest {manifest_id} not found")
             return False
 
@@ -193,8 +182,7 @@ class WorkspaceManager:
             shutil.rmtree(self.workspace_dir)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
 
-        files = manifest["files"]
-        for rel_path, file_hash in files.items():
+        for rel_path, file_hash in manifest["files"].items():
             target = self.workspace_dir / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -205,7 +193,7 @@ class WorkspaceManager:
                 logger.warning(f"Blob {file_hash[:12]}... not found for {rel_path}")
 
         logger.info(
-            f"Materialized {len(files)} files for manifest {manifest_id[:8]}..."
+            f"Materialized {len(manifest['files'])} files for manifest {manifest_id[:8]}..."
         )
         return True
 
@@ -247,16 +235,12 @@ class WorkspaceManager:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
 
-        file_hash = self.store_file(content)
-
-        parent_id = self.get_active_manifest_id()
         current_files: dict[str, str] = {}
-        if parent_id:
-            manifest = self.get_manifest(parent_id)
-            if manifest:
+        if parent_id := self.get_active_manifest_id():
+            if manifest := self.get_manifest(parent_id):
                 current_files = manifest["files"].copy()
 
-        current_files[rel_path] = file_hash
+        current_files[rel_path] = self.store_file(content)
 
         manifest_id = self.create_manifest(
             files=current_files,
@@ -277,14 +261,12 @@ class WorkspaceManager:
         set_active: bool = True,
         inherit_active: bool = False,
     ) -> tuple[str, dict[str, str]]:
-        if parent_manifest_id is None and inherit_active:
+        if not parent_manifest_id and inherit_active:
             parent_manifest_id = self.get_active_manifest_id()
 
         current_files: dict[str, str] = {}
-        if parent_manifest_id:
-            manifest = self.get_manifest(parent_manifest_id)
-            if manifest:
-                current_files = manifest["files"].copy()
+        if parent_manifest_id and (manifest := self.get_manifest(parent_manifest_id)):
+            current_files = manifest["files"].copy()
 
         rename_map: dict[str, str] = {}
 
@@ -297,8 +279,7 @@ class WorkspaceManager:
                     f"Renamed '{original_name}' -> '{final_name}' due to collision"
                 )
 
-            file_hash = self.store_file(content)
-            current_files[final_name] = file_hash
+            current_files[final_name] = self.store_file(content)
 
         manifest_id = self.create_manifest(
             files=current_files,
@@ -337,16 +318,13 @@ class WorkspaceManager:
             counter += 1
 
     def read_file_from_manifest(self, manifest_id: str, rel_path: str) -> bytes | None:
-        manifest = self.get_manifest(manifest_id)
-        if not manifest:
+        if not (manifest := self.get_manifest(manifest_id)):
             return None
 
-        files = manifest["files"]
-        if rel_path not in files:
+        if rel_path not in manifest["files"]:
             return None
 
-        file_hash = files[rel_path]
-        return self.get_blob(file_hash)
+        return self.get_blob(manifest["files"][rel_path])
 
     def list_files(self) -> list[str]:
         return [
@@ -373,14 +351,14 @@ class WorkspaceManager:
         return False
 
     def _walk_files(self, directory: Path) -> list[Path]:
-        files = []
         if not directory.exists():
-            return files
+            return []
 
-        for item in directory.rglob("*"):
-            if item.is_file() and not any(part.startswith(".") for part in item.parts):
-                files.append(item)
-
+        files = [
+            item
+            for item in directory.rglob("*")
+            if item.is_file() and not any(part.startswith(".") for part in item.parts)
+        ]
         return sorted(files)
 
     def cleanup(self) -> None:

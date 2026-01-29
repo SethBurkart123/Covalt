@@ -9,9 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-function splitLines(error: string): string[] {
-  return error.split("\n").filter((line) => line.trim() !== "");
-}
+const splitLines = (error: string) => error.split("\n").filter((line) => line.trim());
 
 interface McpErrorDisplayProps {
   error: string;
@@ -49,11 +47,12 @@ interface McpErrorHoverProps {
 }
 
 export function McpErrorHover({ error, children }: McpErrorHoverProps) {
-  const lines = splitLines(error);
+  if (splitLines(error).length === 1) {
+    return <span className="italic">{error}</span>;
+  }
 
-  return lines.length === 1 ? (
-    <span className="italic">{error}</span>
-  ) : (
+  const lines = splitLines(error);
+  return (
     <Tooltip delayDuration={200}>
       <TooltipTrigger asChild>
         <span className="italic cursor-help">

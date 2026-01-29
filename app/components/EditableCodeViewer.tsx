@@ -72,16 +72,11 @@ export function EditableCodeViewer({
           setLocalContent(null);
           setLastSyncedVersion((v) => v + 1);
           setSaveStatus("saved");
-
-          setTimeout(() => {
-            setSaveStatus((current) => (current === "saved" ? "idle" : current));
-          }, 2000);
+          setTimeout(() => setSaveStatus((current) => (current === "saved" ? "idle" : current)), 2000);
         } catch (error) {
           console.error("Failed to save file:", error);
           setSaveStatus("error");
-          setErrorMessage(
-            error instanceof Error ? error.message : "Failed to save"
-          );
+          setErrorMessage(error instanceof Error ? error.message : "Failed to save");
         } finally {
           isSavingRef.current = false;
         }
@@ -125,16 +120,11 @@ export function EditableCodeViewer({
       setLocalContent(null);
       setLastSyncedVersion((v) => v + 1);
       setSaveStatus("saved");
-
-      setTimeout(() => {
-        setSaveStatus((current) => (current === "saved" ? "idle" : current));
-      }, 2000);
+      setTimeout(() => setSaveStatus((current) => (current === "saved" ? "idle" : current)), 2000);
     } catch (error) {
       console.error("Failed to save file:", error);
       setSaveStatus("error");
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to save"
-      );
+      setErrorMessage(error instanceof Error ? error.message : "Failed to save");
     } finally {
       isSavingRef.current = false;
     }

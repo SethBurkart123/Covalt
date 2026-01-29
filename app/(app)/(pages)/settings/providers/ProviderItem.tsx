@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +35,6 @@ export default function ProviderItem({
   onTestConnection
 }: ProviderItemProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const Icon = def.icon;
 
   return (
     <Card className="overflow-hidden border-border/70 py-2 gap-0">
@@ -45,13 +44,11 @@ export default function ProviderItem({
       >
         <div className="flex items-center gap-3 text-left flex-1 min-w-0">
           <div className="rounded-md flex items-center justify-center">
-            <Icon />
+            <def.icon />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium leading-none flex items-center gap-2">
               {def.name}
-              
-              {/* Connection status indicators */}
               {connectionStatus === 'testing' && (
                 <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
               )}
@@ -117,14 +114,11 @@ export default function ProviderItem({
               ))}
 
               <div className="flex flex-col gap-2 pt-1">
-                {/* Error message */}
                 {connectionError && connectionStatus === 'error' && (
                   <div className="text-xs text-red-600 dark:text-red-500 px-1">
                     {connectionError}
                   </div>
                 )}
-                
-                {/* Action buttons */}
                 <div className="flex items-center justify-end gap-2">
                   <Button
                     variant="outline"

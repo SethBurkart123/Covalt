@@ -119,10 +119,8 @@ class UpdateWorkspaceFileResponse(BaseModel):
 
 @command
 async def list_toolsets(body: Optional[ListToolsetsRequest] = None) -> ToolsetsResponse:
-    """List toolsets, optionally filtered by user_mcp flag."""
     manager = get_toolset_manager()
-    user_mcp_filter = body.user_mcp if body else None
-    toolsets = manager.list_toolsets(user_mcp=user_mcp_filter)
+    toolsets = manager.list_toolsets(user_mcp=body.user_mcp if body else None)
 
     return ToolsetsResponse(
         toolsets=[
@@ -178,24 +176,18 @@ ALLOWED_TOOLSET_TYPES = ["application/zip", "application/x-zip-compressed"]
 
 @upload(max_size=MAX_TOOLSET_SIZE, allowed_types=ALLOWED_TOOLSET_TYPES)
 async def import_toolset(file: UploadFile) -> ImportToolsetResult:
-    content = await file.read()
     manager = get_toolset_manager()
-
     toolset_id = manager.import_from_zip(
-        zip_data=content,
-        source_type="zip",
-        source_ref=file.filename,
+        zip_data=await file.read(), source_type="zip", source_ref=file.filename
     )
 
     toolset = manager.get_toolset(toolset_id)
     if toolset is None:
         raise RuntimeError(f"Toolset '{toolset_id}' not found after import")
 
-    mcp_manager = get_mcp_manager()
-    new_servers = await mcp_manager.reload_from_db()
+    new_servers = await get_mcp_manager().reload_from_db()
     if new_servers:
         logger.info(f"Started {len(new_servers)} MCP server(s) from toolset")
-
     logger.info(f"Imported toolset '{toolset_id}' from {file.filename}")
 
     return ImportToolsetResult(
@@ -210,25 +202,18 @@ async def import_toolset(file: UploadFile) -> ImportToolsetResult:
 async def export_toolset(body: ToolsetIdRequest) -> ExportToolsetResponse:
     manager = get_toolset_manager()
     toolset = manager.get_toolset(body.id)
-
     if toolset is None:
         raise ValueError(f"Toolset '{body.id}' not found")
 
-    zip_data = manager.export_to_zip(body.id)
-    filename = f"{body.id}-v{toolset['version']}.zip"
-
     return ExportToolsetResponse(
-        filename=filename,
-        data=base64.b64encode(zip_data).decode("ascii"),
+        filename=f"{body.id}-v{toolset['version']}.zip",
+        data=base64.b64encode(manager.export_to_zip(body.id)).decode("ascii"),
     )
 
 
 @command
 async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
-    manager = get_toolset_manager()
-    success = manager.enable_toolset(body.id, body.enabled)
-
-    if not success:
+    if not get_toolset_manager().enable_toolset(body.id, body.enabled):
         raise ValueError(f"Toolset '{body.id}' not found")
 
     mcp_manager = get_mcp_manager()
@@ -242,28 +227,21 @@ async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
 
 @command
 async def uninstall_toolset(body: ToolsetIdRequest) -> Dict[str, bool]:
-    manager = get_toolset_manager()
-    success = manager.uninstall(body.id)
-
-    if not success:
+    if not get_toolset_manager().uninstall(body.id):
         raise ValueError(f"Toolset '{body.id}' not found")
-
     return {"success": True}
 
 
 @command
 async def get_workspace_files(body: WorkspaceFilesRequest) -> WorkspaceFilesResponse:
-    manager = get_workspace_manager(body.chat_id)
-    files = manager.list_files()
-
-    return WorkspaceFilesResponse(files=files)
+    return WorkspaceFilesResponse(
+        files=get_workspace_manager(body.chat_id).list_files()
+    )
 
 
 @command
 async def get_workspace_file(body: WorkspaceFileRequest) -> WorkspaceFileResponse:
-    manager = get_workspace_manager(body.chat_id)
-    content = manager.read_file(body.path)
-
+    content = get_workspace_manager(body.chat_id).read_file(body.path)
     if content is None:
         raise ValueError(f"File '{body.path}' not found in workspace")
 
@@ -279,7 +257,6 @@ async def get_workspace_manifest(
     body: WorkspaceManifestRequest,
 ) -> WorkspaceManifestResponse:
     manager = get_workspace_manager(body.chat_id)
-
     manifest_id = body.manifest_id or manager.get_active_manifest_id()
     if manifest_id is None:
         raise ValueError("No active manifest for this chat")
@@ -305,8 +282,6 @@ MAX_EDITABLE_FILE_SIZE = 5 * 1024 * 1024
 async def update_workspace_file(
     body: UpdateWorkspaceFileRequest,
 ) -> UpdateWorkspaceFileResponse:
-    manager = get_workspace_manager(body.chat_id)
-
     try:
         content = base64.b64decode(body.content)
     except Exception as e:
@@ -317,16 +292,11 @@ async def update_workspace_file(
             f"File too large: {len(content)} bytes (max {MAX_EDITABLE_FILE_SIZE})"
         )
 
-    manifest_id = manager.add_file(
-        rel_path=body.path,
-        content=content,
-        source="edit",
-        source_ref=None,
+    manifest_id = get_workspace_manager(body.chat_id).add_file(
+        rel_path=body.path, content=content, source="edit", source_ref=None
     )
-
     logger.info(
-        f"Updated workspace file '{body.path}' in chat {body.chat_id[:8]}..., "
-        f"new manifest {manifest_id[:8]}..."
+        f"Updated workspace file '{body.path}' in chat {body.chat_id[:8]}..., new manifest {manifest_id[:8]}..."
     )
 
     try:
@@ -338,10 +308,7 @@ async def update_workspace_file(
     except Exception as e:
         logger.debug(f"Failed to broadcast workspace change: {e}")
 
-    return UpdateWorkspaceFileResponse(
-        manifest_id=manifest_id,
-        path=body.path,
-    )
+    return UpdateWorkspaceFileResponse(manifest_id=manifest_id, path=body.path)
 
 
 class SetToolOverrideRequest(BaseModel):
@@ -372,31 +339,21 @@ class ToolOverrideResponse(BaseModel):
 
 @command
 async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideResponse:
-    """
-    Set or update override configuration for a tool.
-
-    This allows customizing how a tool appears and behaves without
-    modifying the underlying tool definition. Overrides can set:
-    - renderer and renderer_config for custom UI display
-    - name_override and description_override for display text
-    - requires_confirmation to control approval workflow
-    - enabled to hide/show the tool
-    """
     import json
     import uuid
-
     from ..db import db_session
     from ..db.models import ToolOverride, Toolset
 
     with db_session() as sess:
-        toolset = sess.query(Toolset).filter(Toolset.id == body.toolset_id).first()
-        if not toolset:
+        if not sess.query(Toolset).filter(Toolset.id == body.toolset_id).first():
             raise ValueError(f"Toolset '{body.toolset_id}' not found")
 
         existing = (
             sess.query(ToolOverride)
-            .filter(ToolOverride.toolset_id == body.toolset_id)
-            .filter(ToolOverride.tool_id == body.tool_id)
+            .filter(
+                ToolOverride.toolset_id == body.toolset_id,
+                ToolOverride.tool_id == body.tool_id,
+            )
             .first()
         )
 
@@ -413,7 +370,6 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
                 existing.requires_confirmation = body.requires_confirmation
             if body.enabled is not None:
                 existing.enabled = body.enabled
-
             override = existing
         else:
             override = ToolOverride(
@@ -432,8 +388,6 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
             sess.add(override)
 
         sess.commit()
-
-        # Refresh to get the final state
         sess.refresh(override)
 
         return ToolOverrideResponse(

@@ -150,7 +150,7 @@ class DatabaseTokenStorage(TokenStorage):
                 return OAuthToken(
                     access_token=access_token,
                     refresh_token=refresh_token,
-                    token_type=row.token_type,
+                    token_type=row.token_type or "Bearer",
                     expires_in=None,
                     scope=row.scope,
                 )
@@ -160,9 +160,11 @@ class DatabaseTokenStorage(TokenStorage):
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
         now = datetime.now().isoformat()
-        expires_at = None
-        if tokens.expires_in:
-            expires_at = (datetime.now() + timedelta(seconds=tokens.expires_in)).isoformat()
+        expires_at = (
+            (datetime.now() + timedelta(seconds=tokens.expires_in)).isoformat()
+            if tokens.expires_in
+            else None
+        )
 
         with db_session() as sess:
             existing = (
@@ -212,14 +214,18 @@ class DatabaseTokenStorage(TokenStorage):
 
             try:
                 if row.client_metadata:
-                    return OAuthClientInformationFull.model_validate_json(row.client_metadata)
+                    return OAuthClientInformationFull.model_validate_json(
+                        row.client_metadata
+                    )
 
                 if not row.client_id:
                     return None
 
                 return OAuthClientInformationFull(
                     client_id=row.client_id,
-                    client_secret=_decrypt(row.client_secret) if row.client_secret else None,
+                    client_secret=_decrypt(row.client_secret)
+                    if row.client_secret
+                    else None,
                     redirect_uris=[AnyUrl(_redirect_uri())],
                 )
             except Exception as e:
@@ -240,7 +246,9 @@ class DatabaseTokenStorage(TokenStorage):
             if existing:
                 existing.client_id = client_info.client_id
                 existing.client_secret = (
-                    _encrypt(client_info.client_secret) if client_info.client_secret else None
+                    _encrypt(client_info.client_secret)
+                    if client_info.client_secret
+                    else None
                 )
                 existing.client_metadata = metadata_json
                 existing.updated_at = now
@@ -287,7 +295,9 @@ async def _auth_hint(
 
     if not resource_metadata_url:
         parsed = urlparse(server_url)
-        resource_metadata_url = f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-protected-resource"
+        resource_metadata_url = (
+            f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-protected-resource"
+        )
 
     try:
         resp = await client.get(resource_metadata_url, timeout=5.0)
@@ -319,7 +329,9 @@ class OAuthManager:
 
     async def probe_oauth_requirement(self, url: str) -> dict[str, Any]:
         try:
-            async with httpx.AsyncClient(follow_redirects=False, timeout=10.0) as client:
+            async with httpx.AsyncClient(
+                follow_redirects=False, timeout=10.0
+            ) as client:
                 response = await client.get(url)
                 if response.status_code != 401:
                     return {"requiresOAuth": False, "statusCode": response.status_code}
@@ -342,12 +354,11 @@ class OAuthManager:
             return {"requiresOAuth": False, "error": str(e)}
 
     async def start_oauth_flow(
-        self,
-        server_id: str,
-        server_url: str,
-        callback_port: int = OAUTH_CALLBACK_PORT,
+        self, server_id: str, server_url: str, callback_port: int = OAUTH_CALLBACK_PORT
     ) -> dict[str, Any]:
-        flow = OAuthFlowState(server_id=server_id, server_url=server_url, status="pending")
+        flow = OAuthFlowState(
+            server_id=server_id, server_url=server_url, status="pending"
+        )
         self._active_flows[server_id] = flow
 
         auth_url_ready = asyncio.Event()
@@ -368,8 +379,9 @@ class OAuthManager:
         async def callback_handler() -> tuple[str, str | None]:
             if not flow.callback_future:
                 raise OAuthError("no_pending", "No pending callback")
-            code, returned_state = await asyncio.wait_for(flow.callback_future, timeout=CALLBACK_TIMEOUT_S)
-            return code, returned_state
+            return await asyncio.wait_for(
+                flow.callback_future, timeout=CALLBACK_TIMEOUT_S
+            )
 
         oauth_provider = OAuthClientProvider(
             server_url=server_url,
@@ -386,7 +398,9 @@ class OAuthManager:
 
         async def run() -> None:
             try:
-                async with httpx.AsyncClient(auth=oauth_provider, follow_redirects=True) as client:
+                async with httpx.AsyncClient(
+                    auth=oauth_provider, follow_redirects=True
+                ) as client:
                     await client.get(server_url, timeout=600.0)
                 flow.status = "authenticated"
             except Exception as e:
@@ -407,7 +421,10 @@ class OAuthManager:
             has_tokens = self.has_valid_tokens(server_id)
             return {"status": flow.status, "hasTokens": has_tokens, "error": flow.error}
         has_tokens = self.has_valid_tokens(server_id)
-        return {"status": "authenticated" if has_tokens else "none", "hasTokens": has_tokens}
+        return {
+            "status": "authenticated" if has_tokens else "none",
+            "hasTokens": has_tokens,
+        }
 
     async def revoke_oauth(self, server_id: str) -> None:
         flow = self._active_flows.pop(server_id, None)
@@ -415,7 +432,9 @@ class OAuthManager:
             _pending_callbacks.cancel(flow.state)
 
         with db_session() as sess:
-            sess.query(OAuthTokenModel).filter(OAuthTokenModel.server_id == server_id).delete()
+            sess.query(OAuthTokenModel).filter(
+                OAuthTokenModel.server_id == server_id
+            ).delete()
             sess.commit()
 
     def has_valid_tokens(self, server_id: str) -> bool:
@@ -429,8 +448,7 @@ class OAuthManager:
                 return False
 
             try:
-                access_token = _decrypt(token.access_token)
-                if not access_token:
+                if not _decrypt(token.access_token):
                     return False
             except Exception:
                 return False
@@ -444,11 +462,13 @@ class OAuthManager:
 
             return True
 
-    def create_oauth_provider(self, server_id: str, server_url: str) -> OAuthClientProvider:
+    def create_oauth_provider(
+        self, server_id: str, server_url: str
+    ) -> OAuthClientProvider:
         storage = DatabaseTokenStorage(server_id)
 
         async def noop_redirect_handler(_: str) -> None:
-            return None
+            pass
 
         async def noop_callback_handler() -> tuple[str, str | None]:
             raise OAuthError("no_callback", "Callback handler should not be called")
@@ -469,7 +489,9 @@ class OAuthManager:
     def complete_oauth_callback(self, code: str, state: str) -> bool:
         return _pending_callbacks.complete(code, state)
 
-    def fail_oauth_callback(self, state: str, error: str, description: str | None = None) -> bool:
+    def fail_oauth_callback(
+        self, state: str, error: str, description: str | None = None
+    ) -> bool:
         return _pending_callbacks.fail(state, error, description)
 
 

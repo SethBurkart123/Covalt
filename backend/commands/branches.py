@@ -86,7 +86,6 @@ async def continue_message(
     channel: Channel,
     body: ContinueMessageRequest,
 ) -> None:
-    """Continue incomplete assistant message by creating a sibling branch."""
     existing_blocks: List[Dict[str, Any]] = []
     original_msg_id: Optional[str] = None
 
@@ -194,31 +193,23 @@ async def continue_message(
         )
 
     except Exception as e:
-        logger.error(f"[continue_message] Error: {e}")
-        try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, new_msg_id)
-                blocks: List[Dict[str, Any]] = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    if raw.startswith("["):
-                        try:
-                            blocks = json.loads(raw)
-                        except Exception:
-                            blocks = [{"type": "text", "content": message.content}]
-                    else:
+        logger.error(f"continue_message error: {e}")
+        with db.db_session() as sess:
+            message = sess.get(db.Message, new_msg_id)
+            blocks: List[Dict[str, Any]] = []
+            if message and message.content:
+                raw = message.content.strip()
+                if raw.startswith("["):
+                    try:
+                        blocks = json.loads(raw)
+                    except Exception:
                         blocks = [{"type": "text", "content": message.content}]
-                blocks.append(
-                    {
-                        "type": "error",
-                        "content": str(e),
-                    }
-                )
-                db.update_message_content(
-                    sess, messageId=new_msg_id, content=json.dumps(blocks)
-                )
-        except Exception:
-            pass
+                else:
+                    blocks = [{"type": "text", "content": message.content}]
+            blocks.append({"type": "error", "content": str(e)})
+            db.update_message_content(
+                sess, messageId=new_msg_id, content=json.dumps(blocks)
+            )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -308,31 +299,23 @@ async def retry_message(
         )
 
     except Exception as e:
-        logger.error(f"[retry_message] Error: {e}")
-        try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, new_msg_id)
-                blocks: List[Dict[str, Any]] = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    if raw.startswith("["):
-                        try:
-                            blocks = json.loads(raw)
-                        except Exception:
-                            blocks = [{"type": "text", "content": message.content}]
-                    else:
+        logger.error(f"retry_message error: {e}")
+        with db.db_session() as sess:
+            message = sess.get(db.Message, new_msg_id)
+            blocks: List[Dict[str, Any]] = []
+            if message and message.content:
+                raw = message.content.strip()
+                if raw.startswith("["):
+                    try:
+                        blocks = json.loads(raw)
+                    except Exception:
                         blocks = [{"type": "text", "content": message.content}]
-                blocks.append(
-                    {
-                        "type": "error",
-                        "content": str(e),
-                    }
-                )
-                db.update_message_content(
-                    sess, messageId=new_msg_id, content=json.dumps(blocks)
-                )
-        except Exception:
-            pass
+                else:
+                    blocks = [{"type": "text", "content": message.content}]
+            blocks.append({"type": "error", "content": str(e)})
+            db.update_message_content(
+                sess, messageId=new_msg_id, content=json.dumps(blocks)
+            )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -341,7 +324,6 @@ async def edit_user_message(
     channel: Channel,
     body: EditUserMessageRequest,
 ) -> None:
-    """Edit user message by creating sibling with new content."""
     file_renames: Dict[str, str] = {}
     manifest_id: Optional[str] = None
 
@@ -389,7 +371,7 @@ async def edit_user_message(
                 )
             else:
                 logger.warning(
-                    f"[edit_user_message] Could not find existing attachment "
+                    f"Could not find existing attachment "
                     f"'{existing_att.name}' in manifest {original_manifest_id}"
                 )
 
@@ -525,31 +507,23 @@ async def edit_user_message(
         )
 
     except Exception as e:
-        logger.error(f"[edit_user_message] Error: {e}")
-        try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, assistant_msg_id)
-                blocks: List[Dict[str, Any]] = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    if raw.startswith("["):
-                        try:
-                            blocks = json.loads(raw)
-                        except Exception:
-                            blocks = [{"type": "text", "content": message.content}]
-                    else:
+        logger.error(f"edit_user_message error: {e}")
+        with db.db_session() as sess:
+            message = sess.get(db.Message, assistant_msg_id)
+            blocks: List[Dict[str, Any]] = []
+            if message and message.content:
+                raw = message.content.strip()
+                if raw.startswith("["):
+                    try:
+                        blocks = json.loads(raw)
+                    except Exception:
                         blocks = [{"type": "text", "content": message.content}]
-                blocks.append(
-                    {
-                        "type": "error",
-                        "content": str(e),
-                    }
-                )
-                db.update_message_content(
-                    sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-                )
-        except Exception:
-            pass
+                else:
+                    blocks = [{"type": "text", "content": message.content}]
+            blocks.append({"type": "error", "content": str(e)})
+            db.update_message_content(
+                sess, messageId=assistant_msg_id, content=json.dumps(blocks)
+            )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 

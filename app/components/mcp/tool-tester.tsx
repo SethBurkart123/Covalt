@@ -53,14 +53,12 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
     required?: string[];
   } | undefined;
 
-  const properties = schema?.properties || {};
-  const requiredFields = schema?.required || [];
-  const hasProperties = Object.keys(properties).length > 0;
-  const propertyEntries = Object.entries(properties);
+
 
   const handleArgChange = useCallback((name: string, value: unknown) => {
     setArgs((prev) => {
       if (value === undefined || value === "") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { [name]: _, ...rest } = prev;
         return rest;
       }
@@ -71,10 +69,8 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
   const handleRun = useCallback(async () => {
     setIsRunning(true);
     setResponse(null);
-    const toolName = tool.name || tool.id.split(":").pop() || tool.id;
     try {
-      const result = await onTest(serverId, toolName, args);
-      setResponse(result);
+      setResponse(await onTest(serverId, tool.name || tool.id.split(":").pop() || tool.id, args));
     } finally {
       setIsRunning(false);
     }
@@ -83,22 +79,18 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
   const formattedResponse = useMemo(() => {
     if (!response) return null;
     if (!response.success) return response.error || "Unknown error";
-    const content = response.result || "";
     try {
-      const parsed = JSON.parse(content);
-      return JSON.stringify(parsed, null, 2);
+      return JSON.stringify(JSON.parse(response.result || ""), null, 2);
     } catch {
-      return content;
+      return response.result || "";
     }
   }, [response]);
-
-  const displayName = tool.name || tool.id.split(":").pop() || tool.id;
 
   return (
     <div className="flex flex-col h-full">
       <div className="overflow-y-auto h-full flex flex-col">
         <div className="px-6 py-4 flex-shrink-0">
-          <h2 className="text-xl font-semibold">{displayName}</h2>
+          <h2 className="text-xl font-semibold">{tool.name || tool.id.split(":").pop() || tool.id}</h2>
           {tool.description && (
             <div className="mt-2">
               <p
@@ -129,7 +121,7 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
           )}
         </div>
 
-        {hasProperties ? (
+        {Object.keys(schema?.properties || {}).length > 0 ? (
           <div className="flex flex-col h-full">
             <div className="px-6 py-4">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">
@@ -151,16 +143,14 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {propertyEntries.map(([name, propSchema], idx) => (
+                    {Object.entries(schema?.properties || {}).map(([name, propSchema], idx) => (
                       <tr
                         key={name}
-                        className={cn(
-                          idx !== propertyEntries.length - 1 && "border-b border-border"
-                        )}
+                        className={cn(idx !== Object.keys(schema?.properties || {}).length - 1 && "border-b border-border")}
                       >
                         <td className="px-4 py-2.5 font-mono text-sm">
                           {name}
-                          {requiredFields.includes(name) && (
+                          {(schema?.required || []).includes(name) && (
                             <span className="text-red-500 ml-0.5">*</span>
                           )}
                         </td>
@@ -182,13 +172,11 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
                 Test Tool
               </h3>
               <div className="grid gap-4">
-                {propertyEntries.map(([name, propSchema]) => (
+                {Object.entries(schema?.properties || {}).map(([name, propSchema]) => (
                   <div key={name} className="space-y-1.5">
                     <label className="text-sm font-medium flex items-center gap-1">
                       <span className="font-mono">{name}</span>
-                      {requiredFields.includes(name) && (
-                        <span className="text-red-500">*</span>
-                      )}
+                      {(schema?.required || []).includes(name) && <span className="text-red-500">*</span>}
                     </label>
                     <SchemaFormField
                       name={name}

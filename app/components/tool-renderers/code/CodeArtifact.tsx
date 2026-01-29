@@ -27,7 +27,6 @@ export function CodeArtifact({
   const { open, openFile, getFileState } = useArtifactPanel();
 
   const filePath = renderPlan?.config?.file;
-  const hasFile = !!filePath && !!chatId;
   const fileState = filePath ? getFileState(filePath) : undefined;
 
   const title =
@@ -48,12 +47,12 @@ export function CodeArtifact({
     ? inferLanguage({ ...toolArgs, filename: filePath })
     : (renderPlan?.config?.language || inferLanguage(toolArgs));
 
-  const isEditable = renderPlan?.config?.editable === true && !!filePath && !!chatId;
+  const isEditable = renderPlan?.config?.editable && filePath && chatId;
 
   const handleClick = () => {
     if (!isCompleted) return;
     
-    if (hasFile && filePath) {
+    if (filePath) {
       openFile(filePath);
     }
     
@@ -61,13 +60,10 @@ export function CodeArtifact({
       open(
         toolCallId || `${toolName}-${title}`,
         title,
-        <EditableCodeViewer
-          language={language}
-          filePath={filePath}
-        />,
+        <EditableCodeViewer language={language} filePath={filePath} />,
         filePath
       );
-    } else if (hasFile && filePath) {
+    } else if (filePath) {
       open(
         toolCallId || `${toolName}-${title}`,
         title,
@@ -79,7 +75,7 @@ export function CodeArtifact({
     }
   };
 
-  const isLoading = !isCompleted || (hasFile && fileState?.isLoading);
+  const isLoading = !isCompleted || (filePath && fileState?.isLoading);
 
   return (
     <Collapsible

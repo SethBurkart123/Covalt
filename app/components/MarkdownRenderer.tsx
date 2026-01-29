@@ -48,12 +48,9 @@ const CodeBlock = memo(function CodeBlock({ children }: MdProps<'pre'>) {
   const [copied, setCopied] = useState(false);
   const resolvedTheme = useResolvedTheme();
   
-  if (!isValidElement(children)) {
-    return <pre>{children}</pre>;
-  }
+  if (!isValidElement(children)) return <pre>{children}</pre>;
   
   const codeElement = children as ReactElement<{ children?: string; className?: string }>;
-  
   const codeString = String(codeElement.props.children || '').replace(/\n$/, '');
   const language = /language-(\w+)/.exec(codeElement.props.className || '')?.[1] ?? 'text';
   
@@ -115,31 +112,17 @@ const CodeBlock = memo(function CodeBlock({ children }: MdProps<'pre'>) {
 });
 
 const InlineCode = memo(function InlineCode({ children, ...props }: MdProps<'code'>) {
-  return (
-    <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>
-      {children}
-    </code>
-  );
+  return <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>{children}</code>;
 });
 
-function MarkdownRendererInner({ 
-  content, 
-  fontSize = "1rem",
-}: { 
-  content: string;
-  fontSize?: string;
-}) {
-  const components: Partial<Components> = useMemo(() => ({
-    ...MemoizedComponents,
-    pre: CodeBlock,
-    code: InlineCode,
-  }), []);
+function MarkdownRendererInner({ content, fontSize = "1rem" }: { content: string; fontSize?: string }) {
+  const components: Partial<Components> = useMemo(
+    () => ({ ...MemoizedComponents, pre: CodeBlock, code: InlineCode }),
+    []
+  );
   
   return (
-    <div 
-      className="prose prose-neutral dark:prose-invert max-w-none"
-      style={{ fontSize }}
-    >
+    <div className="prose prose-neutral dark:prose-invert max-w-none" style={{ fontSize }}>
       <ReactMarkdown 
         remarkPlugins={[remarkGfm, remarkMath]} 
         rehypePlugins={[rehypeKatex]}

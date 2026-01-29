@@ -1,7 +1,6 @@
 "use client";
 
-import * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
 import type { ContentBlock } from "@/lib/types/chat";
 import type { BridgeChannel } from "@/python/api";
 import { processEvent, createInitialState, type StreamState } from "@/lib/services/stream-processor";
@@ -39,9 +38,9 @@ interface StreamingContextValue {
   onStreamComplete: (callback: StreamCompleteCallback) => () => void;
 }
 
-const StreamingContext = React.createContext<StreamingContextValue | undefined>(undefined);
+const StreamingContext = createContext<StreamingContextValue | undefined>(undefined);
 
-export function StreamingProvider({ children }: { children: React.ReactNode }) {
+export function StreamingProvider({ children }: { children: ReactNode }) {
   const [streamStates, setStreamStates] = useState<Map<string, ChatStreamState>>(new Map());
   const subscriptionsRef = useRef<Map<string, { channel: BridgeChannel<unknown>; unsubscribe: () => void }>>(new Map());
   const streamStateRefs = useRef<Map<string, StreamState>>(new Map());
@@ -49,33 +48,30 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
   const completeCallbacksRef = useRef<Set<StreamCompleteCallback>>(new Set());
 
   const subscribeToStreamInternal = useCallback(async (chatId: string) => {
-    if (subscriptionsRef.current.has(chatId)) {
+    if (subscriptionsRef.current.has(chatId)) return;
+
+    const apiModule = await import("@/python/api");
+    const api = apiModule as Record<string, unknown>;
+    
+    if (typeof api.subscribeToStream !== "function") {
+      console.warn("[StreamingContext] api.subscribeToStream not available yet");
       return;
     }
 
-    try {
-      const apiModule = await import("@/python/api");
-      const api = apiModule as Record<string, unknown>;
-      
-      if (typeof api.subscribeToStream !== "function") {
-        console.warn("[StreamingContext] api.subscribeToStream not available yet");
-        return;
-      }
+    const channel = (api.subscribeToStream as (args: { body: { chatId: string } }) => BridgeChannel<unknown>)({ body: { chatId } });
+    
+    if (!channel) {
+      console.error(`[StreamingContext] Failed to create subscription channel for ${chatId}`);
+      return;
+    }
 
-      const channel = (api.subscribeToStream as (args: { body: { chatId: string } }) => BridgeChannel<unknown>)({ body: { chatId } });
-      
-      if (!channel) {
-        console.error(`[StreamingContext] Failed to create subscription channel for ${chatId}`);
-        return;
-      }
+    console.log(`[StreamingContext] Created subscription for ${chatId}`);
+    subscriptionsRef.current.set(chatId, {
+      channel,
+      unsubscribe: () => channel.close?.(),
+    });
 
-      console.log(`[StreamingContext] Created subscription for ${chatId}`);
-      subscriptionsRef.current.set(chatId, {
-        channel,
-        unsubscribe: () => channel.close?.(),
-      });
-
-      streamStateRefs.current.set(chatId, createInitialState());
+    streamStateRefs.current.set(chatId, createInitialState());
 
       const handleEvent = (data: unknown) => {
         const eventData = data as Record<string, unknown>;
@@ -83,9 +79,8 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
         
         console.log(`[StreamingContext] Received event for ${chatId}:`, eventType);
 
-        let streamState = streamStateRefs.current.get(chatId);
-        if (!streamState) {
-          streamState = createInitialState();
+        const streamState = streamStateRefs.current.get(chatId) ?? createInitialState();
+        if (!streamStateRefs.current.has(chatId)) {
           streamStateRefs.current.set(chatId, streamState);
         }
 
@@ -209,10 +204,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
         subscriptionsRef.current.delete(chatId);
         streamStateRefs.current.delete(chatId);
       });
-
-    } catch (error) {
-      console.error(`[StreamingContext] Failed to subscribe to stream for ${chatId}:`, error);
-    }
   }, []);
 
   useEffect(() => {
@@ -220,43 +211,39 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     isInitializedRef.current = true;
 
     const loadActiveStreams = async () => {
-      try {
-        const apiModule = await import("@/python/api");
-        const api = apiModule as Record<string, unknown>;
-        
-        if (typeof api.getActiveStreams !== "function") {
-          console.warn("[StreamingContext] api.getActiveStreams not available yet");
-          return;
-        }
-
-        const response = await (api.getActiveStreams as () => Promise<{ streams: Array<{ chatId: string; messageId: string; status: string; errorMessage?: string }> }>)();
-        const newStates = new Map<string, ChatStreamState>();
-
-        console.log("[StreamingContext] Loaded active streams:", response.streams);
-
-        for (const stream of response.streams) {
-          const isActive = stream.status === "streaming" || stream.status === "paused_hitl";
-          
-          newStates.set(stream.chatId, {
-            isStreaming: stream.status === "streaming",
-            isPausedForApproval: stream.status === "paused_hitl",
-            streamingContent: [],
-            streamingMessageId: stream.messageId,
-            status: stream.status as StreamStatus,
-            errorMessage: stream.errorMessage || null,
-            hasUnseenUpdate: !isActive,
-          });
-
-          if (isActive) {
-            console.log(`[StreamingContext] Subscribing to active stream: ${stream.chatId}`);
-            subscribeToStreamInternal(stream.chatId);
-          }
-        }
-
-        setStreamStates(newStates);
-      } catch (error) {
-        console.error("[StreamingContext] Failed to load active streams:", error);
+      const apiModule = await import("@/python/api");
+      const api = apiModule as Record<string, unknown>;
+      
+      if (typeof api.getActiveStreams !== "function") {
+        console.warn("[StreamingContext] api.getActiveStreams not available yet");
+        return;
       }
+
+      const response = await (api.getActiveStreams as () => Promise<{ streams: Array<{ chatId: string; messageId: string; status: string; errorMessage?: string }> }>)();
+      const newStates = new Map<string, ChatStreamState>();
+
+      console.log("[StreamingContext] Loaded active streams:", response.streams);
+
+      for (const stream of response.streams) {
+        const isActive = stream.status === "streaming" || stream.status === "paused_hitl";
+        
+        newStates.set(stream.chatId, {
+          isStreaming: stream.status === "streaming",
+          isPausedForApproval: stream.status === "paused_hitl",
+          streamingContent: [],
+          streamingMessageId: stream.messageId,
+          status: stream.status as StreamStatus,
+          errorMessage: stream.errorMessage || null,
+          hasUnseenUpdate: !isActive,
+        });
+
+        if (isActive) {
+          console.log(`[StreamingContext] Subscribing to active stream: ${stream.chatId}`);
+          subscribeToStreamInternal(stream.chatId);
+        }
+      }
+
+      setStreamStates(newStates);
     };
 
     loadActiveStreams();
@@ -269,21 +256,22 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     };
   }, [subscribeToStreamInternal]);
 
-  const isStreaming = useCallback((chatId: string): boolean => {
-    const state = streamStates.get(chatId);
-    return state?.isStreaming ?? false;
-  }, [streamStates]);
+  const isStreaming = useCallback((chatId: string) => 
+    streamStates.get(chatId)?.isStreaming ?? false,
+    [streamStates]
+  );
 
-  const isAnyStreaming = useCallback((): boolean => {
+  const isAnyStreaming = useCallback(() => {
     for (const state of streamStates.values()) {
       if (state.isStreaming) return true;
     }
     return false;
   }, [streamStates]);
 
-  const getStreamState = useCallback((chatId: string): ChatStreamState | undefined => {
-    return streamStates.get(chatId);
-  }, [streamStates]);
+  const getStreamState = useCallback((chatId: string) => 
+    streamStates.get(chatId),
+    [streamStates]
+  );
 
   const markChatAsSeen = useCallback((chatId: string) => {
     setStreamStates((prev) => {
@@ -297,22 +285,18 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearStreamRecord = useCallback(async (chatId: string) => {
-    try {
-      const apiModule = await import("@/python/api");
-      const api = apiModule as Record<string, unknown>;
-      
-      if (typeof api.clearStreamRecord === "function") {
-        await (api.clearStreamRecord as (args: { body: { chatId: string } }) => Promise<unknown>)({ body: { chatId } });
-      }
-      
-      setStreamStates((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    } catch (error) {
-      console.error("Failed to clear stream record:", error);
+    const apiModule = await import("@/python/api");
+    const api = apiModule as Record<string, unknown>;
+    
+    if (typeof api.clearStreamRecord === "function") {
+      await (api.clearStreamRecord as (args: { body: { chatId: string } }) => Promise<unknown>)({ body: { chatId } });
     }
+    
+    setStreamStates((prev) => {
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
   }, []);
 
   const subscribeToStream = useCallback((chatId: string) => {
@@ -375,34 +359,31 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const value = React.useMemo<StreamingContextValue>(
-    () => ({
-      streamStates,
-      isStreaming,
-      isAnyStreaming,
-      getStreamState,
-      markChatAsSeen,
-      clearStreamRecord,
-      subscribeToStream,
-      registerStream,
-      unregisterStream,
-      updateStreamContent,
-      onStreamComplete,
-    }),
-    [
-      streamStates,
-      isStreaming,
-      isAnyStreaming,
-      getStreamState,
-      markChatAsSeen,
-      clearStreamRecord,
-      subscribeToStream,
-      registerStream,
-      unregisterStream,
-      updateStreamContent,
-      onStreamComplete,
-    ]
-  );
+  const value = useMemo<StreamingContextValue>(() => ({
+    streamStates,
+    isStreaming,
+    isAnyStreaming,
+    getStreamState,
+    markChatAsSeen,
+    clearStreamRecord,
+    subscribeToStream,
+    registerStream,
+    unregisterStream,
+    updateStreamContent,
+    onStreamComplete,
+  }), [
+    streamStates,
+    isStreaming,
+    isAnyStreaming,
+    getStreamState,
+    markChatAsSeen,
+    clearStreamRecord,
+    subscribeToStream,
+    registerStream,
+    unregisterStream,
+    updateStreamContent,
+    onStreamComplete,
+  ]);
 
   return (
     <StreamingContext.Provider value={value}>
@@ -412,10 +393,8 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useStreaming() {
-  const context = React.useContext(StreamingContext);
-  if (context === undefined) {
-    throw new Error("useStreaming must be used within a StreamingProvider");
-  }
+  const context = useContext(StreamingContext);
+  if (!context) throw new Error("useStreaming must be used within a StreamingProvider");
   return context;
 }
 

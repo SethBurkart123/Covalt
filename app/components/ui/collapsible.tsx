@@ -1,41 +1,38 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import { createContext, useContext, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { createContext, useContext, useState, type HTMLAttributes, type ReactNode } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { ChevronDown, type LucideIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface CollapsibleContextValue {
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
-  isGrouped: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  shimmer: boolean;
-  disableToggle: boolean;
+  isOpen: boolean
+  setIsOpen: (open: boolean) => void
+  isGrouped: boolean
+  isFirst: boolean
+  isLast: boolean
+  shimmer: boolean
+  disableToggle: boolean
 }
 
-const CollapsibleContext = createContext<CollapsibleContextValue | null>(null);
+const CollapsibleContext = createContext<CollapsibleContextValue | null>(null)
 
 function useCollapsible() {
-  const context = useContext(CollapsibleContext);
-  if (!context) {
-    throw new Error("Collapsible components must be used within a Collapsible");
-  }
-  return context;
+  const context = useContext(CollapsibleContext)
+  if (!context) throw new Error("Collapsible components must be used within a Collapsible")
+  return context
 }
 
-interface CollapsibleProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  isGrouped?: boolean;
-  isFirst?: boolean;
-  isLast?: boolean;
-  shimmer?: boolean;
-  disableToggle?: boolean;
+interface CollapsibleProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode
+  defaultOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  isGrouped?: boolean
+  isFirst?: boolean
+  isLast?: boolean
+  shimmer?: boolean
+  disableToggle?: boolean
 }
 
 function Collapsible({
@@ -51,51 +48,53 @@ function Collapsible({
   className,
   ...props
 }: CollapsibleProps) {
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-  const isOpen = controlledOpen ?? uncontrolledOpen;
-  const setIsOpen = onOpenChange ?? setUncontrolledOpen;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
+  const isOpen = controlledOpen ?? uncontrolledOpen
+  const setIsOpen = onOpenChange ?? setUncontrolledOpen
+
+  const value = { isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle }
 
   if (isGrouped) {
     return (
-      <CollapsibleContext.Provider
-        value={{ isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle }}
-      >
+      <CollapsibleContext.Provider value={value}>
         <div className={cn("relative", className)} {...props}>{children}</div>
       </CollapsibleContext.Provider>
-    );
+    )
   }
 
   return (
-    <CollapsibleContext.Provider
-      value={{ isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle }}
-    >
+    <CollapsibleContext.Provider value={value}>
       <div className={cn("my-3 not-prose", className)} {...props}>
         <div className="border border-border rounded-lg overflow-hidden bg-card">
           {children}
         </div>
       </div>
     </CollapsibleContext.Provider>
-  );
+  )
 }
 
 interface CollapsibleTriggerProps {
-  children: React.ReactNode;
-  rightContent?: React.ReactNode;
-  className?: string;
-  onClick?: () => void;
-  overrideIsOpenPreview?: boolean;
+  children: ReactNode
+  rightContent?: ReactNode
+  className?: string
+  onClick?: () => void
+  overrideIsOpenPreview?: boolean
 }
 
 function CollapsibleTrigger({ children, rightContent, className, onClick, overrideIsOpenPreview }: CollapsibleTriggerProps) {
-  const { isOpen: isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible();
+  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible()
 
   const handleClick = () => {
     if (onClick) {
-      onClick();
+      onClick()
     } else if (!disableToggle) {
-      setIsOpen(!isOpen);
+      setIsOpen(!isOpen)
     }
-  };
+  }
+
+  const rotation = overrideIsOpenPreview !== undefined 
+    ? (overrideIsOpenPreview ? 180 : 0)
+    : (isOpen ? 180 : 0)
 
   return (
     <button
@@ -112,83 +111,66 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
       <div className="flex items-center gap-2">
         {rightContent}
         {!disableToggle && (
-          <motion.div
-            animate={{ rotate: overrideIsOpenPreview !== undefined ? (overrideIsOpenPreview ? 180 : 0) : isOpen ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
+          <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.2 }}>
             <ChevronDown size={16} className="text-muted-foreground" />
           </motion.div>
         )}
       </div>
     </button>
-  );
+  )
 }
 
 interface CollapsibleIconProps {
-  icon: LucideIcon;
-  className?: string;
+  icon: LucideIcon
+  className?: string
 }
 
 function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
-  const { isGrouped, isFirst, isLast } = useCollapsible();
+  const { isGrouped, isFirst, isLast } = useCollapsible()
 
   if (isGrouped) {
     return (
       <>
-        {
-          (isFirst && isLast) || (isFirst !== isLast) ?
+        {(isFirst && isLast) || (isFirst !== isLast) ? (
           <div
             className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
             style={{
               top: isFirst ? "2.2rem" : "0",
               bottom: isLast ? "calc(100% - 0.7rem)" : "0",
             }}
-          /> :
+          />
+        ) : (
           <>
-            <div
-              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
-              style={{
-                top: "2.2rem",
-              }}
-            />
-            <div
-              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
-              style={{
-                bottom: "calc(100% - 0.7rem)"
-              }}
-            />
+            <div className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border" style={{ top: "2.2rem" }} />
+            <div className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border" style={{ bottom: "calc(100% - 0.7rem)" }} />
           </>
-        }
+        )}
         <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
           <Icon size={16} className={cn("text-muted-foreground", className)} />
         </div>
       </>
-    );
+    )
   }
 
-  return <Icon size={16} className={cn("text-muted-foreground", className)} />;
+  return <Icon size={16} className={cn("text-muted-foreground", className)} />
 }
 
 interface CollapsibleHeaderProps {
-  children: React.ReactNode;
-  className?: string;
+  children: ReactNode
+  className?: string
 }
 
 function CollapsibleHeader({ children, className }: CollapsibleHeaderProps) {
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("flex items-center gap-2", className)}>{children}</div>
 }
 
 interface CollapsibleContentProps {
-  children: React.ReactNode;
-  className?: string;
+  children: ReactNode
+  className?: string
 }
 
 function CollapsibleContent({ children, className }: CollapsibleContentProps) {
-  const { isOpen, isGrouped, isLast } = useCollapsible();
+  const { isOpen, isGrouped, isLast } = useCollapsible()
 
   return (
     <AnimatePresence initial={false}>
@@ -212,7 +194,7 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
         </motion.div>
       )}
     </AnimatePresence>
-  );
+  )
 }
 
 export {
@@ -222,4 +204,4 @@ export {
   CollapsibleHeader,
   CollapsibleContent,
   useCollapsible,
-};
+}

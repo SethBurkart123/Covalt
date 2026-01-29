@@ -12,15 +12,10 @@ export const defaultThemeState = {
   },
 };
 
-export const defaultPreviewStyles: ThemeStyles = (() => {
-  const theme = themes["default"];
-  if (!theme) return defaultThemeState.styles;
-
-  return {
-    light: theme.styles.light,
-    dark: theme.styles.dark ?? theme.styles.light,
-  };
-})();
+export const defaultPreviewStyles: ThemeStyles = {
+  light: themes["default"].styles.light,
+  dark: themes["default"].styles.dark ?? themes["default"].styles.light,
+};
 
 export const presets: Record<string, ThemePreset> = Object.fromEntries(
   Object.entries(themes).map(([id, theme]) => [
@@ -42,9 +37,8 @@ export function getPresetThemeStyles(name: string): ThemeStyles {
   const preset = presets[name];
   if (!preset) return defaultThemeState.styles;
 
-  const light = preset.styles.light ?? {};
   return {
-    light,
-    dark: { ...light, ...(preset.styles.dark ?? {}) },
+    light: preset.styles.light ?? {},
+    dark: { ...(preset.styles.light ?? {}), ...(preset.styles.dark ?? {}) },
   };
 }

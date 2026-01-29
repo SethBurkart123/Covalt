@@ -87,7 +87,6 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
     flushReasoningBlock(state);
   }
 
-  // Resume from last text block if needed
   if (state.currentTextBlock === "" && state.contentBlocks.length > 0) {
     const last = state.contentBlocks[state.contentBlocks.length - 1];
     if (last?.type === "text") {
@@ -98,7 +97,6 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
 
   state.currentTextBlock += content;
 
-  // Detect thinking tags
   if (!state.thinkTagDetected && state.currentTextBlock.includes("<think>")) {
     state.thinkTagDetected = true;
     callbacks.onThinkTagDetected?.();
@@ -109,23 +107,21 @@ function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
 
-  if (tool) {
-    const t = tool as ToolData;
-    const existingBlock = state.contentBlocks.find(
-      (b) => b.type === "tool_call" && b.id === t.id,
-    );
+  const t = tool as ToolData;
+  const existingBlock = state.contentBlocks.find(
+    (b) => b.type === "tool_call" && b.id === t.id,
+  );
 
-    if (existingBlock && existingBlock.type === "tool_call") {
-      existingBlock.isCompleted = false;
-    } else {
-      state.contentBlocks.push({
-        type: "tool_call",
-        id: t.id,
-        toolName: t.toolName,
-        toolArgs: t.toolArgs,
-        isCompleted: false,
-      });
-    }
+  if (existingBlock && existingBlock.type === "tool_call") {
+    existingBlock.isCompleted = false;
+  } else {
+    state.contentBlocks.push({
+      type: "tool_call",
+      id: t.id,
+      toolName: t.toolName,
+      toolArgs: t.toolArgs,
+      isCompleted: false,
+    });
   }
 }
 
@@ -159,15 +155,15 @@ function handleToolCallCompleted(state: StreamState, tool: unknown): void {
     (b) => b.type === "tool_call" && b.id === t.id,
   );
 
-  if (toolBlock && toolBlock.type === "tool_call") {
-    toolBlock.toolResult = t.toolResult;
-    toolBlock.isCompleted = true;
-    if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
-      toolBlock.approvalStatus = "approved";
-    }
-    if (t.renderer) {
-      toolBlock.renderer = t.renderer;
-    }
+  if (!toolBlock || toolBlock.type !== "tool_call") return;
+
+  toolBlock.toolResult = t.toolResult;
+  toolBlock.isCompleted = true;
+  if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
+    toolBlock.approvalStatus = "approved";
+  }
+  if (t.renderer) {
+    toolBlock.renderer = t.renderer;
   }
 }
 
@@ -177,14 +173,14 @@ function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
     (b) => b.type === "tool_call" && b.id === t.id,
   );
   
-  if (toolBlock && toolBlock.type === "tool_call") {
-    toolBlock.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
-    if (t.toolArgs) {
-      toolBlock.toolArgs = t.toolArgs;
-    }
-    if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
-      toolBlock.isCompleted = true;
-    }
+  if (!toolBlock || toolBlock.type !== "tool_call") return;
+
+  toolBlock.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
+  if (t.toolArgs) {
+    toolBlock.toolArgs = t.toolArgs;
+  }
+  if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
+    toolBlock.isCompleted = true;
   }
 }
 
@@ -198,7 +194,7 @@ export function processEvent(
   
   switch (eventType) {
     case "RunStarted":
-      if (d.sessionId) callbacks.onSessionId?.(d.sessionId as string);
+      callbacks.onSessionId?.(d.sessionId as string);
       break;
 
     case "AssistantMessageId":
@@ -207,11 +203,11 @@ export function processEvent(
         state.currentTextBlock = "";
         state.currentReasoningBlock = "";
       }
-      if (d.content) callbacks.onMessageId?.(d.content as string);
+      callbacks.onMessageId?.(d.content as string);
       break;
 
     case "RunContent":
-      if (d.content) handleRunContent(state, d.content as string, callbacks);
+      handleRunContent(state, (d.content as string) || "", callbacks);
       break;
 
     case "SeedBlocks":
@@ -227,12 +223,10 @@ export function processEvent(
       break;
 
     case "ReasoningStep":
-      if (d.reasoningContent) {
-        if (state.currentTextBlock && !state.currentReasoningBlock) {
-          flushTextBlock(state);
-        }
-        state.currentReasoningBlock += d.reasoningContent as string;
+      if (state.currentTextBlock && !state.currentReasoningBlock) {
+        flushTextBlock(state);
       }
+      state.currentReasoningBlock += (d.reasoningContent as string) || "";
       break;
 
     case "ReasoningCompleted":
@@ -244,15 +238,15 @@ export function processEvent(
       break;
 
     case "ToolApprovalRequired":
-      if (d.tool) handleToolApprovalRequired(state, d.tool);
+      handleToolApprovalRequired(state, d.tool);
       break;
 
     case "ToolCallCompleted":
-      if (d.tool) handleToolCallCompleted(state, d.tool);
+      handleToolCallCompleted(state, d.tool);
       break;
 
     case "ToolApprovalResolved":
-      if (d.tool) handleToolApprovalResolved(state, d.tool);
+      handleToolApprovalResolved(state, d.tool);
       break;
 
     case "RunCompleted":
@@ -263,13 +257,10 @@ export function processEvent(
     case "RunError":
       flushTextBlock(state);
       flushReasoningBlock(state);
-      const errText =
-        typeof d.error === "string"
-          ? d.error
-          : typeof d.content === "string"
-            ? d.content
-            : "An error occurred.";
-      state.contentBlocks.push({ type: "error", content: errText });
+      state.contentBlocks.push({
+        type: "error",
+        content: (typeof d.error === "string" ? d.error : typeof d.content === "string" ? d.content : "An error occurred.")
+      });
       break;
   }
 
@@ -298,9 +289,13 @@ export async function processMessageStream(
   let buffer = "";
   let currentEvent = "";
   let messageId: string | null = null;
+
   const wrappedCallbacks: StreamCallbacks = {
     ...callbacks,
-    onMessageId: (id) => { messageId = id; callbacks.onMessageId?.(id); },
+    onMessageId: (id) => {
+      messageId = id;
+      callbacks.onMessageId?.(id);
+    },
   };
 
   try {
@@ -322,8 +317,7 @@ export async function processMessageStream(
           if (data === "[DONE]") continue;
 
           try {
-            const parsed = JSON.parse(data);
-            processEvent(currentEvent, parsed, state, wrappedCallbacks);
+            processEvent(currentEvent, JSON.parse(data), state, wrappedCallbacks);
           } catch (err) {
             console.error("Failed to parse SSE data:", err);
           }
@@ -334,9 +328,6 @@ export async function processMessageStream(
     reader.releaseLock();
   }
 
-  return {
-    finalContent: buildCurrentContent(state),
-    messageId,
-  };
+  return { finalContent: buildCurrentContent(state), messageId };
 }
 

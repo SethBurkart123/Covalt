@@ -5,35 +5,23 @@ export function configToFormData(
   id: string,
   config: Record<string, unknown>
 ): ServerFormData {
-  let serverType: ServerType = "stdio";
-  if (
-    config.type &&
-    typeof config.type === "string" &&
-    (config.type === "sse" ||
-      config.type === "streamable-http" ||
-      config.type === "stdio")
-  ) {
-    serverType = config.type;
-  }
+  const serverType: ServerType =
+    config.type === "sse" || config.type === "streamable-http" || config.type === "stdio"
+      ? config.type
+      : "stdio";
 
-  let fullCommand = (config.command as string) || "";
-  if (config.args && Array.isArray(config.args)) {
-    const argsStr = (config.args as string[])
-      .map((arg) => (arg.includes(" ") ? `"${arg}"` : arg))
-      .join(" ");
-    if (argsStr) {
-      fullCommand = fullCommand ? `${fullCommand} ${argsStr}` : argsStr;
-    }
-  }
+  const baseCommand = (config.command as string) || "";
+  const args = Array.isArray(config.args)
+    ? (config.args as string[]).map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ")
+    : "";
+  const fullCommand = args ? `${baseCommand} ${args}`.trim() : baseCommand;
 
-  const envVars: KeyValuePair[] = [];
-  if (config.env && typeof config.env === "object") {
-    for (const [key, value] of Object.entries(
-      config.env as Record<string, string>
-    )) {
-      envVars.push({ key, value: value === "***" ? "" : value });
-    }
-  }
+  const envVars: KeyValuePair[] = config.env && typeof config.env === "object"
+    ? Object.entries(config.env as Record<string, string>).map(([key, value]) => ({
+        key,
+        value: value === "***" ? "" : value,
+      }))
+    : [];
 
   return {
     id,
@@ -76,6 +64,5 @@ export function parseCommandString(cmdStr: string): {
   }
   if (current) tokens.push(current);
 
-  if (tokens.length === 0) return { command: "", args: [] };
-  return { command: tokens[0], args: tokens.slice(1) };
+  return { command: tokens[0] || "", args: tokens.slice(1) };
 }

@@ -248,8 +248,7 @@ export default function ThemeToggle() {
   const { mode, setMode } = useTheme();
 
   const handleValueChange = (value: string) => {
-    const newMode = mapValueToMode(value);
-    setMode(newMode);
+    setMode(mapValueToMode(value));
   };
 
   return (
@@ -262,12 +261,10 @@ export default function ThemeToggle() {
         value={mapModeToValue(mode)}
         onValueChange={handleValueChange}
       >
-        {items.map((item) => {
-          const isChecked = item.value === mapModeToValue(mode);
-          return (
+        {items.map((item) => (
             <label
               className={`rounded-lg border ${
-                isChecked
+                item.value === mapModeToValue(mode)
                   ? "dark:bg-black/10 bg-white/10 border-border"
                   : "bg-card/10 border-border/10"
               }`}
@@ -293,8 +290,7 @@ export default function ThemeToggle() {
                 <span className="text-xs font-medium">{item.label}</span>
               </span>
             </label>
-          );
-        })}
+        ))}
       </RadioGroup>
     </fieldset>
   );

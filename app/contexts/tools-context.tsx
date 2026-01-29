@@ -94,20 +94,13 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     const loadActiveTools = async () => {
       setIsLoadingActiveTools(true);
       try {
-        let toolIds: string[] | undefined;
         if (chatId) {
-          try {
-            const config = await getChatAgentConfig({ body: { id: chatId } });
-            toolIds = config.toolIds || [];
-          } catch (error) {
-            console.error("Failed to load chat config:", error);
-          }
-        }
-        if (!toolIds) {
+          const config = await getChatAgentConfig({ body: { id: chatId } });
+          setActiveToolIds(config.toolIds || []);
+        } else {
           const response = await getDefaultTools();
-          toolIds = response.toolIds || [];
+          setActiveToolIds(response.toolIds || []);
         }
-        setActiveToolIds(toolIds);
       } catch (error) {
         console.error("Failed to load active tools:", error);
         setActiveToolIds([]);
@@ -198,10 +191,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       const tools = groupedTools.byCategory[category];
       if (!tools || tools.length === 0) return;
 
-      const toolIds = tools.map((t) => t.id);
       const newActiveToolIds = isToolsetActive(category)
-        ? activeToolIds.filter((id) => !toolIds.includes(id))
-        : [...new Set([...activeToolIds, ...toolIds])];
+        ? activeToolIds.filter((id) => !tools.some((t) => t.id === id))
+        : [...new Set([...activeToolIds, ...tools.map((t) => t.id)])];
 
       setActiveToolIds(newActiveToolIds);
 

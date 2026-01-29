@@ -65,20 +65,20 @@ const MessageRow = memo(function MessageRow({
   }, [onNavigate, message.id]);
 
   return (
-    <ChatMessage
-      role={message.role as "user" | "assistant"}
-      content={message.content}
-      isStreaming={isStreaming}
-      message={message}
-      siblings={siblings}
-      onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
-      onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
-      onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
-      onNavigate={onNavigate ? handleNavigate : undefined}
-      isLoading={isLoading}
-      isLastAssistantMessage={isLastAssistantMessage}
-      chatId={chatId}
-    />
+      <ChatMessage
+        role={message.role as "user" | "assistant"}
+        content={message.content}
+        isStreaming={isStreaming}
+        message={message}
+        siblings={siblings}
+        onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
+        onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
+        onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
+        onNavigate={onNavigate ? handleNavigate : undefined}
+        isLoading={isLoading}
+        isLastAssistantMessage={isLastAssistantMessage}
+        chatId={chatId}
+      />
   );
 }, (prevProps, nextProps) => {
   return (
@@ -126,33 +126,22 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     const bottomElement = endOfMessagesRef.current;
     if (!bottomElement) return;
 
-    const scrollContainer =
-      bottomElement.parentElement?.parentElement?.parentElement;
+    const scrollContainer = bottomElement.parentElement?.parentElement?.parentElement;
     if (!scrollContainer) return;
 
     scrollContainerRef.current = scrollContainer;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const entry = entries[0];
-        isAtBottomRef.current = entry.isIntersecting;
+        isAtBottomRef.current = entries[0].isIntersecting;
       },
-      {
-        root: scrollContainer,
-        threshold: 0,
-        rootMargin: "100px",
-      },
+      { root: scrollContainer, threshold: 0, rootMargin: "100px" }
     );
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-      if (distanceFromBottom > 70) {
-        isAtBottomRef.current = false;
-      } else if (distanceFromBottom < 50) {
-        isAtBottomRef.current = true;
-      }
+      isAtBottomRef.current = distanceFromBottom < 50;
     };
 
     observer.observe(bottomElement);
@@ -171,22 +160,18 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
     prevMessagesLengthRef.current = messages.length;
 
-    const scrollToBottom = () => {
+    if (userJustSentMessage || isAtBottomRef.current) {
       const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer) return;
-      
-      requestAnimationFrame(() => {
+      if (scrollContainer) {
         requestAnimationFrame(() => {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+          requestAnimationFrame(() => {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+          });
         });
-      });
-    };
-
-    if (userJustSentMessage) {
-      scrollToBottom();
-      isAtBottomRef.current = true;
-    } else if (isAtBottomRef.current) {
-      scrollToBottom();
+      }
+      if (userJustSentMessage) {
+        isAtBottomRef.current = true;
+      }
     }
   }, [messages, isLoading]);
 
@@ -194,9 +179,10 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     (m) => m.role === "user" || m.role === "assistant",
   );
 
-  const lastAssistantIndex = filteredMessages.reduce((lastIdx, m, idx) => {
-    return m.role === "assistant" ? idx : lastIdx;
-  }, -1);
+  const lastAssistantIndex = filteredMessages.reduce(
+    (lastIdx, m, idx) => (m.role === "assistant" ? idx : lastIdx),
+    -1
+  );
 
   return (
     <>

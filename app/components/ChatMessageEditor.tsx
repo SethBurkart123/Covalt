@@ -66,8 +66,6 @@ export default function ChatMessageEditor({
     [onAddAttachment]
   );
 
-  const canSubmit = value.trim() || attachments.length > 0;
-
   return (
     <FileDropZone
       onFilesDrop={handleFilesDrop}
@@ -120,7 +118,7 @@ export default function ChatMessageEditor({
               type="button"
               className="h-8 px-3 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
               onClick={onSubmit}
-              disabled={!canSubmit || isLoading}
+              disabled={(!value.trim() && attachments.length === 0) || isLoading}
             >
               Send
             </button>

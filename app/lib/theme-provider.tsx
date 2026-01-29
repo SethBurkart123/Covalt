@@ -1,11 +1,10 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { ThemeMode, ThemeState, ThemeProviderProps } from "./types";
 import { defaultThemeState, getPresetThemeStyles } from "./theme-presets";
 import { applyTheme } from "./fix-global-css";
 
-// Theme context type
 type ThemeContextType = {
 	themeState: ThemeState;
 	setThemeMode: (mode: ThemeMode) => void;
@@ -14,114 +13,70 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-// Custom theme provider component
 export function CustomThemeProvider({
 	children,
 	defaultPreset,
 }: ThemeProviderProps) {
-	// State to track theme
 	const [themeState, setThemeState] = useState<ThemeState>(defaultThemeState);
 	const [isInitialized, setIsInitialized] = useState(false);
 
-	// Initialize theme from localStorage or system preference if available
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 
-		try {
-			const savedTheme = localStorage.getItem("theme-mode") as ThemeMode | null;
-			const savedPreset =
-				localStorage.getItem("theme-preset") || defaultPreset || "default";
+		const savedTheme = localStorage.getItem("theme-mode") as ThemeMode | null;
+		const savedPreset =
+			localStorage.getItem("theme-preset") || defaultPreset || "default";
 
-			// System preference for dark mode
-			const prefersDark = window.matchMedia(
-				"(prefers-color-scheme: dark)",
-			).matches;
-			const initialMode = savedTheme || (prefersDark ? "dark" : "light");
+		const prefersDark = window.matchMedia(
+			"(prefers-color-scheme: dark)",
+		).matches;
 
-			// Set initial theme state
-			const initialState = {
-				currentMode: initialMode,
-				preset: savedPreset,
-				styles: getPresetThemeStyles(savedPreset),
-			};
+		const initialState = {
+			currentMode: savedTheme || (prefersDark ? "dark" : "light"),
+			preset: savedPreset,
+			styles: getPresetThemeStyles(savedPreset),
+		};
 
-			console.log("Initializing theme:", initialState);
-			setThemeState(initialState);
-			setIsInitialized(true);
-
-			// Apply initial theme styles
-			applyTheme(initialState);
-		} catch (error) {
-			console.error("Error initializing theme:", error);
-			// Fallback to default theme
-			setThemeState(defaultThemeState);
-			setIsInitialized(true);
-			applyTheme(defaultThemeState);
-		}
+		setThemeState(initialState);
+		setIsInitialized(true);
+		applyTheme(initialState);
 	}, [defaultPreset]);
 
-	// Apply theme whenever it changes
 	useEffect(() => {
 		if (typeof window === "undefined" || !isInitialized) return;
 
-		try {
-			// Save preferences
-			localStorage.setItem("theme-mode", themeState.currentMode);
-			localStorage.setItem("theme-preset", themeState.preset);
-
-			// Apply the theme styles
-			applyTheme(themeState);
-
-			console.log(
-				`Theme applied: ${themeState.preset}, mode: ${themeState.currentMode}`,
-				themeState,
-			);
-		} catch (error) {
-			console.error("Error applying theme:", error);
-		}
+		localStorage.setItem("theme-mode", themeState.currentMode);
+		localStorage.setItem("theme-preset", themeState.preset);
+		applyTheme(themeState);
 	}, [themeState, isInitialized]);
 
-	// Change theme mode (light/dark)
 	const setThemeMode = (mode: ThemeMode) => {
-		console.log(`Setting theme mode: ${mode}`);
 		setThemeState((prev) => ({
 			...prev,
 			currentMode: mode,
 		}));
 	};
 
-	// Apply a theme preset
 	const applyThemePreset = (preset: string) => {
-		console.log(`Applying preset: ${preset}`);
-		try {
-			const newStyles = getPresetThemeStyles(preset);
-
-			setThemeState((prev) => ({
-				...prev,
-				preset,
-				styles: newStyles,
-			}));
-		} catch (error) {
-			console.error(`Error applying preset ${preset}:`, error);
-		}
-	};
-
-	// Provider value
-	const value = {
-		themeState,
-		setThemeMode,
-		applyThemePreset,
+		setThemeState((prev) => ({
+			...prev,
+			preset,
+			styles: getPresetThemeStyles(preset),
+		}));
 	};
 
 	return (
-		<ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+		<ThemeContext.Provider
+			value={{ themeState, setThemeMode, applyThemePreset }}
+		>
+			{children}
+		</ThemeContext.Provider>
 	);
 }
 
-// Hook to access theme context
 export function useTheme(): ThemeContextType {
 	const context = useContext(ThemeContext);
-	if (context === undefined) {
+	if (!context) {
 		throw new Error("useTheme must be used within a ThemeProvider");
 	}
 	return context;

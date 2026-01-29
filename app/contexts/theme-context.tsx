@@ -157,8 +157,7 @@ function readInitialThemeState(): ThemeState {
     };
   }
 
-  const savedMode = localStorage.getItem(STORAGE_MODE_KEY) as ThemeMode | null;
-  const mode: ThemeMode = savedMode ?? "system";
+  const mode: ThemeMode = (localStorage.getItem(STORAGE_MODE_KEY) as ThemeMode) ?? "system";
   const resolvedMode = resolveMode(mode);
 
   const preset = localStorage.getItem(STORAGE_PRESET_KEY) ?? "default";
@@ -232,11 +231,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateCustomTheme = useCallback((id: string, name: string, styles: ThemeStyles) => {
-    setState((prev) => {
-      const customThemes = prev.customThemes.map((t) => (t.id === id ? { ...t, name, styles } : t));
-      const nextStyles = prev.preset === id ? styles : prev.styles;
-      return { ...prev, customThemes, styles: nextStyles };
-    });
+    setState((prev) => ({
+      ...prev,
+      customThemes: prev.customThemes.map((t) => (t.id === id ? { ...t, name, styles } : t)),
+      styles: prev.preset === id ? styles : prev.styles,
+    }));
   }, []);
 
   const deleteCustomTheme = useCallback((id: string) => {
@@ -256,13 +255,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const importTweakCNTheme = useCallback((name: string, cssVariables: string): string => {
-    const { light, dark } = parseCSSVariables(cssVariables);
-    const styles: ThemeStyles = {
-      light: { ...defaultThemeState.styles.light, ...light },
-      dark: { ...defaultThemeState.styles.dark, ...dark },
-    };
-
-    return addCustomTheme(name, styles);
+    const parsed = parseCSSVariables(cssVariables);
+    return addCustomTheme(name, {
+      light: { ...defaultThemeState.styles.light, ...parsed.light },
+      dark: { ...defaultThemeState.styles.dark, ...parsed.dark },
+    });
   }, [addCustomTheme]);
 
   const getAllThemes = useCallback(() => {

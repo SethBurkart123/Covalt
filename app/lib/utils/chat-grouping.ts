@@ -37,10 +37,7 @@ export function groupChatsByTimePeriod(
 
     const updatedAt = chat.updatedAt || chat.createdAt;
     if (!updatedAt) {
-      olderChats.set("Unknown", [
-        ...(olderChats.get("Unknown") || []),
-        chatId,
-      ]);
+      olderChats.set("Unknown", [...(olderChats.get("Unknown") || []), chatId]);
       continue;
     }
 
@@ -60,13 +57,8 @@ export function groupChatsByTimePeriod(
     } else if (chatDate >= thisMonth) {
       thisMonthChats.push(chatId);
     } else {
-      const monthKey = chatDate.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      });
-      const existing = olderChats.get(monthKey) || [];
-      existing.push(chatId);
-      olderChats.set(monthKey, existing);
+      const monthKey = chatDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      olderChats.set(monthKey, [...(olderChats.get(monthKey) || []), chatId]);
     }
   }
 

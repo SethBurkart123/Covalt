@@ -21,14 +21,13 @@ interface SchemaFormFieldProps {
   onChange: (name: string, value: unknown) => void;
 }
 
-function getPrimaryType(type: string | string[] | undefined): string {
+const getPrimaryType = (type: string | string[] | undefined): string => {
   if (!type) return "string";
   if (Array.isArray(type)) {
-    const nonNull = type.filter((t) => t !== "null");
-    return nonNull[0] || "string";
+    return type.find((t) => t !== "null") || "string";
   }
   return type;
-}
+};
 
 export function SchemaFormField({
   name,
@@ -37,7 +36,6 @@ export function SchemaFormField({
   onChange,
 }: SchemaFormFieldProps) {
   const type = getPrimaryType(schema.type);
-  const placeholder = `Enter ${name}`;
   const [jsonText, setJsonText] = useState("");
 
   useEffect(() => {
@@ -68,14 +66,13 @@ export function SchemaFormField({
         step={type === "integer" ? 1 : "any"}
         value={value !== undefined && value !== null ? String(value) : ""}
         onChange={(e) => {
-          const val = e.target.value;
-          if (val === "") {
+          if (e.target.value === "") {
             onChange(name, undefined);
           } else {
-            onChange(name, type === "integer" ? parseInt(val, 10) : parseFloat(val));
+            onChange(name, type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value));
           }
         }}
-        placeholder={placeholder}
+        placeholder={`Enter ${name}`}
         className="h-9"
       />
     );
@@ -117,16 +114,15 @@ export function SchemaFormField({
           id={name}
           value={jsonText}
           onChange={(e) => {
-            const next = e.target.value;
-            setJsonText(next);
-            if (next.trim() === "") {
+            setJsonText(e.target.value);
+            if (e.target.value.trim() === "") {
               onChange(name, undefined);
               return;
             }
             try {
-              onChange(name, JSON.parse(next));
+              onChange(name, JSON.parse(e.target.value));
             } catch {
-              // Ignore parse errors while typing
+              // Invalid JSON while typing
             }
           }}
           placeholder={`{"key": "value"}`}
@@ -143,7 +139,7 @@ export function SchemaFormField({
       type="text"
       value={value !== undefined && value !== null ? String(value) : ""}
       onChange={(e) => onChange(name, e.target.value || undefined)}
-      placeholder={placeholder}
+      placeholder={`Enter ${name}`}
       className="h-9"
     />
   );

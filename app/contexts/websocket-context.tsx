@@ -81,8 +81,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const baseUrl = getBaseUrl().replace(/^http/, "ws");
-      const ws = new WebSocket(`${baseUrl}/ws/events`);
+      const ws = new WebSocket(`${getBaseUrl().replace(/^http/, "ws")}/ws/events`);
       wsRef.current = ws;
       setStatus("connecting");
 
@@ -131,32 +130,27 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const handleMessage = useCallback(
     (message: { event: string; data: unknown }) => {
       switch (message.event) {
-        case "mcp_servers": {
-          const snapshot = convertKeysToCamelCase<McpServersSnapshot>(
-            message.data
+        case "mcp_servers":
+          setMcpServers(
+            convertKeysToCamelCase<McpServersSnapshot>(message.data).servers
           );
-          setMcpServers(snapshot.servers);
           break;
-        }
-        case "mcp_status": {
-          const update = convertKeysToCamelCase<McpServerStatus>(message.data);
+        case "mcp_status":
           setMcpServers((prev) => {
-            const existing = prev.find((s) => s.id === update.id);
-            if (existing) {
-              return prev.map((s) => (s.id === update.id ? update : s));
-            }
-            return [...prev, update];
+            const status = convertKeysToCamelCase<McpServerStatus>(message.data);
+            return prev.find((s) => s.id === status.id)
+              ? prev.map((s) => (s.id === status.id ? status : s))
+              : [...prev, status];
           });
           break;
-        }
         case "workspace_files_changed": {
-          const data = convertKeysToCamelCase<{
+          const { chatId, changedPaths, deletedPaths } = convertKeysToCamelCase<{
             chatId: string;
             changedPaths: string[];
             deletedPaths: string[];
           }>(message.data);
           workspaceCallbacksRef.current.forEach((cb) =>
-            cb(data.chatId, data.changedPaths, data.deletedPaths)
+            cb(chatId, changedPaths, deletedPaths)
           );
           break;
         }

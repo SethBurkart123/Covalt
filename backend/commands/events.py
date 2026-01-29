@@ -56,14 +56,9 @@ EventsWebSocket = WebSocket[ServerEvents, ClientEvents]
 def _mcp_status_callback(
     server_id: str, status: ServerStatus, error: str | None, tool_count: int
 ) -> None:
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(
-                _broadcast_mcp_status(server_id, status, error, tool_count)
-            )
-    except RuntimeError:
-        pass
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.create_task(_broadcast_mcp_status(server_id, status, error, tool_count))
 
 
 async def _broadcast_mcp_status(
@@ -71,17 +66,18 @@ async def _broadcast_mcp_status(
 ) -> None:
     mcp = get_mcp_manager()
     server_data = next((s for s in mcp.get_servers() if s["id"] == server_id), None)
-    extra = server_data or {}
 
     status_update = McpServerStatus(
         id=server_id,
         status=status,
         error=error,
         tool_count=tool_count,
-        oauth_status=extra.get("oauthStatus"),
-        oauth_provider_name=extra.get("oauthProviderName"),
-        auth_hint=extra.get("authHint"),
-        config=extra.get("config"),
+        oauth_status=server_data.get("oauthStatus") if server_data else None,
+        oauth_provider_name=server_data.get("oauthProviderName")
+        if server_data
+        else None,
+        auth_hint=server_data.get("authHint") if server_data else None,
+        config=server_data.get("config") if server_data else None,
     )
 
     async with _clients_lock:
