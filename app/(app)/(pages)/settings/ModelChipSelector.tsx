@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PROVIDER_MAP } from "./providers/ProviderRegistry";
+import { useFuzzyFilter } from "@/lib/hooks/use-fuzzy-filter";
 
 interface Model {
   provider: string;
@@ -52,9 +53,10 @@ export default function ModelChipSelector({
     [selectedModels],
   );
 
-  const unselectedModels = useMemo(() => {
-    return availableModels.filter((m) => !selectedKeys.has(getModelKey(m)));
-  }, [availableModels, selectedKeys]);
+  const unselectedModels = useMemo(
+    () => availableModels.filter((m) => !selectedKeys.has(getModelKey(m))),
+    [availableModels, selectedKeys],
+  );
 
   const groupedUnselected = useMemo(() => {
     const groups = new Map<string, Model[]>();
@@ -77,10 +79,16 @@ export default function ModelChipSelector({
       );
   }, [unselectedModels]);
 
-  const handleSelect = (provider: string, modelId: string) => {
-    onAdd(provider, modelId);
-    setOpen(false);
-  };
+  const fuzzyItems = useMemo(
+    () =>
+      unselectedModels.map((model) => ({
+        value: `${model.provider}:${model.modelId}:${model.displayName}`,
+        searchText: `${PROVIDER_MAP[model.provider]?.name || model.provider} ${model.displayName} ${model.modelId}`,
+      })),
+    [unselectedModels],
+  );
+
+  const fuzzyFilter = useFuzzyFilter(fuzzyItems);
 
   const shouldCollapse = !showAll && selectedModels.length > SHOW_MORE_THRESHOLD;
 
@@ -114,40 +122,39 @@ export default function ModelChipSelector({
             className="w-72 border border-border bg-popover shadow-lg rounded-xl p-0"
             align="start"
           >
-            <Command className="rounded-xl">
+            <Command className="rounded-xl" filter={fuzzyFilter}>
               <CommandInput placeholder="Search models..." />
               <CommandList className="max-h-64">
                 <CommandEmpty>No models available.</CommandEmpty>
                 {groupedUnselected.map((group) => (
-                    <Fragment key={group.provider}>
-                      <CommandGroup heading={group.providerDef?.name || group.provider}>
-                        {group.models.map((model) => {
-                          const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
-
-                          return (
-                            <CommandItem
-                              key={getModelKey(model)}
-                              value={`${model.provider}:${model.modelId}:${model.displayName}`}
-                              onSelect={() =>
-                                handleSelect(model.provider, model.modelId)
-                              }
-                              className="cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2 flex-1 min-w-0">
-                                {ProviderIcon && (
-                                  <span className="shrink-0 flex items-center opacity-70">
-                                    <ProviderIcon size={16} />
-                                  </span>
-                                )}
-                                <span className="truncate">
-                                  {model.displayName}
-                                </span>
+                  <CommandGroup
+                    key={group.provider}
+                    heading={group.providerDef?.name || group.provider}
+                  >
+                    {group.models.map((model) => {
+                      const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
+                      return (
+                        <CommandItem
+                          key={getModelKey(model)}
+                          value={`${model.provider}:${model.modelId}:${model.displayName}`}
+                          onSelect={() => {
+                            onAdd(model.provider, model.modelId);
+                            setOpen(false);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2 flex-1 min-w-0">
+                            {ProviderIcon && (
+                              <span className="shrink-0 flex items-center opacity-70">
+                                <ProviderIcon size={16} />
                               </span>
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </Fragment>
+                            )}
+                            <span className="truncate">{model.displayName}</span>
+                          </span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
                 ))}
               </CommandList>
             </Command>

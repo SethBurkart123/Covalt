@@ -262,7 +262,7 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
             </pre>
           ) : (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              Click &quot;Run&quot; to test this tool
+              Click "Run" to test this tool
             </div>
           )}
         </div>
