@@ -18,8 +18,7 @@ function getCachedModels(): ModelInfo[] | null {
 
   try {
     const { models, timestamp }: ModelsCache = JSON.parse(cached);
-    const isExpired = Date.now() - timestamp > CACHE_TTL;
-    return isExpired ? null : models;
+    return Date.now() - timestamp > CACHE_TTL ? null : models;
   } catch {
     return null;
   }
@@ -40,53 +39,41 @@ export function useModels() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const selectModel = useCallback((models: ModelInfo[]) => {
+    if (models.length === 0) {
+      setSelectedModel("");
+      return;
+    }
+
+    const saved = localStorage.getItem("selectedModel");
+    const savedExists = saved && models.some((m) => `${m.provider}:${m.modelId}` === saved);
+
+    if (savedExists && saved) {
+      setSelectedModel(saved);
+    } else {
+      const defaultModel = models.find((m) => m.isDefault) || models[0];
+      const modelKey = `${defaultModel.provider}:${defaultModel.modelId}`;
+      setSelectedModel(modelKey);
+      localStorage.setItem("selectedModel", modelKey);
+    }
+  }, []);
+
   const loadModels = useCallback(async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cached = getCachedModels();
       if (cached) {
         setModels(cached);
         setIsLoading(false);
-        
-        // Set selected model from cache
-        if (cached.length > 0) {
-          const saved = localStorage.getItem("selectedModel");
-          const savedExists = saved && cached.some((m) => `${m.provider}:${m.modelId}` === saved);
-          
-          if (savedExists && saved) {
-            setSelectedModel(saved);
-          } else {
-            const defaultModel = cached.find((m) => m.isDefault) || cached[0];
-            const modelKey = `${defaultModel.provider}:${defaultModel.modelId}`;
-            setSelectedModel(modelKey);
-            localStorage.setItem("selectedModel", modelKey);
-          }
-        }
+        selectModel(cached);
         return;
       }
     }
 
     try {
       const response = await getAvailableModels();
-      const availableModels = response.models;
-      
-      setModels(availableModels);
-      setCachedModels(availableModels);
-
-      if (availableModels.length > 0) {
-        const saved = localStorage.getItem("selectedModel");
-        const savedExists = saved && availableModels.some((m) => `${m.provider}:${m.modelId}` === saved);
-
-        if (savedExists && saved) {
-          setSelectedModel(saved);
-        } else {
-          const defaultModel = availableModels.find((m) => m.isDefault) || availableModels[0];
-          const modelKey = `${defaultModel.provider}:${defaultModel.modelId}`;
-          setSelectedModel(modelKey);
-          localStorage.setItem("selectedModel", modelKey);
-        }
-      } else {
-        setSelectedModel("");
-      }
+      setModels(response.models);
+      setCachedModels(response.models);
+      selectModel(response.models);
     } catch (error) {
       console.error("Failed to load models:", error);
       setModels([]);
@@ -94,7 +81,7 @@ export function useModels() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectModel]);
 
   useEffect(() => {
     loadModels();
@@ -105,9 +92,7 @@ export function useModels() {
     localStorage.setItem("selectedModel", model);
   }, []);
 
-  const refreshModels = useCallback(async () => {
-    await loadModels(true);
-  }, [loadModels]);
+  const refreshModels = useCallback(() => loadModels(true), [loadModels]);
 
   return {
     selectedModel,

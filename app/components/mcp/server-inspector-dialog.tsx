@@ -118,13 +118,7 @@ export function McpServerInspectorDialog({
 
   if (!server) return null;
 
-  const selectedTool = tools.find((t) => t.id === selectedToolId) || null;
   const isConnected = server.status === "connected";
-  const showReconnectButton =
-    server.status === "error" || server.status === "disconnected";
-  const showErrorDetails =
-    (server.status === "error" || server.status === "disconnected") &&
-    !!server.error;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -147,7 +141,7 @@ export function McpServerInspectorDialog({
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
-              {showReconnectButton ? (
+              {server.status === "error" || server.status === "disconnected" ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -205,9 +199,9 @@ export function McpServerInspectorDialog({
             </div>
 
             <div className="flex-1 min-w-0">
-              {selectedTool ? (
+              {tools.find((t) => t.id === selectedToolId) ? (
                 <ToolTester
-                  tool={selectedTool}
+                  tool={tools.find((t) => t.id === selectedToolId)!}
                   serverId={server.id}
                   onTest={onTestTool}
                 />
@@ -226,7 +220,7 @@ export function McpServerInspectorDialog({
               Please wait while we establish the connection
             </p>
           </div>
-        ) : showErrorDetails ? (
+        ) : (server.status === "error" || server.status === "disconnected") && !!server.error ? (
           <div className="flex-1 flex min-h-0">
             <div className="w-80 flex-shrink-0 flex flex-col items-center justify-center text-center p-8 border-r border-border">
               <Plug className="size-12 text-muted-foreground/50 mb-4" />

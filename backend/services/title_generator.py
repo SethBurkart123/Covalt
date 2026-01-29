@@ -8,15 +8,6 @@ from .. import db
 
 
 def generate_title_for_chat(chat_id: str) -> Optional[str]:
-    """
-    Generate a title for a chat based on its first user message.
-
-    Args:
-        chat_id: Chat identifier
-
-    Returns:
-        Generated title string or None if disabled/failed
-    """
     try:
         with db.db_session() as sess:
             settings = db.get_auto_title_settings(sess)
@@ -49,11 +40,9 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
             )
             model_mode = settings.get("model_mode", "current")
 
-            # Replace {{ message }} placeholder with actual message
             if "{{ message }}" in prompt_template:
                 prompt = prompt_template.replace("{{ message }}", user_content)
             else:
-                # Fallback: if no placeholder, append message at the end
                 prompt = f"{prompt_template}\n\nUser message: {user_content}"
 
             if model_mode == "current":
@@ -69,15 +58,7 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
         from .model_factory import get_model
 
         model = get_model(provider, model_id)
-
-        agent = Agent(
-            model=model,
-            instructions=[prompt],
-            tools=[],
-            stream=False,
-        )
-
-        # Use empty input since prompt already contains the message
+        agent = Agent(model=model, instructions=[prompt], tools=[], stream=False)
         response = agent.run(input=[])
 
         if not response or not response.messages:
@@ -87,9 +68,7 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
         if not last_msg or not hasattr(last_msg, "content"):
             return None
 
-        title = str(last_msg.content).strip()
-
-        title = title.strip("\"'").strip()
+        title = str(last_msg.content).strip().strip("\"'").strip()
 
         if len(title) > 100:
             title = title[:100].strip()
@@ -97,5 +76,5 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
         return title if title else None
 
     except Exception as e:
-        print(f"[title_generator] Error generating title: {e}")
+        print(f"[title_generator] Error: {e}")
         return None

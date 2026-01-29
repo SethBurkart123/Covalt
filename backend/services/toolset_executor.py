@@ -34,63 +34,56 @@ class ToolsetExecutor:
     def _load_tool_module(
         self, toolset_id: str, entrypoint: str
     ) -> tuple[Callable, dict[str, Any] | None] | None:
-        try:
-            if ":" not in entrypoint:
-                logger.error(f"Invalid entrypoint format: {entrypoint}")
-                return None
-
-            module_path, func_name = entrypoint.rsplit(":", 1)
-
-            toolset_dir = get_toolset_directory(toolset_id)
-            if not toolset_dir.exists():
-                logger.error(f"Toolset directory not found: {toolset_dir}")
-                return None
-
-            rel_path = module_path.replace(".", "/") + ".py"
-            module_file = toolset_dir / rel_path
-
-            if not module_file.exists():
-                logger.error(f"Module file not found: {module_file}")
-                return None
-
-            module_name = f"toolset_{toolset_id}_{module_path.replace('.', '_')}"
-
-            spec = importlib.util.spec_from_file_location(module_name, module_file)
-            if spec is None or spec.loader is None:
-                logger.error(f"Failed to create module spec for {module_file}")
-                return None
-
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-
-            if not hasattr(module, func_name):
-                logger.error(f"Function '{func_name}' not found in {module_file}")
-                return None
-
-            fn = getattr(module, func_name)
-
-            tool_meta = get_tool_metadata(fn)
-            decorator_data: dict[str, Any] | None = None
-            if tool_meta:
-                decorator_data = {
-                    "name": tool_meta.name,
-                    "description": tool_meta.description,
-                    "schema": tool_meta.schema,
-                    "requires_confirmation": tool_meta.requires_confirmation,
-                    "category": tool_meta.category,
-                }
-            else:
-                logger.warning(
-                    f"Tool {entrypoint} has no @tool decorator. "
-                    "Schema will not be inferred from type hints."
-                )
-
-            return (fn, decorator_data)
-
-        except Exception as e:
-            logger.error(f"Failed to load tool module {entrypoint}: {e}")
+        if ":" not in entrypoint:
+            logger.error(f"Invalid entrypoint format: {entrypoint}")
             return None
+
+        module_path, func_name = entrypoint.rsplit(":", 1)
+
+        toolset_dir = get_toolset_directory(toolset_id)
+        if not toolset_dir.exists():
+            logger.error(f"Toolset directory not found: {toolset_dir}")
+            return None
+
+        rel_path = module_path.replace(".", "/") + ".py"
+        module_file = toolset_dir / rel_path
+
+        if not module_file.exists():
+            logger.error(f"Module file not found: {module_file}")
+            return None
+
+        module_name = f"toolset_{toolset_id}_{module_path.replace('.', '_')}"
+
+        spec = importlib.util.spec_from_file_location(module_name, module_file)
+        if spec is None or spec.loader is None:
+            logger.error(f"Failed to create module spec for {module_file}")
+            return None
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        if not hasattr(module, func_name):
+            logger.error(f"Function '{func_name}' not found in {module_file}")
+            return None
+
+        fn = getattr(module, func_name)
+
+        tool_meta = get_tool_metadata(fn)
+        if not tool_meta:
+            logger.warning(f"Tool {entrypoint} has no @tool decorator")
+            return (fn, None)
+
+        return (
+            fn,
+            {
+                "name": tool_meta.name,
+                "description": tool_meta.description,
+                "schema": tool_meta.schema,
+                "requires_confirmation": tool_meta.requires_confirmation,
+                "category": tool_meta.category,
+            },
+        )
 
     def _get_tool_from_db(self, tool_id: str) -> dict[str, Any] | None:
         if tool_id in self._tool_metadata:
@@ -98,7 +91,7 @@ class ToolsetExecutor:
 
         with db_session() as sess:
             tool = sess.query(Tool).filter(Tool.tool_id == tool_id).first()
-            if tool is None:
+            if not tool:
                 return None
 
             override = (
@@ -136,7 +129,7 @@ class ToolsetExecutor:
         self, tool_id: str, chat_id: str, message_id: str | None = None
     ) -> Function | None:
         tool_info = self._get_tool_from_db(tool_id)
-        if tool_info is None:
+        if not tool_info:
             return None
 
         toolset_id = tool_info.get("toolset_id")
@@ -149,7 +142,7 @@ class ToolsetExecutor:
         cache_key = f"{toolset_id}:{entrypoint}"
         if cache_key not in self._loaded_tools:
             result = self._load_tool_module(toolset_id, entrypoint)
-            if result is None:
+            if not result:
                 return None
             fn, decorator_data = result
             self._loaded_tools[cache_key] = (fn, toolset_id, decorator_data)
@@ -208,7 +201,6 @@ class ToolsetExecutor:
         tool_call_id = str(uuid.uuid4())
         started_at = datetime.now().isoformat()
 
-        pre_manifest_id: str | None = None
         actual_message_id = message_id
         with db_session() as sess:
             if not actual_message_id:
@@ -216,10 +208,11 @@ class ToolsetExecutor:
                 if chat and chat.active_leaf_message_id:
                     actual_message_id = chat.active_leaf_message_id
 
-            if actual_message_id:
-                pre_manifest_id = db.get_manifest_for_message(sess, actual_message_id)
-            else:
-                pre_manifest_id = workspace_manager.get_active_manifest_id()
+            pre_manifest_id = (
+                db.get_manifest_for_message(sess, actual_message_id)
+                if actual_message_id
+                else workspace_manager.get_active_manifest_id()
+            )
 
         self._record_tool_call(
             tool_call_id=tool_call_id,
@@ -232,12 +225,13 @@ class ToolsetExecutor:
             message_id=actual_message_id,
         )
 
-        ctx = ToolContext(
-            workspace=workspace_manager.workspace_dir,
-            chat_id=chat_id,
-            toolset_id=toolset_id,
+        set_context(
+            ToolContext(
+                workspace=workspace_manager.workspace_dir,
+                chat_id=chat_id,
+                toolset_id=toolset_id,
+            )
         )
-        set_context(ctx)
 
         try:
             if asyncio.iscoroutinefunction(tool_fn):
@@ -276,28 +270,21 @@ class ToolsetExecutor:
                     pre_manifest_id, post_manifest_id
                 )
                 if changed_paths or deleted_paths:
-                    try:
-                        from ..commands.events import broadcast_workspace_files_changed
+                    from ..commands.events import broadcast_workspace_files_changed
 
-                        asyncio.create_task(
-                            broadcast_workspace_files_changed(
-                                chat_id, changed_paths, deleted_paths
-                            )
+                    asyncio.create_task(
+                        broadcast_workspace_files_changed(
+                            chat_id, changed_paths, deleted_paths
                         )
-                    except Exception as e:
-                        logger.debug(f"Failed to broadcast workspace changes: {e}")
+                    )
 
             return json.dumps(result, indent=2)
 
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_id}: {e}")
-            try:
-                post_manifest_id = workspace_manager.snapshot(
-                    source="tool_run",
-                    source_ref=tool_call_id,
-                )
-            except Exception:
-                post_manifest_id = None
+            post_manifest_id = workspace_manager.snapshot(
+                source="tool_run", source_ref=tool_call_id
+            )
 
             self._update_tool_call(
                 tool_call_id=tool_call_id,
@@ -349,18 +336,20 @@ class ToolsetExecutor:
             tool_call = (
                 session.query(ToolCall).filter(ToolCall.id == tool_call_id).first()
             )
-            if tool_call:
-                tool_call.status = status
-                tool_call.finished_at = datetime.now().isoformat()
-                if result is not None:
-                    tool_call.result = json.dumps(result)
-                if render_plan is not None:
-                    tool_call.render_plan = json.dumps(render_plan)
-                if error is not None:
-                    tool_call.error = error
-                if post_manifest_id is not None:
-                    tool_call.post_manifest_id = post_manifest_id
-                session.commit()
+            if not tool_call:
+                return
+
+            tool_call.status = status
+            tool_call.finished_at = datetime.now().isoformat()
+            if result is not None:
+                tool_call.result = json.dumps(result)
+            if render_plan is not None:
+                tool_call.render_plan = json.dumps(render_plan)
+            if error is not None:
+                tool_call.error = error
+            if post_manifest_id is not None:
+                tool_call.post_manifest_id = post_manifest_id
+            session.commit()
 
     def generate_render_plan(
         self,
@@ -429,8 +418,7 @@ class ToolsetExecutor:
             if var_name in context:
                 value = context[var_name]
                 if len(parts) > 1 and isinstance(value, dict):
-                    path_parts = parts[1].split(".")
-                    for part in path_parts:
+                    for part in parts[1].split("."):
                         if isinstance(value, dict) and part in value:
                             value = value[part]
                         else:
@@ -438,15 +426,13 @@ class ToolsetExecutor:
                 return value
 
         def replace_var(match: re.Match) -> str:
-            var_expr = match.group(1)
-            parts = var_expr.split(".", 1)
+            parts = match.group(1).split(".", 1)
             var_name = parts[0]
 
             if var_name in context:
                 value = context[var_name]
                 if len(parts) > 1 and isinstance(value, dict):
-                    path_parts = parts[1].split(".")
-                    for part in path_parts:
+                    for part in parts[1].split("."):
                         if isinstance(value, dict) and part in value:
                             value = value[part]
                         else:
@@ -460,21 +446,18 @@ class ToolsetExecutor:
         if not toolset_id:
             return None
 
-        try:
-            toolset_dir = get_toolset_directory(toolset_id)
-            if artifact_path.startswith(str(toolset_dir)):
-                full_path = Path(artifact_path)
-            else:
-                full_path = toolset_dir / artifact_path
+        toolset_dir = get_toolset_directory(toolset_id)
+        full_path = (
+            Path(artifact_path)
+            if artifact_path.startswith(str(toolset_dir))
+            else toolset_dir / artifact_path
+        )
 
-            if full_path.exists() and full_path.is_file():
-                return full_path.read_text(encoding="utf-8")
+        if full_path.exists() and full_path.is_file():
+            return full_path.read_text(encoding="utf-8")
 
-            logger.warning(f"Artifact not found: {full_path}")
-            return None
-        except Exception as e:
-            logger.error(f"Failed to load artifact {artifact_path}: {e}")
-            return None
+        logger.warning(f"Artifact not found: {full_path}")
+        return None
 
     def list_toolset_tools(self) -> list[dict[str, Any]]:
         with db_session() as session:

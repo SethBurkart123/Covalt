@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,13 +26,13 @@ export function ImportThemeDialog({ open, onOpenChange }: ImportThemeDialogProps
   const [cssVariables, setCssVariables] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const resetForm = useCallback(() => {
+  const resetForm = () => {
     setThemeName("");
     setCssVariables("");
     setError(null);
-  }, []);
+  };
 
-  const handleImport = useCallback(() => {
+  const handleImport = () => {
     if (!themeName.trim()) {
       setError("Please enter a theme name");
       return;
@@ -52,15 +52,12 @@ export function ImportThemeDialog({ open, onOpenChange }: ImportThemeDialogProps
     setPreset(themeId);
     resetForm();
     onOpenChange(false);
-  }, [themeName, cssVariables, importTweakCNTheme, setPreset, onOpenChange, resetForm]);
+  };
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen) resetForm();
-      onOpenChange(nextOpen);
-    },
-    [onOpenChange, resetForm]
-  );
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) resetForm();
+    onOpenChange(nextOpen);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

@@ -12,7 +12,6 @@ export interface ToolInfo {
   category?: string | null;
 }
 
-// Attachment types
 export type AttachmentType = "image" | "file" | "audio" | "video";
 
 export interface Attachment {

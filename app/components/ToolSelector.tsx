@@ -60,24 +60,21 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
   } = useTools();
 
   const mcpStatusMap = useMemo(() => {
-    const map: Record<string, McpServerStatus["status"]> = {};
-    mcpServers.forEach((s) => {
-      map[s.id] = s.status;
-    });
-    return map;
+    return mcpServers.reduce(
+      (acc, s) => ({ ...acc, [s.id]: s.status }),
+      {} as Record<string, McpServerStatus["status"]>
+    );
   }, [mcpServers]);
 
   const categories = useMemo(() => {
-    const toolCategories = new Set(Object.keys(groupedTools.byCategory));
-    mcpServers.forEach((server) => {
-      if (!toolCategories.has(server.id)) {
-        toolCategories.add(server.id);
-      }
-    });
-    return Array.from(toolCategories).sort();
+    const categorySet = new Set([
+      ...Object.keys(groupedTools.byCategory),
+      ...mcpServers.map((s) => s.id),
+    ]);
+    return Array.from(categorySet).sort();
   }, [groupedTools.byCategory, mcpServers]);
 
-  const hasAnyTools = groupedTools.ungrouped.length > 0 || categories.length > 0;
+
 
   return (
     <DropdownMenu>
@@ -97,7 +94,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
           <div className="flex items-center justify-center py-6">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
-        ) : !hasAnyTools ? (
+        ) : groupedTools.ungrouped.length === 0 && categories.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
             No tools available
           </div>
@@ -127,13 +124,10 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
 
             {categories.map((category) => {
               const tools = groupedTools.byCategory[category] || [];
-              const allActive = isToolsetActive(category);
-              const partiallyActive = isToolsetPartiallyActive(category);
               const mcpStatus = mcpStatusMap[category] || null;
               const isErrorOrLoading = mcpStatus === "error" || mcpStatus === "connecting" || mcpStatus === "disconnected";
-              const hasTools = tools.length > 0;
 
-              if (isErrorOrLoading && !hasTools) {
+              if (isErrorOrLoading && tools.length === 0) {
                 return (
                   <DropdownMenuItem
                     key={category}
@@ -168,23 +162,23 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                     <span className="flex-1 truncate flex items-center gap-1.5">
                       {formatCategoryName(category)}
                     </span>
-                    {hasTools && (
+                    {tools.length > 0 && (
                       <span className="text-xs text-muted-foreground mr-1">
                         {tools.filter((t) => activeToolIds.includes(t.id)).length}/
                         {tools.length}
                       </span>
                     )}
                     <Switch
-                      checked={allActive}
+                      checked={isToolsetActive(category)}
                       data-state={
-                        partiallyActive
+                        isToolsetPartiallyActive(category)
                           ? "indeterminate"
-                          : allActive
+                          : isToolsetActive(category)
                             ? "checked"
                             : "unchecked"
                       }
                       className={cn(
-                        partiallyActive && "opacity-60",
+                        isToolsetPartiallyActive(category) && "opacity-60",
                         isErrorOrLoading && "opacity-50"
                       )}
                       onCheckedChange={() => toggleToolset(category)}

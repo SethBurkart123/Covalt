@@ -193,7 +193,7 @@ class ChatAgentConfigResponse(BaseModel):
 class AutoTitleSettings(BaseModel):
     enabled: bool = True
     prompt: str = "Generate a brief, descriptive title (max 6 words) for this conversation based on the user's message: {{ message }}\n\nReturn only the title, nothing else."
-    modelMode: str = "current"  # "current" or "specific"
+    modelMode: str = "current"
     provider: str = "openai"
     modelId: str = "gpt-4o-mini"
 

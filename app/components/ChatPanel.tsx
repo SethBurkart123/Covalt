@@ -20,21 +20,16 @@ import {
 } from "@/lib/utils/think-tag-parser";
 
 export default function ChatPanel() {
-  const { selectedModel, setSelectedModel, models, chatId } = useChat();
+  const { selectedModel, setSelectedModel, models: availableModels, chatId } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
 
   useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        setModelSettings(await getModelSettings());
-      } catch (error) {
-        console.error("Failed to load model settings:", error);
-      }
-    };
-    loadSettings();
+    getModelSettings()
+      .then(setModelSettings)
+      .catch((error) => console.error("Failed to load model settings:", error));
   }, []);
 
   const handleThinkTagDetected = useCallback(() => {
@@ -89,23 +84,13 @@ export default function ChatPanel() {
     if (!modelSettings?.models) return rawMessages;
 
     return rawMessages.map((msg): Message => {
-      if (msg.role !== "assistant") {
-        return msg;
-      }
+      if (msg.role !== "assistant") return msg;
 
       const modelKey = msg.modelUsed || selectedModel;
-      if (!modelKey) {
-        return msg;
-      }
+      if (!modelKey) return msg;
 
-      const shouldParse = shouldParseThinkTags(
-        modelKey,
-        modelSettings.models,
-      );
-
-      if (!shouldParse) {
-        return msg;
-      }
+      const shouldParse = shouldParseThinkTags(modelKey, modelSettings.models);
+      if (!shouldParse) return msg;
 
       return {
         ...msg,
@@ -118,31 +103,23 @@ export default function ChatPanel() {
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId) return;
 
-    try {
-      await api.respondToThinkingTagPrompt(provider, modelId, true);
-      setShowThinkingPrompt(false);
+    await api.respondToThinkingTagPrompt(provider, modelId, true);
+    setShowThinkingPrompt(false);
 
-      if (!isLoading && streamingMessageIdRef.current) {
-        triggerReload();
-      }
-
-      setModelSettings(await getModelSettings());
-    } catch (error) {
-      console.error("Failed to accept thinking tag prompt:", error);
+    if (!isLoading && streamingMessageIdRef.current) {
+      triggerReload();
     }
+
+    setModelSettings(await getModelSettings());
   }, [selectedModel, streamingMessageIdRef, isLoading, triggerReload]);
 
   const handleDeclineThinkingPrompt = useCallback(async () => {
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId) return;
 
-    try {
-      await api.respondToThinkingTagPrompt(provider, modelId, false);
-      setShowThinkingPrompt(false);
-      setModelSettings(await getModelSettings());
-    } catch (error) {
-      console.error("Failed to decline thinking tag prompt:", error);
-    }
+    await api.respondToThinkingTagPrompt(provider, modelId, false);
+    setShowThinkingPrompt(false);
+    setModelSettings(await getModelSettings());
   }, [selectedModel]);
 
   const handleDismissThinkingPrompt = useCallback(() => {
@@ -153,34 +130,21 @@ export default function ChatPanel() {
   const setSelectedModelRef = useRef(setSelectedModel);
   const handleStopRef = useRef(handleStop);
 
-  useEffect(() => {
-    submitRef.current = handleSubmit;
-  }, [handleSubmit]);
-
-  useEffect(() => {
-    setSelectedModelRef.current = setSelectedModel;
-  }, [setSelectedModel]);
-
-  useEffect(() => {
-    handleStopRef.current = handleStop;
-  }, [handleStop]);
+  useEffect(() => { submitRef.current = handleSubmit; }, [handleSubmit]);
+  useEffect(() => { setSelectedModelRef.current = setSelectedModel; }, [setSelectedModel]);
+  useEffect(() => { handleStopRef.current = handleStop; }, [handleStop]);
 
   const stableHandleSubmit = useCallback(
-    (input: string, attachments: Attachment[]) => {
-      return submitRef.current(input, attachments);
-    },
-    [],
+    (input: string, attachments: Attachment[]) => submitRef.current(input, attachments),
+    []
   );
 
-  const stableSetSelectedModel = useCallback((model: string) => {
-    return setSelectedModelRef.current(model);
-  }, []);
+  const stableSetSelectedModel = useCallback(
+    (model: string) => setSelectedModelRef.current(model),
+    []
+  );
 
-  const stableHandleStop = useCallback(() => {
-    return handleStopRef.current();
-  }, []);
-
-  const stableModels = useMemo(() => models, [models]);
+  const stableHandleStop = useCallback(() => handleStopRef.current(), []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -231,7 +195,7 @@ export default function ChatPanel() {
                   isLoading={isLoading}
                   selectedModel={selectedModel}
                   setSelectedModel={stableSetSelectedModel}
-                  models={stableModels}
+                  models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                 />
@@ -248,7 +212,7 @@ export default function ChatPanel() {
                   isLoading={isLoading}
                   selectedModel={selectedModel}
                   setSelectedModel={stableSetSelectedModel}
-                  models={stableModels}
+                  models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                 />

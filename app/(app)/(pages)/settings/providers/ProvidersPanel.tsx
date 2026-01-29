@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
@@ -29,23 +29,18 @@ export default function ProvidersPanel() {
       const map: Record<string, ProviderConfig> = {};
 
       (response?.providers || []).forEach((p: any) => {
-        // Accept both camelCase and snake_case from backend
-        const apiKey = p.apiKey ?? p.api_key ?? '';
-        const baseUrl = p.baseUrl ?? p.base_url ?? '';
-        const enabled = p.enabled ?? true;
-        const extraVal = p.extra;
-        const extra = typeof extraVal === 'string'
-          ? extraVal
-          : extraVal && typeof extraVal === 'object'
-          ? JSON.stringify(extraVal, null, 2)
+        const extra = typeof p.extra === 'string'
+          ? p.extra
+          : p.extra && typeof p.extra === 'object'
+          ? JSON.stringify(p.extra, null, 2)
           : '';
 
         map[p.provider] = {
           provider: p.provider,
-          apiKey,
-          baseUrl,
+          apiKey: p.apiKey ?? p.api_key ?? '',
+          baseUrl: p.baseUrl ?? p.base_url ?? '',
           extra,
-          enabled: Boolean(enabled),
+          enabled: Boolean(p.enabled ?? true),
         };
       });
 
@@ -91,7 +86,6 @@ export default function ProvidersPanel() {
     const cfg = providerConfigs[key];
     if (!def || !cfg) return false;
 
-    // configured = all required fields are filled; optional fields may be empty
     const requiredFields = def.fields.filter((f) => f.required !== false);
     if (requiredFields.length === 0) return true;
     return requiredFields.every((f) => {
@@ -101,17 +95,16 @@ export default function ProvidersPanel() {
     });
   };
 
-  const displayProviders = useMemo(() => {
-    // Sort so configured providers appear first; stable by name as tiebreaker
-    return filtered
+  const displayProviders = useMemo(() => 
+    filtered
       .slice()
       .sort((a, b) => {
         const aConfigured = isConfigured(a.key) ? 0 : 1;
         const bConfigured = isConfigured(b.key) ? 0 : 1;
         if (aConfigured !== bConfigured) return aConfigured - bConfigured;
         return a.name.localeCompare(b.name);
-      });
-  }, [filtered, providerConfigs]);
+      }),
+  [filtered, providerConfigs]);
 
   const updateProvider = (key: string, field: keyof ProviderConfig, value: string | boolean) => {
     setProviderConfigs((prev) => ({
@@ -132,8 +125,7 @@ export default function ProvidersPanel() {
       if (typeof cfg.extra === 'string' && cfg.extra.trim().length > 0) {
         try {
           extra = JSON.parse(cfg.extra);
-        } catch (e) {
-          // Keep as raw string so backend can store it; don't block save
+        } catch {
           extra = cfg.extra;
         }
       }
@@ -150,7 +142,6 @@ export default function ProvidersPanel() {
       setSaved((s) => ({ ...s, [key]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error('Failed to save provider settings', key, e);
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
@@ -166,8 +157,6 @@ export default function ProvidersPanel() {
 
       if (result.success) {
         setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'success' }));
-        
-        // Auto-clear success status after 3 seconds
         setTimeout(() => {
           setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'idle' }));
         }, 3000);

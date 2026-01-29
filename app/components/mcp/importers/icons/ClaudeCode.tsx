@@ -3,7 +3,7 @@ export default function ClaudeCodeIcon() {
     <img
       src="/apps/claude-code.png"
       alt="Claude Code"
-      className="size-5 min-w-5 min-h-5"
+      className="size-5"
     />
   );
 }

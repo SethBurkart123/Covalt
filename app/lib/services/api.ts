@@ -34,10 +34,7 @@ interface StreamingChatEvent {
   error?: string;
 }
 
-function createStreamingResponse(
-  channelName: string,
-  body: Record<string, unknown>,
-): Response {
+function createStreamingResponse(channelName: string, body: Record<string, unknown>): Response {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -56,8 +53,7 @@ function createStreamingResponse(
         if (rest.sessionId) data.sessionId = rest.sessionId;
         if (typeof rest.content === "string") data.content = rest.content;
         if (typeof rest.error === "string") data.error = rest.error;
-        if (typeof rest.reasoningContent === "string")
-          data.reasoningContent = rest.reasoningContent;
+        if (typeof rest.reasoningContent === "string") data.reasoningContent = rest.reasoningContent;
         if (rest.tool) data.tool = rest.tool;
         if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
 
@@ -70,7 +66,6 @@ function createStreamingResponse(
       });
 
       channel.onClose(() => controller.close());
-
       channel.onError((error: BridgeError) => {
         sendEvent("RunError", { error: error.message });
         controller.close();

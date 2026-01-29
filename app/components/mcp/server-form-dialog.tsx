@@ -78,10 +78,10 @@ export function ServerFormDialog({
     Array<{ id: string; config: MCPServerConfig; isUpdate: boolean }>
   >([]);
 
-  const isEditing = !!editingServerId;
+
 
   useEffect(() => {
-    if (open && editingServerId) {
+    if (open && !!editingServerId) {
       setIsLoadingConfig(true);
       setError(null);
       setJsonError(null);
@@ -102,13 +102,8 @@ export function ServerFormDialog({
       setFormData(emptyFormData);
       setJsonInput("");
       setError(null);
-      setJsonError(null);
-      setMode("form");
-      setConflictServer(null);
-      setSelectedImportCount(0);
-      existingIdsRef.current = new Set();
-      importQueueRef.current = [];
-      importOpsRef.current = [];
+          setJsonError(null);
+          setMode("form");
     }
   }, [open, editingServerId]);
 
@@ -117,20 +112,16 @@ export function ServerFormDialog({
     importOpsRef.current = [];
     importQueueRef.current = [];
 
-    if (ops.length > 0) {
-      const results = await Promise.allSettled(
-        ops.map(({ id, config, isUpdate }) =>
-          isUpdate
-            ? updateMcpServer({ body: { id, config } })
-            : addMcpServer({ body: { id, config } })
-        )
-      );
-      results.forEach((r, idx) => {
-        if (r.status === "rejected") {
-          console.error(`Failed to import server ${ops[idx].id}:`, r.reason);
-        }
-      });
-    }
+    const results = await Promise.allSettled(
+      ops.map(({ id, config, isUpdate }) =>
+        isUpdate
+          ? updateMcpServer({ body: { id, config } })
+          : addMcpServer({ body: { id, config } })
+      )
+    );
+    results.forEach((r, idx) => {
+      if (r.status === "rejected") console.error(`Failed to import server ${ops[idx].id}:`, r.reason);
+    });
 
     onSuccess();
     onOpenChange(false);
@@ -159,7 +150,6 @@ export function ServerFormDialog({
     void runImportOps();
   }, [runImportOps]);
 
-  // Start import process
   const startImport = useCallback(async () => {
     const servers = importFormRef.current?.getSelectedServers();
     if (!servers || servers.length === 0) return;
@@ -168,8 +158,8 @@ export function ServerFormDialog({
     setError(null);
 
     try {
-      const response = await getMcpServers();
-      existingIdsRef.current = new Set(response.servers.map((s) => s.id));
+      const { servers: existingServers } = await getMcpServers();
+      existingIdsRef.current = new Set(existingServers.map((s) => s.id));
       importQueueRef.current = [...servers];
       importOpsRef.current = [];
       showNextConflictOrFinish();
@@ -183,30 +173,26 @@ export function ServerFormDialog({
   const handleConflictCancel = useCallback(() => {
     setConflictServer(null);
     setIsSubmitting(false);
-    existingIdsRef.current = new Set();
-    importQueueRef.current = [];
-    importOpsRef.current = [];
   }, []);
 
   const handleConflictResolve = useCallback(
     (resolution: ConflictResolution) => {
       if (!conflictServer) return;
 
-      const server = conflictServer;
       importQueueRef.current.shift();
 
       if (resolution === "rename") {
-        const id = generateUniqueName(server.id, existingIdsRef.current);
+        const id = generateUniqueName(conflictServer.id, existingIdsRef.current);
         importOpsRef.current.push({
           id,
-          config: server.config as MCPServerConfig,
+          config: conflictServer.config as MCPServerConfig,
           isUpdate: false,
         });
         existingIdsRef.current.add(id);
       } else if (resolution === "overwrite") {
         importOpsRef.current.push({
-          id: server.id,
-          config: server.config as MCPServerConfig,
+          id: conflictServer.id,
+          config: conflictServer.config as MCPServerConfig,
           isUpdate: true,
         });
       }
@@ -216,9 +202,7 @@ export function ServerFormDialog({
     [conflictServer, showNextConflictOrFinish]
   );
 
-  const parseHeadersString = (
-    headersStr: string
-  ): Record<string, string> | undefined => {
+  const parseHeadersString = (headersStr: string): Record<string, string> | undefined => {
     if (!headersStr.trim()) return undefined;
     try {
       return JSON.parse(headersStr);
@@ -246,13 +230,9 @@ export function ServerFormDialog({
 
     const envObj: Record<string, string> = {};
     for (const { key, value } of formData.env) {
-      if (key.trim()) {
-        envObj[key.trim()] = value;
-      }
+      if (key.trim()) envObj[key.trim()] = value;
     }
-    if (Object.keys(envObj).length > 0) {
-      config.env = envObj;
-    }
+    if (Object.keys(envObj).length > 0) config.env = envObj;
 
     return config;
   };
@@ -264,12 +244,10 @@ export function ServerFormDialog({
     try {
       const config = buildConfigFromForm();
 
-      if (isEditing) {
+      if (!!editingServerId) {
         await updateMcpServer({ body: { id: formData.id, config } });
       } else {
-        if (!formData.id.trim()) {
-          throw new Error("Server ID is required");
-        }
+        if (!formData.id.trim()) throw new Error("Server ID is required");
         await addMcpServer({ body: { id: formData.id, config } });
       }
 
@@ -289,36 +267,26 @@ export function ServerFormDialog({
 
     try {
       const parsed = JSON.parse(jsonInput);
-      const servers =
-        parsed.mcpServers || (typeof parsed === "object" ? parsed : null);
+      const servers = parsed.mcpServers || (typeof parsed === "object" ? parsed : null);
 
-      if (!servers || typeof servers !== "object") {
-        throw new Error(
-          "Invalid JSON format. Expected { mcpServers: {...} } or { serverId: config }"
-        );
-      }
+      if (!servers || typeof servers !== "object") throw new Error(
+        "Invalid JSON format. Expected { mcpServers: {...} } or { serverId: config }"
+      );
 
-      if (Object.keys(servers).length === 0) {
-        throw new Error("No servers found in JSON");
-      }
+      if (Object.keys(servers).length === 0) throw new Error("No servers found in JSON");
 
+      const serverIds = Object.keys(servers);
       const results = await Promise.allSettled(
         Object.entries(servers).map(async ([id, rawConfig]) => {
-          const config = rawConfig as MCPServerConfig;
           try {
-            await addMcpServer({ body: { id, config } });
+            await addMcpServer({ body: { id, config: rawConfig as MCPServerConfig } });
           } catch {
-            await updateMcpServer({ body: { id, config } });
+            await updateMcpServer({ body: { id, config: rawConfig as MCPServerConfig } });
           }
         })
       );
       results.forEach((r, idx) => {
-        if (r.status === "rejected") {
-          console.error(
-            `Failed to import server ${Object.keys(servers)[idx]}:`,
-            r.reason
-          );
-        }
+        if (r.status === "rejected") console.error(`Failed to import server ${serverIds[idx]}:`, r.reason);
       });
 
       onSuccess();
@@ -340,16 +308,16 @@ export function ServerFormDialog({
       <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>
-            {isEditing ? "Edit MCP Server" : "Add MCP Server"}
+            {!!editingServerId ? "Edit MCP Server" : "Add MCP Server"}
           </DialogTitle>
           <DialogDescription>
-            {isEditing
+            {!!editingServerId
               ? "Update the configuration for this MCP server."
               : "Add a new MCP server to extend your AI with external tools."}
           </DialogDescription>
         </DialogHeader>
 
-        {!isEditing && (
+        {!editingServerId && (
           <div className="flex gap-1 p-1 bg-muted rounded-lg overflow-hidden">
             <button
               onClick={() => setMode("form")}
@@ -404,7 +372,7 @@ export function ServerFormDialog({
           <ServerForm
             formData={formData}
             setFormData={setFormData}
-            isEditing={isEditing}
+            isEditing={!!editingServerId}
           />
         ) : mode === "json" ? (
           <JsonImportForm
@@ -420,7 +388,6 @@ export function ServerFormDialog({
           />
         )}
 
-        {/* Conflict resolution dialog */}
         <ImportConflictDialog
           open={!!conflictServer}
           serverId={conflictServer?.id ?? ""}
@@ -439,7 +406,7 @@ export function ServerFormDialog({
               disabled={isSubmitting || isLoadingConfig}
             >
               {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-              {isEditing
+              {!!editingServerId
                 ? "Update Server"
                 : mode === "json"
                   ? "Import"

@@ -64,7 +64,7 @@ interface McpServerCardProps {
 
 export function McpServerCard({
   server,
-  toolCount: toolCountProp,
+  toolCount,
   onEdit,
   onDelete,
   onInspect,
@@ -193,7 +193,7 @@ export function McpServerCard({
   const showRevokeButton =
     server.oauthStatus === "authenticated" && server.status === "connected";
 
-  const toolCount = toolCountProp ?? server.toolCount ?? 0;
+
 
   return (
     <div
@@ -245,7 +245,7 @@ export function McpServerCard({
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {server.status === "connected"
-                ? `${toolCount} tool${toolCount !== 1 ? "s" : ""}`
+                ? `${toolCount ?? server.toolCount ?? 0} tool${(toolCount ?? server.toolCount ?? 0) !== 1 ? "s" : ""}`
                 : server.status === "connecting"
                   ? "Connecting..."
                   : server.status === "requires_auth"

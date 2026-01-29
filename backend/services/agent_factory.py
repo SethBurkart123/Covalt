@@ -34,13 +34,13 @@ def create_agent_for_chat(
     model = get_model(provider, model_id)
     tool_registry = get_tool_registry()
     tools = (
-        tool_registry.resolve_tool_ids(tool_ids, chat_id=chat_id) if tool_ids else []
+        tool_registry.resolve_tool_ids(tool_ids, chat_id=chat_id) if tool_ids else None
     )
 
     return Agent(
         name=name,
         model=model,
-        tools=tools or None,
+        tools=tools,
         description=description,
         instructions=instructions or None,
         markdown=True,

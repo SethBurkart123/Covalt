@@ -50,9 +50,8 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
 
     const handleFiles = React.useCallback(
       (files: FileList | File[]) => {
-        const fileArray = Array.from(files);
-        if (fileArray.length > 0 && !disabled) {
-          onFilesDrop(fileArray);
+        if (!disabled && files.length > 0) {
+          onFilesDrop(Array.from(files));
         }
       },
       [onFilesDrop, disabled]
@@ -62,7 +61,6 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
       (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
           handleFiles(e.target.files);
-          // Reset input so the same file can be selected again
           e.target.value = "";
         }
       },
@@ -102,7 +100,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
         setIsDragging(false);
         dragCounterRef.current = 0;
 
-        if (!disabled && e.dataTransfer.files) {
+        if (e.dataTransfer.files) {
           handleFiles(e.dataTransfer.files);
         }
       },
@@ -175,12 +173,8 @@ const FileDropZoneTrigger = React.forwardRef<
   const { fileInputRef } = useFileDropZone();
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (onClick) {
-      onClick(e);
-    }
-    if (!disabled && fileInputRef.current) {
-      fileInputRef.current.click();
-    }
+    onClick?.(e);
+    if (!disabled) fileInputRef.current?.click();
   };
 
   if (asChild) {

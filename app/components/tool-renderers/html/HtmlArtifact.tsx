@@ -25,12 +25,7 @@ export function HtmlArtifact({
   const { open } = useArtifactPanel();
 
   const title = (toolArgs.title as string) || toolName;
-
-  const html = typeof renderPlan?.config?.content === "string" && renderPlan.config.content.length > 0
-    ? renderPlan.config.content
-    : typeof toolResult === "string" && toolResult.length > 0
-      ? toolResult
-      : (toolArgs.html as string) || "";
+  const html = (renderPlan?.config?.content as string) || (toolResult as string) || (toolArgs.html as string) || "";
 
   const handleClick = () => {
     if (!isCompleted || !html) return;

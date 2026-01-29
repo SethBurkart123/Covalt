@@ -176,7 +176,6 @@ class MCPManager:
             sess.commit()
 
     def _get_tool_overrides(self, toolset_id: str) -> dict[str, dict[str, Any]]:
-        """Get tool overrides for a toolset from the database."""
         overrides: dict[str, dict[str, Any]] = {}
         with db_session() as sess:
             rows = (
@@ -465,7 +464,6 @@ class MCPManager:
                         server_id, state.url or ""
                     )
                     state.oauth_status = "authenticated"
-
                     async with httpx.AsyncClient(
                         auth=oauth_provider, timeout=30.0
                     ) as http_client:
@@ -474,7 +472,6 @@ class MCPManager:
                         ) as (read, write, _):
                             await self._run_mcp_session(server_id, state, read, write)
                 else:
-                    # Standard connection without OAuth
                     async with streamable_http_client(state.url or "") as (
                         read,
                         write,
@@ -506,13 +503,8 @@ class MCPManager:
             logger.warning(f"MCP server {server_id} connection timeout")
 
     async def _run_mcp_session(
-        self,
-        server_id: str,
-        state: MCPServerState,
-        read: Any,
-        write: Any,
+        self, server_id: str, state: MCPServerState, read: Any, write: Any
     ) -> None:
-        """Run the MCP session after connection is established."""
         async with ClientSession(read, write) as session:
             await session.initialize()
             state.session = session

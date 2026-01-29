@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Brain } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
@@ -63,14 +63,12 @@ export default function ThinkingCall({
 
   const handleToggle = () => {
     userInteractedRef.current = true;
-    
+
     if (active && isOpen && !isManuallyExpanded) {
       setIsManuallyExpanded(true);
     } else {
       setIsOpen(!isOpen);
-      if (isOpen) {
-        setIsManuallyExpanded(false);
-      }
+      if (isOpen) setIsManuallyExpanded(false);
     }
   };
 
@@ -95,7 +93,7 @@ export default function ThinkingCall({
       </CollapsibleTrigger>
 
       <CollapsibleContent className={(active || isClosing) && !isManuallyExpanded ? "pt-0" : ""}>
-        <div 
+        <div
           ref={contentRef}
           className={(active || isClosing) && !isManuallyExpanded ? "max-h-48 overflow-y-auto pt-2" : ""}
         >

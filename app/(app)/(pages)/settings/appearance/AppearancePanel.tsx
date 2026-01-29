@@ -43,12 +43,10 @@ export function AppearancePanel() {
     return allThemes.filter((theme) => theme.name.toLowerCase().includes(query));
   }, [allThemes, searchQuery]);
 
-  const { builtInThemes, customThemes } = useMemo(() => {
-    return {
-      builtInThemes: filteredThemes.filter((t) => !t.isCustom),
-      customThemes: filteredThemes.filter((t) => t.isCustom),
-    };
-  }, [filteredThemes]);
+  const { builtInThemes, customThemes } = useMemo(() => ({
+    builtInThemes: filteredThemes.filter((t) => !t.isCustom),
+    customThemes: filteredThemes.filter((t) => t.isCustom),
+  }), [filteredThemes]);
 
   const handleDeleteTheme = useCallback(
     (themeId: string) => {
@@ -56,8 +54,6 @@ export function AppearancePanel() {
     },
     [deleteCustomTheme]
   );
-
-  const query = searchQuery.trim();
 
   return (
     <div className="space-y-8 py-6">
@@ -144,7 +140,7 @@ export function AppearancePanel() {
           </div>
         )}
 
-        {!query && (
+        {customThemes.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground">Custom Themes</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -162,43 +158,23 @@ export function AppearancePanel() {
                   onDelete={() => handleDeleteTheme(theme.id)}
                 />
               ))}
-              <button
-                onClick={() => setImportDialogOpen(true)}
-                className="aspect-[4/3] rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-muted-foreground/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <Plus className="w-8 h-8" />
-                <span className="text-sm font-medium">Add Theme</span>
-              </button>
+              {!searchQuery.trim() && (
+                <button
+                  onClick={() => setImportDialogOpen(true)}
+                  className="aspect-[4/3] rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-muted-foreground/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="w-8 h-8" />
+                  <span className="text-sm font-medium">Add Theme</span>
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {query && customThemes.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground">Custom Themes</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {customThemes.map((theme) => (
-                <ThemeCard
-                  key={theme.id}
-                  id={theme.id}
-                  name={theme.name}
-                  lightStyles={theme.styles.light}
-                  darkStyles={theme.styles.dark}
-                  isSelected={preset === theme.id}
-                  isCustom={true}
-                  previewMode={resolvedMode}
-                  onSelect={() => setPreset(theme.id)}
-                  onDelete={() => handleDeleteTheme(theme.id)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {filteredThemes.length === 0 && query && (
+        {filteredThemes.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Palette className="w-12 h-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground">No themes found matching &quot;{query}&quot;</p>
+            <p className="text-muted-foreground">No themes found matching &quot;{searchQuery.trim()}&quot;</p>
           </div>
         )}
       </section>

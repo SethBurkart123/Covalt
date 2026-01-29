@@ -60,24 +60,16 @@ export function MessageActions({
   };
 
   const handleCopy = async () => {
-    let textToCopy = "";
+    const textToCopy = typeof message.content === "string"
+      ? message.content
+      : message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.content)
+          .join("\n\n");
 
-    if (typeof message.content === "string") {
-      textToCopy = message.content;
-    } else if (Array.isArray(message.content)) {
-      textToCopy = message.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.content)
-        .join("\n\n");
-    }
-
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
+    await navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (

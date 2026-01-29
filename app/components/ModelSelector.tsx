@@ -48,9 +48,7 @@ function ModelSelector({
 
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
-    if (isOpen) {
-      refreshModels();
-    }
+    if (isOpen) refreshModels();
   };
 
   useEffect(() => {
@@ -118,15 +116,9 @@ function ModelSelector({
     return groups;
   }, [models]);
 
-  const selectedModelInfo = models.find(
-    (m) => getModelKey(m) === selectedModel,
-  );
-  const selectedProvider = selectedModel
-    ? getProviderFromKey(selectedModel)
-    : null;
-  const selectedProviderDef = selectedProvider
-    ? PROVIDER_MAP[selectedProvider]
-    : null;
+  const selectedModelInfo = models.find((m) => getModelKey(m) === selectedModel);
+  const selectedProvider = selectedModel ? getProviderFromKey(selectedModel) : null;
+  const selectedProviderDef = selectedProvider ? PROVIDER_MAP[selectedProvider] : null;
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -175,20 +167,12 @@ function ModelSelector({
                   <CommandGroup heading={providerName}>
                     {group.models.map((model) => {
                       const modelKey = getModelKey(model);
-                      const isSelected = modelKey === selectedModel;
-                      const modelProviderDef = PROVIDER_MAP[model.provider];
-                      const ProviderIcon = modelProviderDef?.icon;
-                      const uniqueValue = group.isRecent
-                        ? `recent:${model.modelId}`
-                        : model.modelId;
-                      const uniqueKey = group.isRecent
-                        ? `recent:${modelKey}`
-                        : modelKey;
+                      const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
 
                       return (
                         <CommandItem
-                          key={uniqueKey}
-                          value={uniqueValue}
+                          key={group.isRecent ? `recent:${modelKey}` : modelKey}
+                          value={group.isRecent ? `recent:${model.modelId}` : model.modelId}
                           onSelect={() => {
                             setSelectedModel(modelKey);
                             setOpen(false);
@@ -202,7 +186,7 @@ function ModelSelector({
                             )}
                             <span className="truncate">{model.modelId}</span>
                           </span>
-                          {isSelected && (
+                          {modelKey === selectedModel && (
                             <CheckIcon size={16} className="ml-auto shrink-0" />
                           )}
                         </CommandItem>

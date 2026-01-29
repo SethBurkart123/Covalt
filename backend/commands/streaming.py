@@ -44,18 +44,17 @@ def extract_error_message(error_content: str) -> str:
     if not error_content:
         return "Unknown error"
 
-    try:
-        json_start = error_content.find("{")
-        if json_start != -1:
-            json_str = error_content[json_start:]
-            data = json.loads(json_str)
+    json_start = error_content.find("{")
+    if json_start != -1:
+        try:
+            data = json.loads(error_content[json_start:])
             if isinstance(data, dict):
                 if "error" in data and isinstance(data["error"], dict):
                     return data["error"].get("message", error_content)
                 if "message" in data:
                     return data["message"]
-    except (json.JSONDecodeError, ValueError):
-        pass
+        except json.JSONDecodeError:
+            pass
 
     return error_content
 
@@ -74,9 +73,7 @@ def parse_tool_result(result: Any) -> dict[str, Any]:
     if isinstance(result, str):
         try:
             parsed = json.loads(result)
-            if isinstance(parsed, dict):
-                return parsed
-            return {"result": parsed}
+            return parsed if isinstance(parsed, dict) else {"result": parsed}
         except json.JSONDecodeError:
             return {"result": result}
     return {"result": result}
@@ -96,10 +93,11 @@ class BroadcastingChannel:
             event_dict = (
                 event.model_dump() if hasattr(event, "model_dump") else event.dict()
             )
-            task = asyncio.create_task(
-                broadcaster.broadcast_event(self._chat_id, event_dict)
+            self._pending_broadcasts.append(
+                asyncio.create_task(
+                    broadcaster.broadcast_event(self._chat_id, event_dict)
+                )
             )
-            self._pending_broadcasts.append(task)
 
     async def flush_broadcasts(self) -> None:
         if self._pending_broadcasts:
@@ -166,12 +164,13 @@ AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
 def is_allowed_attachment_mime(mime_type: str) -> bool:
     if not mime_type:
         return False
-    if mime_type.startswith("image/"):
-        return "image/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-    if mime_type.startswith("audio/"):
-        return "audio/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-    if mime_type.startswith("video/"):
-        return "video/*" in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    for prefix, wildcard in [
+        ("image/", "image/*"),
+        ("audio/", "audio/*"),
+        ("video/", "video/*"),
+    ]:
+        if mime_type.startswith(prefix):
+            return wildcard in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
     return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
 
 
@@ -198,15 +197,12 @@ def load_attachments_as_agno_media(
             )
             continue
 
-        workspace_path = workspace_manager.workspace_dir / att.name
-
-        if not workspace_path.exists():
+        filepath = workspace_manager.workspace_dir / att.name
+        if not filepath.exists():
             logger.warning(
                 f"[attachments] Skipping {att.id} ({att.name}): file not found in workspace"
             )
             continue
-
-        filepath = workspace_path
 
         if att.type == "image":
             images.append(Image(filepath=filepath))
@@ -278,13 +274,7 @@ def save_user_msg(
     manifest_id: Optional[str] = None,
 ):
     with db.db_session() as sess:
-        sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         now = datetime.utcnow().isoformat()
-
-        attachments_json = None
-        if attachments:
-            attachments_json = json.dumps([att.model_dump() for att in attachments])
-
         message = db.Message(
             id=msg.id,
             chatId=chat_id,
@@ -293,8 +283,10 @@ def save_user_msg(
             createdAt=msg.createdAt or now,
             parent_message_id=parent_id,
             is_complete=True,
-            sequence=sequence,
-            attachments=attachments_json,
+            sequence=db.get_next_sibling_sequence(sess, parent_id, chat_id),
+            attachments=json.dumps([att.model_dump() for att in attachments])
+            if attachments
+            else None,
             manifest_id=manifest_id,
         )
         sess.add(message)
@@ -307,20 +299,20 @@ def save_user_msg(
 def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
-        sequence = db.get_next_sibling_sequence(sess, parent_id, chat_id)
         now = datetime.utcnow().isoformat()
-        model_used: Optional[str] = None
+        model_used = None
         try:
             config = db.get_chat_agent_config(sess, chat_id)
             if config:
                 provider = config.get("provider") or ""
                 model_id = config.get("model_id") or ""
-                if provider and model_id:
-                    model_used = f"{provider}:{model_id}"
-                else:
-                    model_used = model_id or None
+                model_used = (
+                    f"{provider}:{model_id}"
+                    if provider and model_id
+                    else (model_id or None)
+                )
         except Exception:
-            model_used = None
+            pass
 
         message = db.Message(
             id=msg_id,
@@ -330,7 +322,7 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
             createdAt=now,
             parent_message_id=parent_id,
             is_complete=False,
-            sequence=sequence,
+            sequence=db.get_next_sibling_sequence(sess, parent_id, chat_id),
             model_used=model_used,
         )
         sess.add(message)
@@ -554,8 +546,7 @@ async def handle_content_stream(
                     )
                     with db.db_session() as sess:
                         db.mark_message_complete(sess, assistant_msg_id)
-                    if assistant_msg_id in _active_runs:
-                        del _active_runs[assistant_msg_id]
+                    _active_runs.pop(assistant_msg_id, None)
                     ch.send_model(ChatEvent(event="RunCancelled"))
                     if chat_id:
                         await broadcaster.update_stream_status(chat_id, "completed")
@@ -580,12 +571,10 @@ async def handle_content_stream(
                     if chunk.content:
                         if current_reasoning and not current_text:
                             flush_reasoning()
-
                         current_text += chunk.content
                         ch.send_model(
                             ChatEvent(event="RunContent", content=chunk.content)
                         )
-
                         await asyncio.to_thread(
                             save_msg_content, assistant_msg_id, save_state()
                         )
@@ -593,7 +582,6 @@ async def handle_content_stream(
                 elif chunk.event == RunEvent.tool_call_started:
                     flush_text()
                     flush_reasoning()
-
                     ch.send_model(
                         ChatEvent(
                             event="ToolCallStarted",
@@ -632,7 +620,6 @@ async def handle_content_stream(
                         "isCompleted": True,
                         "renderer": registry.get_renderer(chunk.tool.tool_name),
                     }
-
                     if render_plan is not None:
                         tool_block["renderPlan"] = render_plan
 
@@ -695,8 +682,9 @@ async def handle_content_stream(
                 elif chunk.event == RunEvent.run_error:
                     flush_text()
                     flush_reasoning()
-                    raw_error = chunk.content if chunk.content else str(chunk)
-                    error_msg = extract_error_message(raw_error)
+                    error_msg = extract_error_message(
+                        chunk.content if chunk.content else str(chunk)
+                    )
                     content_blocks.append(
                         {
                             "type": "error",
@@ -753,7 +741,6 @@ async def handle_content_stream(
                         await asyncio.to_thread(
                             save_msg_content, assistant_msg_id, save_state()
                         )
-
                         ch.send_model(
                             ChatEvent(
                                 event="ToolApprovalRequired",
@@ -789,10 +776,11 @@ async def handle_content_stream(
 
                         for tool in chunk.tools_requiring_confirmation:
                             tool_id = tool.tool_call_id
-                            if timed_out:
-                                status = "timeout"
-                            else:
-                                status = "approved" if tool.confirmed else "denied"
+                            status = (
+                                "timeout"
+                                if timed_out
+                                else ("approved" if tool.confirmed else "denied")
+                            )
                             for block in content_blocks:
                                 if (
                                     block.get("type") == "tool_call"
@@ -832,11 +820,10 @@ async def handle_content_stream(
                 break
 
     except asyncio.CancelledError:
-        if run_id and run_id in _approval_events:
+        if run_id:
             _approval_events.pop(run_id, None)
             _approval_responses.pop(run_id, None)
         raise
-
     except Exception as e:
         logger.error(f"[stream] Exception in stream handler: {e}")
         flush_text()
@@ -850,8 +837,7 @@ async def handle_content_stream(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
 
-    if assistant_msg_id in _active_runs:
-        del _active_runs[assistant_msg_id]
+    _active_runs.pop(assistant_msg_id, None)
 
     if not had_error:
         with db.db_session() as sess:
@@ -876,39 +862,31 @@ class RespondToToolApprovalInput(BaseModel):
 
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    run_id = body.runId
-
-    _approval_responses[run_id] = {
+    _approval_responses[body.runId] = {
         "approved": body.approved,
         "tool_decisions": body.toolDecisions or {},
         "edited_args": body.editedArgs or {},
     }
-
-    if run_id in _approval_events:
-        _approval_events[run_id].set()
-
+    if body.runId in _approval_events:
+        _approval_events[body.runId].set()
     return {"success": True}
 
 
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
-    message_id = body.messageId
-
-    if message_id not in _active_runs:
-        logger.info(f"[cancel_run] No active run found for message {message_id}")
+    if body.messageId not in _active_runs:
+        logger.info(f"[cancel_run] No active run found for message {body.messageId}")
         return {"cancelled": False}
 
-    run_id, agent = _active_runs[message_id]
-
+    run_id, agent = _active_runs[body.messageId]
     try:
-        logger.info(f"[cancel_run] Cancelling run {run_id} for message {message_id}")
+        logger.info(
+            f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
+        )
         agent.cancel_run(run_id)
-
         with db.db_session() as sess:
-            db.mark_message_complete(sess, message_id)
-
-        del _active_runs[message_id]
-
+            db.mark_message_complete(sess, body.messageId)
+        del _active_runs[body.messageId]
         logger.info(f"[cancel_run] Successfully cancelled run {run_id}")
         return {"cancelled": True}
     except Exception as e:
@@ -933,10 +911,9 @@ async def stream_chat(
     ]
 
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
-
-    saved_attachments: List[Attachment] = []
-    manifest_id: Optional[str] = None
-    file_renames: Dict[str, str] = {}
+    saved_attachments = []
+    manifest_id = None
+    file_renames = {}
 
     if body.attachments:
         logger.info(
@@ -962,11 +939,11 @@ async def stream_chat(
             with db.db_session() as sess:
                 chat = sess.get(db.Chat, chat_id)
                 parent_msg_id = chat.active_leaf_message_id if chat else None
-                parent_manifest_id = None
-                if parent_msg_id:
-                    parent_manifest_id = db.get_manifest_for_message(
-                        sess, parent_msg_id
-                    )
+                parent_manifest_id = (
+                    db.get_manifest_for_message(sess, parent_msg_id)
+                    if parent_msg_id
+                    else None
+                )
 
             workspace_manager = get_workspace_manager(chat_id)
             manifest_id, file_renames = workspace_manager.add_files(
@@ -977,12 +954,11 @@ async def stream_chat(
             )
 
             for att in body.attachments:
-                final_name = file_renames.get(att.name, att.name)
                 saved_attachments.append(
                     Attachment(
                         id=att.id,
                         type=att.type,
-                        name=final_name,
+                        name=file_renames.get(att.name, att.name),
                         mimeType=att.mimeType,
                         size=att.size,
                     )
@@ -995,8 +971,7 @@ async def stream_chat(
                     pending_path.unlink()
 
             logger.info(
-                f"[stream] Added {len(files_to_add)} files to workspace, "
-                f"{len(file_renames)} renamed"
+                f"[stream] Added {len(files_to_add)} files to workspace, {len(file_renames)} renamed"
             )
 
     with db.db_session() as sess:
@@ -1006,12 +981,11 @@ async def stream_chat(
     if messages and messages[-1].role == "user":
         if saved_attachments:
             messages[-1].attachments = saved_attachments
-
         save_user_msg(
             messages[-1],
             chat_id,
             parent_id,
-            attachments=saved_attachments if saved_attachments else None,
+            attachments=saved_attachments or None,
             manifest_id=manifest_id,
         )
         parent_id = messages[-1].id
@@ -1025,22 +999,12 @@ async def stream_chat(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        agent = create_agent_for_chat(
-            chat_id,
-            tool_ids=body.toolIds,
-        )
-
+        agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
-
         await handle_content_stream(
-            agent,
-            messages,
-            assistant_msg_id,
-            channel,
-            chat_id=chat_id,
+            agent, messages, assistant_msg_id, channel, chat_id=chat_id
         )
-
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
 
@@ -1054,19 +1018,19 @@ async def stream_chat(
             "traceback": traceback.format_exc(),
             "timestamp": datetime.utcnow().isoformat(),
         }
-
         try:
             with db.db_session() as sess:
                 message = sess.get(db.Message, assistant_msg_id)
-                blocks: List[Dict[str, Any]] = []
+                blocks = []
                 if message and message.content:
                     raw = message.content.strip()
-                    if raw.startswith("["):
-                        try:
-                            blocks = json.loads(raw)
-                        except Exception:
-                            blocks = [{"type": "text", "content": message.content}]
-                    else:
+                    try:
+                        blocks = (
+                            json.loads(raw)
+                            if raw.startswith("[")
+                            else [{"type": "text", "content": message.content}]
+                        )
+                    except Exception:
                         blocks = [{"type": "text", "content": message.content}]
                 blocks.append(error_block)
                 db.update_message_content(
@@ -1114,33 +1078,23 @@ async def get_active_streams() -> ActiveStreamsResponse:
 
 
 @command
-async def subscribe_to_stream(
-    channel: Channel,
-    body: SubscribeToStreamRequest,
-) -> None:
-    chat_id = body.chatId
-
-    queue = await broadcaster.subscribe(chat_id)
-
+async def subscribe_to_stream(channel: Channel, body: SubscribeToStreamRequest) -> None:
+    queue = await broadcaster.subscribe(body.chatId)
     if queue is None:
-        channel.send_model(ChatEvent(event="StreamNotActive", content=chat_id))
+        channel.send_model(ChatEvent(event="StreamNotActive", content=body.chatId))
         return
 
-    channel.send_model(ChatEvent(event="StreamSubscribed", content=chat_id))
-
+    channel.send_model(ChatEvent(event="StreamSubscribed", content=body.chatId))
     try:
         while True:
             event = await queue.get()
-
             if event is None:
                 break
-
             channel.send_model(ChatEvent(**event))
-
     except asyncio.CancelledError:
         pass
     finally:
-        await broadcaster.unsubscribe(chat_id, queue)
+        await broadcaster.unsubscribe(body.chatId, queue)
 
 
 @command

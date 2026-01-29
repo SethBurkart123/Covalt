@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import { useChat } from "@/contexts/chat-context";
 import { usePageTitle } from "@/contexts/page-title-context";

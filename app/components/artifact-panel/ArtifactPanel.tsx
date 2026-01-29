@@ -6,18 +6,17 @@ import { motion } from "framer-motion";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { cn } from "@/lib/utils";
 
-export const TRANSITION = {
+const TRANSITION = {
   type: "spring" as const,
   stiffness: 231,
   damping: 28
-}
+};
 
 export function ArtifactPanel() {
   const { isOpen, artifacts, activeId, setActive, remove, close, clearFiles } = useArtifactPanel();
-  const activeArtifact = artifacts.find((a) => a.id === activeId);
   
   const displayArtifactsRef = useRef(artifacts);
-  const displayActiveRef = useRef(activeArtifact);
+  const displayActiveRef = useRef(artifacts.find((a) => a.id === activeId));
   const wasOpenRef = useRef(isOpen);
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,10 +28,11 @@ export function ArtifactPanel() {
     if (!parent) return;
     
     setAnimatingWidth(parent.clientWidth * 0.5);
-    observerRef.current = new ResizeObserver(([entry]) => {
+    const observer = new ResizeObserver(([entry]) => {
       setAnimatingWidth(entry.contentRect.width * 0.5);
     });
-    observerRef.current.observe(parent);
+    observer.observe(parent);
+    observerRef.current = observer;
   }, []);
   
   const handleAnimationComplete = useCallback(() => {
@@ -52,7 +52,7 @@ export function ArtifactPanel() {
   
   if (artifacts.length > 0) {
     displayArtifactsRef.current = artifacts;
-    displayActiveRef.current = activeArtifact;
+    displayActiveRef.current = artifacts.find((a) => a.id === activeId);
   }
 
   return (
@@ -70,35 +70,35 @@ export function ArtifactPanel() {
         style={animatingWidth ? { width: animatingWidth } : undefined}
       >
         <div className="flex border-b border-border overflow-x-auto p-2 gap-2 px-4">
-          {displayArtifactsRef.current.length !== 1 ?
-              (displayArtifactsRef.current.map((artifact) => (
+          {displayArtifactsRef.current.length !== 1 ? (
+            displayArtifactsRef.current.map((artifact) => (
+              <button
+                key={artifact.id}
+                onClick={() => setActive(artifact.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-1 text-sm whitespace-nowrap transition-colors rounded-lg",
+                  artifact.id === activeId
+                    ? "bg-background/50 text-foreground"
+                    : "text-muted-foreground hover:bg-background/25"
+                )}
+              >
+                <span className="truncate max-w-[150px]">{artifact.title}</span>
                 <button
-                  key={artifact.id}
-                  onClick={() => setActive(artifact.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-1 text-sm whitespace-nowrap transition-colors rounded-lg",
-                    artifact.id === activeId
-                      ? "bg-background/50 text-foreground"
-                      : "text-muted-foreground hover:bg-background/25"
-                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(artifact.id);
+                  }}
+                  className="p-0.5 rounded hover:bg-muted"
                 >
-                  <span className="truncate max-w-[150px]">{artifact.title}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      remove(artifact.id);
-                    }}
-                    className="p-0.5 rounded hover:bg-muted"
-                  >
-                    <X size={12} />
-                  </button>
+                  <X size={12} />
                 </button>
-              )))
-              :
-              <div className="flex-1 flex items-center">
-                <p className="font-medium">{displayArtifactsRef.current[0].title}</p>
-              </div>
-            }
+              </button>
+            ))
+          ) : (
+            <div className="flex-1 flex items-center">
+              <p className="font-medium">{displayArtifactsRef.current[0].title}</p>
+            </div>
+          )}
 
           <button onClick={close} className="p-3 rounded hover:bg-muted ml-auto">
             <X size={18} />

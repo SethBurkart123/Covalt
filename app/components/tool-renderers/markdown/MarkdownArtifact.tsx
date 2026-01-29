@@ -28,9 +28,7 @@ export function MarkdownArtifact({
   const filePath = renderPlan?.config?.file;
   const hasFile = !!filePath && !!chatId;
   const fileState = filePath ? getFileState(filePath) : undefined;
-
-  const title = (toolArgs.title as string) || filePath || toolName;
-
+  const title = toolArgs.title || filePath || toolName;
   const content = filePath && fileState?.content
     ? fileState.content
     : renderPlan?.config?.content
@@ -38,13 +36,8 @@ export function MarkdownArtifact({
       : toolResult || "";
 
   const handleClick = () => {
-    if (!isCompleted) return;
-    
-    if (hasFile && filePath) {
-      openFile(filePath);
-    }
-    
-    if (!content && !fileState) return;
+    if (!isCompleted || (!content && !fileState)) return;
+    if (hasFile && filePath) openFile(filePath);
     open(
       toolCallId || `${toolName}-${title}`,
       title,
@@ -55,7 +48,7 @@ export function MarkdownArtifact({
     );
   };
 
-  const isLoading = !isCompleted || (hasFile && (fileState?.isLoading ?? false));
+  const isLoading = !isCompleted || (hasFile && fileState?.isLoading);
 
   return (
     <Collapsible

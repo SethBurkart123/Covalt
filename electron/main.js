@@ -18,17 +18,13 @@ function createWindow() {
     },
   });
 
-  // In development, load from localhost:3000
   mainWindow.loadURL('http://localhost:3000');
 
-  // Open DevTools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => mainWindow = null);
 }
 
 app.whenReady().then(() => {

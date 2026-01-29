@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { MessageSquareCode, Brain } from "lucide-react";
 import {
   getModelSettings,
@@ -27,13 +27,12 @@ export default function ModelSettingsPanel() {
   }, []);
 
   const loadInitialData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const [settings, models] = await Promise.all([
         getModelSettings(),
         getAvailableModels(),
       ]);
-
       setModelSettings(settings.models);
       setAvailableModels(
         models.models.map((m) => ({
@@ -67,56 +66,41 @@ export default function ModelSettingsPanel() {
     );
   };
 
-  const parseThinkTagsModels = useMemo(() => {
-    return availableModels.filter((model) => {
-      const setting = getModelSetting(model.provider, model.modelId);
-      return setting?.parseThinkTags ?? false;
-    });
-  }, [availableModels, modelSettings]);
+  const parseThinkTagsModels = useMemo(
+    () =>
+      availableModels.filter(
+        (model) => getModelSetting(model.provider, model.modelId)?.parseThinkTags ?? false
+      ),
+    [availableModels, modelSettings]
+  );
 
-  const reasoningModels = useMemo(() => {
-    return availableModels.filter((model) => {
-      const setting = getModelSetting(model.provider, model.modelId);
-      return setting?.reasoning?.supports ?? false;
-    });
-  }, [availableModels, modelSettings]);
+  const reasoningModels = useMemo(
+    () =>
+      availableModels.filter(
+        (model) => getModelSetting(model.provider, model.modelId)?.reasoning?.supports ?? false
+      ),
+    [availableModels, modelSettings]
+  );
 
-  const handleAddParseThinkTags = async (
-    provider: string,
-    modelId: string,
-  ) => {
-    const setting = getModelSetting(provider, modelId);
+  const handleAddParseThinkTags = async (provider: string, modelId: string) => {
     const newSetting: ModelSettingsInfo = {
       provider,
       modelId,
       parseThinkTags: true,
-      reasoning: setting?.reasoning ?? {
+      reasoning: getModelSetting(provider, modelId)?.reasoning ?? {
         supports: false,
         isUserOverride: false,
       },
     };
 
-    setModelSettings((prev) => {
-      const existing = prev.find(
-        (m) => m.provider === provider && m.modelId === modelId,
-      );
-      if (existing) {
-        return prev.map((m) =>
-          m.provider === provider && m.modelId === modelId ? newSetting : m,
-        );
-      }
-      return [...prev, newSetting];
-    });
+    setModelSettings((prev) =>
+      prev.find((m) => m.provider === provider && m.modelId === modelId)
+        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
+        : [...prev, newSetting]
+    );
 
     try {
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags: true,
-          reasoning: setting?.reasoning,
-        },
-      });
+      await saveModelSettings({ body: newSetting });
       refreshModelSettings();
     } catch (error) {
       console.error("Failed to save model settings:", error);
@@ -124,42 +108,25 @@ export default function ModelSettingsPanel() {
     }
   };
 
-  const handleRemoveParseThinkTags = async (
-    provider: string,
-    modelId: string,
-  ) => {
-    const setting = getModelSetting(provider, modelId);
+  const handleRemoveParseThinkTags = async (provider: string, modelId: string) => {
     const newSetting: ModelSettingsInfo = {
       provider,
       modelId,
       parseThinkTags: false,
-      reasoning: setting?.reasoning ?? {
+      reasoning: getModelSetting(provider, modelId)?.reasoning ?? {
         supports: false,
         isUserOverride: false,
       },
     };
 
-    setModelSettings((prev) => {
-      const existing = prev.find(
-        (m) => m.provider === provider && m.modelId === modelId,
-      );
-      if (existing) {
-        return prev.map((m) =>
-          m.provider === provider && m.modelId === modelId ? newSetting : m,
-        );
-      }
-      return [...prev, newSetting];
-    });
+    setModelSettings((prev) =>
+      prev.find((m) => m.provider === provider && m.modelId === modelId)
+        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
+        : [...prev, newSetting]
+    );
 
     try {
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags: false,
-          reasoning: setting?.reasoning,
-        },
-      });
+      await saveModelSettings({ body: newSetting });
       refreshModelSettings();
     } catch (error) {
       console.error("Failed to save model settings:", error);
@@ -168,41 +135,24 @@ export default function ModelSettingsPanel() {
   };
 
   const handleAddReasoning = async (provider: string, modelId: string) => {
-    const setting = getModelSetting(provider, modelId);
     const newSetting: ModelSettingsInfo = {
       provider,
       modelId,
-      parseThinkTags: setting?.parseThinkTags ?? false,
+      parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
       reasoning: {
         supports: true,
         isUserOverride: true,
       },
     };
 
-    setModelSettings((prev) => {
-      const existing = prev.find(
-        (m) => m.provider === provider && m.modelId === modelId,
-      );
-      if (existing) {
-        return prev.map((m) =>
-          m.provider === provider && m.modelId === modelId ? newSetting : m,
-        );
-      }
-      return [...prev, newSetting];
-    });
+    setModelSettings((prev) =>
+      prev.find((m) => m.provider === provider && m.modelId === modelId)
+        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
+        : [...prev, newSetting]
+    );
 
     try {
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags: setting?.parseThinkTags ?? false,
-          reasoning: {
-            supports: true,
-            isUserOverride: true,
-          },
-        },
-      });
+      await saveModelSettings({ body: newSetting });
       refreshModelSettings();
     } catch (error) {
       console.error("Failed to save model settings:", error);
@@ -211,41 +161,24 @@ export default function ModelSettingsPanel() {
   };
 
   const handleRemoveReasoning = async (provider: string, modelId: string) => {
-    const setting = getModelSetting(provider, modelId);
     const newSetting: ModelSettingsInfo = {
       provider,
       modelId,
-      parseThinkTags: setting?.parseThinkTags ?? false,
+      parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
       reasoning: {
         supports: false,
         isUserOverride: true,
       },
     };
 
-    setModelSettings((prev) => {
-      const existing = prev.find(
-        (m) => m.provider === provider && m.modelId === modelId,
-      );
-      if (existing) {
-        return prev.map((m) =>
-          m.provider === provider && m.modelId === modelId ? newSetting : m,
-        );
-      }
-      return [...prev, newSetting];
-    });
+    setModelSettings((prev) =>
+      prev.find((m) => m.provider === provider && m.modelId === modelId)
+        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
+        : [...prev, newSetting]
+    );
 
     try {
-      await saveModelSettings({
-        body: {
-          provider,
-          modelId,
-          parseThinkTags: setting?.parseThinkTags ?? false,
-          reasoning: {
-            supports: false,
-            isUserOverride: true,
-          },
-        },
-      });
+      await saveModelSettings({ body: newSetting });
       refreshModelSettings();
     } catch (error) {
       console.error("Failed to save model settings:", error);

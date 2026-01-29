@@ -22,11 +22,8 @@ export function useChatOperations({
     setCurrentChatId("");
     router.push("/");
 
-    // Focus input after navigation
     setTimeout(() => {
-      const input = document.querySelector(
-        ".query-input",
-      ) as HTMLTextAreaElement;
+      const input = document.querySelector(".query-input") as HTMLTextAreaElement;
       input?.focus();
     }, 0);
   }, [setCurrentChatId, router]);
@@ -43,27 +40,21 @@ export function useChatOperations({
 
   const deleteChat = useCallback(
     async (id: string) => {
-      try {
-        await api.deleteChat(id);
+      await api.deleteChat(id);
 
-        const { [id]: _deletedChat, ...remainingChats } = allChatsData.chats;
-        const nextData: AllChatsData = {
-          ...allChatsData,
-          chats: remainingChats,
-        };
-        setAllChatsData(nextData);
+      const { [id]: _deletedChat, ...remainingChats } = allChatsData.chats;
+      setAllChatsData({
+        ...allChatsData,
+        chats: remainingChats,
+      });
 
-        if (id === currentChatId) {
-          const remainingIds = Object.keys(remainingChats);
-          if (remainingIds.length > 0) {
-            switchChat(remainingIds[0]);
-          } else {
-            startNewChat();
-          }
+      if (id === currentChatId) {
+        const remainingIds = Object.keys(remainingChats);
+        if (remainingIds.length > 0) {
+          switchChat(remainingIds[0]);
+        } else {
+          startNewChat();
         }
-      } catch (error) {
-        console.error("Failed to delete chat:", error);
-        throw error;
       }
     },
     [allChatsData, currentChatId, setAllChatsData, switchChat, startNewChat],
@@ -74,25 +65,17 @@ export function useChatOperations({
       const trimmedTitle = newTitle.trim();
       if (!trimmedTitle || !allChatsData.chats[id]) return;
 
-      try {
-        await api.renameChat(id, trimmedTitle);
-
-        const nextData: AllChatsData = {
-          ...allChatsData,
-          chats: {
-            ...allChatsData.chats,
-            [id]: {
-              ...allChatsData.chats[id],
-              title: trimmedTitle,
-            },
+      await api.renameChat(id, trimmedTitle);
+      setAllChatsData({
+        ...allChatsData,
+        chats: {
+          ...allChatsData.chats,
+          [id]: {
+            ...allChatsData.chats[id],
+            title: trimmedTitle,
           },
-        };
-
-        setAllChatsData(nextData);
-      } catch (error) {
-        console.error("Failed to rename chat:", error);
-        throw error;
-      }
+        },
+      });
     },
     [allChatsData, setAllChatsData],
   );
@@ -101,25 +84,17 @@ export function useChatOperations({
     async (id: string) => {
       if (!allChatsData.chats[id]) return;
 
-      try {
-        const updatedChat = await api.toggleStarChat(id);
-
-        const nextData: AllChatsData = {
-          ...allChatsData,
-          chats: {
-            ...allChatsData.chats,
-            [id]: {
-              ...allChatsData.chats[id],
-              starred: updatedChat.starred,
-            },
+      const updatedChat = await api.toggleStarChat(id);
+      setAllChatsData({
+        ...allChatsData,
+        chats: {
+          ...allChatsData.chats,
+          [id]: {
+            ...allChatsData.chats[id],
+            starred: updatedChat.starred,
           },
-        };
-
-        setAllChatsData(nextData);
-      } catch (error) {
-        console.error("Failed to toggle star chat:", error);
-        throw error;
-      }
+        },
+      });
     },
     [allChatsData, setAllChatsData],
   );

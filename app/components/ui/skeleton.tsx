@@ -1,8 +1,8 @@
+import { useId, ComponentProps } from "react"
 import { cn } from "@/lib/utils"
-import { useId } from "react"
 
-function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
-  const id = useId().replace(/:/g, '')  // Remove colons from the ID as they're invalid in CSS
+function Skeleton({ className, ...props }: ComponentProps<"div">) {
+  const id = useId().replace(/:/g, '')
   
   return (
     <>

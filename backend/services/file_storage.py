@@ -81,10 +81,12 @@ def delete_pending_attachment(attachment_id: str, extension: str) -> bool:
 
 def cleanup_pending_uploads() -> int:
     pending_dir = get_pending_uploads_dir()
+    if not pending_dir.exists():
+        return 0
+
     count = 0
-    if pending_dir.exists():
-        for file in pending_dir.iterdir():
-            if file.is_file():
-                file.unlink()
-                count += 1
+    for file in pending_dir.iterdir():
+        if file.is_file():
+            file.unlink()
+            count += 1
     return count

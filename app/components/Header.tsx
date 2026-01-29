@@ -9,15 +9,12 @@ export function Header() {
   return (
     <header className="z-10 flex shrink-0 items-center rounded-tr-2xl gap-2 p-4 sticky top-0 w-full">
       <SidebarTrigger />
-      {
-        title !== "" && <>
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
-          />
+      {title && (
+        <>
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <h1 className="truncate text-lg font-medium">{title}</h1>
         </>
-      }
+      )}
     </header>
   );
 }

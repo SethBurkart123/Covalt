@@ -36,9 +36,6 @@ export const themes: Record<string, ThemeFile> = {
   vercel,
 } satisfies Record<string, ThemeFile>;
 
-export function getAvailableThemes(): Array<{ id: string; name: string }> {
-  return Object.entries(themes).map(([id, theme]) => ({
-    id,
-    name: theme.name,
-  }));
+export function getAvailableThemes() {
+  return Object.entries(themes).map(([id, theme]) => ({ id, name: theme.name }));
 }

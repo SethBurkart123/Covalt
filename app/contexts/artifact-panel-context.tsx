@@ -168,9 +168,7 @@ export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getFileState = useCallback(
-    (filePath: string): FileState | undefined => {
-      return openFiles.get(filePath);
-    },
+    (filePath: string) => openFiles.get(filePath),
     [openFiles]
   );
 

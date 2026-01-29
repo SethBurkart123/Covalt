@@ -56,52 +56,32 @@ class DbPathResponse(BaseModel):
 
 @command
 async def get_db_path() -> DbPathResponse:
-    """
-    Get the database directory path for file access.
-    
-    Returns:
-        The absolute path to the database directory
-    """
     return DbPathResponse(path=str(get_db_directory()))
 
 
 @command
 async def get_available_models() -> AvailableModelsResponse:
-    """
-    Get list of available models based on configured providers.
-    
-    Fetches from all enabled providers in parallel for maximum speed.
-
-    Returns:
-        List of available models with provider, modelId, displayName, and isDefault
-    """
     models_data = await get_models_from_factory()
-    models = [
-        ModelInfo(
-            provider=m["provider"],
-            modelId=m["modelId"],
-            displayName=m["displayName"],
-            isDefault=m["isDefault"],
-        )
-        for m in models_data
-    ]
-    return AvailableModelsResponse(models=models)
+    return AvailableModelsResponse(
+        models=[
+            ModelInfo(
+                provider=m["provider"],
+                modelId=m["modelId"],
+                displayName=m["displayName"],
+                isDefault=m["isDefault"],
+            )
+            for m in models_data
+        ]
+    )
 
 
 @command
 async def get_provider_settings() -> AllProvidersResponse:
-    """
-    Get all configured provider settings.
-
-    Returns:
-        List of provider configurations
-    """
     with db.db_session() as sess:
         db_settings = db.get_all_provider_settings(sess)
 
-    providers = []
-    for provider, config in db_settings.items():
-        providers.append(
+    return AllProvidersResponse(
+        providers=[
             ProviderConfig(
                 provider=provider,
                 apiKey=config.get("api_key"),
@@ -109,19 +89,13 @@ async def get_provider_settings() -> AllProvidersResponse:
                 extra=_safe_parse_json(config.get("extra")),
                 enabled=config.get("enabled", True),
             )
-        )
-
-    return AllProvidersResponse(providers=providers)
+            for provider, config in db_settings.items()
+        ]
+    )
 
 
 @command
 async def save_provider_settings(body: SaveProviderConfigInput) -> None:
-    """
-    Save or update provider settings.
-
-    Args:
-        body: Provider configuration to save
-    """
     with db.db_session() as sess:
         db.save_provider_settings(
             sess,
@@ -131,8 +105,6 @@ async def save_provider_settings(body: SaveProviderConfigInput) -> None:
             extra=body.extra,
             enabled=body.enabled,
         )
-
-    return None
 
 
 def _safe_parse_json(value: str | None):
@@ -148,40 +120,18 @@ def _safe_parse_json(value: str | None):
 
 @command
 async def get_default_tools() -> DefaultToolsResponse:
-    """
-    Get default tool IDs for new chats.
-
-    Returns:
-        List of default tool IDs
-    """
     with db.db_session() as sess:
-        tool_ids = db.get_default_tool_ids(sess)
-
-    return DefaultToolsResponse(toolIds=tool_ids)
+        return DefaultToolsResponse(toolIds=db.get_default_tool_ids(sess))
 
 
 @command
 async def set_default_tools(body: SetDefaultToolsInput) -> None:
-    """
-    Set default tool IDs for new chats.
-
-    Args:
-        body: Contains list of tool IDs to set as defaults
-    """
     with db.db_session() as sess:
         db.set_default_tool_ids(sess, body.toolIds)
-
-    return None
 
 
 @command
 async def get_auto_title_settings() -> AutoTitleSettings:
-    """
-    Get auto-title generation settings.
-
-    Returns:
-        Auto-title settings including enabled, prompt, and model configuration
-    """
     with db.db_session() as sess:
         settings = db.get_auto_title_settings(sess)
 
@@ -199,92 +149,69 @@ async def get_auto_title_settings() -> AutoTitleSettings:
 
 @command
 async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
-    """
-    Save auto-title generation settings.
-
-    Args:
-        body: Auto-title settings to save
-    """
     with db.db_session() as sess:
-        settings = {
-            "enabled": body.enabled,
-            "prompt": body.prompt,
-            "model_mode": body.modelMode,
-            "provider": body.provider,
-            "model_id": body.modelId,
-        }
-        db.save_auto_title_settings(sess, settings)
-
-    return None
+        db.save_auto_title_settings(
+            sess,
+            {
+                "enabled": body.enabled,
+                "prompt": body.prompt,
+                "model_mode": body.modelMode,
+                "provider": body.provider,
+                "model_id": body.modelId,
+            },
+        )
 
 
 @command
 async def get_model_settings() -> AllModelSettingsResponse:
-    """
-    Get all model settings including reasoning capabilities.
+    from ..db.model_ops import _parse_extra
 
-    Returns:
-        List of model settings with reasoning support flags
-    """
     with db.db_session() as sess:
         models = db.get_all_model_settings(sess)
 
-    result = []
-    for model in models:
-        reasoning = db.get_reasoning_from_model(model)
-
-        # Get thinkingTagPrompted from extra
-        from ..db.model_ops import _parse_extra
-
-        extra = _parse_extra(model.extra)
-        thinking_tag_prompted = extra.get("thinkingTagPrompted", {})
-
-        result.append(
+    return AllModelSettingsResponse(
+        models=[
             ModelSettingsInfo(
                 provider=model.provider,
                 modelId=model.model_id,
                 parseThinkTags=model.parse_think_tags,
                 reasoning=ReasoningInfo(
-                    supports=reasoning.get("supports", False),
+                    supports=(reasoning := db.get_reasoning_from_model(model)).get(
+                        "supports", False
+                    ),
                     isUserOverride=reasoning.get("isUserOverride", False),
                 ),
                 thinkingTagPrompted=ThinkingTagPromptInfo(
                     prompted=thinking_tag_prompted.get("prompted", False),
                     declined=thinking_tag_prompted.get("declined", False),
                 )
-                if thinking_tag_prompted
+                if (
+                    thinking_tag_prompted := _parse_extra(model.extra).get(
+                        "thinkingTagPrompted", {}
+                    )
+                )
                 else None,
             )
-        )
-
-    return AllModelSettingsResponse(models=result)
+            for model in models
+        ]
+    )
 
 
 @command
 async def save_model_settings(body: SaveModelSettingsInput) -> None:
-    """
-    Save or update model settings (including reasoning support).
-
-    Args:
-        body: Model settings to save
-    """
     with db.db_session() as sess:
-        reasoning_dict = None
-        if body.reasoning:
-            reasoning_dict = {
-                "supports": body.reasoning.supports,
-                "isUserOverride": body.reasoning.isUserOverride,
-            }
-
         db.save_model_settings(
             sess,
             provider=body.provider,
             model_id=body.modelId,
             parse_think_tags=body.parseThinkTags,
-            reasoning=reasoning_dict,
+            reasoning={
+                "supports": body.reasoning.supports,
+                "isUserOverride": body.reasoning.isUserOverride,
+            }
+            if body.reasoning
+            else None,
         )
-
-    return None
 
 
 class RespondToThinkingTagPromptInput(BaseModel):
@@ -294,62 +221,33 @@ class RespondToThinkingTagPromptInput(BaseModel):
 
 
 @command
-async def respond_to_thinking_tag_prompt(
-    body: RespondToThinkingTagPromptInput,
-) -> None:
-    """
-    Handle user response to thinking tag detection prompt.
-
-    If accepted, enables parse_think_tags setting.
-    If declined, stores thinkingTagPrompted: { prompted: true, declined: true } in extra.
-
-    Args:
-        body: User's response
-    """
+async def respond_to_thinking_tag_prompt(body: RespondToThinkingTagPromptInput) -> None:
     with db.db_session() as sess:
-        extra_update = {
-            "thinkingTagPrompted": {
-                "prompted": True,
-                "declined": not body.accepted,
-            }
-        }
-
         db.save_model_settings(
             sess,
             provider=body.provider,
             model_id=body.modelId,
             parse_think_tags=body.accepted,
-            extra=extra_update,
+            extra={
+                "thinkingTagPrompted": {"prompted": True, "declined": not body.accepted}
+            },
         )
-
-    return None
 
 
 class TestProviderInput(BaseModel):
     """Input for testing provider connection."""
+
     provider: str
 
 
 class TestProviderResponse(BaseModel):
     """Response from testing provider connection."""
+
     success: bool
     error: str | None = None
 
 
 @command
 async def test_provider(body: TestProviderInput) -> TestProviderResponse:
-    """
-    Test if a provider connection is valid.
-    
-    Uses each provider's built-in test_connection() function
-    which validates credentials and connectivity.
-    
-    Args:
-        body: Contains provider name to test
-        
-    Returns:
-        Success status and optional error message
-    """
-    
     success, error = await test_provider_connection(body.provider)
     return TestProviderResponse(success=success, error=error)

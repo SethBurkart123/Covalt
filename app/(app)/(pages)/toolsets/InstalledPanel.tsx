@@ -85,12 +85,9 @@ function ToolsetCard({
   const [isLoadingTools, setIsLoadingTools] = useState(false);
 
   const handleOpenChange = async (open: boolean) => {
-    if (!open) {
-      setIsOpen(false);
-      return;
-    }
-
-    if (tools.length === 0) {
+    setIsOpen(open);
+    
+    if (open && tools.length === 0) {
       setIsLoadingTools(true);
       try {
         const detail = await getToolset({ body: { id: toolset.id } });
@@ -101,8 +98,6 @@ function ToolsetCard({
         setIsLoadingTools(false);
       }
     }
-
-    setIsOpen(true);
   };
 
   return (
@@ -361,13 +356,12 @@ export default function InstalledPanel({
     try {
       const response = await exportToolset({ body: { id: toolset.id } });
       const bytes = Uint8Array.from(atob(response.data), (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = response.filename;
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to export toolset:", err);
@@ -411,98 +405,137 @@ export default function InstalledPanel({
       console.error("Failed to import toolset:", err);
     } finally {
       setIsImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      e.target.value = "";
     }
   };
 
   const isLoading = isLoadingTools || isLoadingToolsets;
   const hasNoContent = mcpServers.length === 0 && toolsets.length === 0;
 
-  const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      );
-    }
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
-    if (hasNoContent) {
-      return (
-        <div className="border border-dashed border-border rounded-xl p-12 text-center">
-          <div className="flex justify-center gap-3 mb-4">
-            <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
-              <Plug className="size-6 text-muted-foreground" />
-            </div>
-            <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
-              <Package className="size-6 text-muted-foreground" />
-            </div>
+  if (hasNoContent) {
+    return (
+      <div className="border border-dashed border-border rounded-xl p-12 text-center">
+        <div className="flex justify-center gap-3 mb-4">
+          <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
+            <Plug className="size-6 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium mb-2">No tools installed</h3>
-          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            Add MCP servers for external integrations or import toolsets to extend your AI&apos;s capabilities.
-          </p>
-          <Button onClick={handleImportClick} disabled={isImporting}>
+          <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
+            <Package className="size-6 text-muted-foreground" />
+          </div>
+        </div>
+        <h3 className="text-lg font-medium mb-2">No tools installed</h3>
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          Add MCP servers for external integrations or import toolsets to extend your AI&apos;s capabilities.
+        </p>
+        <Button onClick={handleImportClick} disabled={isImporting}>
+          {isImporting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Upload className="size-4" />
+          )}
+          Import Toolset
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".zip"
+        className="hidden"
+      />
+
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Server className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            MCP Servers
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            ({mcpServers.length})
+          </span>
+        </div>
+
+        {mcpServers.length > 0 ? (
+          <div className="space-y-2">
+            {mcpServers.map((server) => (
+              <McpServerCard
+                key={server.id}
+                server={server}
+                toolCount={mcpTools[server.id]?.length || 0}
+                onEdit={() => onEditServer(server.id)}
+                onDelete={() => onDeleteServer(server.id)}
+                onInspect={() => handleInspectServer(server.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="border border-dashed border-border rounded-lg p-6 text-center">
+            <Plug className="size-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No MCP servers configured. Click &quot;Add Server&quot; to connect one.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Package className="size-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              Toolsets
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              ({toolsets.length})
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImportClick}
+            disabled={isImporting}
+          >
             {isImporting ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Upload className="size-4" />
             )}
-            Import Toolset
+            Import
           </Button>
         </div>
-      );
-    }
 
-    return (
-      <>
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <Server className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              MCP Servers
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              ({mcpServers.length})
-            </span>
+        {toolsets.length > 0 ? (
+          <div className="space-y-2">
+            {toolsets.map((toolset) => (
+              <ToolsetCard
+                key={toolset.id}
+                toolset={toolset}
+                onToggle={() => handleToggle(toolset)}
+                onExport={() => handleExport(toolset)}
+                onUninstall={() => handleUninstallClick(toolset)}
+                isToggling={togglingId === toolset.id}
+              />
+            ))}
           </div>
-
-          {mcpServers.length > 0 ? (
-            <div className="space-y-2">
-              {mcpServers.map((server) => (
-                <McpServerCard
-                  key={server.id}
-                  server={server}
-                  toolCount={mcpTools[server.id]?.length || 0}
-                  onEdit={() => onEditServer(server.id)}
-                  onDelete={() => onDeleteServer(server.id)}
-                  onInspect={() => handleInspectServer(server.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="border border-dashed border-border rounded-lg p-6 text-center">
-              <Plug className="size-8 mx-auto mb-2 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">
-                No MCP servers configured. Click &quot;Add Server&quot; to connect one.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Package className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Toolsets
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                ({toolsets.length})
-              </span>
-            </div>
+        ) : (
+          <div className="border border-dashed border-border rounded-lg p-6 text-center">
+            <Package className="size-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground mb-3">
+              No toolsets installed
+            </p>
             <Button
               variant="outline"
               size="sm"
@@ -514,60 +547,11 @@ export default function InstalledPanel({
               ) : (
                 <Upload className="size-4" />
               )}
-              Import
+              Import Toolset
             </Button>
           </div>
-
-          {toolsets.length > 0 ? (
-            <div className="space-y-2">
-              {toolsets.map((toolset) => (
-                <ToolsetCard
-                  key={toolset.id}
-                  toolset={toolset}
-                  onToggle={() => handleToggle(toolset)}
-                  onExport={() => handleExport(toolset)}
-                  onUninstall={() => handleUninstallClick(toolset)}
-                  isToggling={togglingId === toolset.id}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="border border-dashed border-border rounded-lg p-6 text-center">
-              <Package className="size-8 mx-auto mb-2 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground mb-3">
-                No toolsets installed
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleImportClick}
-                disabled={isImporting}
-              >
-                {isImporting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Upload className="size-4" />
-                )}
-                Import Toolset
-              </Button>
-            </div>
-          )}
-        </section>
-      </>
-    );
-  };
-
-  return (
-    <div className={cn("space-y-8", hasNoContent && "space-y-6")}>
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        accept=".zip"
-        className="hidden"
-      />
-
-      {renderContent()}
+        )}
+      </section>
 
       <UninstallDialog
         open={uninstallDialogOpen}

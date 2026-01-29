@@ -1,19 +1,16 @@
 "use client";
 
-import React, { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-type PageTitleContextType = {
+interface PageTitleContextType {
   title: string;
   setTitle: (value: string) => void;
-};
+}
 
-const PageTitleContext = createContext<PageTitleContextType | undefined>(
-  undefined,
-);
+const PageTitleContext = createContext<PageTitleContextType | undefined>(undefined);
 
-export function PageTitleProvider({ children }: { children: React.ReactNode }) {
-  const [title, setTitle] = useState<string>("");
-
+export function PageTitleProvider({ children }: { children: ReactNode }) {
+  const [title, setTitle] = useState("");
   const value = useMemo(() => ({ title, setTitle }), [title]);
 
   return (
@@ -25,7 +22,6 @@ export function PageTitleProvider({ children }: { children: React.ReactNode }) {
 
 export function usePageTitle() {
   const ctx = useContext(PageTitleContext);
-  if (!ctx)
-    throw new Error("usePageTitle must be used within PageTitleProvider");
+  if (!ctx) throw new Error("usePageTitle must be used within PageTitleProvider");
   return ctx;
 }

@@ -58,9 +58,7 @@ export default function OAuthCallbackPage() {
           setStatus("error");
         }
       } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Failed to complete authentication"
-        );
+        setErrorMessage(err instanceof Error ? err.message : "Unknown error");
         setStatus("error");
       }
     }

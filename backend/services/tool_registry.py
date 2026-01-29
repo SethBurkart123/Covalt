@@ -32,22 +32,22 @@ class ToolRegistry:
         return tool_id in self._tools
 
     def _get_mcp_tool_info(self, tool_id: str) -> dict[str, Any] | None:
-        if tool_id.startswith("mcp:"):
-            parsed = self._parse_tool_id(tool_id)
-            if parsed[0] == "mcp_tool":
-                _, server_id, tool_name = parsed
-                if server_id and tool_name:
-                    mcp = get_mcp_manager()
-                    return next(
-                        (
-                            t
-                            for t in mcp.get_server_tools(server_id)
-                            if t["name"] == tool_name
-                        ),
-                        None,
-                    )
+        if not tool_id.startswith("mcp:"):
+            return None
 
-        return None
+        parsed = self._parse_tool_id(tool_id)
+        if parsed[0] != "mcp_tool":
+            return None
+
+        _, server_id, tool_name = parsed
+        if not (server_id and tool_name):
+            return None
+
+        mcp = get_mcp_manager()
+        return next(
+            (t for t in mcp.get_server_tools(server_id) if t["name"] == tool_name),
+            None,
+        )
 
     def get_editable_args(self, tool_id: str) -> list[str] | None:
         metadata = self._metadata.get(tool_id, {})
@@ -100,7 +100,7 @@ class ToolRegistry:
 
         include_builtin: set[str] = set()
         include_mcp_toolsets: set[str] = set()
-        include_mcp_tools: set[tuple[str, str]] = set()  # (server_id, tool_name)
+        include_mcp_tools: set[tuple[str, str]] = set()
         include_toolset_tools: set[str] = set()
         blacklist: set[tuple[str, str]] = set()
 
@@ -210,55 +210,49 @@ def tool(
     external_execution: bool = False,
 ) -> Callable[[Callable], Any]:
     def decorator(fn: Callable) -> Any:
-        agno_kwargs: dict[str, Any] = {}
-        if requires_confirmation:
-            agno_kwargs["requires_confirmation"] = requires_confirmation
-        if stop_after_tool_call:
-            agno_kwargs["stop_after_tool_call"] = stop_after_tool_call
-        if cache_results:
-            agno_kwargs["cache_results"] = cache_results
-        if cache_dir is not None:
-            agno_kwargs["cache_dir"] = cache_dir
-        if cache_ttl is not None:
-            agno_kwargs["cache_ttl"] = cache_ttl
-        if tool_hooks is not None:
-            agno_kwargs["tool_hooks"] = tool_hooks
-        if pre_hook is not None:
-            agno_kwargs["pre_hook"] = pre_hook
-        if post_hook is not None:
-            agno_kwargs["post_hook"] = post_hook
-        if requires_user_input:
-            agno_kwargs["requires_user_input"] = requires_user_input
-        if user_input_fields is not None:
-            agno_kwargs["user_input_fields"] = user_input_fields
-        if external_execution:
-            agno_kwargs["external_execution"] = external_execution
+        agno_kwargs: dict[str, Any] = {
+            k: v
+            for k, v in {
+                "requires_confirmation": requires_confirmation
+                if requires_confirmation
+                else None,
+                "stop_after_tool_call": stop_after_tool_call
+                if stop_after_tool_call
+                else None,
+                "cache_results": cache_results if cache_results else None,
+                "cache_dir": cache_dir,
+                "cache_ttl": cache_ttl,
+                "tool_hooks": tool_hooks,
+                "pre_hook": pre_hook,
+                "post_hook": post_hook,
+                "requires_user_input": requires_user_input
+                if requires_user_input
+                else None,
+                "user_input_fields": user_input_fields,
+                "external_execution": external_execution
+                if external_execution
+                else None,
+            }.items()
+            if v is not None
+        }
 
-        if agno_kwargs:
-            wrapped = agno_tool(**agno_kwargs)(fn)
-        else:
-            wrapped = agno_tool(fn)
+        wrapped = agno_tool(**agno_kwargs)(fn) if agno_kwargs else agno_tool(fn)
 
-        tool_description = description
-        if tool_description is None and fn.__doc__:
-            tool_description = fn.__doc__.strip().split("\n")[0]
-
-        display_name = name if name else fn.__name__.replace("_", " ").title()
+        tool_description = description or (
+            fn.__doc__.strip().split("\n")[0] if fn.__doc__ else ""
+        )
+        display_name = name or fn.__name__.replace("_", " ").title()
 
         metadata: dict[str, Any] = {
             "name": display_name,
-            "description": tool_description or "",
+            "description": tool_description,
         }
         if renderer is not None:
             metadata["renderer"] = renderer
         if editable_args is not None:
             metadata["editable_args"] = editable_args
 
-        global _tool_registry
-        if _tool_registry is None:
-            _tool_registry = ToolRegistry()
-        _tool_registry.register(fn.__name__, wrapped, metadata)
-
+        get_tool_registry().register(fn.__name__, wrapped, metadata)
         return wrapped
 
     return decorator
