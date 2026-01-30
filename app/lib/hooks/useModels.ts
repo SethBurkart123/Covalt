@@ -7,28 +7,30 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface ModelsCache {
   models: ModelInfo[];
+  connectedProviders: string[];
   timestamp: number;
 }
 
-function getCachedModels(): ModelInfo[] | null {
+function getCachedModels(): { models: ModelInfo[]; connectedProviders: string[] } | null {
   if (typeof window === "undefined") return null;
   
   const cached = localStorage.getItem(CACHE_KEY);
   if (!cached) return null;
 
   try {
-    const { models, timestamp }: ModelsCache = JSON.parse(cached);
-    return Date.now() - timestamp > CACHE_TTL ? null : models;
+    const { models, connectedProviders, timestamp }: ModelsCache = JSON.parse(cached);
+    return Date.now() - timestamp > CACHE_TTL ? null : { models, connectedProviders };
   } catch {
     return null;
   }
 }
 
-function setCachedModels(models: ModelInfo[]): void {
+function setCachedModels(models: ModelInfo[], connectedProviders: string[]): void {
   if (typeof window === "undefined") return;
   
   const cache: ModelsCache = {
     models,
+    connectedProviders,
     timestamp: Date.now(),
   };
   localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
@@ -37,6 +39,7 @@ function setCachedModels(models: ModelInfo[]): void {
 export function useModels() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const selectModel = useCallback((models: ModelInfo[]) => {
@@ -46,9 +49,7 @@ export function useModels() {
     }
 
     const saved = localStorage.getItem("selectedModel");
-    const savedExists = saved && models.some((m) => `${m.provider}:${m.modelId}` === saved);
-
-    if (savedExists && saved) {
+    if (saved && models.some((m) => `${m.provider}:${m.modelId}` === saved)) {
       setSelectedModel(saved);
     } else {
       const defaultModel = models.find((m) => m.isDefault) || models[0];
@@ -62,9 +63,10 @@ export function useModels() {
     if (!forceRefresh) {
       const cached = getCachedModels();
       if (cached) {
-        setModels(cached);
+        setModels(cached.models);
+        setConnectedProviders(cached.connectedProviders);
         setIsLoading(false);
-        selectModel(cached);
+        selectModel(cached.models);
         return;
       }
     }
@@ -72,11 +74,13 @@ export function useModels() {
     try {
       const response = await getAvailableModels();
       setModels(response.models);
-      setCachedModels(response.models);
+      setConnectedProviders(response.connectedProviders || []);
+      setCachedModels(response.models, response.connectedProviders || []);
       selectModel(response.models);
     } catch (error) {
       console.error("Failed to load models:", error);
       setModels([]);
+      setConnectedProviders([]);
       setSelectedModel("");
     } finally {
       setIsLoading(false);
@@ -92,12 +96,15 @@ export function useModels() {
     localStorage.setItem("selectedModel", model);
   }, []);
 
-  const refreshModels = useCallback(() => loadModels(true), [loadModels]);
+  const refreshModels = useCallback(() => {
+    return loadModels(true);
+  }, [loadModels]);
 
   return {
     selectedModel,
     setSelectedModel: updateSelectedModel,
     models,
+    connectedProviders,
     isLoading,
     refreshModels,
   };

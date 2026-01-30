@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
-import { PROVIDERS, ProviderConfig, PROVIDER_MAP } from './ProviderRegistry';
+import { PROVIDERS, ProviderConfig } from './ProviderRegistry';
 import { getProviderSettings, saveProviderSettings, testProvider } from '@/python/api';
+import { useModels } from '@/lib/hooks/useModels';
 
 export default function ProvidersPanel() {
   const [search, setSearch] = useState('');
@@ -17,6 +18,7 @@ export default function ProvidersPanel() {
     Record<string, 'idle' | 'testing' | 'success' | 'error'>
   >({});
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
+  const { connectedProviders, refreshModels } = useModels();
 
   useEffect(() => {
     loadSettings();
@@ -28,7 +30,7 @@ export default function ProvidersPanel() {
       const response = await getProviderSettings();
       const map: Record<string, ProviderConfig> = {};
 
-      (response?.providers || []).forEach((p: any) => {
+      (response?.providers || []).forEach((p) => {
         const extra = typeof p.extra === 'string'
           ? p.extra
           : p.extra && typeof p.extra === 'object'
@@ -81,38 +83,23 @@ export default function ProvidersPanel() {
     );
   }, [search]);
 
-  const isConfigured = (key: string) => {
-    const def = PROVIDER_MAP[key];
-    const cfg = providerConfigs[key];
-    if (!def || !cfg) return false;
-
-    const requiredFields = def.fields.filter((f) => f.required !== false);
-    if (requiredFields.length === 0) return true;
-    return requiredFields.every((f) => {
-      const v = (cfg as any)[f.id];
-      if (typeof v === 'string') return v.trim().length > 0;
-      return Boolean(v);
-    });
-  };
+  const isConnected = (key: string) => connectedProviders.includes(key);
 
   const displayProviders = useMemo(() => 
     filtered
       .slice()
       .sort((a, b) => {
-        const aConfigured = isConfigured(a.key) ? 0 : 1;
-        const bConfigured = isConfigured(b.key) ? 0 : 1;
-        if (aConfigured !== bConfigured) return aConfigured - bConfigured;
+        const aConnected = connectedProviders.includes(a.key) ? 0 : 1;
+        const bConnected = connectedProviders.includes(b.key) ? 0 : 1;
+        if (aConnected !== bConnected) return aConnected - bConnected;
         return a.name.localeCompare(b.name);
       }),
-  [filtered, providerConfigs]);
+  [filtered, connectedProviders]);
 
   const updateProvider = (key: string, field: keyof ProviderConfig, value: string | boolean) => {
     setProviderConfigs((prev) => ({
       ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: value as any,
-      },
+      [key]: { ...prev[key], [field]: value },
     }));
   };
 
@@ -121,7 +108,7 @@ export default function ProvidersPanel() {
     setSaved((s) => ({ ...s, [key]: false }));
     try {
       const cfg = providerConfigs[key];
-      let extra: any = undefined;
+      let extra = undefined;
       if (typeof cfg.extra === 'string' && cfg.extra.trim().length > 0) {
         try {
           extra = JSON.parse(cfg.extra);
@@ -137,13 +124,18 @@ export default function ProvidersPanel() {
           baseUrl: cfg.baseUrl || undefined,
           extra,
           enabled: cfg.enabled,
-        } as any,
+        },
       });
+      setSaving((s) => ({ ...s, [key]: false }));
       setSaved((s) => ({ ...s, [key]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
+      
+      setConnectionStatus((prev) => ({ ...prev, [key]: 'testing' }));
+      refreshModels().finally(() => {
+        setConnectionStatus((prev) => ({ ...prev, [key]: 'idle' }));
+      });
     } catch (e) {
       console.error('Failed to save provider settings', key, e);
-    } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }
   };
@@ -153,7 +145,13 @@ export default function ProvidersPanel() {
     setConnectionErrors((prev) => ({ ...prev, [providerKey]: '' }));
 
     try {
-      const result = await testProvider({ body: { provider: providerKey } });
+      const result = await testProvider({ 
+        body: { 
+          provider: providerKey,
+          apiKey: providerConfigs[providerKey]?.apiKey || undefined,
+          baseUrl: providerConfigs[providerKey]?.baseUrl || undefined,
+        } 
+      });
 
       if (result.success) {
         setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'success' }));
@@ -199,24 +197,21 @@ export default function ProvidersPanel() {
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        {displayProviders.map((def) => {
-          const cfg = providerConfigs[def.key];
-          return (
-            <ProviderItem
-              key={def.key}
-              def={def}
-              config={cfg}
-              configured={isConfigured(def.key)}
-              saving={Boolean(saving[def.key])}
-              saved={Boolean(saved[def.key])}
-              connectionStatus={connectionStatus[def.key] || 'idle'}
-              connectionError={connectionErrors[def.key]}
-              onChange={(field, value) => updateProvider(def.key, field, value)}
-              onSave={() => handleSave(def.key)}
-              onTestConnection={() => handleTestConnection(def.key)}
-            />
-          );
-        })}
+        {displayProviders.map((def) => (
+          <ProviderItem
+            key={def.key}
+            def={def}
+            config={providerConfigs[def.key]}
+            isConnected={isConnected(def.key)}
+            saving={!!saving[def.key]}
+            saved={!!saved[def.key]}
+            connectionStatus={connectionStatus[def.key] || 'idle'}
+            connectionError={connectionErrors[def.key]}
+            onChange={(field, value) => updateProvider(def.key, field, value)}
+            onSave={() => handleSave(def.key)}
+            onTestConnection={() => handleTestConnection(def.key)}
+          />
+        ))}
       </div>
     </div>
   );

@@ -24,9 +24,7 @@ from ..models.chat import (
     SetDefaultToolsInput,
     ThinkingTagPromptInfo,
 )
-from ..services.model_factory import (
-    get_available_models as get_models_from_factory,
-)
+from ..services.model_factory import get_available_models as get_models_from_factory
 from ..providers import test_provider_connection
 
 
@@ -61,7 +59,7 @@ async def get_db_path() -> DbPathResponse:
 
 @command
 async def get_available_models() -> AvailableModelsResponse:
-    models_data = await get_models_from_factory()
+    models_data, connected_providers = await get_models_from_factory()
     return AvailableModelsResponse(
         models=[
             ModelInfo(
@@ -71,7 +69,8 @@ async def get_available_models() -> AvailableModelsResponse:
                 isDefault=m["isDefault"],
             )
             for m in models_data
-        ]
+        ],
+        connectedProviders=connected_providers,
     )
 
 
@@ -79,7 +78,6 @@ async def get_available_models() -> AvailableModelsResponse:
 async def get_provider_settings() -> AllProvidersResponse:
     with db.db_session() as sess:
         db_settings = db.get_all_provider_settings(sess)
-
     return AllProvidersResponse(
         providers=[
             ProviderConfig(
@@ -108,11 +106,11 @@ async def save_provider_settings(body: SaveProviderConfigInput) -> None:
 
 
 def _safe_parse_json(value: str | None):
+    import json
+
     if not value:
         return None
     try:
-        import json
-
         return json.loads(value)
     except Exception:
         return None
@@ -134,7 +132,6 @@ async def set_default_tools(body: SetDefaultToolsInput) -> None:
 async def get_auto_title_settings() -> AutoTitleSettings:
     with db.db_session() as sess:
         settings = db.get_auto_title_settings(sess)
-
     return AutoTitleSettings(
         enabled=settings.get("enabled", True),
         prompt=settings.get(
@@ -168,7 +165,6 @@ async def get_model_settings() -> AllModelSettingsResponse:
 
     with db.db_session() as sess:
         models = db.get_all_model_settings(sess)
-
     return AllModelSettingsResponse(
         models=[
             ModelSettingsInfo(
@@ -235,19 +231,19 @@ async def respond_to_thinking_tag_prompt(body: RespondToThinkingTagPromptInput) 
 
 
 class TestProviderInput(BaseModel):
-    """Input for testing provider connection."""
-
     provider: str
+    apiKey: str | None = None
+    baseUrl: str | None = None
 
 
 class TestProviderResponse(BaseModel):
-    """Response from testing provider connection."""
-
     success: bool
     error: str | None = None
 
 
 @command
 async def test_provider(body: TestProviderInput) -> TestProviderResponse:
-    success, error = await test_provider_connection(body.provider)
+    success, error = await test_provider_connection(
+        body.provider, api_key=body.apiKey, base_url=body.baseUrl
+    )
     return TestProviderResponse(success=success, error=error)

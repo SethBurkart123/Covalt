@@ -15,7 +15,7 @@ bun run lint           # Run linting
 ```
 
 ### Important Notes
-- The API client (`app/python/api.ts`) is **auto-generated** when the dev server runs - do not edit manually
+- The API client (`app/python/api.ts`) is **auto-generated** when the dev server runs - NEVER edit manually!
 - Backend uses `uv` for Python package management
 - Frontend uses `bun` as the package manager
 
@@ -56,40 +56,15 @@ This codebase values **clarity, composability, and satisfaction**. Take inspirat
 - **Composable building blocks** - functions that snap together like LEGO
 - **Aim for <30 lines per function** - break giant functions into readable chunks
 
-### Critical Debugging Principle: Fix Root Causes
+### Critical Debugging Principle
 
 **Always fix the root cause, not the symptom.**
 
-- **Upstream fix**: Solve issues at their source, not downstream where they manifest
-- **Avoid band-aids**: Don't add workarounds that mask the real problem
-- **Avoid whack-a-mole debugging**: Understand WHY before fixing WHERE
-
-Example: If a component shows a loading flash during close animation:
-- **Bad**: Add a ref to cache content in the component (treats symptom)
-- **Good**: Move the cleanup to happen after animation completes (fixes cause)
-
-Ask yourself: "Am I fixing where the bug appears, or where the bug originates?"
+- Solve issues at their source, not downstream where they manifest
+- Don't add workarounds that mask the real problem
+- Understand WHY before fixing WHERE
 
 ### Conventions
-
-```typescript
-// 1. React and Next.js - use named imports, NOT `import React` with `React.*`
-"use client";
-import { useState, useEffect, useCallback, useMemo, useRef, createContext } from "react";
-import { useSearchParams } from "next/navigation";
-
-// 2. External libraries
-import { motion } from "framer-motion";
-import { debounce } from "lodash";
-
-// 3. Internal imports with @/ alias
-import { cn } from "@/lib/utils";
-import { useArtifactPanel } from "@/contexts/artifact-panel-context";
-import { Button } from "@/components/ui/button";
-
-// 4. Types (can be inline with related imports)
-import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
-```
 
 - Use explicit types for function parameters and return values
 - Prefer `interface` for object shapes, `type` for unions and aliases
@@ -101,29 +76,15 @@ import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 - Context pattern: create context, provider, and hook together in one file
 - Use try-catch with `console.error` logging and guard clauses for early returns
 - Use `cn()` from `@/lib/utils` for conditional classes, `cva()` for variants
+
+### Naming Conventions
+
 - **Components**: PascalCase (`EditableCodeViewer`, `ChatPanel`)
 - **Hooks**: camelCase with `use` prefix (`useArtifactPanel`, `useModels`)
 - **Utilities**: camelCase (`cn`, `addRecentModel`, `getFileState`)
 - **Constants**: UPPER_SNAKE_CASE (`MAX_RECENT_MODELS`, `TRANSITION`)
 - **Files**: kebab-case for components (`artifact-panel-context.tsx`)
 - **Clear names**: `ensureChatInitialized()` beats `initChatStuff()`
-
-## Animation & Lifecycle Coordination
-
-This codebase uses framer-motion for animations. When state cleanup affects animated content:
-
-```typescript
-// Track state changes across animation lifecycle
-const wasOpenRef = useRef(isOpen);
-
-const handleAnimationComplete = useCallback(() => {
-  // Cleanup AFTER animation, not during
-  if (wasOpenRef.current && !isOpen) {
-    clearFiles();
-  }
-  wasOpenRef.current = isOpen;
-}, [isOpen, clearFiles]);
-```
 
 ## ESLint Configuration
 

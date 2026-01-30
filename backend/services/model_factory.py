@@ -16,18 +16,20 @@ def list_supported_providers() -> List[str]:
     return list_providers()
 
 
-async def get_available_models() -> List[Dict[str, Any]]:
-    configured_providers = _get_configured_providers()
-    enabled = [
-        (p, c) for p, c in configured_providers.items() if c.get("enabled", True)
-    ]
+async def get_available_models() -> tuple[List[Dict[str, Any]], List[str]]:
+    configured = _get_configured_providers()
+    enabled = [(p, c) for p, c in configured.items() if c.get("enabled", True)]
 
     if not enabled:
-        return []
+        return [], []
+
+    connected: List[str] = []
 
     async def fetch_one(provider: str) -> List[Dict[str, Any]]:
         try:
-            provider_models = await fetch_provider_models(provider)
+            models = await fetch_provider_models(provider)
+            if models:
+                connected.append(provider)
             return [
                 {
                     "provider": provider,
@@ -35,25 +37,21 @@ async def get_available_models() -> List[Dict[str, Any]]:
                     "displayName": m["name"],
                     "isDefault": False,
                 }
-                for m in provider_models
+                for m in models
             ]
         except Exception as e:
             print(f"[{provider}] Error fetching models: {e}")
             return []
 
     results = await asyncio.gather(*[fetch_one(p) for p, _ in enabled])
-    models = [m for provider_models in results for m in provider_models]
+    models = [m for batch in results for m in batch]
 
     if models:
         models[0]["isDefault"] = True
 
-    return models
+    return models, connected
 
 
 def _get_configured_providers() -> Dict[str, Dict[str, Any]]:
-    try:
-        with db.db_session() as sess:
-            return db.get_all_provider_settings(sess)
-    except Exception as e:
-        print(f"[ModelFactory] DB error: {e}")
-        return {}
+    with db.db_session() as sess:
+        return db.get_all_provider_settings(sess)
