@@ -312,7 +312,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       next.set(chatId, {
         isStreaming: true,
         isPausedForApproval: false,
-        streamingContent: [],
+        streamingContent: [{ type: "text", content: "" }],
         streamingMessageId: messageId,
         status: "streaming",
         errorMessage: null,
