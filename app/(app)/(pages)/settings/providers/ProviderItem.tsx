@@ -12,7 +12,7 @@ import type { ProviderConfig, ProviderDefinition } from './ProviderRegistry';
 interface ProviderItemProps {
   def: ProviderDefinition;
   config: ProviderConfig;
-  configured: boolean;
+  isConnected: boolean;
   saving: boolean;
   saved: boolean;
   connectionStatus: 'idle' | 'testing' | 'success' | 'error';
@@ -25,7 +25,7 @@ interface ProviderItemProps {
 export default function ProviderItem({ 
   def, 
   config, 
-  configured, 
+  isConnected, 
   saving, 
   saved, 
   connectionStatus,
@@ -64,10 +64,10 @@ export default function ProviderItem({
                   Failed
                 </span>
               )}
-              {connectionStatus === 'idle' && configured && (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  Configured
+              {connectionStatus === 'idle' && isConnected && (
+                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
+                  <CheckCircle size={14} />
+                  Connected
                 </span>
               )}
             </div>
@@ -123,10 +123,7 @@ export default function ProviderItem({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTestConnection();
-                    }}
+                    onClick={onTestConnection}
                     disabled={connectionStatus === 'testing'}
                   >
                     {connectionStatus === 'testing' ? (
@@ -142,7 +139,7 @@ export default function ProviderItem({
                   <Button 
                     variant="secondary" 
                     size="sm"
-                    onClick={() => onSave()} 
+                    onClick={onSave} 
                     disabled={saving}
                   >
                     {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}

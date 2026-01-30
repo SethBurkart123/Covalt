@@ -89,7 +89,7 @@ class ChatStreamRequest(BaseModel):
     messages: List[ChatMessage]
     modelId: str
     chatId: Optional[str] = None
-    toolIds: List[str] = []
+    toolIds: List[str] = Field(default_factory=list)
 
 
 class ChatEvent(BaseModel):
@@ -154,6 +154,7 @@ class ModelInfo(BaseModel):
 
 class AvailableModelsResponse(BaseModel):
     models: List[ModelInfo]
+    connectedProviders: List[str] = []
 
 
 class ProviderConfig(BaseModel):
