@@ -97,13 +97,13 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
     : (isOpen ? 180 : 0)
 
   return (
-    <button
+    <div
       onClick={handleClick}
       className={cn(
         "w-full px-4 py-3 flex items-center justify-between transition-colors",
         isGrouped ? "hover:bg-border/30" : "hover:bg-muted/50",
         shimmer && "shimmer",
-        disableToggle && "cursor-default",
+        disableToggle ? "cursor-default" : "cursor-pointer",
         className
       )}
     >
@@ -116,7 +116,7 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
           </motion.div>
         )}
       </div>
-    </button>
+    </div>
   )
 }
 
