@@ -1,23 +1,21 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useChat } from "@/contexts/chat-context";
+import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
+import { useChatInput } from "@/lib/hooks/use-chat-input";
+import { api } from "@/lib/services/api";
+import { shouldParseThinkTags, processMessageContent } from "@/lib/utils/think-tag-parser";
+import { getModelSettings } from "@/python/api";
 import ChatInputForm from "@/components/ChatInputForm";
 import ChatMessageList from "@/components/ChatMessageList";
 import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
-import { useChat } from "@/contexts/chat-context";
-import { useChatInput } from "@/lib/hooks/use-chat-input";
-import { api } from "@/lib/services/api";
-import { getModelSettings } from "@/python/api";
-import type { AllModelSettingsResponse } from "@/python/api";
 import { Header } from "./Header";
-import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
+import { DevPanel } from "@/components/DevPanel";
 import "@/components/tool-renderers";
+import type { AllModelSettingsResponse } from "@/python/api";
 import type { Attachment, Message } from "@/lib/types/chat";
-import {
-  shouldParseThinkTags,
-  processMessageContent,
-} from "@/lib/utils/think-tag-parser";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models: availableModels, chatId } = useChat();
@@ -39,13 +37,10 @@ export default function ChatPanel() {
     if (!provider || !modelId || !modelSettings) return;
 
     const setting = modelSettings.models?.find(
-      (m) => m.provider === provider && m.modelId === modelId,
+      (m) => m.provider === provider && m.modelId === modelId
     );
 
-    if (
-      setting?.parseThinkTags !== true &&
-      setting?.thinkingTagPrompted?.prompted !== true
-    ) {
+    if (setting?.parseThinkTags !== true && setting?.thinkingTagPrompted?.prompted !== true) {
       setShowThinkingPrompt(true);
     }
 
@@ -90,12 +85,9 @@ export default function ChatPanel() {
       if (!modelKey) return msg;
 
       const shouldParse = shouldParseThinkTags(modelKey, modelSettings.models);
-      if (!shouldParse) return msg;
-
-      return {
-        ...msg,
-        content: processMessageContent(msg.content, shouldParse),
-      };
+      return shouldParse 
+        ? { ...msg, content: processMessageContent(msg.content, shouldParse) }
+        : msg;
     });
   }, [rawMessages, modelSettings, selectedModel]);
 
@@ -106,9 +98,7 @@ export default function ChatPanel() {
     await api.respondToThinkingTagPrompt(provider, modelId, true);
     setShowThinkingPrompt(false);
 
-    if (!isLoading && streamingMessageIdRef.current) {
-      triggerReload();
-    }
+    if (!isLoading && streamingMessageIdRef.current) triggerReload();
 
     setModelSettings(await getModelSettings());
   }, [selectedModel, streamingMessageIdRef, isLoading, triggerReload]);
@@ -122,10 +112,6 @@ export default function ChatPanel() {
     setModelSettings(await getModelSettings());
   }, [selectedModel]);
 
-  const handleDismissThinkingPrompt = useCallback(() => {
-    setShowThinkingPrompt(false);
-  }, []);
-
   const submitRef = useRef(handleSubmit);
   const setSelectedModelRef = useRef(setSelectedModel);
   const handleStopRef = useRef(handleStop);
@@ -134,17 +120,14 @@ export default function ChatPanel() {
   useEffect(() => { setSelectedModelRef.current = setSelectedModel; }, [setSelectedModel]);
   useEffect(() => { handleStopRef.current = handleStop; }, [handleStop]);
 
-  const stableHandleSubmit = useCallback(
-    (input: string, attachments: Attachment[]) => submitRef.current(input, attachments),
-    []
-  );
+  const stableHandleSubmit = useCallback((input: string, attachments: Attachment[]) => 
+    submitRef.current(input, attachments), []);
 
-  const stableSetSelectedModel = useCallback(
-    (model: string) => setSelectedModelRef.current(model),
-    []
-  );
+  const stableSetSelectedModel = useCallback((model: string) => 
+    setSelectedModelRef.current(model), []);
 
-  const stableHandleStop = useCallback(() => handleStopRef.current(), []);
+  const stableHandleStop = useCallback(() => 
+    handleStopRef.current(), []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -223,11 +206,14 @@ export default function ChatPanel() {
             <ThinkingTagPrompt
               onAccept={handleAcceptThinkingPrompt}
               onDecline={handleDeclineThinkingPrompt}
-              onDismiss={handleDismissThinkingPrompt}
+              onDismiss={() => setShowThinkingPrompt(false)}
             />
           )}
         </div>
         <ArtifactPanel />
+        {process.env.NODE_ENV === "development" && (
+          <DevPanel isLoading={isLoading} canSendMessage={canSendMessage} />
+        )}
       </div>
     </ArtifactPanelProvider>
   );
