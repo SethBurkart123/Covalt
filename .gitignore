@@ -8,10 +8,17 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+dist/
 out/
 dist-ssr
 *.local
+
+# Backend build artifacts
+backend-dist/
+*.build/
+*.onefile-build/
+*.bin
+*.dist/
 
 # Editor directories and files
 .vscode/*

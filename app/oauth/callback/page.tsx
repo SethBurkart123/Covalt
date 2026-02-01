@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  initBridge,
   completeMcpOauthCallback,
   failMcpOauthCallback,
 } from "@/python/api";
 
-initBridge("http://127.0.0.1:8000");
+// Import triggers auto-initialization with correct port
+import "@/lib/bridge-init";
 
 type CallbackStatus = "processing" | "success" | "error";
 

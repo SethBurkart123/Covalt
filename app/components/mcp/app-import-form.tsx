@@ -60,7 +60,7 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
         setScanResults(results);
 
         const firstSourceWithServers = IMPORT_SOURCES.find(
-          (source) => (results.results[source.key]?.servers?.length ?? 0) > 0
+          (source) => results.results[source.key]?.servers?.length > 0
         );
         if (!firstSourceWithServers) return;
 
@@ -81,7 +81,7 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
   const availableSources = useMemo(() => {
     if (!scanResults) return [];
     return IMPORT_SOURCES.filter(
-      (source) => (scanResults.results[source.key]?.servers?.length ?? 0) > 0
+      (source) => scanResults.results[source.key]?.servers?.length > 0
     );
   }, [scanResults]);
 
@@ -93,14 +93,19 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
   const handleSourceChange = useCallback((sourceKey: string) => {
     setSelectedSource(sourceKey);
     if (!scanResults) return;
-    const serverIds = scanResults.results[sourceKey]?.servers?.map((s) => s.id) ?? [];
-    setSelectedServerIds(new Set(serverIds));
+    setSelectedServerIds(
+      new Set(scanResults.results[sourceKey]?.servers?.map((s) => s.id) ?? [])
+    );
   }, [scanResults]);
 
   const handleServerToggle = useCallback((serverId: string, checked: boolean) => {
     setSelectedServerIds((prev) => {
       const next = new Set(prev);
-      checked ? next.add(serverId) : next.delete(serverId);
+      if (checked) {
+        next.add(serverId);
+      } else {
+        next.delete(serverId);
+      }
       return next;
     });
   }, []);
@@ -119,13 +124,9 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
   );
 
   const formatCommandPreview = (server: ScannedServer) => {
-    if (typeof server.config.url === "string" && server.config.url.length > 0) {
-      return server.config.url;
-    }
-    const cmd = typeof server.config.command === "string" ? server.config.command : "";
-    const args = Array.isArray(server.config.args)
-      ? server.config.args.filter((a): a is string => typeof a === "string")
-      : [];
+    if (server.config.url) return server.config.url;
+    const cmd = server.config.command ?? "";
+    const args = server.config.args ?? [];
     return [cmd, ...args].join(" ");
   };
 
@@ -195,20 +196,18 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {availableSources.map((source) => {
-              const serverCount = scanResults?.results[source.key]?.servers?.length ?? 0;
-              return (
-                <SelectItem key={source.key} value={source.key}>
-                  <span className="flex items-center gap-2">
-                    <source.icon />
-                    <span>{source.name}</span>
-                    <span className="text-muted-foreground text-xs">
-                      ({serverCount} server{serverCount !== 1 ? "s" : ""})
-                    </span>
+            {availableSources.map((source) => (
+              <SelectItem key={source.key} value={source.key}>
+                <span className="flex items-center gap-2">
+                  <source.icon />
+                  <span>{source.name}</span>
+                  <span className="text-muted-foreground text-xs">
+                    ({scanResults?.results[source.key]?.servers?.length ?? 0} server
+                    {scanResults?.results[source.key]?.servers?.length !== 1 ? "s" : ""})
                   </span>
-                </SelectItem>
-              );
-            })}
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

@@ -1,13 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Static export for Electron
   output: 'export',
+  
+  // Images must be unoptimized for static export
   images: {
     unoptimized: true,
   },
+  
+  // Disable dev indicators in production
   devIndicators: false,
-  assetPrefix: process.env.NODE_ENV === 'production' 
-    ? undefined 
-    : `http://${process.env.TAURI_DEV_HOST || 'localhost'}:3000`,
+  
+  // Exclude large directories from tracing
   outputFileTracingExcludes: {
     '*': ['./zynk/**/*'],
   },

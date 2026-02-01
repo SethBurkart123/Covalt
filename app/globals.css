@@ -449,3 +449,20 @@ body {
   --chart-4: oklch(0.82 0.11 40.89);
   --chart-5: oklch(0.64 0.13 32.07);
 }
+
+/* Electron-specific styles for custom titlebar */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Add padding for macOS traffic lights when in Electron */
+@supports (-webkit-app-region: drag) {
+  /* Only apply when running in Electron (has -webkit-app-region support) */
+  .electron-titlebar-padding {
+    padding-top: env(titlebar-area-height, 0px);
+  }
+}

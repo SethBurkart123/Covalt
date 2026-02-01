@@ -7,7 +7,6 @@ import type {
   PendingAttachment,
 } from "@/lib/types/chat";
 import {
-  initBridge,
   getAllChats,
   getChat,
   createChat,
@@ -22,7 +21,8 @@ import {
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 
-initBridge("http://127.0.0.1:8000");
+// Import triggers auto-initialization
+import "@/lib/bridge-init";
 
 interface StreamingChatEvent {
   event: string;

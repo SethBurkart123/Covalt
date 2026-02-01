@@ -53,13 +53,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar variant="inset" {...props}>
+      <div className="h-6 electron-drag shrink-0" />
+      
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" variant="outline" asChild>
               <button
                 onClick={startNewChat}
-                className="flex w-full items-center gap-3"
+                className="flex w-full items-center gap-3 electron-no-drag"
               >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <PlusIcon className="size-4" />

@@ -296,6 +296,15 @@ function SidebarRail({ className, ...props }: ComponentProps<"button">) {
 
 function SidebarInset({ className, ...props }: ComponentProps<"main">) {
   const { state } = useSidebar()
+  const [isMacElectron, setIsMacElectron] = useState(false);
+
+  useEffect(() => {
+    // Check for Electron - the preload script exposes window.electron
+    const electronAPI = (window as any).electron;
+    if (electronAPI?.platform === "darwin") {
+      setIsMacElectron(true);
+    }
+  }, []);
   
   return (
     <motion.main
