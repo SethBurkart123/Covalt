@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -31,12 +31,24 @@ interface ModelChipSelectorProps {
   availableModels: Model[];
   onAdd: (provider: string, modelId: string) => void;
   onRemove: (provider: string, modelId: string) => void;
+  loading?: boolean;
 }
 
 const SHOW_MORE_THRESHOLD = 6;
+const COLLAPSED_HEIGHT = 115;
 
 function getModelKey(model: Model): string {
   return `${model.provider}:${model.modelId}`;
+}
+
+function SkeletonChip() {
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2.5 py-1.5 text-sm shadow-sm h-8">
+      <div className="h-3.5 w-3.5 rounded bg-muted animate-pulse" />
+      <div className="h-3.5 w-24 rounded bg-muted animate-pulse" />
+      <div className="h-3 w-3 rounded bg-muted animate-pulse" />
+    </div>
+  );
 }
 
 export default function ModelChipSelector({
@@ -44,6 +56,7 @@ export default function ModelChipSelector({
   availableModels,
   onAdd,
   onRemove,
+  loading = false,
 }: ModelChipSelectorProps) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -90,9 +103,10 @@ export default function ModelChipSelector({
 
   const fuzzyFilter = useFuzzyFilter(fuzzyItems);
 
-  const shouldCollapse = !showAll && selectedModels.length > SHOW_MORE_THRESHOLD;
+  const canCollapse = selectedModels.length > SHOW_MORE_THRESHOLD;
+  const isCollapsed = canCollapse && !showAll;
 
-  if (selectedModels.length === 0 && unselectedModels.length === 0) {
+  if (!loading && selectedModels.length === 0 && unselectedModels.length === 0) {
     return (
       <div className="text-sm text-muted-foreground">
         No models available. Add providers first.
@@ -102,10 +116,10 @@ export default function ModelChipSelector({
 
   return (
     <div className="relative">
-      <div
-        className={`flex items-start gap-2 flex-wrap overflow-hidden transition-all duration-300 ${
-          shouldCollapse ? "max-h-[115px] after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-30 after:bg-gradient-to-t after:via-card after:via-10% after:from-card after:to-transparent" : ""
-        }`}
+      <motion.div
+        className="flex items-start gap-2 flex-wrap overflow-hidden"
+        animate={{ maxHeight: isCollapsed ? COLLAPSED_HEIGHT : 1000 }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
       >
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
@@ -113,111 +127,141 @@ export default function ModelChipSelector({
               variant="ghost"
               size="sm"
               className="h-8 gap-1.5 text-muted-foreground border border-dashed border-border/60 hover:border-border hover:bg-muted/50"
+              disabled={loading}
             >
               <Plus size={14} />
               Add
             </Button>
           </PopoverTrigger>
-          <PopoverContent
-            className="w-72 border border-border bg-popover shadow-lg rounded-xl p-0"
-            align="start"
-          >
-            <Command className="rounded-xl" filter={fuzzyFilter}>
-              <CommandInput placeholder="Search models..." />
-              <CommandList className="max-h-64">
-                <CommandEmpty>No models available.</CommandEmpty>
-                {groupedUnselected.map((group) => (
-                  <CommandGroup
-                    key={group.provider}
-                    heading={group.providerDef?.name || group.provider}
-                  >
-                    {group.models.map((model) => {
-                      const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
-                      return (
-                        <CommandItem
-                          key={getModelKey(model)}
-                          value={`${model.provider}:${model.modelId}:${model.displayName}`}
-                          onSelect={() => {
-                            onAdd(model.provider, model.modelId);
-                            setOpen(false);
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <span className="flex items-center gap-2 flex-1 min-w-0">
-                            {ProviderIcon && (
-                              <span className="shrink-0 flex items-center opacity-70">
-                                <ProviderIcon size={16} />
-                              </span>
-                            )}
-                            <span className="truncate">{model.displayName}</span>
-                          </span>
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                ))}
-              </CommandList>
-            </Command>
-          </PopoverContent>
+          {!loading && (
+            <PopoverContent
+              className="w-72 border border-border bg-popover shadow-lg rounded-xl p-0"
+              align="start"
+            >
+              <Command className="rounded-xl" filter={fuzzyFilter}>
+                <CommandInput placeholder="Search models..." />
+                <CommandList className="max-h-64">
+                  <CommandEmpty>No models available.</CommandEmpty>
+                  {groupedUnselected.map((group) => (
+                    <CommandGroup
+                      key={group.provider}
+                      heading={group.providerDef?.name || group.provider}
+                    >
+                      {group.models.map((model) => {
+                        const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
+                        return (
+                          <CommandItem
+                            key={getModelKey(model)}
+                            value={`${model.provider}:${model.modelId}:${model.displayName}`}
+                            onSelect={() => {
+                              onAdd(model.provider, model.modelId);
+                              setOpen(false);
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <span className="flex items-center gap-2 flex-1 min-w-0">
+                              {ProviderIcon && (
+                                <span className="shrink-0 flex items-center opacity-70">
+                                  <ProviderIcon size={16} />
+                                </span>
+                              )}
+                              <span className="truncate">{model.displayName}</span>
+                            </span>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          )}
         </Popover>
 
-        <AnimatePresence mode="popLayout">
-          {selectedModels.map((model) => {
-            const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
+        {loading ? (
+          <>
+            <SkeletonChip />
+            <SkeletonChip />
+            <SkeletonChip />
+          </>
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {selectedModels.map((model) => {
+              const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
 
-            return (
-              <motion.div
-                key={getModelKey(model)}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.15 }}
-              >
-                <div className="group inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2.5 py-1.5 text-sm shadow-sm hover:border-border transition-colors">
-                  {ProviderIcon && (
-                    <span className="shrink-0 flex items-center opacity-70">
-                      <ProviderIcon size={14} />
+              return (
+                <motion.div
+                  key={getModelKey(model)}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <div className="group inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2.5 py-1.5 text-sm shadow-sm hover:border-border transition-colors">
+                    {ProviderIcon && (
+                      <span className="shrink-0 flex items-center opacity-70">
+                        <ProviderIcon size={14} />
+                      </span>
+                    )}
+                    <span className="truncate max-w-[180px] text-foreground/90">
+                      {model.displayName}
                     </span>
-                  )}
-                  <span className="truncate max-w-[180px] text-foreground/90">
-                    {model.displayName}
-                  </span>
-                  <button
-                    onClick={() => onRemove(model.provider, model.modelId)}
-                    className="shrink-0 rounded p-0.5 opacity-50 hover:opacity-100 hover:bg-muted transition-all"
-                    aria-label={`Remove ${model.displayName}`}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+                    <button
+                      onClick={() => onRemove(model.provider, model.modelId)}
+                      className="shrink-0 rounded p-0.5 opacity-50 hover:opacity-100 hover:bg-muted transition-all"
+                      aria-label={`Remove ${model.displayName}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        )}
+      </motion.div>
 
-      {shouldCollapse && (
-        <div className="absolute inset-x-0 bottom-0 h-12 flex items-end justify-center pointer-events-none">
-          <button
-            onClick={() => setShowAll(true)}
-            className="relative z-10 mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors pointer-events-auto"
+      <AnimatePresence>
+        {!loading && isCollapsed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute bottom-0 left-0 right-0 h-16 z-10 pointer-events-none [mask-image:linear-gradient(to_top,black,transparent)] [-webkit-mask-image:linear-gradient(to_top,black,transparent)]"
           >
-            Show more
-            <ChevronDown size={12} className="my-auto pt-0.5" />
-          </button>
-        </div>
-      )}
+            <div className="absolute inset-0 bg-sidebar" />
+            <div className="absolute inset-0 bg-background dark:bg-card/30" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {showAll && selectedModels.length > SHOW_MORE_THRESHOLD && (
-        <button
-          onClick={() => setShowAll(false)}
-          className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Show less
-        </button>
-      )}
+      <AnimatePresence mode="wait">
+        {!loading && canCollapse && (
+          <motion.div
+            key={showAll ? "show-less" : "show-more"}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            className={`flex justify-center ${isCollapsed ? "absolute inset-x-0 bottom-0 h-12 items-end z-20" : "mt-3"}`}
+          >
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showAll ? "Show less" : "Show more"}
+              <motion.span
+                animate={{ rotate: showAll ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown size={12} />
+              </motion.span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
-
