@@ -21,7 +21,9 @@ from ..models.chat import (
     SaveAutoTitleSettingsInput,
     SaveModelSettingsInput,
     SaveProviderConfigInput,
+    SaveSystemPromptSettingsInput,
     SetDefaultToolsInput,
+    SystemPromptSettings,
     ThinkingTagPromptInfo,
 )
 from ..services.model_factory import get_available_models as get_models_from_factory
@@ -157,6 +159,19 @@ async def save_auto_title_settings(body: SaveAutoTitleSettingsInput) -> None:
                 "model_id": body.modelId,
             },
         )
+
+
+@command
+async def get_system_prompt_settings() -> SystemPromptSettings:
+    with db.db_session() as sess:
+        prompt = db.get_system_prompt_setting(sess)
+    return SystemPromptSettings(prompt=prompt)
+
+
+@command
+async def save_system_prompt_settings(body: SaveSystemPromptSettingsInput) -> None:
+    with db.db_session() as sess:
+        db.save_system_prompt_setting(sess, body.prompt)
 
 
 @command

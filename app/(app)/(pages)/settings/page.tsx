@@ -6,6 +6,7 @@ import SettingsSidebar, { type TabKey } from "./SettingsSidebar";
 import ProvidersPanel from "./providers/ProvidersPanel";
 import AutoTitlePanel from "./AutoTitlePanel";
 import ModelSettingsPanel from "./ModelSettingsPanel";
+import SystemPromptPanel from "./SystemPromptPanel";
 import { AppearancePanel } from "./appearance/AppearancePanel";
 
 export default function SettingsPage() {
@@ -23,6 +24,7 @@ export default function SettingsPage() {
         <div className="container max-w-4xl px-4 mx-auto">
           {activeTab === "general" ? (
             <div className="space-y-10 py-6">
+              <SystemPromptPanel />
               <AutoTitlePanel />
               <ModelSettingsPanel />
             </div>
