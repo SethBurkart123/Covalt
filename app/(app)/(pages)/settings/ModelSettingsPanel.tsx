@@ -1,264 +1,148 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { MessageSquareCode, Brain } from "lucide-react";
-import {
-  getModelSettings,
-  saveModelSettings,
-  getAvailableModels,
-} from "@/python/api";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { getModelSettings, saveModelSettings } from "@/python/api";
 import type { ModelSettingsInfo } from "@/python/api";
-import { Card } from "@/components/ui/card";
+import { useModels } from "@/lib/hooks/useModels";
 import ModelChipSelector from "./ModelChipSelector";
 
-type Model = {
-  provider: string;
-  modelId: string;
-  displayName: string;
-};
-
 export default function ModelSettingsPanel() {
+  const { models, isLoading: modelsLoading } = useModels();
   const [modelSettings, setModelSettings] = useState<ModelSettingsInfo[]>([]);
-  const [availableModels, setAvailableModels] = useState<Model[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   useEffect(() => {
-    loadInitialData();
+    loadModelSettings();
   }, []);
 
-  const loadInitialData = async () => {
-    setLoading(true);
-    try {
-      const [settings, models] = await Promise.all([
-        getModelSettings(),
-        getAvailableModels(),
-      ]);
-      setModelSettings(settings.models);
-      setAvailableModels(
-        models.models.map((m) => ({
-          provider: m.provider,
-          modelId: m.modelId,
-          displayName: m.displayName,
-        })),
+  const loadModelSettings = async () => {
+    setSettingsLoading(true);
+    const settings = await getModelSettings();
+    setModelSettings(settings.models);
+    setSettingsLoading(false);
+  };
+
+  const getModelSetting = useCallback(
+    (provider: string, modelId: string): ModelSettingsInfo | undefined => {
+      return modelSettings.find(
+        (m) => m.provider === provider && m.modelId === modelId,
       );
-    } catch (error) {
-      console.error("Failed to load model settings:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const refreshModelSettings = async () => {
-    try {
-      const settings = await getModelSettings();
-      setModelSettings(settings.models);
-    } catch (error) {
-      console.error("Failed to refresh model settings:", error);
-    }
-  };
-
-  const getModelSetting = (
-    provider: string,
-    modelId: string,
-  ): ModelSettingsInfo | undefined => {
-    return modelSettings.find(
-      (m) => m.provider === provider && m.modelId === modelId,
-    );
-  };
+    },
+    [modelSettings]
+  );
 
   const parseThinkTagsModels = useMemo(
     () =>
-      availableModels.filter(
+      models.filter(
         (model) => getModelSetting(model.provider, model.modelId)?.parseThinkTags ?? false
       ),
-    [availableModels, modelSettings]
+    [models, getModelSetting]
   );
 
   const reasoningModels = useMemo(
     () =>
-      availableModels.filter(
+      models.filter(
         (model) => getModelSetting(model.provider, model.modelId)?.reasoning?.supports ?? false
       ),
-    [availableModels, modelSettings]
+    [models, getModelSetting]
   );
 
-  const handleAddParseThinkTags = async (provider: string, modelId: string) => {
+  const updateModelSetting = async (
+    provider: string,
+    modelId: string,
+    update: Partial<Omit<ModelSettingsInfo, 'provider' | 'modelId'>>
+  ) => {
+    const existing = getModelSetting(provider, modelId);
     const newSetting: ModelSettingsInfo = {
       provider,
       modelId,
-      parseThinkTags: true,
-      reasoning: getModelSetting(provider, modelId)?.reasoning ?? {
+      parseThinkTags: update.parseThinkTags ?? existing?.parseThinkTags ?? false,
+      reasoning: update.reasoning ?? existing?.reasoning ?? {
         supports: false,
         isUserOverride: false,
       },
     };
 
-    setModelSettings((prev) =>
-      prev.find((m) => m.provider === provider && m.modelId === modelId)
-        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
-        : [...prev, newSetting]
+    const hasExisting = modelSettings.some(m => m.provider === provider && m.modelId === modelId);
+    setModelSettings(hasExisting
+      ? modelSettings.map(m => m.provider === provider && m.modelId === modelId ? newSetting : m)
+      : [...modelSettings, newSetting]
     );
 
-    try {
-      await saveModelSettings({ body: newSetting });
-      refreshModelSettings();
-    } catch (error) {
-      console.error("Failed to save model settings:", error);
-      refreshModelSettings();
-    }
+    await saveModelSettings({ body: newSetting });
+    const settings = await getModelSettings();
+    setModelSettings(settings.models);
   };
 
-  const handleRemoveParseThinkTags = async (provider: string, modelId: string) => {
-    const newSetting: ModelSettingsInfo = {
-      provider,
-      modelId,
-      parseThinkTags: false,
-      reasoning: getModelSetting(provider, modelId)?.reasoning ?? {
-        supports: false,
-        isUserOverride: false,
-      },
-    };
+  const handleAddParseThinkTags = (provider: string, modelId: string) =>
+    updateModelSetting(provider, modelId, { parseThinkTags: true });
 
-    setModelSettings((prev) =>
-      prev.find((m) => m.provider === provider && m.modelId === modelId)
-        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
-        : [...prev, newSetting]
-    );
+  const handleRemoveParseThinkTags = (provider: string, modelId: string) =>
+    updateModelSetting(provider, modelId, { parseThinkTags: false });
 
-    try {
-      await saveModelSettings({ body: newSetting });
-      refreshModelSettings();
-    } catch (error) {
-      console.error("Failed to save model settings:", error);
-      refreshModelSettings();
-    }
-  };
+  const handleAddReasoning = (provider: string, modelId: string) =>
+    updateModelSetting(provider, modelId, { reasoning: { supports: true, isUserOverride: true } });
 
-  const handleAddReasoning = async (provider: string, modelId: string) => {
-    const newSetting: ModelSettingsInfo = {
-      provider,
-      modelId,
-      parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
-      reasoning: {
-        supports: true,
-        isUserOverride: true,
-      },
-    };
-
-    setModelSettings((prev) =>
-      prev.find((m) => m.provider === provider && m.modelId === modelId)
-        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
-        : [...prev, newSetting]
-    );
-
-    try {
-      await saveModelSettings({ body: newSetting });
-      refreshModelSettings();
-    } catch (error) {
-      console.error("Failed to save model settings:", error);
-      refreshModelSettings();
-    }
-  };
-
-  const handleRemoveReasoning = async (provider: string, modelId: string) => {
-    const newSetting: ModelSettingsInfo = {
-      provider,
-      modelId,
-      parseThinkTags: getModelSetting(provider, modelId)?.parseThinkTags ?? false,
-      reasoning: {
-        supports: false,
-        isUserOverride: true,
-      },
-    };
-
-    setModelSettings((prev) =>
-      prev.find((m) => m.provider === provider && m.modelId === modelId)
-        ? prev.map((m) => (m.provider === provider && m.modelId === modelId ? newSetting : m))
-        : [...prev, newSetting]
-    );
-
-    try {
-      await saveModelSettings({ body: newSetting });
-      refreshModelSettings();
-    } catch (error) {
-      console.error("Failed to save model settings:", error);
-      refreshModelSettings();
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="py-8 text-muted-foreground">
-        Loading model settings...
-      </div>
-    );
-  }
+  const handleRemoveReasoning = (provider: string, modelId: string) =>
+    updateModelSetting(provider, modelId, { reasoning: { supports: false, isUserOverride: true } });
 
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden border-border/70 py-4 gap-0">
-        <div className="px-4 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-md bg-muted flex items-center justify-center p-2">
-              <MessageSquareCode size={20} className="text-primary" />
+    <section className="space-y-4">
+      <h2 className="text-lg font-semibold">Model Behavior</h2>
+
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">Parse Think Tags</h3>
+              {!modelsLoading && !settingsLoading && parseThinkTagsModels.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {parseThinkTagsModels.length} model{parseThinkTagsModels.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium leading-none flex items-center gap-2">
-                Parse Think Tags
-                {parseThinkTagsModels.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    {parseThinkTagsModels.length} model{parseThinkTagsModels.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Extract reasoning from &lt;think&gt; tags in responses
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Extract reasoning from &lt;think&gt; tags in responses
+            </p>
           </div>
           <ModelChipSelector
             selectedModels={parseThinkTagsModels}
-            availableModels={availableModels}
+            availableModels={models}
             onAdd={handleAddParseThinkTags}
             onRemove={handleRemoveParseThinkTags}
+            loading={modelsLoading || settingsLoading}
           />
         </div>
-      </Card>
 
-      <Card className="overflow-hidden border-border/70 py-4 gap-0">
-        <div className="px-4 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-md bg-muted flex items-center justify-center p-2">
-              <Brain size={20} className="text-primary" />
+        <div className="space-y-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">Reasoning Models</h3>
+              {!modelsLoading && !settingsLoading && reasoningModels.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {reasoningModels.length} model{reasoningModels.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium leading-none flex items-center gap-2">
-                Reasoning Models
-                {reasoningModels.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    {reasoningModels.length} model{reasoningModels.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Mark models that natively output thinking/reasoning content
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Mark models that natively output thinking/reasoning content
+            </p>
           </div>
           <ModelChipSelector
             selectedModels={reasoningModels}
-            availableModels={availableModels}
+            availableModels={models}
             onAdd={handleAddReasoning}
             onRemove={handleRemoveReasoning}
+            loading={modelsLoading || settingsLoading}
           />
         </div>
-      </Card>
+      </div>
 
-      {availableModels.length === 0 && (
+      {!modelsLoading && !settingsLoading && models.length === 0 && (
         <div className="py-8 text-center text-muted-foreground">
           No models configured yet. Add providers in the Providers tab.
         </div>
       )}
-    </div>
+    </section>
   );
 }

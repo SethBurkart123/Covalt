@@ -16,26 +16,21 @@ export default function SettingsPage() {
     setTitle("Settings");
   }, [setTitle]);
 
-  let content;
-  if (activeTab === "general") {
-    content = (
-      <div className="space-y-4">
-        <AutoTitlePanel />
-        <ModelSettingsPanel />
-      </div>
-    );
-  } else if (activeTab === "appearance") {
-    content = <AppearancePanel />;
-  } else {
-    content = <ProvidersPanel />;
-  }
-
   return (
     <div className="flex w-full h-full">
       <SettingsSidebar activeTab={activeTab} onChangeTab={setActiveTab} />
       <main className="flex-1 overflow-y-auto">
         <div className="container max-w-4xl px-4 mx-auto">
-          {content}
+          {activeTab === "general" ? (
+            <div className="space-y-10 py-6">
+              <AutoTitlePanel />
+              <ModelSettingsPanel />
+            </div>
+          ) : activeTab === "appearance" ? (
+            <AppearancePanel />
+          ) : (
+            <ProvidersPanel />
+          )}
         </div>
       </main>
     </div>
