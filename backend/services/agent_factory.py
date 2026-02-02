@@ -21,12 +21,19 @@ def create_agent_for_chat(
         if not config:
             config = db.get_default_agent_config()
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+        system_prompt = db.get_system_prompt_setting(sess)
 
     provider = config.get("provider", "openai")
     model_id = config.get("model_id")
-    instructions = config.get("instructions", [])
+    chat_instructions = config.get("instructions", [])
     name = config.get("name", "Assistant")
     description = config.get("description", "You are a helpful AI assistant.")
+
+    instructions = []
+    if system_prompt:
+        instructions.append(system_prompt)
+    if chat_instructions:
+        instructions.extend(chat_instructions)
 
     if not model_id:
         raise RuntimeError("Model ID is required in agent configuration")

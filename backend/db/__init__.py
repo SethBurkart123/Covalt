@@ -56,8 +56,10 @@ from .settings import (
     get_default_general_settings,
     get_default_tool_ids,
     get_general_settings,
+    get_system_prompt_setting,
     get_user_setting,
     save_auto_title_settings,
+    save_system_prompt_setting,
     set_default_tool_ids,
     set_user_setting,
     update_general_settings,
@@ -114,4 +116,6 @@ __all__ = [
     "get_default_general_settings",
     "get_auto_title_settings",
     "save_auto_title_settings",
+    "get_system_prompt_setting",
+    "save_system_prompt_setting",
 ]

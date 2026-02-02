@@ -64,7 +64,8 @@ def get_default_general_settings() -> Dict[str, Any]:
             "model_mode": "current",
             "provider": "openai",
             "model_id": "gpt-4o-mini",
-        }
+        },
+        "system_prompt": "",
     }
 
 
@@ -75,3 +76,12 @@ def get_auto_title_settings(sess: Session) -> Dict[str, Any]:
 
 def save_auto_title_settings(sess: Session, settings: Dict[str, Any]) -> None:
     update_general_settings(sess, {"auto_title": settings})
+
+
+def get_system_prompt_setting(sess: Session) -> str:
+    general = get_general_settings(sess)
+    return general.get("system_prompt", "")
+
+
+def save_system_prompt_setting(sess: Session, prompt: str) -> None:
+    update_general_settings(sess, {"system_prompt": prompt})

@@ -207,6 +207,14 @@ class SaveAutoTitleSettingsInput(BaseModel):
     modelId: str
 
 
+class SystemPromptSettings(BaseModel):
+    prompt: str = ""
+
+
+class SaveSystemPromptSettingsInput(BaseModel):
+    prompt: str
+
+
 class ReasoningInfo(BaseModel):
     supports: bool
     isUserOverride: bool
