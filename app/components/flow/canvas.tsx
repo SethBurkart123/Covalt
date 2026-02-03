@@ -190,30 +190,46 @@ function GradientEdge({
     );
   }
 
-  const gradientId = `gradient-${id}`;
+  const padding = 20;
+  const minX = Math.min(sourceX, targetX, p1.x, p2.x) - padding;
+  const minY = Math.min(sourceY, targetY, p1.y, p2.y) - padding;
+  const maxX = Math.max(sourceX, targetX, p1.x, p2.x) + padding;
+  const maxY = Math.max(sourceY, targetY, p1.y, p2.y) + padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  const angle = 90 + Math.atan2(targetY - sourceY, targetX - sourceX) * (180 / Math.PI);
+
+  const maskId = `edge-mask-${id}`;
   
   return (
     <>
       <defs>
-        <linearGradient
-          id={gradientId}
-          x1={sourceX}
-          y1={sourceY}
-          x2={targetX}
-          y2={targetY}
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor={sourceColor} />
-          <stop offset="100%" stopColor={targetColor} />
-        </linearGradient>
+        <mask id={maskId}>
+          <path
+            d={pathD}
+            stroke="white"
+            strokeWidth={2}
+            fill="none"
+            strokeLinecap="round"
+          />
+        </mask>
       </defs>
-      <path
-        d={pathD}
-        stroke={`url(#${gradientId})`}
-        strokeWidth={2}
-        fill="none"
-        strokeLinecap="round"
-      />
+      <foreignObject
+        x={minX}
+        y={minY}
+        width={width}
+        height={height}
+        mask={`url(#${maskId})`}
+      >
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            background: `linear-gradient(${angle}deg in oklch, ${sourceColor} 15%, 50%, ${targetColor} 85%)`,
+          }}
+        />
+      </foreignObject>
     </>
   );
 }
