@@ -106,8 +106,8 @@ function getControlPoints(
   p2: { x: number; y: number };
   p3: { x: number; y: number };
 } {
-  const dist = Math.abs(targetX - sourceX) + Math.abs(targetY - sourceY);
-  const offset = Math.max(100, dist * 0.5);
+  const horizontalDist = Math.abs(targetX - sourceX);
+  const offset = Math.max(25, Math.min(horizontalDist * 0.5, 150));
 
   const p0 = { x: sourceX, y: sourceY };
   const p3 = { x: targetX, y: targetY };
