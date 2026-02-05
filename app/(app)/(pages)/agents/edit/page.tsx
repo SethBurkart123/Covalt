@@ -98,7 +98,7 @@ function AgentEditorContent() {
       <div className="flex-1 relative min-h-0">
         <FlowCanvas />
         {selectedNodeId && (
-          <div className="absolute top-16 right-4 w-80 z-10">
+          <div className="absolute top-20 right-4 w-80 z-10">
             <PropertiesPanel />
           </div>
         )}
