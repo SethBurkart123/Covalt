@@ -45,3 +45,5 @@ export {
   mcpServer,
   toolset,
 } from './nodes';
+
+export { FlowProvider, useFlow } from './context';

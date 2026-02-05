@@ -5,7 +5,7 @@ import type { NodeProps } from '@xyflow/react';
 import { ChevronDown } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import type { NodeDefinition } from '@/lib/flow';
-import { getNodeDefinition } from '@/lib/flow';
+import { getNodeDefinition, useFlow } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
 import { cn } from '@/lib/utils';
 
@@ -30,16 +30,17 @@ function getIcon(name: string) {
  * Renders any node type based on its definition from the registry.
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
-  // Handle parameter changes - this will bubble up to canvas state
-  // Must be before early returns to satisfy rules of hooks
-  const handleParameterChange = useCallback((paramId: string, value: unknown) => {
-    // This will be handled by the parent canvas via onNodesChange
-    // For now, we can use a custom event or callback pattern
-    console.log('Parameter change:', id, paramId, value);
-  }, [id]);
-  
+  const { updateNodeData, getConnectedInputs } = useFlow();
+
+  const handleParameterChange = useCallback(
+    (paramId: string, value: unknown) => {
+      updateNodeData(id, paramId, value);
+    },
+    [id, updateNodeData]
+  );
+
   const definition = getNodeDefinition(type);
-  
+
   if (!definition) {
     return (
       <div className="bg-destructive/50 border border-destructive rounded p-2 text-xs text-destructive-foreground">
@@ -47,12 +48,9 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
       </div>
     );
   }
-  
+
   const Icon = getIcon(definition.icon);
-  
-  // Get connected inputs from React Flow (would come from edges)
-  // For now, we'll pass an empty set - this will be populated by the canvas
-  const connectedInputs = new Set<string>();
+  const connectedInputs = getConnectedInputs(id);
   
   return (
     <div
