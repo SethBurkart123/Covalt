@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { SocketTypeId, SocketConfig, ParameterMode } from '@/lib/flow';
 import { getSocketStyle } from '@/lib/flow';
@@ -23,18 +24,17 @@ interface SocketProps {
  * - mode === 'output' → 'source'
  * - else → 'target'
  */
-export function Socket({ id, type, side, mode, bidirectional, config, className }: SocketProps) {
+export const Socket = memo(function Socket({ id, type, side, mode, bidirectional, config, className }: SocketProps) {
   const style = getSocketStyle(type, { color: config?.color, shape: config?.shape });
   const handlePosition = side === 'left' ? Position.Left : Position.Right;
   
-  // Determine handle type - decoupled from visual position
   let handleType: 'source' | 'target';
   if (bidirectional) {
-    handleType = 'source';  // Bidirectional can initiate connections
+    handleType = 'source';
   } else if (mode === 'output') {
     handleType = 'source';
   } else {
-    handleType = 'target';  // input/hybrid/constant are targets
+    handleType = 'target';
   }
   
   // Shape-specific classes
@@ -57,4 +57,4 @@ export function Socket({ id, type, side, mode, bidirectional, config, className 
       style={{ backgroundColor: style.color }}
     />
   );
-}
+});

@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  ReactFlowProvider,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -111,41 +112,48 @@ function cloneState(nodes: Node[], edges: Edge[]): HistoryEntry {
 }
 
 // -----------------------------------------------------------------------------
-// Context
+// Split Context: State vs Selection vs Actions
 // -----------------------------------------------------------------------------
 
-interface FlowContextValue {
+/** Selection state - changes rarely (only when user clicks different node) */
+interface SelectionValue {
+  selectedNodeId: string | null;
+  selectNode: (id: string | null) => void;
+}
+
+/** Graph state - changes frequently (nodes, edges positions) */
+interface FlowStateValue {
   nodes: FlowNode[];
   edges: FlowEdge[];
-
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/** Stable actions that don't change references */
+interface FlowActionsValue {
   onConnect: (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => void;
   isValidConnection: (connection: Connection | Edge) => boolean;
-
-  selectedNodeId: string | null;
-  selectedNode: FlowNode | null;
-  selectNode: (id: string | null) => void;
-
   addNode: (type: string, position: { x: number; y: number }) => string;
   removeNode: (id: string) => void;
   updateNodeData: (nodeId: string, paramId: string, value: unknown) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
-
   loadGraph: (nodes: FlowNode[], edges: FlowEdge[], options?: { skipHistory?: boolean }) => void;
   clearGraph: (options?: { skipHistory?: boolean }) => void;
-
   getNode: (id: string) => FlowNode | undefined;
   getConnectedInputs: (nodeId: string) => Set<string>;
-
   undo: () => void;
   redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
   recordDragEnd: () => void;
 }
 
-const FlowContext = createContext<FlowContextValue | null>(null);
+/** Combined type for backwards compatibility */
+type FlowContextValue = FlowStateValue & FlowActionsValue & SelectionValue;
+
+const SelectionContext = createContext<SelectionValue | null>(null);
+const FlowStateContext = createContext<FlowStateValue | null>(null);
+const FlowActionsContext = createContext<FlowActionsValue | null>(null);
 
 export function FlowProvider({ children }: { children: ReactNode }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -275,21 +283,16 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     setSelectedNodeId(id);
   }, []);
 
-  const selectedNode = useMemo(() => {
-    if (!selectedNodeId) return null;
-    return (nodes.find(n => n.id === selectedNodeId) as FlowNode) ?? null;
-  }, [nodes, selectedNodeId]);
-
   const isValidConnection = useCallback(
     (connection: Connection | Edge) => {
       const sourceType = getSocketTypeForHandle(
-        nodes,
+        nodesRef.current,
         connection.source || '',
         connection.sourceHandle,
         true
       );
       const targetParam = getParameterForHandle(
-        nodes,
+        nodesRef.current,
         connection.target || '',
         connection.targetHandle
       );
@@ -297,22 +300,21 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       if (!targetParam) return false;
       return canConnect(sourceType, targetParam);
     },
-    [nodes]
+    []
   );
 
   const onConnect = useCallback(
     (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
       pushHistory();
 
-      // Use provided socket types or look them up from nodes
       const sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
-        nodes,
+        nodesRef.current,
         connection.source || '',
         connection.sourceHandle,
         true
       );
       const targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
-        nodes,
+        nodesRef.current,
         connection.target || '',
         connection.targetHandle,
         false
@@ -326,7 +328,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       };
 
       const sourceParam = getParameterForHandle(
-        nodes,
+        nodesRef.current,
         connection.source || '',
         connection.sourceHandle
       );
@@ -352,7 +354,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         return currentEdges;
       });
     },
-    [nodes, setEdges, pushHistory]
+    [setEdges, pushHistory]
   );
 
   const addNode = useCallback(
@@ -448,82 +450,105 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
   const getNode = useCallback(
     (id: string): FlowNode | undefined => {
-      return nodes.find(n => n.id === id) as FlowNode | undefined;
+      return nodesRef.current.find(n => n.id === id) as FlowNode | undefined;
     },
-    [nodes]
+    []
   );
 
   const getConnectedInputs = useCallback(
     (nodeId: string): Set<string> => {
       const connected = new Set<string>();
-      for (const edge of edges) {
+      for (const edge of edgesRef.current) {
         if (edge.target === nodeId && edge.targetHandle) {
           connected.add(edge.targetHandle);
         }
       }
       return connected;
     },
-    [edges]
+    []
   );
 
-  const value = useMemo<FlowContextValue>(
+  const selectionValue = useMemo<SelectionValue>(
+    () => ({ selectedNodeId, selectNode }),
+    [selectedNodeId, selectNode]
+  );
+
+  const stateValue = useMemo<FlowStateValue>(
     () => ({
       nodes: nodes as FlowNode[],
       edges: edges as FlowEdge[],
       onNodesChange,
       onEdgesChange,
-      onConnect,
-      isValidConnection,
-      selectedNodeId,
-      selectedNode,
-      selectNode,
-      addNode,
-      removeNode,
-      updateNodeData,
-      updateNodePosition,
-      loadGraph,
-      clearGraph,
-      getNode,
-      getConnectedInputs,
-      undo,
-      redo,
       canUndo,
       canRedo,
-      recordDragEnd,
     }),
-    [
-      nodes,
-      edges,
-      onNodesChange,
-      onEdgesChange,
-      onConnect,
-      isValidConnection,
-      selectedNodeId,
-      selectedNode,
-      selectNode,
-      addNode,
-      removeNode,
-      updateNodeData,
-      updateNodePosition,
-      loadGraph,
-      clearGraph,
-      getNode,
-      getConnectedInputs,
-      undo,
-      redo,
-      canUndo,
-      canRedo,
-      recordDragEnd,
-    ]
+    [nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo]
   );
 
-  return <FlowContext.Provider value={value}>{children}</FlowContext.Provider>;
+  const actionsValue = useMemo<FlowActionsValue>(
+    () => ({
+      onConnect,
+      isValidConnection,
+      addNode,
+      removeNode,
+      updateNodeData,
+      updateNodePosition,
+      loadGraph,
+      clearGraph,
+      getNode,
+      getConnectedInputs,
+      undo,
+      redo,
+      recordDragEnd,
+    }),
+    [onConnect, isValidConnection, addNode, removeNode, updateNodeData, 
+     updateNodePosition, loadGraph, clearGraph, getNode, getConnectedInputs, undo, redo, recordDragEnd]
+  );
+
+  return (
+    <ReactFlowProvider>
+      <SelectionContext.Provider value={selectionValue}>
+        <FlowStateContext.Provider value={stateValue}>
+          <FlowActionsContext.Provider value={actionsValue}>
+            {children}
+          </FlowActionsContext.Provider>
+        </FlowStateContext.Provider>
+      </SelectionContext.Provider>
+    </ReactFlowProvider>
+  );
 }
 
-export function useFlow(): FlowContextValue {
-  const context = useContext(FlowContext);
+/** Use for components that only need selection (won't re-render on node position changes) */
+export function useSelection(): SelectionValue {
+  const context = useContext(SelectionContext);
   if (!context) {
-    throw new Error('useFlow must be used within a FlowProvider');
+    throw new Error('useSelection must be used within a FlowProvider');
   }
   return context;
+}
+
+/** Use for components that need the graph state (nodes, edges - re-renders on position changes) */
+export function useFlowState(): FlowStateValue {
+  const context = useContext(FlowStateContext);
+  if (!context) {
+    throw new Error('useFlowState must be used within a FlowProvider');
+  }
+  return context;
+}
+
+/** Use for components that only need actions (won't re-render on state changes) */
+export function useFlowActions(): FlowActionsValue {
+  const context = useContext(FlowActionsContext);
+  if (!context) {
+    throw new Error('useFlowActions must be used within a FlowProvider');
+  }
+  return context;
+}
+
+/** Combined hook for backwards compatibility */
+export function useFlow(): FlowContextValue {
+  const selection = useSelection();
+  const state = useFlowState();
+  const actions = useFlowActions();
+  return { ...selection, ...state, ...actions };
 }

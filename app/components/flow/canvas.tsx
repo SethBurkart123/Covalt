@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
-  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -19,7 +18,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { NODE_DEFINITIONS, SOCKET_TYPES, useFlow, getNodeDefinition, type SocketTypeId } from '@/lib/flow';
+import { NODE_DEFINITIONS, SOCKET_TYPES, useFlowState, useFlowActions, useSelection, getNodeDefinition, type SocketTypeId } from '@/lib/flow';
 import { FlowNode as FlowNodeComponent } from './node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
@@ -41,7 +40,6 @@ function buildNodeTypes(): NodeTypes {
 }
 
 const nodeTypes = buildNodeTypes();
-
 
 function getControlPoints(
   sourceX: number,
@@ -111,7 +109,7 @@ function getBezierPathString(
   return `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
 }
 
-function GradientEdge({
+const GradientEdge = memo(function GradientEdge({
   id,
   sourceX,
   sourceY,
@@ -149,7 +147,6 @@ function GradientEdge({
     );
   }
 
-  // Different colors rendered with a gradient via mask
   const padding = 20;
   const minX = Math.min(sourceX, targetX, p1.x, p2.x) - padding;
   const minY = Math.min(sourceY, targetY, p1.y, p2.y) - padding;
@@ -191,38 +188,39 @@ function GradientEdge({
       </foreignObject>
     </>
   );
-}
+});
 
 const edgeTypes = {
   gradient: GradientEdge,
 };
 
+const defaultEdgeOptions = {
+  type: 'gradient',
+} as const;
+
 function FlowCanvasInner() {
+  const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
+  const { selectNode } = useSelection();
   const {
-    nodes,
-    edges,
-    onNodesChange,
-    onEdgesChange,
     onConnect,
     isValidConnection,
-    selectNode,
     addNode,
     removeNode,
     updateNodePosition,
     undo,
     redo,
-    canUndo,
-    canRedo,
     recordDragEnd,
-  } = useFlow();
+  } = useFlowActions();
 
   const { screenToFlowPosition } = useReactFlow();
   const mousePositionRef = useRef({ x: 0, y: 0 });
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [addMenuPosition, setAddMenuPosition] = useState({ x: 0, y: 0 });
   const [placingNodeId, setPlacingNodeId] = useState<string | null>(null);
   const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const pendingConnectionRef = useRef<PendingConnection | null>(null); // ref to avoid stale closures
+  const pendingConnectionRef = useRef<PendingConnection | null>(null);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter | null>(null);
 
   const onSelectionChange = useCallback(
@@ -247,7 +245,6 @@ function FlowCanvasInner() {
     [placingNodeId, screenToFlowPosition, updateNodePosition]
   );
 
-  // Left-click to confirm placement
   useEffect(() => {
     if (!placingNodeId) return;
 
@@ -262,7 +259,7 @@ function FlowCanvasInner() {
       originalPositionRef.current = null;
     };
 
-    window.addEventListener('mousedown', handleMouseDown, true); // capture before ReactFlow
+    window.addEventListener('mousedown', handleMouseDown, true);
     return () => window.removeEventListener('mousedown', handleMouseDown, true);
   }, [placingNodeId, recordDragEnd]);
 
@@ -272,15 +269,21 @@ function FlowCanvasInner() {
     setIsAddMenuOpen(true);
   }, []);
 
+  const closeAddMenu = useCallback(() => {
+    setIsAddMenuOpen(false);
+    pendingConnectionRef.current = null;
+    setConnectionFilter(null);
+  }, []);
+
   const getSocketTypeFromHandle = useCallback((nodeId: string, handleId: string): SocketTypeId | null => {
-    const node = nodes.find(n => n.id === nodeId);
+    const node = nodesRef.current.find(n => n.id === nodeId);
     if (!node) return null;
     const definition = getNodeDefinition(node.type || '');
     if (!definition) return null;
     const param = definition.parameters.find(p => p.id === handleId);
     if (!param || !('socket' in param) || !param.socket) return null;
     return param.socket.type as SocketTypeId;
-  }, [nodes]);
+  }, []);
 
   const handleConnectStart = useCallback(
     (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
@@ -306,7 +309,6 @@ function FlowCanvasInner() {
         return;
       }
       
-      // Dropped on empty space - open filtered add menu (keep ref for handleAddNodeWithSocket)
       if (pending && !connectionState.toNode) {
         const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
         const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
@@ -346,7 +348,6 @@ function FlowCanvasInner() {
       const newSocketParam = newNodeDef?.parameters.find(p => p.id === socketId);
       const newSocketType: SocketTypeId = (newSocketParam as { socket?: { type: SocketTypeId } })?.socket?.type ?? 'agent';
       
-      // Connect based on drag direction: source→target or target→source
       if (pending.handleType === 'source') {
         onConnect(
           { source: pending.nodeId, sourceHandle: pending.handleId, target: newNodeId, targetHandle: socketId },
@@ -365,7 +366,6 @@ function FlowCanvasInner() {
     [addNode, selectNode, onConnect, screenToFlowPosition]
   );
 
-  // Shift+A: add menu, Escape: cancel placement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key.toLowerCase() === 'a' && !placingNodeId) {
@@ -384,7 +384,6 @@ function FlowCanvasInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openAddMenu, placingNodeId, removeNode, selectNode]);
 
-  // Cmd/Ctrl+Z for undo, Cmd/Ctrl+Shift+Z for redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
@@ -406,7 +405,6 @@ function FlowCanvasInner() {
     (e: React.MouseEvent) => {
       e.preventDefault();
 
-      // Cancel placement and restore original position
       if (placingNodeId && originalPositionRef.current) {
         updateNodePosition(placingNodeId, originalPositionRef.current);
         recordDragEnd();
@@ -443,9 +441,7 @@ function FlowCanvasInner() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        defaultEdgeOptions={{
-          type: 'gradient',
-        }}
+        defaultEdgeOptions={defaultEdgeOptions}
         proOptions={{ hideAttribution: true }}
       >
         <Background
@@ -466,11 +462,7 @@ function FlowCanvasInner() {
 
       <AddNodeMenu
         isOpen={isAddMenuOpen}
-        onClose={() => {
-          setIsAddMenuOpen(false);
-          pendingConnectionRef.current = null;
-          setConnectionFilter(null);
-        }}
+        onClose={closeAddMenu}
         position={addMenuPosition}
         onSelect={handleAddNode}
         connectionFilter={connectionFilter ?? undefined}
@@ -480,10 +472,4 @@ function FlowCanvasInner() {
   );
 }
 
-export function FlowCanvas() {
-  return (
-    <ReactFlowProvider>
-      <FlowCanvasInner />
-    </ReactFlowProvider>
-  );
-}
+export { FlowCanvasInner as FlowCanvas };

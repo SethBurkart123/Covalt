@@ -19,7 +19,7 @@ lib/flow/                    # Core definitions (pure data)
   context.tsx                # FlowProvider + useFlow hook (state management)
   index.ts                   # Public API exports
   nodes/                     # Node definitions (just data!)
-    index.ts                 # Registry: NODE_DEFINITIONS, createFlowNode()
+    index.ts                 # Registry: NODE_DEFINITIONS, createFlowNode(), getCompatibleNodeSockets()
     chat-start.ts            # Entry node
     agent.ts                 # LLM agent node
     mcp-server.ts            # MCP server tool source
@@ -27,6 +27,7 @@ lib/flow/                    # Core definitions (pure data)
 
 components/flow/             # React components
   canvas.tsx                 # ReactFlow wrapper, edge routing, connection logic
+  add-node-menu.tsx          # Searchable node picker (cmdk), supports connection filtering
   node.tsx                   # Generic node renderer (ONE component for ALL nodes)
   socket.tsx                 # Handle/socket component
   parameter-row.tsx          # Parameter display logic
@@ -83,12 +84,29 @@ The magic: an Agent output can connect to a Tools input. This makes sub-agents p
 4. **`components/flow/canvas.tsx`** - The ReactFlow integration. Consumes `useFlow()` and renders:
    - `GradientEdge` - Renders gradient-colored edges based on socket types
    - Generic node component via `nodeTypes` map
+   - Add node menu integration (Shift+A, right-click, connector drop)
+   - Node placement mode with cursor following
 
 5. **`components/flow/node.tsx`** - The generic node renderer. Loops through `definition.parameters` and renders `ParameterRow` for each.
 
 6. **`components/flow/properties-panel.tsx`** - Selected node editor. Uses `useFlow()` for selection and `updateNodeData` for two-way binding.
 
 ## FlowContext API
+
+The context is split into **state** and **actions** to prevent unnecessary re-renders:
+
+```typescript
+// For components that only need actions (won't re-render on drag)
+const { updateNodeData, getConnectedInputs } = useFlowActions();
+
+// For components that need state (will re-render on changes)
+const { nodes, edges, selectedNodeId } = useFlowState();
+
+// Combined (backwards compatible, but causes re-renders)
+const { nodes, updateNodeData, ... } = useFlow();
+```
+
+**Performance tip:** Use `useFlowActions()` in node components. Use `useFlowState()` only where you need to react to state changes.
 
 The `useFlow()` hook provides everything needed to interact with the graph from any component:
 
@@ -107,6 +125,7 @@ const {
   addNode,                  // (type: string, position: {x, y}) => string (returns id)
   removeNode,               // (id: string) => void
   updateNodeData,           // (nodeId: string, paramId: string, value: unknown) => void
+  updateNodePosition,       // (nodeId: string, position: {x, y}) => void - for placement mode
   
   // Bulk operations
   loadGraph,                // (nodes, edges, options?) => void - use { skipHistory: true } for init
@@ -134,6 +153,43 @@ const {
 **Keyboard shortcuts:** `Cmd/Ctrl+Z` for undo, `Cmd/Ctrl+Shift+Z` for redo (handled in `FlowCanvas`).
 
 **Debouncing:** `updateNodeData` uses debounced history (300ms debounce, 2s max wait) so typing doesn't spam undo states. Other mutations (`addNode`, `removeNode`, `onConnect`, etc.) record immediately.
+
+## Canvas Interactions
+
+### Add Node Menu
+
+Three ways to open the add node menu:
+
+| Trigger | Behavior |
+|---------|----------|
+| `Shift+A` | Opens menu at cursor position |
+| Right-click canvas | Opens menu at click position |
+| Drop connector on empty space | Opens **filtered** menu showing only compatible nodes |
+
+The menu uses `cmdk` for fuzzy search. When opened via connector drop, it shows node+socket pairs that can accept the connection, grouped by category.
+
+**Files:** `components/flow/add-node-menu.tsx`, `lib/flow/nodes/index.ts` (`getCompatibleNodeSockets`)
+
+### Node Placement Mode
+
+After selecting a node from the menu, the canvas enters **placement mode**:
+
+- Node follows cursor
+- **Left-click** to confirm placement
+- **Escape** to cancel (removes node)
+- **Right-click** to cancel and restore original position
+
+This creates a smooth workflow: open menu → pick node → place it exactly where you want.
+
+### Drop Connector to Add
+
+The killer feature: drag a connector from any socket onto empty canvas space to:
+
+1. Open the add node menu filtered to compatible nodes
+2. Show which socket on each node would receive the connection
+3. Auto-connect after placing the node
+
+Example: drag from an Agent's `tools` output → menu shows MCP Server, Toolset, and other Agents (since agent→tools coercion is valid).
 
 ## Adding a New Node Type
 
@@ -182,11 +238,88 @@ The hub node. Has:
 ### mcp-server / toolset
 Tool providers. Single `tools` output socket.
 
+## Performance Optimizations
+
+The flow system uses several techniques to prevent unnecessary re-renders:
+
+### Triple Context Split
+
+The context is split into THREE separate contexts:
+- `SelectionContext` - just `selectedNodeId` and `selectNode` (changes only on selection)
+- `FlowStateContext` - nodes, edges (changes frequently on drag/edit)
+- `FlowActionsContext` - callbacks (stable, never changes)
+
+```typescript
+// Only re-renders when selection changes (not on drag!)
+const { selectedNodeId, selectNode } = useSelection();
+
+// Re-renders on any node/edge change
+const { nodes, edges } = useFlowState();
+
+// Never causes re-renders - stable callbacks
+const { updateNodeData, addNode } = useFlowActions();
+
+// Combined (backwards compatible, but causes more re-renders)
+const { nodes, selectedNodeId, updateNodeData } = useFlow();
+```
+
+### Stable Callbacks via Refs
+
+All action callbacks use refs internally to access current state:
+```typescript
+const nodesRef = useRef(nodes);
+nodesRef.current = nodes;
+
+const getNode = useCallback((id) => {
+  return nodesRef.current.find(n => n.id === id);
+}, []); // Empty deps = stable reference
+```
+
+### Memoized Components
+
+- `GradientEdge` - wrapped in `memo()`
+- `FlowNode` - wrapped in `memo()`
+- `ParameterRow` - wrapped in `memo()`
+- `Socket` - wrapped in `memo()`
+- `defaultEdgeOptions` - hoisted to module level
+
+### Stable Callback Props
+
+Instead of inline arrow functions that break memoization:
+```typescript
+// ❌ Bad - new function every render
+onChange={(v) => handleChange(param.id, v)}
+
+// ✅ Good - stable reference
+onParamChange={handleChange}  // Component calls handleChange(paramId, value)
+```
+
+### What to use where
+
+| Component | Hook | Re-renders on drag? |
+|-----------|------|---------------------|
+| `FlowCanvasInner` | `useFlowState` + `useSelection` + `useFlowActions` | Yes (needs nodes for ReactFlow) |
+| `FlowNode` | `useFlowActions` | No (only on data change) |
+| `PropertiesPanel` | `useSelection` + `useFlowActions` + `useNodesData` | No (only on selection/data) |
+
+### React Flow's useNodesData Hook
+
+For components that need specific node data without re-rendering on every position change:
+
+```typescript
+import { useNodesData } from '@xyflow/react';
+
+// Only re-renders when this specific node's DATA changes (not position)
+const [nodeData] = useNodesData(nodeId ? [nodeId] : []);
+```
+
+`PropertiesPanel` uses this pattern to avoid re-rendering when dragging nodes.
+
 ## What's NOT Implemented Yet
 
 1. **Persistence** - No saving/loading graphs to backend
 2. **Graph compilation** - Converting graph to executable agent config
-3. **Drag from palette** - No node palette UI yet
+3. **Node palette sidebar** - Add menu works, but no always-visible palette
 4. **Graph validation** - No cycle detection or error checking
 
 ## Design Decisions

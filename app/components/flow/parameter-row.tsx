@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useCallback } from 'react';
 import type { Parameter } from '@/lib/flow';
 import { Socket } from './socket';
 import { ParameterControl } from './controls';
@@ -9,7 +10,7 @@ interface ParameterRowProps {
   param: Parameter;
   value: unknown;
   isConnected?: boolean;
-  onChange: (value: unknown) => void;
+  onParamChange: (paramId: string, value: unknown) => void;
 }
 
 /**
@@ -20,24 +21,20 @@ interface ParameterRowProps {
  * - Explicit: socket.side overrides default
  * - Default: input/hybrid → left, output → right
  */
-export function ParameterRow({ param, value, isConnected, onChange }: ParameterRowProps) {
+export const ParameterRow = memo(function ParameterRow({ param, value, isConnected, onParamChange }: ParameterRowProps) {
   const { mode, socket } = param;
   
-  // Determine if we should show the control
-  const showControl = (mode === 'constant') || (mode === 'hybrid' && !isConnected);
+  const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
   
-  // Determine socket side: explicit override or derive from mode
+  const showControl = (mode === 'constant') || (mode === 'hybrid' && !isConnected);
   const hasSocket = socket && (mode === 'input' || mode === 'output' || mode === 'hybrid');
   const socketSide = socket?.side ?? (mode === 'output' ? 'right' : 'left');
   
-  // For pure input/output, show socket + label
   if (mode === 'input' || mode === 'output') {
-    const isRightAligned = socketSide === 'right';
-    
     return (
       <div className={cn(
         'relative flex items-center h-7 px-3',
-        isRightAligned ? 'justify-end' : 'justify-start'
+        socketSide === 'right' ? 'justify-end' : 'justify-start'
       )}>
         {hasSocket && socketSide === 'left' && (
           <Socket
@@ -64,7 +61,6 @@ export function ParameterRow({ param, value, isConnected, onChange }: ParameterR
     );
   }
   
-  // For constant/hybrid modes - show label above control
   return (
     <div className="relative flex flex-col gap-1 px-3 py-2">
       {hasSocket && socketSide === 'left' && (
@@ -84,7 +80,7 @@ export function ParameterRow({ param, value, isConnected, onChange }: ParameterR
           <ParameterControl
             param={param}
             value={value}
-            onChange={onChange}
+            onChange={handleChange}
           />
         </>
       )}
@@ -101,4 +97,4 @@ export function ParameterRow({ param, value, isConnected, onChange }: ParameterR
       )}
     </div>
   );
-}
+});

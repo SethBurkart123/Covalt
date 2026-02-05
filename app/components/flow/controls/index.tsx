@@ -1,6 +1,6 @@
 'use client';
 
-import type { ComponentType } from 'react';
+import { memo, type ComponentType } from 'react';
 import type { Parameter, ParameterType } from '@/lib/flow';
 import { FloatControl } from './float';
 import { StringControl } from './string';
@@ -42,8 +42,9 @@ export function getControlComponent(type: ParameterType): AnyControl | null {
 
 /**
  * Generic control renderer - picks the right component based on parameter type.
+ * Memoized to prevent re-renders when parent updates but props are unchanged.
  */
-export function ParameterControl({ param, value, onChange, compact }: ControlProps) {
+export const ParameterControl = memo(function ParameterControl({ param, value, onChange, compact }: ControlProps) {
   const Control = getControlComponent(param.type);
   
   if (!Control) {
@@ -55,7 +56,7 @@ export function ParameterControl({ param, value, onChange, compact }: ControlPro
   }
   
   return <Control param={param} value={value} onChange={onChange} compact={compact} />;
-}
+});
 
 // Re-export individual controls
 export { FloatControl } from './float';
