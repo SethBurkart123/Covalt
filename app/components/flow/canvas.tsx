@@ -23,7 +23,6 @@ import { FlowNode as FlowNodeComponent } from './node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
 
-/** Info about a pending connection from dragging onto empty space */
 interface PendingConnection {
   nodeId: string;
   handleId: string;
@@ -339,15 +338,12 @@ function FlowCanvasInner() {
     (nodeType: string, socketId: string) => {
       const pending = pendingConnectionRef.current;
       if (!pending) return;
-      
+
       const flowPosition = screenToFlowPosition(mousePositionRef.current);
       const newNodeId = addNode(nodeType, flowPosition);
       selectNode(newNodeId);
-      
-      const newNodeDef = getNodeDefinition(nodeType);
-      const newSocketParam = newNodeDef?.parameters.find(p => p.id === socketId);
-      const newSocketType: SocketTypeId = newSocketParam?.socket?.type ?? 'agent';
-      
+      const newSocketType: SocketTypeId = getNodeDefinition(nodeType)?.parameters.find(p => p.id === socketId)?.socket?.type ?? 'agent';
+
       if (pending.handleType === 'source') {
         onConnect(
           { source: pending.nodeId, sourceHandle: pending.handleId, target: newNodeId, targetHandle: socketId },
@@ -443,6 +439,9 @@ function FlowCanvasInner() {
         fitView
         defaultEdgeOptions={defaultEdgeOptions}
         proOptions={{ hideAttribution: true }}
+        panOnScroll
+        zoomOnScroll={false}
+        zoomOnPinch
       >
         <Background
           variant={BackgroundVariant.Dots}

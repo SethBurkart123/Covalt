@@ -1,16 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from 'cmdk';
-import * as Icons from 'lucide-react';
+import { SearchIcon, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNodesByCategory, getCompatibleNodeSockets } from '@/lib/flow/nodes';
 import type { NodeDefinition, SocketTypeId } from '@/lib/flow';
 
-/** Filter for showing only compatible nodes when dragging from a socket */
 export interface ConnectionFilter {
   socketType: SocketTypeId;
-  /** If true, we need nodes with INPUT sockets (user dragged from an output) */
   needsInput: boolean;
 }
 
@@ -18,33 +16,28 @@ interface AddNodeMenuProps {
   isOpen: boolean;
   onClose: () => void;
   position: { x: number; y: number };
-  /** Called when selecting a node (normal mode) */
   onSelect: (nodeType: string) => void;
-  /** Optional: filter to show only compatible nodes for a pending connection */
   connectionFilter?: ConnectionFilter;
-  /** Called when selecting a node+socket pair (connection mode) */
   onSelectWithSocket?: (nodeType: string, socketId: string) => void;
 }
 
-function getIcon(name: string) {
-  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
-  return IconComponent ?? Icons.Circle;
+interface HoveredItem {
+  name: string;
+  description?: string;
 }
 
-function getCategoryInfo(category: NodeDefinition['category']) {
-  switch (category) {
-    case 'core':
-      return { label: 'Core', color: 'text-primary' };
-    case 'tools':
-      return { label: 'Tools', color: 'text-amber-500' };
-    case 'data':
-      return { label: 'Data', color: 'text-blue-500' };
-    case 'utility':
-      return { label: 'Utility', color: 'text-muted-foreground' };
-    default:
-      return { label: category, color: 'text-muted-foreground' };
-  }
+const CATEGORIES: { id: NodeDefinition['category']; label: string }[] = [
+  { id: 'core', label: 'Core' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'data', label: 'Data' },
+  { id: 'utility', label: 'Utility' },
+];
+
+function getCategoryLabel(category: NodeDefinition['category']) {
+  return CATEGORIES.find(c => c.id === category)?.label ?? category;
 }
+
+const MENU_OFFSET_Y = 20;
 
 export function AddNodeMenu({ 
   isOpen, 
@@ -54,252 +47,332 @@ export function AddNodeMenu({
   connectionFilter,
   onSelectWithSocket,
 }: AddNodeMenuProps) {
+  const [mode, setMode] = useState<'browse' | 'search'>('browse');
   const [search, setSearch] = useState('');
+  const [hoveredCategory, setHoveredCategory] = useState<NodeDefinition['category'] | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<HoveredItem | null>(null);
+  const [submenuTop, setSubmenuTop] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const categoryRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const compatibleSockets = useMemo(() => {
     if (!connectionFilter) return null;
     return getCompatibleNodeSockets(connectionFilter.socketType, connectionFilter.needsInput);
   }, [connectionFilter]);
 
-  const compatibleByCategory = useMemo(() => {
-    if (!compatibleSockets) return null;
+  const nodesByCategory = useMemo(() => {
+    if (compatibleSockets) {
+      const grouped = new Map<NodeDefinition['category'], typeof compatibleSockets>();
+      for (const item of compatibleSockets) {
+        const list = grouped.get(item.nodeCategory) ?? [];
+        list.push(item);
+        grouped.set(item.nodeCategory, list);
+      }
+      return grouped;
+    }
     
-    const categories: NodeDefinition['category'][] = ['core', 'tools', 'data', 'utility'];
-    return categories
-      .map(category => ({
-        category,
-        items: compatibleSockets.filter(item => item.nodeCategory === category),
-      }))
-      .filter(group => group.items.length > 0);
+    const grouped = new Map<NodeDefinition['category'], ReturnType<typeof getNodesByCategory>>();
+    for (const { id } of CATEGORIES) {
+      const nodes = getNodesByCategory(id);
+      if (nodes.length > 0) grouped.set(id, nodes);
+    }
+    return grouped;
   }, [compatibleSockets]);
 
-  const nodesByCategory = useMemo(() => {
-    if (connectionFilter) return null;
+  const flatItems = useMemo(() => {
+    if (compatibleSockets) {
+      return compatibleSockets.map(item => ({
+        id: `${item.nodeId}-${item.socketId}`,
+        category: item.nodeCategory,
+        name: item.nodeName,
+        socketLabel: item.socketLabel,
+        nodeId: item.nodeId,
+        socketId: item.socketId,
+        description: undefined as string | undefined,
+      }));
+    }
     
-    const categories: NodeDefinition['category'][] = ['core', 'tools', 'data', 'utility'];
-    return categories
-      .map(category => ({
-        category,
-        nodes: getNodesByCategory(category),
+    return CATEGORIES.flatMap(({ id }) => 
+      getNodesByCategory(id).map(node => ({
+        id: node.id,
+        category: id,
+        name: node.name,
+        nodeId: node.id,
+        socketId: undefined as string | undefined,
+        socketLabel: undefined as string | undefined,
+        description: node.description,
       }))
-      .filter(group => group.nodes.length > 0);
-  }, [connectionFilter]);
+    );
+  }, [compatibleSockets]);
 
-  const filteredGroups = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const query = search.toLowerCase().trim();
+    if (!query) return flatItems;
     
-    if (compatibleByCategory) {
-      if (!query) return compatibleByCategory;
-      
-      return compatibleByCategory
-        .map(group => ({
-          ...group,
-          items: group.items.filter(
-            item =>
-              item.nodeName.toLowerCase().includes(query) ||
-              item.socketLabel.toLowerCase().includes(query)
-          ),
-        }))
-        .filter(group => group.items.length > 0);
-    }
-    
-    if (nodesByCategory) {
-      if (!query) return nodesByCategory;
-      
-      return nodesByCategory
-        .map(group => ({
-          ...group,
-          nodes: group.nodes.filter(
-            node =>
-              node.name.toLowerCase().includes(query) ||
-              node.description?.toLowerCase().includes(query) ||
-              node.id.toLowerCase().includes(query)
-          ),
-        }))
-        .filter(group => group.nodes.length > 0);
-    }
-    
-    return [];
-  }, [compatibleByCategory, nodesByCategory, search]);
+    return flatItems.filter(item =>
+      item.name.toLowerCase().includes(query) ||
+      item.description?.toLowerCase().includes(query) ||
+      item.socketLabel?.toLowerCase().includes(query)
+    );
+  }, [flatItems, search]);
 
-  const handleSelect = useCallback(
-    (nodeType: string) => {
-      onSelect(nodeType);
-      setSearch('');
-      onClose();
-    },
-    [onSelect, onClose]
-  );
-
-  const handleSelectWithSocket = useCallback(
-    (nodeType: string, socketId: string) => {
-      if (onSelectWithSocket) {
-        onSelectWithSocket(nodeType, socketId);
+  const handleSelectNode = useCallback(
+    (nodeId: string, socketId?: string) => {
+      if (socketId && onSelectWithSocket) {
+        onSelectWithSocket(nodeId, socketId);
+      } else {
+        onSelect(nodeId);
       }
       setSearch('');
+      setMode('browse');
       onClose();
     },
-    [onSelectWithSocket, onClose]
+    [onSelect, onSelectWithSocket, onClose]
   );
 
+  const handleCategoryEnter = useCallback((category: NodeDefinition['category'], element: HTMLDivElement) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    categoryRefs.current.set(category, element);
+    const rect = element.getBoundingClientRect();
+    const menuRect = menuRef.current?.getBoundingClientRect();
+    if (menuRect) {
+      setSubmenuTop(rect.top - menuRect.top);
+    }
+    setHoveredCategory(category);
+  }, []);
+
+  const handleCategoryLeave = useCallback(() => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredCategory(null);
+    }, 100);
+  }, []);
+
+  const handleSubmenuEnter = useCallback(() => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+  }, []);
+
+  const handleSubmenuLeave = useCallback(() => {
+    setHoveredCategory(null);
+  }, []);
+
+  const openSearch = useCallback(() => {
+    setMode('search');
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }, []);
+
   useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 10);
+    if (!isOpen) {
+      setSearch('');
+      setMode('browse');
+      setHoveredCategory(null);
+      setHoveredItem(null);
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (mode === 'search') {
+          setMode('browse');
+          setSearch('');
+        } else {
+          onClose();
+        }
+        return;
+      }
+      
+      if (mode === 'browse' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setMode('search');
+        setSearch(e.key);
+        setTimeout(() => inputRef.current?.focus(), 10);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, mode]);
 
+  useEffect(() => {
+    if (!isOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) {
         onClose();
       }
     };
-
     const timeoutId = setTimeout(() => {
       window.addEventListener('mousedown', handleClickOutside, true);
     }, 100);
-
     return () => {
       clearTimeout(timeoutId);
       window.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
   if (!isOpen) return null;
+
+  const hoveredNodes = hoveredCategory ? nodesByCategory.get(hoveredCategory) : null;
 
   return (
     <div
       ref={menuRef}
       data-add-node-menu
-      className="fixed z-50 w-72 rounded-md border bg-popover text-popover-foreground shadow-lg"
-      style={{
-        left: position.x,
-        top: position.y,
-      }}
+      className="fixed z-50 rounded-md border bg-popover text-popover-foreground shadow-lg"
+      style={{ left: position.x - 60, top: position.y - MENU_OFFSET_Y }}
     >
-      <Command className="flex flex-col overflow-hidden">
-        <div className="flex items-center border-b border-border px-3">
-          <Icons.SearchIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <Command.Input
-            ref={inputRef}
-            value={search}
-            onValueChange={setSearch}
-            placeholder="Search nodes..."
-            className="flex h-10 w-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
-          />
-        </div>
+      <div className="absolute -top-5 left-0 px-1 text-[10px] text-muted-foreground">Add Node</div>
+      {mode === 'browse' ? (
+        <div className="w-44">
+          <div
+            onClick={openSearch}
+            className={cn(
+              'flex h-9 cursor-pointer items-center gap-2 rounded-t-md border-b border-border px-3 text-sm',
+              'hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <SearchIcon className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Search...</span>
+          </div>
 
-        <Command.List className="max-h-80 flex-1 overflow-y-auto p-1">
-          {filteredGroups.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              {connectionFilter ? 'No compatible nodes' : 'No nodes found'}
+          <div className="overflow-hidden rounded-b-md">
+            <div className="max-h-80 overflow-y-auto">
+              {CATEGORIES.map(({ id, label }) => {
+                const nodes = nodesByCategory.get(id);
+                if (!nodes || nodes.length === 0) return null;
+                
+                return (
+                  <div
+                    key={id}
+                    onMouseEnter={(e) => handleCategoryEnter(id, e.currentTarget)}
+                    onMouseLeave={handleCategoryLeave}
+                    className={cn(
+                      'flex cursor-pointer items-center justify-between px-3 py-1.5 text-sm',
+                      'hover:bg-accent hover:text-accent-foreground',
+                      hoveredCategory === id && 'bg-accent text-accent-foreground'
+                    )}
+                  >
+                    <span>{label}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                );
+              })}
             </div>
-          ) : connectionFilter ? (
-            filteredGroups.map(group => {
-              const categoryInfo = getCategoryInfo(group.category);
-              if (!('items' in group)) return null;
-              return (
-                <Command.Group
-                  key={group.category}
-                  heading={
-                    <span className={cn('text-xs font-medium', categoryInfo.color)}>
-                      {categoryInfo.label}
+          </div>
+        </div>
+      ) : (
+        <Command className="flex w-72 flex-col" shouldFilter={false}>
+          <div className="flex h-9 items-center gap-2 border-b border-border px-3">
+            <SearchIcon className="h-4 w-4 text-muted-foreground" />
+            <Command.Input
+              ref={inputRef}
+              value={search}
+              onValueChange={setSearch}
+              placeholder="Search nodes..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-b-md">
+            <Command.List className="max-h-80 overflow-y-auto">
+              {filteredItems.length === 0 ? (
+                <div className="py-4 text-center text-sm text-muted-foreground">
+                  {connectionFilter ? 'No compatible nodes' : 'No nodes found'}
+                </div>
+              ) : (
+                filteredItems.map(item => (
+                  <Command.Item
+                    key={item.id}
+                    value={item.id}
+                    onSelect={() => handleSelectNode(item.nodeId, item.socketId)}
+                    onMouseEnter={() => setHoveredItem({ name: item.name, description: item.description })}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    className={cn(
+                      'flex cursor-pointer items-center justify-between px-3 py-1.5 text-sm outline-none',
+                      'hover:bg-accent hover:text-accent-foreground',
+                      'data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground'
+                    )}
+                  >
+                    <span className="text-muted-foreground">{getCategoryLabel(item.category)}</span>
+                    <span>
+                      {item.name}
+                      {item.socketLabel && (
+                        <span className="text-muted-foreground"> → {item.socketLabel}</span>
+                      )}
                     </span>
-                  }
-                  className="px-1 py-2"
+                  </Command.Item>
+                ))
+              )}
+            </Command.List>
+          </div>
+        </Command>
+      )}
+
+      {mode === 'browse' && hoveredNodes && (
+        <div
+          className="absolute left-full top-0 ml-1 rounded-md border bg-popover shadow-lg"
+          style={{ top: submenuTop }}
+          onMouseEnter={handleSubmenuEnter}
+          onMouseLeave={handleSubmenuLeave}
+        >
+          <div className="w-44 py-1">
+            {compatibleSockets ? (
+              (hoveredNodes as typeof compatibleSockets).map(item => (
+                <div
+                  key={`${item.nodeId}-${item.socketId}`}
+                  onClick={() => handleSelectNode(item.nodeId, item.socketId)}
+                  onMouseEnter={() => setHoveredItem({ name: item.nodeName, description: undefined })}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  className={cn(
+                    'flex cursor-pointer items-center px-3 py-1.5 text-sm',
+                    'hover:bg-accent hover:text-accent-foreground'
+                  )}
                 >
-                  {group.items.map(item => {
-                    const Icon = getIcon(item.nodeIcon);
-                    const key = `${item.nodeId}-${item.socketId}`;
-                    return (
-                      <Command.Item
-                        key={key}
-                        value={key}
-                        onSelect={() => handleSelectWithSocket(item.nodeId, item.socketId)}
-                        className={cn(
-                          'flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none',
-                          'hover:bg-accent hover:text-accent-foreground',
-                          'data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground'
-                        )}
-                      >
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-medium">
-                            {item.nodeName}
-                            <span className="text-muted-foreground font-normal"> → {item.socketLabel}</span>
-                          </span>
-                        </div>
-                      </Command.Item>
-                    );
-                  })}
-                </Command.Group>
-              );
-            })
-          ) : (
-            filteredGroups.map(group => {
-              const categoryInfo = getCategoryInfo(group.category);
-              if (!('nodes' in group)) return null;
-              return (
-                <Command.Group
-                  key={group.category}
-                  heading={
-                    <span className={cn('text-xs font-medium', categoryInfo.color)}>
-                      {categoryInfo.label}
-                    </span>
-                  }
-                  className="px-1 py-2"
+                  {item.nodeName}
+                  <span className="ml-1 text-muted-foreground">→ {item.socketLabel}</span>
+                </div>
+              ))
+            ) : (
+              (hoveredNodes as ReturnType<typeof getNodesByCategory>).map(node => (
+                <div
+                  key={node.id}
+                  onClick={() => handleSelectNode(node.id)}
+                  onMouseEnter={() => setHoveredItem({ name: node.name, description: node.description })}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  className={cn(
+                    'flex cursor-pointer items-center px-3 py-1.5 text-sm',
+                    'hover:bg-accent hover:text-accent-foreground'
+                  )}
                 >
-                  {group.nodes.map(node => {
-                    const Icon = getIcon(node.icon);
-                    return (
-                      <Command.Item
-                        key={node.id}
-                        value={node.id}
-                        onSelect={() => handleSelect(node.id)}
-                        className={cn(
-                          'flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none',
-                          'hover:bg-accent hover:text-accent-foreground',
-                          'data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground'
-                        )}
-                      >
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-medium">{node.name}</span>
-                          {node.description && (
-                            <span className="text-xs text-muted-foreground line-clamp-1">
-                              {node.description}
-                            </span>
-                          )}
-                        </div>
-                      </Command.Item>
-                    );
-                  })}
-                </Command.Group>
-              );
-            })
+                  {node.name}
+                </div>
+              ))
+            )}
+          </div>
+          
+          {hoveredItem?.description && (
+            <div className="border-t border-border p-3">
+              <div className="text-xs text-muted-foreground leading-relaxed">{hoveredItem.description}</div>
+            </div>
           )}
-        </Command.List>
-      </Command>
+        </div>
+      )}
+
+      {mode === 'search' && hoveredItem?.description && (
+        <div 
+          className="absolute left-full top-0 ml-1 w-52 rounded-md border bg-popover p-3 shadow-lg"
+        >
+          <div className="text-sm font-medium">{hoveredItem.name}</div>
+          <div className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{hoveredItem.description}</div>
+        </div>
+      )}
     </div>
   );
 }
