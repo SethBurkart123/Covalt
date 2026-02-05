@@ -4,8 +4,10 @@ import {
   createContext,
   useContext,
   useCallback,
+  useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -70,21 +72,14 @@ function countEdgesFrom(
   return edges.filter(e => e.source === source && e.sourceHandle === handle).length;
 }
 
-function enrichEdgeWithSocketTypes(
-  edge: FlowEdge,
-  nodes: Node[]
-): FlowEdge {
+function enrichEdgeWithSocketTypes(edge: FlowEdge, nodes: Node[]): FlowEdge {
   const sourceType = getSocketTypeForHandle(nodes, edge.source, edge.sourceHandle, true);
   const targetType = getSocketTypeForHandle(nodes, edge.target, edge.targetHandle, false);
 
   return {
     ...edge,
     type: 'gradient',
-    data: {
-      ...edge.data,
-      sourceType,
-      targetType,
-    },
+    data: { ...edge.data, sourceType, targetType },
   };
 }
 
@@ -96,6 +91,28 @@ function generateEdgeId(source: string, target: string): string {
   return `e-${source}-${target}-${Date.now()}`;
 }
 
+interface HistoryEntry {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+interface HistoryState {
+  past: HistoryEntry[];
+  future: HistoryEntry[];
+}
+
+const MAX_HISTORY = 50;
+
+function cloneState(nodes: Node[], edges: Edge[]): HistoryEntry {
+  return {
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    edges: JSON.parse(JSON.stringify(edges)),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
 
 interface FlowContextValue {
   nodes: FlowNode[];
@@ -114,20 +131,144 @@ interface FlowContextValue {
   removeNode: (id: string) => void;
   updateNodeData: (nodeId: string, paramId: string, value: unknown) => void;
 
-  loadGraph: (nodes: FlowNode[], edges: FlowEdge[]) => void;
-  clearGraph: () => void;
+  loadGraph: (nodes: FlowNode[], edges: FlowEdge[], options?: { skipHistory?: boolean }) => void;
+  clearGraph: (options?: { skipHistory?: boolean }) => void;
 
   getNode: (id: string) => FlowNode | undefined;
   getConnectedInputs: (nodeId: string) => Set<string>;
+
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  recordDragEnd: () => void;
 }
 
 const FlowContext = createContext<FlowContextValue | null>(null);
-
 
 export function FlowProvider({ children }: { children: ReactNode }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const historyRef = useRef<HistoryState>({ past: [], future: [] });
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const isRestoringRef = useRef(false);
+
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+
+  const updateHistoryState = useCallback(() => {
+    setCanUndo(historyRef.current.past.length > 0);
+    setCanRedo(historyRef.current.future.length > 0);
+  }, []);
+
+  const pushHistory = useCallback(() => {
+    if (isRestoringRef.current) return;
+
+    const entry = cloneState(nodesRef.current, edgesRef.current);
+    const { past } = historyRef.current;
+
+    historyRef.current = {
+      past: [...past.slice(-(MAX_HISTORY - 1)), entry],
+      future: [],
+    };
+
+    updateHistoryState();
+  }, [updateHistoryState]);
+
+  const DEBOUNCE_MS = 300;
+  const MAX_WAIT_MS = 2000;
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSnapshotRef = useRef<number>(0);
+
+  const pushHistoryDebounced = useCallback(() => {
+    if (isRestoringRef.current) return;
+
+    const now = Date.now();
+    const timeSinceLastSnapshot = now - lastSnapshotRef.current;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    if (timeSinceLastSnapshot >= MAX_WAIT_MS) {
+      pushHistory();
+      lastSnapshotRef.current = now;
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      pushHistory();
+      lastSnapshotRef.current = Date.now();
+      debounceTimerRef.current = null;
+    }, DEBOUNCE_MS);
+  }, [pushHistory]);
+
+  const flushDebounce = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => flushDebounce, [flushDebounce]);
+
+  const undo = useCallback(() => {
+    flushDebounce();
+    const { past, future } = historyRef.current;
+    if (past.length === 0) return;
+
+    const current = cloneState(nodesRef.current, edgesRef.current);
+    const previous = past[past.length - 1];
+
+    historyRef.current = {
+      past: past.slice(0, -1),
+      future: [current, ...future],
+    };
+
+    isRestoringRef.current = true;
+    setNodes(previous.nodes);
+    setEdges(previous.edges);
+    setSelectedNodeId(null);
+    updateHistoryState();
+
+    requestAnimationFrame(() => {
+      isRestoringRef.current = false;
+    });
+  }, [setNodes, setEdges, updateHistoryState, flushDebounce]);
+
+  const redo = useCallback(() => {
+    flushDebounce();
+    const { past, future } = historyRef.current;
+    if (future.length === 0) return;
+
+    const current = cloneState(nodesRef.current, edgesRef.current);
+    const next = future[0];
+
+    historyRef.current = {
+      past: [...past, current],
+      future: future.slice(1),
+    };
+
+    isRestoringRef.current = true;
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(null);
+    updateHistoryState();
+
+    requestAnimationFrame(() => {
+      isRestoringRef.current = false;
+    });
+  }, [setNodes, setEdges, updateHistoryState, flushDebounce]);
+
+  const recordDragEnd = useCallback(() => {
+    pushHistory();
+  }, [pushHistory]);
 
   const selectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
@@ -160,6 +301,8 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      pushHistory();
+
       const sourceType = getSocketTypeForHandle(
         nodes,
         connection.source || '',
@@ -207,11 +350,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         return currentEdges;
       });
     },
-    [nodes, setEdges]
+    [nodes, setEdges, pushHistory]
   );
 
   const addNode = useCallback(
     (type: string, position: { x: number; y: number }): string => {
+      pushHistory();
+
       const definition = getNodeDefinition(type);
       if (!definition) {
         throw new Error(`Unknown node type: ${type}`);
@@ -230,11 +375,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       setNodes(nds => [...nds, node]);
       return id;
     },
-    [setNodes]
+    [setNodes, pushHistory]
   );
 
   const removeNode = useCallback(
     (id: string) => {
+      pushHistory();
+
       setNodes(nds => nds.filter(n => n.id !== id));
       setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
 
@@ -242,11 +389,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         setSelectedNodeId(null);
       }
     },
-    [setNodes, setEdges, selectedNodeId]
+    [setNodes, setEdges, selectedNodeId, pushHistory]
   );
 
   const updateNodeData = useCallback(
     (nodeId: string, paramId: string, value: unknown) => {
+      pushHistoryDebounced();
+
       setNodes(nds =>
         nds.map(node =>
           node.id === nodeId
@@ -255,11 +404,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         )
       );
     },
-    [setNodes]
+    [setNodes, pushHistoryDebounced]
   );
 
   const loadGraph = useCallback(
-    (newNodes: FlowNode[], newEdges: FlowEdge[]) => {
+    (newNodes: FlowNode[], newEdges: FlowEdge[], options?: { skipHistory?: boolean }) => {
+      if (!options?.skipHistory) pushHistory();
+
       const enrichedEdges = newEdges.map(edge =>
         enrichEdgeWithSocketTypes(edge, newNodes as Node[])
       );
@@ -268,14 +419,19 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       setEdges(enrichedEdges as Edge[]);
       setSelectedNodeId(null);
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, pushHistory]
   );
 
-  const clearGraph = useCallback(() => {
-    setNodes([]);
-    setEdges([]);
-    setSelectedNodeId(null);
-  }, [setNodes, setEdges]);
+  const clearGraph = useCallback(
+    (options?: { skipHistory?: boolean }) => {
+      if (!options?.skipHistory) pushHistory();
+
+      setNodes([]);
+      setEdges([]);
+      setSelectedNodeId(null);
+    },
+    [setNodes, setEdges, pushHistory]
+  );
 
   const getNode = useCallback(
     (id: string): FlowNode | undefined => {
@@ -315,6 +471,11 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       clearGraph,
       getNode,
       getConnectedInputs,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      recordDragEnd,
     }),
     [
       nodes,
@@ -333,6 +494,11 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       clearGraph,
       getNode,
       getConnectedInputs,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      recordDragEnd,
     ]
   );
 

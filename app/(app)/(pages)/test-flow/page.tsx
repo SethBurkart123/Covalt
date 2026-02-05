@@ -24,7 +24,7 @@ function TestFlowContent() {
   const { loadGraph, selectedNodeId } = useFlow();
 
   useEffect(() => {
-    loadGraph(initialNodes, initialEdges);
+    loadGraph(initialNodes, initialEdges, { skipHistory: true });
   }, [loadGraph]);
 
   return (

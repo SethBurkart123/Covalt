@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -28,9 +28,6 @@ function buildNodeTypes(): NodeTypes {
 
 const nodeTypes = buildNodeTypes();
 
-// -----------------------------------------------------------------------------
-// Edge Rendering
-// -----------------------------------------------------------------------------
 
 function getControlPoints(
   sourceX: number,
@@ -195,6 +192,11 @@ export function FlowCanvas() {
     onConnect,
     isValidConnection,
     selectNode,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    recordDragEnd,
   } = useFlow();
 
   const onSelectionChange = useCallback(
@@ -203,6 +205,28 @@ export function FlowCanvas() {
     },
     [selectNode]
   );
+
+  const onNodeDragStop = useCallback(() => {
+    recordDragEnd();
+  }, [recordDragEnd]);
+
+  // Cmd/Ctrl+Z for undo, Cmd/Ctrl+Shift+Z for redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod || e.key.toLowerCase() !== 'z') return;
+
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (canRedo) redo();
+      } else {
+        if (canUndo) undo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, canUndo, canRedo]);
 
   return (
     <div className="w-full h-full bg-background">
@@ -213,6 +237,7 @@ export function FlowCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onSelectionChange={onSelectionChange}
+        onNodeDragStop={onNodeDragStop}
         connectionMode={ConnectionMode.Loose}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}

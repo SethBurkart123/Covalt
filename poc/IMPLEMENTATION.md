@@ -16,6 +16,8 @@ The system follows a **Blender-inspired parameter-driven approach**: nodes defin
 lib/flow/                    # Core definitions (pure data)
   types.ts                   # ParameterType, Parameter, NodeDefinition
   sockets.ts                 # SOCKET_TYPES registry + canConnect()
+  context.tsx                # FlowProvider + useFlow hook (state management)
+  index.ts                   # Public API exports
   nodes/                     # Node definitions (just data!)
     index.ts                 # Registry: NODE_DEFINITIONS, createFlowNode()
     chat-start.ts            # Entry node
@@ -28,7 +30,7 @@ components/flow/             # React components
   node.tsx                   # Generic node renderer (ONE component for ALL nodes)
   socket.tsx                 # Handle/socket component
   parameter-row.tsx          # Parameter display logic
-  properties-panel.tsx       # Selected node editor panel
+  properties-panel.tsx       # Selected node editor panel (uses useFlow)
   controls/                  # Parameter type -> control mapping
     index.tsx                # ParameterControl + registry
     float.tsx, string.tsx, etc.
@@ -68,16 +70,70 @@ The magic: an Agent output can connect to a Tools input. This makes sub-agents p
 
 1. **`lib/flow/types.ts`** - All the TypeScript types. Start here to understand the data model.
 
-2. **`lib/flow/nodes/agent.ts`** - The most complex node definition. Shows all parameter modes in action.
+2. **`lib/flow/context.tsx`** - The `FlowProvider` and `useFlow` hook. Manages all graph state:
+   - `nodes`, `edges` - The graph data
+   - `selectedNodeId`, `selectedNode`, `selectNode` - Selection state
+   - `addNode`, `removeNode`, `updateNodeData` - Node operations
+   - `loadGraph`, `clearGraph` - Bulk operations
+   - `isValidConnection`, `onConnect` - Connection logic with type checking
+   - `getConnectedInputs` - Helper for hybrid parameter visibility
 
-3. **`components/flow/canvas.tsx`** - The ReactFlow integration. Key functions:
+3. **`lib/flow/nodes/agent.ts`** - The most complex node definition. Shows all parameter modes in action.
+
+4. **`components/flow/canvas.tsx`** - The ReactFlow integration. Consumes `useFlow()` and renders:
    - `GradientEdge` - Renders gradient-colored edges based on socket types
-   - `onConnect` - Handles new connections with type checking
-   - `isValidConnection` - Uses `canConnect()` for type coercion
+   - Generic node component via `nodeTypes` map
 
-4. **`components/flow/node.tsx`** - The generic node renderer. Loops through `definition.parameters` and renders `ParameterRow` for each.
+5. **`components/flow/node.tsx`** - The generic node renderer. Loops through `definition.parameters` and renders `ParameterRow` for each.
 
-5. **`components/flow/parameter-row.tsx`** - Decides what to show based on parameter mode and connection state.
+6. **`components/flow/properties-panel.tsx`** - Selected node editor. Uses `useFlow()` for selection and `updateNodeData` for two-way binding.
+
+## FlowContext API
+
+The `useFlow()` hook provides everything needed to interact with the graph from any component:
+
+```typescript
+const {
+  // Graph data
+  nodes,                    // FlowNode[]
+  edges,                    // FlowEdge[]
+  
+  // Selection
+  selectedNodeId,           // string | null
+  selectedNode,             // FlowNode | null (derived)
+  selectNode,               // (id: string | null) => void
+  
+  // Node operations
+  addNode,                  // (type: string, position: {x, y}) => string (returns id)
+  removeNode,               // (id: string) => void
+  updateNodeData,           // (nodeId: string, paramId: string, value: unknown) => void
+  
+  // Bulk operations
+  loadGraph,                // (nodes, edges, options?) => void - use { skipHistory: true } for init
+  clearGraph,               // (options?) => void - use { skipHistory: true } to skip undo
+  
+  // ReactFlow handlers (pass to <ReactFlow>)
+  onNodesChange,
+  onEdgesChange,
+  onConnect,
+  isValidConnection,
+  
+  // Helpers
+  getNode,                  // (id: string) => FlowNode | undefined
+  getConnectedInputs,       // (nodeId: string) => Set<string>
+  
+  // History (undo/redo)
+  undo,                     // () => void
+  redo,                     // () => void
+  canUndo,                  // boolean
+  canRedo,                  // boolean
+  recordDragEnd,            // () => void - call on onNodeDragStop
+} = useFlow();
+```
+
+**Keyboard shortcuts:** `Cmd/Ctrl+Z` for undo, `Cmd/Ctrl+Shift+Z` for redo (handled in `FlowCanvas`).
+
+**Debouncing:** `updateNodeData` uses debounced history (300ms debounce, 2s max wait) so typing doesn't spam undo states. Other mutations (`addNode`, `removeNode`, `onConnect`, etc.) record immediately.
 
 ## Adding a New Node Type
 
@@ -128,13 +184,10 @@ Tool providers. Single `tools` output socket.
 
 ## What's NOT Implemented Yet
 
-1. **State management context** - Currently nodes/edges are local state in test page
-2. **Persistence** - No saving/loading graphs
-3. **Graph compilation** - Converting graph to executable agent config
-4. **Drag from palette** - No node palette UI yet
-5. **Undo/redo** - No history tracking
-6. **Graph validation** - No cycle detection or error checking
-7. **Properties panel data binding** - Changes don't flow back to canvas properly
+1. **Persistence** - No saving/loading graphs to backend
+2. **Graph compilation** - Converting graph to executable agent config
+3. **Drag from palette** - No node palette UI yet
+4. **Graph validation** - No cycle detection or error checking
 
 ## Design Decisions
 
@@ -147,5 +200,5 @@ Tool providers. Single `tools` output socket.
 
 Read these for the full vision:
 - `poc/agent-graph-editor.md` - Overall UX and user flows
-- `poc/node.md` - Registry wrapper architecture (not fully implemented)
+- `poc/node.md` - Registry wrapper architecture
 - `poc/parameter-driven-architecture.md` - Deep dive on the parameter system

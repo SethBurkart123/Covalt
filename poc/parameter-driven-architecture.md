@@ -521,32 +521,31 @@ type AgentData = InferNodeData<typeof agentDef>;
 ## Directory Structure
 
 ```
-lib/flow/
-├── index.ts                    # Public API
+lib/flow/                       # Core definitions (pure data)
+├── index.ts                    # Public API exports
 ├── types.ts                    # Core type definitions
 ├── sockets.ts                  # Socket type registry + coercion
-├── parameters.ts               # Parameter type definitions + validation
-├── components/
-│   ├── canvas.tsx              # ReactFlow wrapper
-│   ├── node.tsx                # Generic node renderer (ONE component!)
-│   ├── parameter-row.tsx       # Socket + label + optional control
-│   ├── parameter-control.tsx   # Control mapping
-│   ├── controls/               # Individual control components
-│   │   ├── float.tsx           # Slider + number input
-│   │   ├── enum.tsx            # Dropdown
-│   │   ├── model-picker.tsx    # Provider + model selector
-│   │   └── ...
-│   └── properties-panel.tsx    # Selected node properties
-├── nodes/
-│   ├── index.ts                # Registry + imports
-│   ├── chat-start.ts           # Parameter definition only
-│   ├── agent.ts                # Parameter definition only
-│   ├── mcp-server.ts           # Parameter definition only
-│   ├── toolset.ts              # Parameter definition only
-│   └── ...                     # Just add .ts files!
-└── utils/
-    ├── validation.ts           # Graph validation
-    └── compilation.ts          # Graph → executable
+├── context.tsx                 # FlowProvider + useFlow hook
+└── nodes/
+    ├── index.ts                # Registry + imports
+    ├── chat-start.ts           # Parameter definition only
+    ├── agent.ts                # Parameter definition only
+    ├── mcp-server.ts           # Parameter definition only
+    ├── toolset.ts              # Parameter definition only
+    └── ...                     # Just add .ts files!
+
+components/flow/                # React components
+├── canvas.tsx                  # ReactFlow wrapper
+├── node.tsx                    # Generic node renderer (ONE component!)
+├── socket.tsx                  # Handle/socket component
+├── parameter-row.tsx           # Socket + label + optional control
+├── properties-panel.tsx        # Selected node properties (uses useFlow)
+└── controls/                   # Individual control components
+    ├── index.tsx               # ParameterControl + registry
+    ├── float.tsx               # Slider + number input
+    ├── enum.tsx                # Dropdown
+    ├── model-picker.tsx        # Provider + model selector
+    └── ...
 ```
 
 ## Adding a New Node
