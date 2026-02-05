@@ -50,8 +50,6 @@ export function CreateAgentDialog({
           icon: icon.trim() ? `emoji:${icon.trim()}` : undefined,
         },
       });
-      
-      // Reset form
       setName('');
       setDescription('');
       setIcon('');
@@ -67,7 +65,6 @@ export function CreateAgentDialog({
 
   const handleOpenChange = useCallback((newOpen: boolean) => {
     if (!newOpen) {
-      // Reset form when closing
       setName('');
       setDescription('');
       setIcon('');

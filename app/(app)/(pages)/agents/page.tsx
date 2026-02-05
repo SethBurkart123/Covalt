@@ -68,7 +68,6 @@ export default function AgentsPage() {
 
   return (
     <div className="container max-w-6xl px-4 mx-auto py-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Agents</h1>
@@ -81,8 +80,6 @@ export default function AgentsPage() {
           New Agent
         </Button>
       </div>
-
-      {/* Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -116,8 +113,6 @@ export default function AgentsPage() {
           ))}
         </div>
       )}
-
-      {/* Dialogs */}
       <CreateAgentDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}

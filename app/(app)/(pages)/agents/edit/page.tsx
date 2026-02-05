@@ -1,24 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FlowProvider, useSelection } from '@/lib/flow';
 import { FlowCanvas, PropertiesPanel } from '@/components/flow';
 import { AgentEditorProvider, useAgentEditor } from '@/contexts/agent-editor-context';
-import { AgentEditorHeader } from './AgentEditorHeader';
+import { usePageTitle } from '@/contexts/page-title-context';
+import { AgentEditorHeaderLeft, AgentEditorHeaderRight } from './AgentEditorHeader';
 import { AgentSettingsDialog } from './AgentSettingsDialog';
 import { Button } from '@/components/ui/button';
 
 function AgentEditorContent() {
   const router = useRouter();
-  const { isLoading, loadError, agent } = useAgentEditor();
+  const { setLeftContent, setRightContent, setFloating } = usePageTitle();
+  const { isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
   const { selectedNodeId } = useSelection();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  useEffect(() => {
+    setFloating(true);
+    return () => setFloating(false);
+  }, [setFloating]);
+
+  useEffect(() => {
+    if (!agent) return;
+    const handleUpdateName = (name: string) => updateMetadata({ name });
+    setLeftContent(
+      <AgentEditorHeaderLeft agentName={agent.name} onUpdateName={handleUpdateName} />
+    );
+    setRightContent(
+      <AgentEditorHeaderRight
+        saveStatus={saveStatus}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+    );
+    return () => {
+      setLeftContent(null);
+      setRightContent(null);
+    };
+  }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent]);
+
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground">Loading agent...</p>
@@ -29,7 +54,7 @@ function AgentEditorContent() {
 
   if (loadError || !agent) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center max-w-md">
           <div className="flex items-center justify-center size-12 rounded-full bg-destructive/10">
             <AlertCircle className="size-6 text-destructive" />
@@ -47,23 +72,16 @@ function AgentEditorContent() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
-      <AgentEditorHeader onOpenSettings={() => setSettingsOpen(true)} />
-      
-      <div className="flex-1 relative">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 relative min-h-0">
         <FlowCanvas />
-        
         {selectedNodeId && (
-          <div className="absolute top-4 right-4 w-80 z-10">
+          <div className="absolute top-16 right-4 w-80 z-10">
             <PropertiesPanel />
           </div>
         )}
       </div>
-
-      <AgentSettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
+      <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }
