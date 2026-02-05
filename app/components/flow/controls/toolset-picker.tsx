@@ -33,7 +33,7 @@ export function ToolsetPicker({ value, onChange }: ToolsetPickerProps) {
 
   return (
     <Select value={value ?? ''} onValueChange={handleValueChange}>
-      <SelectTrigger className="h-8">
+      <SelectTrigger className="h-8 w-full">
         <SelectValue placeholder="Select toolset..." />
       </SelectTrigger>
       <SelectContent>

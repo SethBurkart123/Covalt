@@ -185,6 +185,13 @@ export function AddNodeMenu({
         return;
       }
       
+      if (mode === 'browse' && e.key === 'Enter') {
+        e.preventDefault();
+        setMode('search');
+        setTimeout(() => inputRef.current?.focus(), 10);
+        return;
+      }
+      
       if (mode === 'browse' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setMode('search');
         setSearch(e.key);

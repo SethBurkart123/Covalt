@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { EmojiPickerPopover } from '@/components/ui/emoji-picker-popover';
 import { createAgent } from '@/python/api';
 
 interface CreateAgentDialogProps {
@@ -108,17 +109,12 @@ export function CreateAgentDialog({
           </div>
           
           <div className="grid gap-2">
-            <Label htmlFor="icon">Icon (optional)</Label>
-            <Input
-              id="icon"
-              placeholder="Paste an emoji..."
+            <Label>Icon (optional)</Label>
+            <EmojiPickerPopover
               value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              className="text-xl"
+              onChange={setIcon}
+              placeholder="Pick an emoji..."
             />
-            <p className="text-xs text-muted-foreground">
-              You can add an emoji or upload a custom image later.
-            </p>
           </div>
 
           {error && (

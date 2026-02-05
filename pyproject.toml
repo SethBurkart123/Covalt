@@ -29,8 +29,8 @@ dev = [
 ]
 
 [tool.uv.sources]
-zynk = { path = "zynk" }
 agno-toolset = { path = "agno-toolset" }
+zynk = { path = "zynk" }
 
 [tool.ruff]
 target-version = "py312"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FlowProvider, useSelection } from '@/lib/flow';
@@ -10,13 +10,16 @@ import { usePageTitle } from '@/contexts/page-title-context';
 import { AgentEditorHeaderLeft, AgentEditorHeaderRight } from './AgentEditorHeader';
 import { AgentSettingsDialog } from './AgentSettingsDialog';
 import { Button } from '@/components/ui/button';
+import { useCanvasPreview } from '@/hooks/use-canvas-preview';
 
 function AgentEditorContent() {
   const router = useRouter();
   const { setLeftContent, setRightContent, setFloating } = usePageTitle();
-  const { isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
+  const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
   const { selectedNodeId } = useSelection();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { captureAndUpload } = useCanvasPreview(agentId);
+  const captureRef = useRef(captureAndUpload);
 
   useEffect(() => {
     setFloating(true);
@@ -40,6 +43,25 @@ function AgentEditorContent() {
       setRightContent(null);
     };
   }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent]);
+
+  // Keep ref current for cleanup
+  useEffect(() => {
+    captureRef.current = captureAndUpload;
+  }, [captureAndUpload]);
+
+  // Capture preview on load (after graph renders and fits view)
+  useEffect(() => {
+    if (!agent || isLoading) return;
+    const timer = setTimeout(() => captureAndUpload(), 800);
+    return () => clearTimeout(timer);
+  }, [agent, isLoading, captureAndUpload]);
+
+  // Capture preview on exit
+  useEffect(() => {
+    return () => {
+      captureRef.current();
+    };
+  }, []);
 
   if (isLoading) {
     return (
