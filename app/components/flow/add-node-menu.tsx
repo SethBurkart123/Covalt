@@ -31,7 +31,6 @@ function getIcon(name: string) {
   return IconComponent ?? Icons.Circle;
 }
 
-/** Get category display info */
 function getCategoryInfo(category: NodeDefinition['category']) {
   switch (category) {
     case 'core':
@@ -177,12 +176,12 @@ export function AddNodeMenu({
     };
 
     const timeoutId = setTimeout(() => {
-      window.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('mousedown', handleClickOutside, true);
     }, 100);
 
     return () => {
       clearTimeout(timeoutId);
-      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [isOpen, onClose]);
 

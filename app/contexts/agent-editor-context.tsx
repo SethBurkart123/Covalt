@@ -68,8 +68,6 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
     try {
       const response = await getAgent({ body: { id: agentId } });
       setAgent(response);
-
-      // Load graph into FlowProvider
       const graphNodes = response.graphData.nodes.map((n) => ({
         id: n.id,
         type: n.type,

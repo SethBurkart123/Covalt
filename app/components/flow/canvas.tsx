@@ -448,7 +448,7 @@ function FlowCanvasInner() {
           variant={BackgroundVariant.Dots}
           gap={16}
           size={1}
-          className="!stroke-muted-foreground/20"
+          className="!stroke-muted-foreground/20 [&_rect]:!stroke-transparent"
         />
         <Controls
           className="bg-card [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted"

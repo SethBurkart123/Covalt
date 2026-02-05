@@ -10,10 +10,7 @@ export function AgentCardSkeleton() {
         'border-border'
       )}
     >
-      {/* Preview area skeleton */}
       <div className="aspect-video bg-muted/30 animate-pulse" />
-
-      {/* Info area skeleton */}
       <div className="p-3 space-y-2 bg-card">
         <div className="flex items-start gap-2">
           <div className="shrink-0 size-6 rounded bg-muted animate-pulse" />

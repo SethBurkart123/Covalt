@@ -34,8 +34,6 @@ function parseIcon(icon: string | null | undefined): {
   if (icon.startsWith('image:')) {
     return { type: 'image', value: icon.slice(6) };
   }
-  
-  // Default to emoji if no prefix
   return { type: 'emoji', value: icon };
 }
 
@@ -62,8 +60,6 @@ function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId
       />
     );
   }
-  
-  // Default fallback
   return <Bot className="size-8 text-muted-foreground" />;
 }
 
@@ -88,7 +84,6 @@ function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
           'border-border hover:border-muted-foreground/50 hover:shadow-md'
         )}
       >
-        {/* Preview area - 16:9 aspect ratio */}
         <div className="aspect-video bg-muted/30 relative flex items-center justify-center">
           {agent.previewImage ? (
             <img
@@ -102,8 +97,6 @@ function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
             </div>
           )}
         </div>
-
-        {/* Info area */}
         <div className="p-3 space-y-1 bg-card">
           <div className="flex items-start gap-2">
             {!agent.previewImage && (
@@ -122,8 +115,6 @@ function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
           </div>
         </div>
       </button>
-
-      {/* Actions dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
