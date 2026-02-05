@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useMemo, useEffect, memo } from "react";
+import { Fragment, useState, useMemo, useEffect, memo, useRef, useLayoutEffect } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,56 @@ import { PROVIDER_MAP } from "@/(app)/(pages)/settings/providers/ProviderRegistr
 import { getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
 import { useFuzzyFilter } from "@/lib/hooks/use-fuzzy-filter";
+import { cn } from "@/lib/utils";
+
+function MiddleTruncate({ text, className }: { text: string; className?: string }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(text);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const measure = () => {
+      container.textContent = text;
+      if (container.scrollWidth <= container.clientWidth) {
+        setTruncated(text);
+        return;
+      }
+
+      let start = 0;
+      let end = text.length;
+      const ellipsis = "…";
+      
+      while (end - start > 2) {
+        const mid = Math.floor((start + end) / 2);
+        const half = Math.floor(mid / 2);
+        const truncatedText = text.slice(0, half) + ellipsis + text.slice(text.length - half);
+        container.textContent = truncatedText;
+        
+        if (container.scrollWidth <= container.clientWidth) {
+          start = mid;
+        } else {
+          end = mid;
+        }
+      }
+
+      const half = Math.floor(start / 2);
+      setTruncated(half > 0 ? text.slice(0, half) + ellipsis + text.slice(text.length - half) : ellipsis);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <span ref={containerRef} className={cn("block overflow-hidden whitespace-nowrap", className)}>
+      {truncated}
+    </span>
+  );
+}
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -38,6 +88,7 @@ function ModelSelector({
   models,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const { refreshModels } = useChat();
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -51,15 +102,32 @@ function ModelSelector({
     return () => clearInterval(interval);
   }, [open, refreshModels]);
 
-  const groupedModels = useMemo(() => {
-    const availableModels = new Map(models.map((m) => [getModelKey(m), m]));
+  const providers = useMemo(() => {
+    const uniqueProviders = [...new Set(models.map((m) => m.provider))];
+    return uniqueProviders
+      .map((provider) => ({
+        id: provider,
+        name: PROVIDER_MAP[provider]?.name || provider,
+        icon: PROVIDER_MAP[provider]?.icon,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [models]);
 
-    const recentModels = getRecentModels()
-      .map((key) => availableModels.get(key))
-      .filter((m): m is ModelInfo => m !== undefined);
+  const groupedModels = useMemo(() => {
+    const filteredModels = providerFilter
+      ? models.filter((m) => m.provider === providerFilter)
+      : models;
+
+    const availableModels = new Map(filteredModels.map((m) => [getModelKey(m), m]));
+
+    const recentModels = providerFilter
+      ? []
+      : getRecentModels()
+          .map((key) => availableModels.get(key))
+          .filter((m): m is ModelInfo => m !== undefined);
 
     const providerGroups = new Map<string, ModelInfo[]>();
-    for (const model of models) {
+    for (const model of filteredModels) {
       const group = providerGroups.get(model.provider) || [];
       group.push(model);
       providerGroups.set(model.provider, group);
@@ -84,7 +152,7 @@ function ModelSelector({
         : []),
       ...sortedProviderGroups,
     ];
-  }, [models]);
+  }, [models, providerFilter]);
 
   const fuzzyItems = useMemo(
     () =>
@@ -118,7 +186,7 @@ function ModelSelector({
                   <selectedProviderDef.icon />
                 </span>
               )}
-              <span className="truncate">{selectedModelInfo.modelId}</span>
+              <MiddleTruncate text={selectedModelInfo.modelId} />
             </span>
           ) : (
             <span className="text-muted-foreground">Select model</span>
@@ -136,6 +204,33 @@ function ModelSelector({
       >
         <Command className="rounded-2xl" filter={useFuzzyFilter(fuzzyItems)}>
           <CommandInput placeholder="Search model..." />
+          <div className="flex gap-1 px-3 pt-2 py-1 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => setProviderFilter(null)}
+              className={cn(
+                "shrink-0 px-3 py-1 text-[13px] font-medium rounded-lg transition-colors",
+                providerFilter === null
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-accent/50 text-muted-foreground"
+              )}
+            >
+              All
+            </button>
+            {providers.map((provider) => (
+              <button
+                key={provider.id}
+                onClick={() => setProviderFilter(provider.id)}
+                className={cn(
+                  "shrink-0 px-3 py-1 text-[13px] font-medium rounded-lg transition-colors",
+                  providerFilter === provider.id
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-accent/50 text-muted-foreground"
+                )}
+              >
+                {provider.name}
+              </button>
+            ))}
+          </div>
           <CommandList>
             <CommandEmpty>No model found.</CommandEmpty>
             {groupedModels.map((group) => (
@@ -170,7 +265,7 @@ function ModelSelector({
                               <ProviderIcon />
                             </span>
                           )}
-                          <span className="truncate">{model.modelId}</span>
+                          <MiddleTruncate text={model.modelId} />
                         </span>
                         {modelKey === selectedModel && (
                           <CheckIcon size={16} className="ml-auto shrink-0" />
