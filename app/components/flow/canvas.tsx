@@ -128,8 +128,8 @@ const GradientEdge = memo(function GradientEdge({
     targetPosition || Position.Left
   );
 
-  const sourceType = (data?.sourceType as SocketTypeId) || 'tools';
-  const targetType = (data?.targetType as SocketTypeId) || 'tools';
+  const sourceType = (data?.sourceType ?? 'tools') as SocketTypeId;
+  const targetType = (data?.targetType ?? 'tools') as SocketTypeId;
   const sourceColor = SOCKET_TYPES[sourceType]?.color || '#f59e0b';
   const targetColor = SOCKET_TYPES[targetType]?.color || '#f59e0b';
 
@@ -346,7 +346,7 @@ function FlowCanvasInner() {
       
       const newNodeDef = getNodeDefinition(nodeType);
       const newSocketParam = newNodeDef?.parameters.find(p => p.id === socketId);
-      const newSocketType: SocketTypeId = (newSocketParam as { socket?: { type: SocketTypeId } })?.socket?.type ?? 'agent';
+      const newSocketType: SocketTypeId = newSocketParam?.socket?.type ?? 'agent';
       
       if (pending.handleType === 'source') {
         onConnect(

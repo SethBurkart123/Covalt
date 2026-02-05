@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { Command } from 'cmdk';
 import * as Icons from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,10 +26,8 @@ interface AddNodeMenuProps {
   onSelectWithSocket?: (nodeType: string, socketId: string) => void;
 }
 
-/** Get a Lucide icon component by name */
 function getIcon(name: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const IconComponent = (Icons as any)[name];
+  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
   return IconComponent ?? Icons.Circle;
 }
 
@@ -218,8 +216,9 @@ export function AddNodeMenu({
               {connectionFilter ? 'No compatible nodes' : 'No nodes found'}
             </div>
           ) : connectionFilter ? (
-            (filteredGroups as { category: NodeDefinition['category']; items: ReturnType<typeof getCompatibleNodeSockets> }[]).map(group => {
+            filteredGroups.map(group => {
               const categoryInfo = getCategoryInfo(group.category);
+              if (!('items' in group)) return null;
               return (
                 <Command.Group
                   key={group.category}
@@ -258,8 +257,9 @@ export function AddNodeMenu({
               );
             })
           ) : (
-            (filteredGroups as { category: NodeDefinition['category']; nodes: NodeDefinition[] }[]).map(group => {
+            filteredGroups.map(group => {
               const categoryInfo = getCategoryInfo(group.category);
+              if (!('nodes' in group)) return null;
               return (
                 <Command.Group
                   key={group.category}

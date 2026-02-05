@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, type ComponentType } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { ChevronDown } from 'lucide-react';
 import * as Icons from 'lucide-react';
@@ -18,10 +18,8 @@ interface FlowNodeProps extends NodeProps {
   type: string;
 }
 
-/** Get a Lucide icon component by name */
 function getIcon(name: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const IconComponent = (Icons as any)[name];
+  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
   return IconComponent ?? Icons.Circle;
 }
 

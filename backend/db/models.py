@@ -258,3 +258,27 @@ class ToolOverride(Base):
     __table_args__ = (
         UniqueConstraint("toolset_id", "tool_id", name="uq_toolset_tool_override"),
     )
+
+
+class Agent(Base):
+    """A visual agent graph that can be used in place of a model."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Icon format: "emoji:🤖" | "lucide:Bot" | "image:icon.png" | null
+    icon: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Preview screenshot filename (stored in agents/{id}/)
+    preview_image: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Graph as JSON: {"nodes": [...], "edges": [...]}
+    graph_data: Mapped[str] = mapped_column(
+        Text, nullable=False, default='{"nodes":[],"edges":[]}'
+    )
+
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)

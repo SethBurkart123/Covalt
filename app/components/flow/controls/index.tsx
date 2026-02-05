@@ -19,8 +19,7 @@ export interface ControlProps {
   compact?: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyControl = ComponentType<any>;
+type AnyControl = ComponentType<ControlProps>;
 
 /** Registry mapping parameter types to control components */
 const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
