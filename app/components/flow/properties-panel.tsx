@@ -1,16 +1,10 @@
 'use client';
 
+import { useCallback } from 'react';
 import * as Icons from 'lucide-react';
 import type { Parameter } from '@/lib/flow';
-import { getNodeDefinition } from '@/lib/flow';
+import { getNodeDefinition, useFlow } from '@/lib/flow';
 import { ParameterControl } from './controls';
-
-interface PropertiesPanelProps {
-  nodeId: string | null;
-  nodeType: string | null;
-  nodeData: Record<string, unknown>;
-  onDataChange: (paramId: string, value: unknown) => void;
-}
 
 /** Get a Lucide icon component by name */
 function getIcon(name: string) {
@@ -21,36 +15,42 @@ function getIcon(name: string) {
 
 /**
  * Properties panel - shows editable properties for the selected node.
- * Returns null when no node is selected (parent handles visibility).
+ * Consumes selection and node data from FlowContext.
  */
-export function PropertiesPanel({ 
-  nodeId, 
-  nodeType, 
-  nodeData, 
-  onDataChange 
-}: PropertiesPanelProps) {
-  // Return null when no node selected - parent handles the layout
-  if (!nodeId || !nodeType) {
+export function PropertiesPanel() {
+  const { selectedNodeId, selectedNode, updateNodeData } = useFlow();
+
+  const handleDataChange = useCallback(
+    (paramId: string, value: unknown) => {
+      if (selectedNodeId) {
+        updateNodeData(selectedNodeId, paramId, value);
+      }
+    },
+    [selectedNodeId, updateNodeData]
+  );
+
+  // No selection = no panel
+  if (!selectedNodeId || !selectedNode) {
     return null;
   }
-  
-  const definition = getNodeDefinition(nodeType);
-  
+
+  const definition = getNodeDefinition(selectedNode.type);
+
   if (!definition) {
     return (
       <div className="p-4 text-destructive text-sm">
-        Unknown node type: {nodeType}
+        Unknown node type: {selectedNode.type}
       </div>
     );
   }
-  
+
   const Icon = getIcon(definition.icon);
-  
+
   // Get parameters that should show in panel (constant and hybrid modes)
   const panelParams = definition.parameters.filter(
     p => p.mode === 'constant' || p.mode === 'hybrid'
   );
-  
+
   return (
     <div className="flex flex-col bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-[calc(100vh-8rem)] overflow-hidden">
       {/* Header */}
@@ -63,18 +63,18 @@ export function PropertiesPanel({
           )}
         </div>
       </div>
-      
+
       {/* Parameters */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {panelParams.map(param => (
           <ParameterField
             key={param.id}
             param={param}
-            value={nodeData[param.id]}
-            onChange={(value) => onDataChange(param.id, value)}
+            value={selectedNode.data[param.id]}
+            onChange={(value) => handleDataChange(param.id, value)}
           />
         ))}
-        
+
         {panelParams.length === 0 && (
           <p className="text-sm text-muted-foreground italic">
             No configurable properties
