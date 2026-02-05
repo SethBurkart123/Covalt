@@ -1,0 +1,156 @@
+'use client';
+
+import { memo } from 'react';
+import { useRouter } from 'next/navigation';
+import { Bot, MoreHorizontal, Pencil, Trash2, type LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { AgentInfo } from '@/python/api';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import * as LucideIcons from 'lucide-react';
+
+interface AgentCardProps {
+  agent: AgentInfo;
+  onDelete: (id: string) => void;
+}
+
+function parseIcon(icon: string | null | undefined): {
+  type: 'emoji' | 'lucide' | 'image' | null;
+  value: string;
+} {
+  if (!icon) return { type: null, value: '' };
+  
+  if (icon.startsWith('emoji:')) {
+    return { type: 'emoji', value: icon.slice(6) };
+  }
+  if (icon.startsWith('lucide:')) {
+    return { type: 'lucide', value: icon.slice(7) };
+  }
+  if (icon.startsWith('image:')) {
+    return { type: 'image', value: icon.slice(6) };
+  }
+  
+  // Default to emoji if no prefix
+  return { type: 'emoji', value: icon };
+}
+
+function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId: string }) {
+  const { type, value } = parseIcon(icon);
+  
+  if (type === 'emoji') {
+    return <span className="text-3xl">{value}</span>;
+  }
+  
+  if (type === 'lucide') {
+    const IconComponent = (LucideIcons as unknown as Record<string, LucideIcon>)[value];
+    if (IconComponent) {
+      return <IconComponent className="size-8 text-muted-foreground" />;
+    }
+  }
+  
+  if (type === 'image') {
+    return (
+      <img
+        src={`/api/agents/${agentId}/icon`}
+        alt=""
+        className="size-8 rounded object-cover"
+      />
+    );
+  }
+  
+  // Default fallback
+  return <Bot className="size-8 text-muted-foreground" />;
+}
+
+function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
+  const router = useRouter();
+  
+  const handleClick = () => {
+    router.push(`/agents/edit?id=${agent.id}`);
+  };
+  
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(agent.id);
+  };
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={handleClick}
+        className={cn(
+          'w-full rounded-lg border-2 overflow-hidden transition-all text-left',
+          'border-border hover:border-muted-foreground/50 hover:shadow-md'
+        )}
+      >
+        {/* Preview area - 16:9 aspect ratio */}
+        <div className="aspect-video bg-muted/30 relative flex items-center justify-center">
+          {agent.previewImage ? (
+            <img
+              src={`/api/agents/${agent.id}/preview`}
+              alt={`${agent.name} preview`}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <AgentIcon icon={agent.icon} agentId={agent.id} />
+            </div>
+          )}
+        </div>
+
+        {/* Info area */}
+        <div className="p-3 space-y-1 bg-card">
+          <div className="flex items-start gap-2">
+            {!agent.previewImage && (
+              <div className="shrink-0 size-6 flex items-center justify-center">
+                <AgentIcon icon={agent.icon} agentId={agent.id} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-medium truncate">{agent.name}</h3>
+              {agent.description && (
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {agent.description}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {/* Actions dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity size-8 bg-background/80 backdrop-blur-sm hover:bg-background"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={handleClick}>
+            <Pencil className="size-4 mr-2" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleDelete}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="size-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+export const AgentCard = memo(AgentCardComponent);

@@ -1,16 +1,14 @@
 'use client';
 
-import { useCallback, useMemo, memo } from 'react';
+import { useCallback, useMemo, memo, type ComponentType } from 'react';
 import { useNodesData } from '@xyflow/react';
 import * as Icons from 'lucide-react';
 import type { Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
 
-/** Get a Lucide icon component by name */
 function getIcon(name: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const IconComponent = (Icons as any)[name];
+  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
   return IconComponent ?? Icons.Circle;
 }
 

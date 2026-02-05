@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Package, PlusIcon, Settings } from "lucide-react";
+import { Bot, Package, PlusIcon, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -133,6 +133,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter className="relative before:content-[''] before:absolute before:pointer-events-none before:top-0 before:left-0 before:h-16 before:-translate-y-[calc(100%-1px)] before:w-full before:bg-gradient-to-b before:from-transparent before:to-sidebar">
         <SidebarMenu className="space-y-2">
           <SidebarMenuItem>
+            <button
+              className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={() => router.push("/agents")}
+            >
+              <Bot className="size-4" />
+              Agents
+            </button>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => router.push("/toolsets")}

@@ -111,17 +111,11 @@ function cloneState(nodes: Node[], edges: Edge[]): HistoryEntry {
   };
 }
 
-// -----------------------------------------------------------------------------
-// Split Context: State vs Selection vs Actions
-// -----------------------------------------------------------------------------
-
-/** Selection state - changes rarely (only when user clicks different node) */
 interface SelectionValue {
   selectedNodeId: string | null;
   selectNode: (id: string | null) => void;
 }
 
-/** Graph state - changes frequently (nodes, edges positions) */
 interface FlowStateValue {
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -131,7 +125,6 @@ interface FlowStateValue {
   canRedo: boolean;
 }
 
-/** Stable actions that don't change references */
 interface FlowActionsValue {
   onConnect: (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => void;
   isValidConnection: (connection: Connection | Edge) => boolean;
@@ -148,7 +141,6 @@ interface FlowActionsValue {
   recordDragEnd: () => void;
 }
 
-/** Combined type for backwards compatibility */
 type FlowContextValue = FlowStateValue & FlowActionsValue & SelectionValue;
 
 const SelectionContext = createContext<SelectionValue | null>(null);
@@ -518,7 +510,6 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Use for components that only need selection (won't re-render on node position changes) */
 export function useSelection(): SelectionValue {
   const context = useContext(SelectionContext);
   if (!context) {
@@ -527,7 +518,6 @@ export function useSelection(): SelectionValue {
   return context;
 }
 
-/** Use for components that need the graph state (nodes, edges - re-renders on position changes) */
 export function useFlowState(): FlowStateValue {
   const context = useContext(FlowStateContext);
   if (!context) {
@@ -536,7 +526,6 @@ export function useFlowState(): FlowStateValue {
   return context;
 }
 
-/** Use for components that only need actions (won't re-render on state changes) */
 export function useFlowActions(): FlowActionsValue {
   const context = useContext(FlowActionsContext);
   if (!context) {
@@ -545,7 +534,6 @@ export function useFlowActions(): FlowActionsValue {
   return context;
 }
 
-/** Combined hook for backwards compatibility */
 export function useFlow(): FlowContextValue {
   const selection = useSelection();
   const state = useFlowState();
