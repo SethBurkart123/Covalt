@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from agno.agent import Agent, Message, RunEvent
 from agno.media import Audio, File, Image, Video
+from agno.team import Team
+from agno.team.team import TeamRunEvent
 from pydantic import BaseModel
 from rich.logging import RichHandler
 
@@ -17,6 +19,8 @@ from zynk import Channel, command
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
+from ..services.agent_manager import get_agent_manager
+from ..services.graph_executor import build_agent_from_graph
 from ..services.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
@@ -35,6 +39,19 @@ logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
 )
 logger = logging.getLogger(__name__)
+
+_TEAM_TO_RUN_EVENT: dict[TeamRunEvent, RunEvent] = {
+    getattr(TeamRunEvent, e.name): e
+    for e in RunEvent
+    if hasattr(TeamRunEvent, e.name)
+}
+
+
+def _normalize_event(event: RunEvent | TeamRunEvent) -> RunEvent | None:
+    if isinstance(event, RunEvent):
+        return event
+    return _TEAM_TO_RUN_EVENT.get(event)
+
 
 registry = get_tool_registry()
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
@@ -470,7 +487,7 @@ def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
 
 
 async def handle_content_stream(
-    agent: Agent,
+    agent: Agent | Team,
     messages: List[ChatMessage],
     assistant_msg_id: str,
     raw_ch: Any,
@@ -485,8 +502,9 @@ async def handle_content_stream(
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
 
+    run_input: Any = agno_messages if isinstance(agent, Agent) else agno_messages[-1].content
     response_stream = agent.arun(
-        input=agno_messages,
+        input=run_input,
         stream=True,
         stream_events=True,
     )
@@ -538,7 +556,11 @@ async def handle_content_stream(
                     if chat_id:
                         await broadcaster.update_stream_run_id(chat_id, run_id)
 
-                if chunk.event == RunEvent.run_cancelled:
+                evt = _normalize_event(chunk.event)
+                if evt is None:
+                    continue
+
+                if evt == RunEvent.run_cancelled:
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -553,7 +575,7 @@ async def handle_content_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
 
-                if chunk.event == RunEvent.run_content:
+                if evt == RunEvent.run_content:
                     if chunk.reasoning_content:
                         if current_text and not current_reasoning:
                             flush_text()
@@ -579,7 +601,7 @@ async def handle_content_stream(
                             save_msg_content, assistant_msg_id, save_state()
                         )
 
-                elif chunk.event == RunEvent.tool_call_started:
+                elif evt == RunEvent.tool_call_started:
                     flush_text()
                     flush_reasoning()
                     ch.send_model(
@@ -594,7 +616,7 @@ async def handle_content_stream(
                         )
                     )
 
-                elif chunk.event == RunEvent.tool_call_completed:
+                elif evt == RunEvent.tool_call_completed:
                     flush_text()
                     flush_reasoning()
 
@@ -641,11 +663,11 @@ async def handle_content_stream(
                         save_msg_content, assistant_msg_id, save_final()
                     )
 
-                elif chunk.event == RunEvent.reasoning_started:
+                elif evt == RunEvent.reasoning_started:
                     flush_text()
                     ch.send_model(ChatEvent(event="ReasoningStarted"))
 
-                elif chunk.event == RunEvent.reasoning_step:
+                elif evt == RunEvent.reasoning_step:
                     if chunk.reasoning_content:
                         if current_text:
                             flush_text()
@@ -660,11 +682,11 @@ async def handle_content_stream(
                             save_msg_content, assistant_msg_id, save_state()
                         )
 
-                elif chunk.event == RunEvent.reasoning_completed:
+                elif evt == RunEvent.reasoning_completed:
                     flush_reasoning()
                     ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
-                elif chunk.event == RunEvent.run_completed:
+                elif evt == RunEvent.run_completed:
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -679,7 +701,7 @@ async def handle_content_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
 
-                elif chunk.event == RunEvent.run_error:
+                elif evt == RunEvent.run_error:
                     flush_text()
                     flush_reasoning()
                     error_msg = extract_error_message(
@@ -705,7 +727,7 @@ async def handle_content_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
 
-                elif chunk.event == RunEvent.run_paused:
+                elif evt == RunEvent.run_paused:
                     flush_text()
                     flush_reasoning()
 
@@ -1038,6 +1060,94 @@ async def stream_chat(
                 )
         except Exception as e2:
             logger.info(f"[stream] Failed to append error block, falling back: {e2}")
+            save_msg_content(assistant_msg_id, json.dumps([error_block]))
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+
+
+class StreamAgentChatRequest(BaseModel):
+    agentId: str
+    messages: List[Dict[str, Any]]
+    chatId: Optional[str] = None
+
+
+@command
+async def stream_agent_chat(
+    channel: Channel,
+    body: StreamAgentChatRequest,
+) -> None:
+    messages: List[ChatMessage] = [
+        ChatMessage(
+            id=m.get("id"),
+            role=m.get("role"),
+            content=m.get("content", ""),
+            createdAt=m.get("createdAt"),
+            toolCalls=m.get("toolCalls"),
+        )
+        for m in body.messages
+    ]
+
+    agent_manager = get_agent_manager()
+    agent_data = agent_manager.get_agent(body.agentId)
+    if not agent_data:
+        channel.send_model(ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found"))
+        return
+
+    chat_id = ensure_chat_initialized(body.chatId, None)
+
+    with db.db_session() as sess:
+        chat = sess.get(db.Chat, chat_id)
+        parent_id = chat.active_leaf_message_id if chat else None
+
+    if messages and messages[-1].role == "user":
+        save_user_msg(messages[-1], chat_id, parent_id)
+        parent_id = messages[-1].id
+
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
+
+    assistant_msg_id = init_assistant_msg(chat_id, parent_id)
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+
+    try:
+        agent = build_agent_from_graph(agent_data["graph_data"], chat_id=chat_id)
+        if not messages or messages[-1].role != "user":
+            raise ValueError("No user message found in request")
+        await handle_content_stream(
+            agent, messages, assistant_msg_id, channel, chat_id=chat_id
+        )
+    except Exception as e:
+        logger.error(f"[stream_agent] Error: {e}")
+        traceback.print_exc()
+
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
+
+        error_block = {
+            "type": "error",
+            "content": str(e),
+            "traceback": traceback.format_exc(),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        try:
+            with db.db_session() as sess:
+                message = sess.get(db.Message, assistant_msg_id)
+                blocks = []
+                if message and message.content:
+                    raw = message.content.strip()
+                    try:
+                        blocks = (
+                            json.loads(raw)
+                            if raw.startswith("[")
+                            else [{"type": "text", "content": message.content}]
+                        )
+                    except Exception:
+                        blocks = [{"type": "text", "content": message.content}]
+                blocks.append(error_block)
+                db.update_message_content(
+                    sess, messageId=assistant_msg_id, content=json.dumps(blocks)
+                )
+        except Exception as e2:
+            logger.error(f"[stream_agent] Failed to append error block: {e2}")
             save_msg_content(assistant_msg_id, json.dumps([error_block]))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 

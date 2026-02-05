@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Cloud, CloudOff, Loader2, Settings } from 'lucide-react';
+import { ChevronRight, Cloud, CloudOff, Loader2, MessageSquare, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -132,12 +132,22 @@ export function SaveStatusIndicator({ status }: { status: SaveStatus }) {
 interface AgentEditorHeaderRightProps {
   saveStatus: SaveStatus;
   onOpenSettings: () => void;
+  onToggleChat: () => void;
+  isChatOpen?: boolean;
 }
 
-export function AgentEditorHeaderRight({ saveStatus, onOpenSettings }: AgentEditorHeaderRightProps) {
+export function AgentEditorHeaderRight({ saveStatus, onOpenSettings, onToggleChat, isChatOpen }: AgentEditorHeaderRightProps) {
   return (
     <>
       <SaveStatusIndicator status={saveStatus} />
+      <Button
+        variant={isChatOpen ? "secondary" : "ghost"}
+        size="icon"
+        onClick={onToggleChat}
+        className="size-8"
+      >
+        <MessageSquare className="size-4" />
+      </Button>
       <Button variant="ghost" size="icon" onClick={onOpenSettings} className="size-8">
         <Settings className="size-4" />
       </Button>
