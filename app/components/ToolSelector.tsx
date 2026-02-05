@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useMemo } from "react";
-import { Loader2, Wrench } from "lucide-react";
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { Loader2, Wrench, KeyRound, Settings } from "lucide-react";
 import { useTools, type McpServerStatus } from "@/contexts/tools-context";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  startMcpOauth,
+  getMcpOauthStatus,
+  reconnectMcpServer,
+} from "@/python/api";
+import { ServerFormDialog } from "@/components/mcp";
 
 function formatCategoryName(category: string): string {
   return category.charAt(0).toUpperCase() + category.slice(1);
@@ -34,9 +41,11 @@ function McpStatusIndicator({
           ? "bg-emerald-500"
           : status === "connecting"
             ? "bg-amber-500"
-            : status === "error"
-              ? "bg-red-500"
-              : "bg-zinc-500",
+            : status === "requires_auth"
+              ? "bg-primary"
+              : status === "error"
+                ? "bg-red-500"
+                : "bg-zinc-500",
         status === "connecting" && "animate-pulse"
       )}
     />
@@ -57,12 +66,94 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
     isToolsetPartiallyActive,
     isLoadingTools,
     mcpServers,
+    refreshTools,
   } = useTools();
+
+  const [authenticatingId, setAuthenticatingId] = useState<string | null>(null);
+  const [editingServerId, setEditingServerId] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  const pollOauthStatus = useCallback(async (serverId: string) => {
+    try {
+      const status = await getMcpOauthStatus({ body: { id: serverId } });
+      if (status.status === "authenticated") {
+        stopPolling();
+        await reconnectMcpServer({ body: { id: serverId } });
+        setAuthenticatingId(null);
+      } else if (status.status === "error") {
+        stopPolling();
+        setAuthenticatingId(null);
+      }
+    } catch (error) {
+      stopPolling();
+      setAuthenticatingId(null);
+      console.error("OAuth status polling failed:", error);
+    }
+  }, [stopPolling]);
+
+  const handleAuthenticate = useCallback(async (server: McpServerStatus, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const serverUrl = server.config?.url;
+    if (!serverUrl) return;
+
+    setAuthenticatingId(server.id);
+    stopPolling();
+
+    try {
+      const result = await startMcpOauth({
+        body: { serverId: server.id, serverUrl },
+      });
+
+      if (!result.success || !result.authUrl) {
+        setAuthenticatingId(null);
+        return;
+      }
+
+      const width = 600, height = 800;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      window.open(
+        result.authUrl,
+        "Authenticate",
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      pollIntervalRef.current = setInterval(() => {
+        void pollOauthStatus(server.id);
+      }, 2000);
+
+      pollTimeoutRef.current = setTimeout(() => {
+        stopPolling();
+        setAuthenticatingId(null);
+      }, 5 * 60 * 1000);
+    } catch (error) {
+      console.error("Failed to start OAuth:", error);
+      setAuthenticatingId(null);
+    }
+  }, [pollOauthStatus, stopPolling]);
 
   const mcpStatusMap = useMemo(() => {
     return mcpServers.reduce(
-      (acc, s) => ({ ...acc, [s.id]: s.status }),
-      {} as Record<string, McpServerStatus["status"]>
+      (acc, s) => ({ ...acc, [s.id]: s }),
+      {} as Record<string, McpServerStatus>
     );
   }, [mcpServers]);
 
@@ -124,9 +215,66 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
 
             {categories.map((category) => {
               const tools = groupedTools.byCategory[category] || [];
-              const mcpStatus = mcpStatusMap[category] || null;
+              const mcpServer = mcpStatusMap[category] || null;
+              const mcpStatus = mcpServer?.status || null;
               const isErrorOrLoading = mcpStatus === "error" || mcpStatus === "connecting" || mcpStatus === "disconnected";
+              const needsAuth = mcpStatus === "requires_auth";
+              const isUnavailable = isErrorOrLoading || needsAuth;
+              const activeCount = tools.filter((t) => activeToolIds.includes(t.id)).length;
 
+              // Server needs authentication - show auth button
+              if (needsAuth && mcpServer) {
+                const isAuthenticating = authenticatingId === mcpServer.id;
+                const showOauthButton = mcpServer.authHint !== "token";
+                
+                return (
+                  <DropdownMenuItem
+                    key={category}
+                    className="gap-2 py-2 cursor-default"
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <McpStatusIndicator status={mcpStatus} />
+                    <span className="flex-1 truncate">{formatCategoryName(category)}</span>
+                    {showOauthButton ? (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-6 text-xs px-2"
+                        disabled={isAuthenticating}
+                        onClick={(e) => handleAuthenticate(mcpServer, e)}
+                      >
+                        {isAuthenticating ? (
+                          <>
+                            <Loader2 className="size-3 animate-spin mr-1" />
+                            Waiting...
+                          </>
+                        ) : (
+                          <>
+                            <KeyRound className="size-3 mr-1" />
+                            Authenticate
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-6 text-xs px-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setEditingServerId(mcpServer.id);
+                        }}
+                      >
+                        <Settings className="size-3 mr-1" />
+                        Configure
+                      </Button>
+                    )}
+                  </DropdownMenuItem>
+                );
+              }
+
+              // Server is connecting/errored with no tools
               if (isErrorOrLoading && tools.length === 0) {
                 return (
                   <DropdownMenuItem
@@ -155,17 +303,16 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                   <DropdownMenuSubTrigger 
                     className={cn(
                       "gap-2 py-2",
-                      isErrorOrLoading && "opacity-60 text-muted-foreground"
+                      isUnavailable && "opacity-60 text-muted-foreground"
                     )}
                   >
                     {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
                     <span className="flex-1 truncate flex items-center gap-1.5">
                       {formatCategoryName(category)}
                     </span>
-                    {tools.length > 0 && (
+                    {tools.length > 0 && activeCount > 0 && (
                       <span className="text-xs text-muted-foreground mr-1">
-                        {tools.filter((t) => activeToolIds.includes(t.id)).length}/
-                        {tools.length}
+                        {activeCount}/{tools.length}
                       </span>
                     )}
                     <Switch
@@ -177,13 +324,10 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                             ? "checked"
                             : "unchecked"
                       }
-                      className={cn(
-                        isToolsetPartiallyActive(category) && "opacity-60",
-                        isErrorOrLoading && "opacity-50"
-                      )}
+                      className={cn(isUnavailable && "opacity-50")}
                       onCheckedChange={() => toggleToolset(category)}
                       onClick={(e) => e.stopPropagation()}
-                      disabled={isErrorOrLoading}
+                      disabled={isUnavailable}
                     />
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-72 max-h-80 overflow-y-auto rounded-xl">
@@ -232,6 +376,13 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
           </>
         )}
       </DropdownMenuContent>
+
+      <ServerFormDialog
+        open={!!editingServerId}
+        onOpenChange={(open) => !open && setEditingServerId(null)}
+        editingServerId={editingServerId}
+        onSuccess={refreshTools}
+      />
     </DropdownMenu>
   );
 });

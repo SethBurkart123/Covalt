@@ -53,30 +53,31 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   return (
     <div
       className={cn(
-        'bg-card border rounded-lg min-w-[180px] max-w-[280px] shadow-lg',
-        selected ? 'border-primary' : 'border-border'
+        'border rounded-lg bg-card min-w-[180px] max-w-[280px] shadow-lg',
+        selected ? 'border-primary' : getCategoryBorderColor(definition.category)
       )}
     >
       <div className={cn(
-        'flex items-center gap-1.5 px-2 py-1.5 rounded-t-lg border-b',
         getCategoryColor(definition.category),
-        'border-border'
+        'rounded-lg'
       )}>
-        <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        <Icon className="h-4 w-4" />
-        <span className="text-sm font-medium truncate">{definition.name}</span>
-      </div>
+        <div className='flex items-center gap-1.5 px-2 py-1.5'>
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          <Icon className="h-4 w-4" />
+          <span className="text-sm font-medium truncate">{definition.name}</span>
+        </div>
 
-      <div className="py-1">
-        {definition.parameters.map(param => (
-          <ParameterRow
-            key={param.id}
-            param={param}
-            value={data[param.id]}
-            isConnected={connectedInputs.has(param.id)}
-            onParamChange={handleParameterChange}
-          />
-        ))}
+        <div className="py-1 bg-card rounded-lg border-t border-border">
+          {definition.parameters.map(param => (
+            <ParameterRow
+              key={param.id}
+              param={param}
+              value={data[param.id]}
+              isConnected={connectedInputs.has(param.id)}
+              onParamChange={handleParameterChange}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -95,6 +96,22 @@ function getCategoryColor(category: NodeDefinition['category']): string {
       return 'bg-muted';
     default:
       return 'bg-muted';
+  }
+}
+
+/** Get border color based on node category */
+function getCategoryBorderColor(category: NodeDefinition['category']): string {
+  switch (category) {
+    case 'core':
+      return 'border-primary/20';
+    case 'tools':
+      return 'border-amber-500/20';
+    case 'data':
+      return 'border-blue-500/20';
+    case 'utility':
+      return 'border-border';
+    default:
+      return 'border-border';
   }
 }
 
