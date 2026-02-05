@@ -133,6 +133,22 @@ export const api = {
         })) || [],
     }),
 
+  streamAgentChat: (
+    agentId: string,
+    messages: Message[],
+    chatId?: string,
+  ): Response =>
+    createStreamingResponse("stream_agent_chat", {
+      agentId,
+      messages: messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+      chatId,
+    }),
+
   continueMessage: (
     messageId: string,
     chatId: string,

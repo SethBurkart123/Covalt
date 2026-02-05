@@ -11,6 +11,8 @@ interface PageTitleContextType {
   setRightContent: (content: ReactNode | null) => void;
   floating: boolean;
   setFloating: (value: boolean) => void;
+  rightOffset: number;
+  setRightOffset: (value: number) => void;
 }
 
 const PageTitleContext = createContext<PageTitleContextType | undefined>(undefined);
@@ -20,9 +22,10 @@ export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [leftContent, setLeftContent] = useState<ReactNode | null>(null);
   const [rightContent, setRightContent] = useState<ReactNode | null>(null);
   const [floating, setFloating] = useState(false);
+  const [rightOffset, setRightOffset] = useState(0);
   const value = useMemo(
-    () => ({ title, setTitle, leftContent, setLeftContent, rightContent, setRightContent, floating, setFloating }),
-    [title, leftContent, rightContent, floating]
+    () => ({ title, setTitle, leftContent, setLeftContent, rightContent, setRightContent, floating, setFloating, rightOffset, setRightOffset }),
+    [title, leftContent, rightContent, floating, rightOffset]
   );
 
   return (

@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ChatContextType, AllChatsData } from "@/lib/types/chat";
@@ -111,4 +109,8 @@ export function useChat() {
   const context = useContext(ChatContext);
   if (!context) throw new Error("useChat must be used within a ChatProvider");
   return context;
+}
+
+export function useOptionalChat() {
+  return useContext(ChatContext) ?? null;
 }

@@ -1,11 +1,18 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 
+const TRANSITION = {
+  type: "spring" as const,
+  stiffness: 231,
+  damping: 28,
+};
+
 export function Header() {
-  const { title, leftContent, rightContent, floating } = usePageTitle();
+  const { title, leftContent, rightContent, floating, rightOffset } = usePageTitle();
   const hasRightContent = rightContent != null;
   const left = leftContent != null ? (
     <>
@@ -21,7 +28,12 @@ export function Header() {
 
   if (floating) {
     return (
-      <header className="absolute inset-x-0 top-0 z-10 pointer-events-none p-4 flex items-start justify-between gap-4">
+      <motion.header
+        className="absolute inset-x-0 top-0 z-10 pointer-events-none p-4 flex items-start justify-between gap-4"
+        initial={false}
+        animate={{ paddingRight: rightOffset + 16 }}
+        transition={TRANSITION}
+      >
         <div className="pointer-events-auto flex items-center gap-2 min-w-0 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-border shadow-sm">
           <SidebarTrigger />
           {left}
@@ -31,7 +43,7 @@ export function Header() {
             {rightContent}
           </div>
         )}
-      </header>
+      </motion.header>
     );
   }
 

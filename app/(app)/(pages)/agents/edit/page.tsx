@@ -6,8 +6,10 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { FlowProvider, useSelection } from '@/lib/flow';
 import { FlowCanvas, PropertiesPanel } from '@/components/flow';
 import { AgentEditorProvider, useAgentEditor } from '@/contexts/agent-editor-context';
+import { AgentTestChatProvider, useAgentTestChat } from '@/contexts/agent-test-chat-context';
 import { usePageTitle } from '@/contexts/page-title-context';
 import { AgentEditorHeaderLeft, AgentEditorHeaderRight } from './AgentEditorHeader';
+import { AgentTestChatPanel } from './AgentTestChatPanel';
 import { AgentSettingsDialog } from './AgentSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { useCanvasPreview } from '@/hooks/use-canvas-preview';
@@ -17,6 +19,7 @@ function AgentEditorContent() {
   const { setLeftContent, setRightContent, setFloating } = usePageTitle();
   const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
   const { selectedNodeId } = useSelection();
+  const { isOpen: isChatOpen, toggle: toggleChat } = useAgentTestChat();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { captureAndUpload } = useCanvasPreview(agentId);
   const captureRef = useRef(captureAndUpload);
@@ -36,27 +39,26 @@ function AgentEditorContent() {
       <AgentEditorHeaderRight
         saveStatus={saveStatus}
         onOpenSettings={() => setSettingsOpen(true)}
+        onToggleChat={toggleChat}
+        isChatOpen={isChatOpen}
       />
     );
     return () => {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent]);
+  }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent, toggleChat, isChatOpen]);
 
-  // Keep ref current for cleanup
   useEffect(() => {
     captureRef.current = captureAndUpload;
   }, [captureAndUpload]);
 
-  // Capture preview on load (after graph renders and fits view)
   useEffect(() => {
     if (!agent || isLoading) return;
     const timer = setTimeout(() => captureAndUpload(), 800);
     return () => clearTimeout(timer);
   }, [agent, isLoading, captureAndUpload]);
 
-  // Capture preview on exit
   useEffect(() => {
     return () => {
       captureRef.current();
@@ -94,16 +96,19 @@ function AgentEditorContent() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 relative min-h-0">
-        <FlowCanvas />
-        {selectedNodeId && (
-          <div className="absolute top-20 right-4 w-80 z-10">
-            <PropertiesPanel />
-          </div>
-        )}
+    <div className="flex flex-row flex-1 min-h-0">
+      <div className="flex flex-col flex-1 min-h-0 min-w-0">
+        <div className="flex-1 relative min-h-0">
+          <FlowCanvas />
+          {selectedNodeId && (
+            <div className="absolute top-20 right-4 w-80 z-10">
+              <PropertiesPanel />
+            </div>
+          )}
+        </div>
+        <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </div>
-      <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <AgentTestChatPanel />
     </div>
   );
 }
@@ -133,10 +138,12 @@ export default function AgentEditorPage() {
   }
 
   return (
-    <FlowProvider>
-      <AgentEditorProvider agentId={agentId}>
-        <AgentEditorContent />
-      </AgentEditorProvider>
-    </FlowProvider>
+    <AgentTestChatProvider>
+      <FlowProvider>
+        <AgentEditorProvider agentId={agentId}>
+          <AgentEditorContent />
+        </AgentEditorProvider>
+      </FlowProvider>
+    </AgentTestChatProvider>
   );
 }
