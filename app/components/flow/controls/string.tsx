@@ -22,7 +22,7 @@ export function StringControl({ param, value, onChange, compact }: StringControl
       value={value ?? p.default ?? ''}
       onChange={handleChange}
       placeholder={p.placeholder}
-      className={compact ? 'h-7 text-xs' : 'h-8'}
+      className={compact ? 'h-7 text-xs w-full' : 'h-8 w-full'}
     />
   );
 }

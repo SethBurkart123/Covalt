@@ -1,10 +1,11 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bot, MoreHorizontal, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentInfo } from '@/python/api';
+import { agentFileUrl } from '@/python/api';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,23 @@ function parseIcon(icon: string | null | undefined): {
   return { type: 'emoji', value: icon };
 }
 
+function AgentIconImage({ agentId }: { agentId: string }) {
+  const [hasError, setHasError] = useState(false);
+  
+  if (hasError) {
+    return <Bot className="size-8 text-muted-foreground" />;
+  }
+  
+  return (
+    <img
+      src={agentFileUrl({ agentId, fileType: 'icon' })}
+      className="size-8 rounded object-cover"
+      alt=""
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId: string }) {
   const { type, value } = parseIcon(icon);
   
@@ -52,15 +70,32 @@ function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId
   }
   
   if (type === 'image') {
-    return (
-      <img
-        src={`/api/agents/${agentId}/icon`}
-        alt=""
-        className="size-8 rounded object-cover"
-      />
-    );
+    return <AgentIconImage agentId={agentId} />;
   }
   return <Bot className="size-8 text-muted-foreground" />;
+}
+
+function AgentPreview({ agent }: { agent: AgentInfo }) {
+  const [hasError, setHasError] = useState(false);
+  
+  const showFallback = !agent.previewImage || hasError;
+  
+  return (
+    <div className="aspect-video bg-muted/30 relative flex items-center justify-center">
+      {showFallback ? (
+        <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+          <AgentIcon icon={agent.icon} agentId={agent.id} />
+        </div>
+      ) : (
+        <img
+          src={agentFileUrl({ agentId: agent.id, fileType: 'preview' })}
+          alt={`${agent.name} preview`}
+          className="w-full h-full object-cover"
+          onError={() => setHasError(true)}
+        />
+      )}
+    </div>
+  );
 }
 
 function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
@@ -84,19 +119,7 @@ function AgentCardComponent({ agent, onDelete }: AgentCardProps) {
           'border-border hover:border-muted-foreground/50 hover:shadow-md'
         )}
       >
-        <div className="aspect-video bg-muted/30 relative flex items-center justify-center">
-          {agent.previewImage ? (
-            <img
-              src={`/api/agents/${agent.id}/preview`}
-              alt={`${agent.name} preview`}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <AgentIcon icon={agent.icon} agentId={agent.id} />
-            </div>
-          )}
-        </div>
+        <AgentPreview agent={agent} />
         <div className="p-3 space-y-1 bg-card">
           <div className="flex items-start gap-2">
             {!agent.previewImage && (

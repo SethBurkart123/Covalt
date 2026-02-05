@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { EmojiPickerPopover } from '@/components/ui/emoji-picker-popover';
 import { useAgentEditor } from '@/contexts/agent-editor-context';
 
 interface AgentSettingsDialogProps {
@@ -100,13 +101,11 @@ export function AgentSettingsDialog({
           </div>
           
           <div className="grid gap-2">
-            <Label htmlFor="settings-icon">Icon</Label>
-            <Input
-              id="settings-icon"
+            <Label>Icon</Label>
+            <EmojiPickerPopover
               value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              placeholder="Paste an emoji..."
-              className="text-xl"
+              onChange={setIcon}
+              placeholder="Pick an emoji..."
             />
           </div>
 

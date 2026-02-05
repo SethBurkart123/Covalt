@@ -27,7 +27,7 @@ export function EnumControl({ param, value, onChange, compact }: EnumControlProp
       value={value ?? p.default ?? p.values[0]}
       onValueChange={handleValueChange}
     >
-      <SelectTrigger className={compact ? 'h-7 text-xs' : 'h-8'}>
+      <SelectTrigger className={compact ? 'h-7 text-xs w-full' : 'h-8 w-full'}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

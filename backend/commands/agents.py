@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
-from zynk import UploadFile, command, upload
+from zynk import StaticFile, UploadFile, command, static, upload
 
 from ..services.agent_manager import get_agent_manager
 
@@ -238,3 +238,28 @@ async def upload_agent_preview(file: UploadFile, agent_id: str) -> Dict[str, boo
     if not success:
         raise ValueError(f"Agent '{agent_id}' not found")
     return {"success": True}
+
+
+@static
+async def agent_file(agent_id: str, file_type: Literal["icon", "preview"]) -> StaticFile:
+    """Serve agent files (icons and previews)."""
+    manager = get_agent_manager()
+    agent = manager.get_agent(agent_id)
+
+    if agent is None:
+        raise FileNotFoundError(f"Agent '{agent_id}' not found")
+
+    if file_type == "preview":
+        filename = agent.get("preview_image")
+    else:  # icon
+        icon = agent.get("icon", "")
+        filename = icon.replace("image:", "") if icon.startswith("image:") else None
+
+    if not filename:
+        raise FileNotFoundError(f"No {file_type} found for agent")
+
+    file_path = manager.get_agent_file_path(agent_id, filename)
+    if not file_path:
+        raise FileNotFoundError(f"File not found: {filename}")
+
+    return StaticFile(path=file_path)
