@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -10,13 +11,26 @@ import {
   type Node,
   type NodeTypes,
   type EdgeProps,
+  type OnConnectStartParams,
+  type FinalConnectionState,
   BackgroundVariant,
   Position,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { NODE_DEFINITIONS, SOCKET_TYPES, useFlow, type SocketTypeId } from '@/lib/flow';
+import { NODE_DEFINITIONS, SOCKET_TYPES, useFlow, getNodeDefinition, type SocketTypeId } from '@/lib/flow';
 import { FlowNode as FlowNodeComponent } from './node';
+import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
+import { cn } from '@/lib/utils';
+
+/** Info about a pending connection from dragging onto empty space */
+interface PendingConnection {
+  nodeId: string;
+  handleId: string;
+  handleType: 'source' | 'target';
+  socketType: SocketTypeId;
+}
 
 function buildNodeTypes(): NodeTypes {
   const types: NodeTypes = {};
@@ -183,7 +197,7 @@ const edgeTypes = {
   gradient: GradientEdge,
 };
 
-export function FlowCanvas() {
+function FlowCanvasInner() {
   const {
     nodes,
     edges,
@@ -192,6 +206,9 @@ export function FlowCanvas() {
     onConnect,
     isValidConnection,
     selectNode,
+    addNode,
+    removeNode,
+    updateNodePosition,
     undo,
     redo,
     canUndo,
@@ -199,16 +216,173 @@ export function FlowCanvas() {
     recordDragEnd,
   } = useFlow();
 
+  const { screenToFlowPosition } = useReactFlow();
+  const mousePositionRef = useRef({ x: 0, y: 0 });
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [addMenuPosition, setAddMenuPosition] = useState({ x: 0, y: 0 });
+  const [placingNodeId, setPlacingNodeId] = useState<string | null>(null);
+  const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingConnectionRef = useRef<PendingConnection | null>(null); // ref to avoid stale closures
+  const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter | null>(null);
+
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
+      if (placingNodeId) return;
       selectNode(selectedNodes.length > 0 ? selectedNodes[0].id : null);
     },
-    [selectNode]
+    [selectNode, placingNodeId]
   );
 
   const onNodeDragStop = useCallback(() => {
     recordDragEnd();
   }, [recordDragEnd]);
+
+  const onMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      mousePositionRef.current = { x: e.clientX, y: e.clientY };
+      if (placingNodeId) {
+        updateNodePosition(placingNodeId, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+      }
+    },
+    [placingNodeId, screenToFlowPosition, updateNodePosition]
+  );
+
+  // Left-click to confirm placement
+  useEffect(() => {
+    if (!placingNodeId) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('[data-add-node-menu]')) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      recordDragEnd();
+      setPlacingNodeId(null);
+      originalPositionRef.current = null;
+    };
+
+    window.addEventListener('mousedown', handleMouseDown, true); // capture before ReactFlow
+    return () => window.removeEventListener('mousedown', handleMouseDown, true);
+  }, [placingNodeId, recordDragEnd]);
+
+  const openAddMenu = useCallback((filter?: ConnectionFilter) => {
+    setAddMenuPosition(mousePositionRef.current);
+    setConnectionFilter(filter ?? null);
+    setIsAddMenuOpen(true);
+  }, []);
+
+  const getSocketTypeFromHandle = useCallback((nodeId: string, handleId: string): SocketTypeId | null => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+    const definition = getNodeDefinition(node.type || '');
+    if (!definition) return null;
+    const param = definition.parameters.find(p => p.id === handleId);
+    if (!param || !('socket' in param) || !param.socket) return null;
+    return param.socket.type as SocketTypeId;
+  }, [nodes]);
+
+  const handleConnectStart = useCallback(
+    (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+      if (!params.nodeId || !params.handleId || !params.handleType) return;
+      const socketType = getSocketTypeFromHandle(params.nodeId, params.handleId);
+      if (!socketType) return;
+      pendingConnectionRef.current = {
+        nodeId: params.nodeId,
+        handleId: params.handleId,
+        handleType: params.handleType,
+        socketType,
+      };
+    },
+    [getSocketTypeFromHandle]
+  );
+
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      const pending = pendingConnectionRef.current;
+      
+      if (connectionState.toHandle) {
+        pendingConnectionRef.current = null;
+        return;
+      }
+      
+      // Dropped on empty space - open filtered add menu (keep ref for handleAddNodeWithSocket)
+      if (pending && !connectionState.toNode) {
+        const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
+        const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
+        mousePositionRef.current = { x: clientX, y: clientY };
+        openAddMenu({ socketType: pending.socketType, needsInput: pending.handleType === 'source' });
+        return;
+      }
+      
+      pendingConnectionRef.current = null;
+    },
+    [openAddMenu]
+  );
+
+  const handleAddNode = useCallback(
+    (nodeType: string) => {
+      const flowPosition = screenToFlowPosition(mousePositionRef.current);
+      const newNodeId = addNode(nodeType, flowPosition);
+      selectNode(newNodeId);
+      originalPositionRef.current = flowPosition;
+      setPlacingNodeId(newNodeId);
+      pendingConnectionRef.current = null;
+      setConnectionFilter(null);
+    },
+    [addNode, selectNode, screenToFlowPosition]
+  );
+
+  const handleAddNodeWithSocket = useCallback(
+    (nodeType: string, socketId: string) => {
+      const pending = pendingConnectionRef.current;
+      if (!pending) return;
+      
+      const flowPosition = screenToFlowPosition(mousePositionRef.current);
+      const newNodeId = addNode(nodeType, flowPosition);
+      selectNode(newNodeId);
+      
+      const newNodeDef = getNodeDefinition(nodeType);
+      const newSocketParam = newNodeDef?.parameters.find(p => p.id === socketId);
+      const newSocketType: SocketTypeId = (newSocketParam as { socket?: { type: SocketTypeId } })?.socket?.type ?? 'agent';
+      
+      // Connect based on drag direction: source→target or target→source
+      if (pending.handleType === 'source') {
+        onConnect(
+          { source: pending.nodeId, sourceHandle: pending.handleId, target: newNodeId, targetHandle: socketId },
+          { sourceType: pending.socketType, targetType: newSocketType }
+        );
+      } else {
+        onConnect(
+          { source: newNodeId, sourceHandle: socketId, target: pending.nodeId, targetHandle: pending.handleId },
+          { sourceType: newSocketType, targetType: pending.socketType }
+        );
+      }
+      
+      pendingConnectionRef.current = null;
+      setConnectionFilter(null);
+    },
+    [addNode, selectNode, onConnect, screenToFlowPosition]
+  );
+
+  // Shift+A: add menu, Escape: cancel placement
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key.toLowerCase() === 'a' && !placingNodeId) {
+        e.preventDefault();
+        openAddMenu();
+      }
+      if (e.key === 'Escape' && placingNodeId) {
+        e.preventDefault();
+        removeNode(placingNodeId);
+        selectNode(null);
+        setPlacingNodeId(null);
+        originalPositionRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openAddMenu, placingNodeId, removeNode, selectNode]);
 
   // Cmd/Ctrl+Z for undo, Cmd/Ctrl+Shift+Z for redo
   useEffect(() => {
@@ -228,23 +402,47 @@ export function FlowCanvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, canUndo, canRedo]);
 
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+
+      // Cancel placement and restore original position
+      if (placingNodeId && originalPositionRef.current) {
+        updateNodePosition(placingNodeId, originalPositionRef.current);
+        recordDragEnd();
+        setPlacingNodeId(null);
+        originalPositionRef.current = null;
+        return;
+      }
+
+      if ((e.target as HTMLElement).closest('.react-flow__node')) return;
+      mousePositionRef.current = { x: e.clientX, y: e.clientY };
+      openAddMenu();
+    },
+    [openAddMenu, placingNodeId, recordDragEnd, updateNodePosition]
+  );
+
   return (
-    <div className="w-full h-full bg-background">
+    <div
+      className={cn('w-full h-full bg-background', placingNodeId && 'cursor-grabbing')}
+      onMouseMove={onMouseMove}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
         onSelectionChange={onSelectionChange}
         onNodeDragStop={onNodeDragStop}
+        onContextMenu={onContextMenu}
         connectionMode={ConnectionMode.Loose}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        snapToGrid
-        snapGrid={[16, 16]}
         defaultEdgeOptions={{
           type: 'gradient',
         }}
@@ -265,6 +463,27 @@ export function FlowCanvas() {
           maskColor="hsl(var(--background) / 0.7)"
         />
       </ReactFlow>
+
+      <AddNodeMenu
+        isOpen={isAddMenuOpen}
+        onClose={() => {
+          setIsAddMenuOpen(false);
+          pendingConnectionRef.current = null;
+          setConnectionFilter(null);
+        }}
+        position={addMenuPosition}
+        onSelect={handleAddNode}
+        connectionFilter={connectionFilter ?? undefined}
+        onSelectWithSocket={handleAddNodeWithSocket}
+      />
     </div>
+  );
+}
+
+export function FlowCanvas() {
+  return (
+    <ReactFlowProvider>
+      <FlowCanvasInner />
+    </ReactFlowProvider>
   );
 }

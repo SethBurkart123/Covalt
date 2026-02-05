@@ -8,6 +8,7 @@ export { FlowNode } from './node';
 export { PropertiesPanel } from './properties-panel';
 export { Socket } from './socket';
 export { ParameterRow } from './parameter-row';
+export { AddNodeMenu } from './add-node-menu';
 
 // Controls
 export { 

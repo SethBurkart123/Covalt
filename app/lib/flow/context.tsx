@@ -120,7 +120,7 @@ interface FlowContextValue {
 
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
-  onConnect: (connection: Connection) => void;
+  onConnect: (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => void;
   isValidConnection: (connection: Connection | Edge) => boolean;
 
   selectedNodeId: string | null;
@@ -130,6 +130,7 @@ interface FlowContextValue {
   addNode: (type: string, position: { x: number; y: number }) => string;
   removeNode: (id: string) => void;
   updateNodeData: (nodeId: string, paramId: string, value: unknown) => void;
+  updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
 
   loadGraph: (nodes: FlowNode[], edges: FlowEdge[], options?: { skipHistory?: boolean }) => void;
   clearGraph: (options?: { skipHistory?: boolean }) => void;
@@ -300,16 +301,17 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   );
 
   const onConnect = useCallback(
-    (connection: Connection) => {
+    (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
       pushHistory();
 
-      const sourceType = getSocketTypeForHandle(
+      // Use provided socket types or look them up from nodes
+      const sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
         nodes,
         connection.source || '',
         connection.sourceHandle,
         true
       );
-      const targetType = getSocketTypeForHandle(
+      const targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
         nodes,
         connection.target || '',
         connection.targetHandle,
@@ -407,6 +409,17 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     [setNodes, pushHistoryDebounced]
   );
 
+  const updateNodePosition = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      setNodes(nds =>
+        nds.map(node =>
+          node.id === nodeId ? { ...node, position } : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
   const loadGraph = useCallback(
     (newNodes: FlowNode[], newEdges: FlowEdge[], options?: { skipHistory?: boolean }) => {
       if (!options?.skipHistory) pushHistory();
@@ -467,6 +480,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       addNode,
       removeNode,
       updateNodeData,
+      updateNodePosition,
       loadGraph,
       clearGraph,
       getNode,
@@ -490,6 +504,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       addNode,
       removeNode,
       updateNodeData,
+      updateNodePosition,
       loadGraph,
       clearGraph,
       getNode,

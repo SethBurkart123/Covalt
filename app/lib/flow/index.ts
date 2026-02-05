@@ -39,11 +39,13 @@ export {
   getNodeDefinition,
   listNodeTypes,
   getNodesByCategory,
+  getCompatibleNodeSockets,
   createFlowNode,
   chatStart,
   agent,
   mcpServer,
   toolset,
 } from './nodes';
+export type { CompatibleNodeSocket } from './nodes';
 
 export { FlowProvider, useFlow } from './context';

@@ -3,7 +3,8 @@
  * Auto-registers all node definitions for the flow system.
  */
 
-import type { NodeDefinition, FlowNode } from '../types';
+import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from '../types';
+import { canConnect } from '../sockets';
 
 // Import all node definitions
 import { chatStart } from './chat-start';
@@ -59,6 +60,60 @@ export function createFlowNode(
     position,
     data,
   };
+}
+
+/** A node+socket pair that can be created from a connection */
+export interface CompatibleNodeSocket {
+  nodeId: string;
+  nodeName: string;
+  nodeIcon: string;
+  nodeCategory: NodeDefinition['category'];
+  socketId: string;
+  socketLabel: string;
+  socketType: SocketTypeId;
+}
+
+/**
+ * Get all node+socket pairs compatible with a given socket type.
+ * @param sourceType - The socket type being connected from
+ * @param needsInput - If true, find nodes with INPUT sockets; if false, find nodes with OUTPUT sockets
+ */
+export function getCompatibleNodeSockets(
+  sourceType: SocketTypeId,
+  needsInput: boolean
+): CompatibleNodeSocket[] {
+  const results: CompatibleNodeSocket[] = [];
+
+  for (const node of NODE_LIST) {
+    for (const param of node.parameters) {
+      const p = param as Parameter;
+      if (!p.socket) continue;
+
+      const isInput = p.mode === 'input' || p.mode === 'hybrid';
+      const isOutput = p.mode === 'output';
+      if (needsInput && !isInput) continue;
+      if (!needsInput && !isOutput) continue;
+
+      if (needsInput) {
+        if (!canConnect(sourceType, p)) continue;
+      } else {
+        // Reverse compatibility check: agent→tools is allowed
+        if (p.socket.type !== sourceType && !(p.socket.type === 'agent' && sourceType === 'tools')) continue;
+      }
+
+      results.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeIcon: node.icon,
+        nodeCategory: node.category,
+        socketId: p.id,
+        socketLabel: p.label,
+        socketType: p.socket.type,
+      });
+    }
+  }
+
+  return results;
 }
 
 // Re-export individual nodes for direct import
