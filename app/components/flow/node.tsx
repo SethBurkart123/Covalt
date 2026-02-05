@@ -5,7 +5,7 @@ import type { NodeProps } from '@xyflow/react';
 import { ChevronDown } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import type { NodeDefinition } from '@/lib/flow';
-import { getNodeDefinition, useFlow } from '@/lib/flow';
+import { getNodeDefinition, useFlowActions } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +30,7 @@ function getIcon(name: string) {
  * Renders any node type based on its definition from the registry.
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
-  const { updateNodeData, getConnectedInputs } = useFlow();
+  const { updateNodeData, getConnectedInputs } = useFlowActions();
 
   const handleParameterChange = useCallback(
     (paramId: string, value: unknown) => {
@@ -51,7 +51,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 
   const Icon = getIcon(definition.icon);
   const connectedInputs = getConnectedInputs(id);
-  
+
   return (
     <div
       className={cn(
@@ -59,7 +59,6 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
         selected ? 'border-primary' : 'border-border'
       )}
     >
-      {/* Header */}
       <div className={cn(
         'flex items-center gap-2 px-3 py-2 rounded-t-lg border-b',
         getCategoryColor(definition.category),
@@ -69,8 +68,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
         <Icon className="h-4 w-4" />
         <span className="text-sm font-medium truncate">{definition.name}</span>
       </div>
-      
-      {/* Body - render parameters in definition order */}
+
       <div className="py-1">
         {definition.parameters.map(param => (
           <ParameterRow
@@ -78,7 +76,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
             param={param}
             value={data[param.id]}
             isConnected={connectedInputs.has(param.id)}
-            onChange={(v) => handleParameterChange(param.id, v)}
+            onParamChange={handleParameterChange}
           />
         ))}
       </div>
@@ -102,5 +100,4 @@ function getCategoryColor(category: NodeDefinition['category']): string {
   }
 }
 
-// Memoize to prevent unnecessary re-renders
 export const FlowNode = memo(FlowNodeComponent);

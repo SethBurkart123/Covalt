@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo, memo } from 'react';
+import { useNodesData } from '@xyflow/react';
 import * as Icons from 'lucide-react';
 import type { Parameter } from '@/lib/flow';
-import { getNodeDefinition, useFlow } from '@/lib/flow';
+import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
 
 /** Get a Lucide icon component by name */
@@ -18,7 +19,12 @@ function getIcon(name: string) {
  * Consumes selection and node data from FlowContext.
  */
 export function PropertiesPanel() {
-  const { selectedNodeId, selectedNode, updateNodeData } = useFlow();
+  const { selectedNodeId } = useSelection();
+  const { updateNodeData } = useFlowActions();
+  
+  // Memoize the array to prevent useNodesData from re-subscribing every render
+  const nodeIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId]);
+  const [selectedNodeData] = useNodesData(nodeIds);
 
   const handleDataChange = useCallback(
     (paramId: string, value: unknown) => {
@@ -29,24 +35,22 @@ export function PropertiesPanel() {
     [selectedNodeId, updateNodeData]
   );
 
-  // No selection = no panel
-  if (!selectedNodeId || !selectedNode) {
+  if (!selectedNodeId || !selectedNodeData?.type) {
     return null;
   }
 
-  const definition = getNodeDefinition(selectedNode.type);
+  const definition = getNodeDefinition(selectedNodeData.type);
 
   if (!definition) {
     return (
       <div className="p-4 text-destructive text-sm">
-        Unknown node type: {selectedNode.type}
+        Unknown node type: {selectedNodeData.type}
       </div>
     );
   }
 
   const Icon = getIcon(definition.icon);
 
-  // Get parameters that should show in panel (constant and hybrid modes)
   const panelParams = definition.parameters.filter(
     p => p.mode === 'constant' || p.mode === 'hybrid'
   );
@@ -64,14 +68,13 @@ export function PropertiesPanel() {
         </div>
       </div>
 
-      {/* Parameters */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {panelParams.map(param => (
           <ParameterField
             key={param.id}
             param={param}
-            value={selectedNode.data[param.id]}
-            onChange={(value) => handleDataChange(param.id, value)}
+            value={selectedNodeData.data[param.id]}
+            onParamChange={handleDataChange}
           />
         ))}
 
@@ -88,10 +91,12 @@ export function PropertiesPanel() {
 interface ParameterFieldProps {
   param: Parameter;
   value: unknown;
-  onChange: (value: unknown) => void;
+  onParamChange: (paramId: string, value: unknown) => void;
 }
 
-function ParameterField({ param, value, onChange }: ParameterFieldProps) {
+const ParameterField = memo(function ParameterField({ param, value, onParamChange }: ParameterFieldProps) {
+  const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
+  
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-medium text-muted-foreground">
@@ -100,8 +105,8 @@ function ParameterField({ param, value, onChange }: ParameterFieldProps) {
       <ParameterControl
         param={param}
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
       />
     </div>
   );
-}
+});

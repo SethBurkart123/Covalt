@@ -48,4 +48,4 @@ export {
 } from './nodes';
 export type { CompatibleNodeSocket } from './nodes';
 
-export { FlowProvider, useFlow } from './context';
+export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection } from './context';

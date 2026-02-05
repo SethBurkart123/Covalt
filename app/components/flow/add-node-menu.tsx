@@ -61,13 +61,11 @@ export function AddNodeMenu({
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Get compatible node+socket pairs when in connection mode
   const compatibleSockets = useMemo(() => {
     if (!connectionFilter) return null;
     return getCompatibleNodeSockets(connectionFilter.socketType, connectionFilter.needsInput);
   }, [connectionFilter]);
 
-  // Group compatible sockets by category (for connection mode)
   const compatibleByCategory = useMemo(() => {
     if (!compatibleSockets) return null;
     
@@ -80,9 +78,8 @@ export function AddNodeMenu({
       .filter(group => group.items.length > 0);
   }, [compatibleSockets]);
 
-  // Group nodes by category (for normal mode)
   const nodesByCategory = useMemo(() => {
-    if (connectionFilter) return null; // Don't compute if in connection mode
+    if (connectionFilter) return null;
     
     const categories: NodeDefinition['category'][] = ['core', 'tools', 'data', 'utility'];
     return categories
@@ -93,11 +90,9 @@ export function AddNodeMenu({
       .filter(group => group.nodes.length > 0);
   }, [connectionFilter]);
 
-  // Filter based on search (works for both modes)
   const filteredGroups = useMemo(() => {
     const query = search.toLowerCase().trim();
     
-    // Connection mode: filter compatible sockets
     if (compatibleByCategory) {
       if (!query) return compatibleByCategory;
       
@@ -113,7 +108,6 @@ export function AddNodeMenu({
         .filter(group => group.items.length > 0);
     }
     
-    // Normal mode: filter nodes
     if (nodesByCategory) {
       if (!query) return nodesByCategory;
       
@@ -133,7 +127,6 @@ export function AddNodeMenu({
     return [];
   }, [compatibleByCategory, nodesByCategory, search]);
 
-  // Handle selection (normal mode)
   const handleSelect = useCallback(
     (nodeType: string) => {
       onSelect(nodeType);
@@ -143,7 +136,6 @@ export function AddNodeMenu({
     [onSelect, onClose]
   );
 
-  // Handle selection with socket (connection mode)
   const handleSelectWithSocket = useCallback(
     (nodeType: string, socketId: string) => {
       if (onSelectWithSocket) {
@@ -155,7 +147,6 @@ export function AddNodeMenu({
     [onSelectWithSocket, onClose]
   );
 
-  // Handle keyboard shortcuts
   useEffect(() => {
     if (!isOpen) return;
 
@@ -170,17 +161,14 @@ export function AddNodeMenu({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Focus input when opened
   useEffect(() => {
     if (isOpen) {
-      // Small delay to ensure menu is rendered
       setTimeout(() => {
         inputRef.current?.focus();
       }, 10);
     }
   }, [isOpen]);
 
-  // Handle click outside
   useEffect(() => {
     if (!isOpen) return;
 
@@ -190,7 +178,6 @@ export function AddNodeMenu({
       }
     };
 
-    // Delay to avoid immediate close from the trigger click
     const timeoutId = setTimeout(() => {
       window.addEventListener('mousedown', handleClickOutside);
     }, 100);
@@ -214,7 +201,6 @@ export function AddNodeMenu({
       }}
     >
       <Command className="flex flex-col overflow-hidden">
-        {/* Search Input */}
         <div className="flex items-center border-b border-border px-3">
           <Icons.SearchIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           <Command.Input
@@ -226,14 +212,12 @@ export function AddNodeMenu({
           />
         </div>
 
-        {/* Node List */}
         <Command.List className="max-h-80 flex-1 overflow-y-auto p-1">
           {filteredGroups.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
               {connectionFilter ? 'No compatible nodes' : 'No nodes found'}
             </div>
           ) : connectionFilter ? (
-            // Connection mode: show node → socket pairs
             (filteredGroups as { category: NodeDefinition['category']; items: ReturnType<typeof getCompatibleNodeSockets> }[]).map(group => {
               const categoryInfo = getCategoryInfo(group.category);
               return (
@@ -274,7 +258,6 @@ export function AddNodeMenu({
               );
             })
           ) : (
-            // Normal mode: show nodes
             (filteredGroups as { category: NodeDefinition['category']; nodes: NodeDefinition[] }[]).map(group => {
               const categoryInfo = getCategoryInfo(group.category);
               return (
