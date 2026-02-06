@@ -26,12 +26,7 @@ initBridge("http://127.0.0.1:8000");
 
 interface StreamingChatEvent {
   event: string;
-  content?: string;
-  sessionId?: string;
-  reasoningContent?: string;
-  tool?: unknown;
-  blocks?: unknown[];
-  error?: string;
+  [key: string]: unknown;
 }
 
 function createStreamingResponse(channelName: string, body: Record<string, unknown>): Response {
@@ -48,16 +43,8 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
 
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
-        const data: Record<string, unknown> = {};
 
-        if (rest.sessionId) data.sessionId = rest.sessionId;
-        if (typeof rest.content === "string") data.content = rest.content;
-        if (typeof rest.error === "string") data.error = rest.error;
-        if (typeof rest.reasoningContent === "string") data.reasoningContent = rest.reasoningContent;
-        if (rest.tool) data.tool = rest.tool;
-        if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
-
-        sendEvent(event || "RunContent", data);
+        sendEvent(event || "RunContent", rest);
 
         if (event === "RunCompleted" || event === "RunError") {
           controller.close();
@@ -137,6 +124,7 @@ export const api = {
     agentId: string,
     messages: Message[],
     chatId?: string,
+    ephemeral?: boolean,
   ): Response =>
     createStreamingResponse("stream_agent_chat", {
       agentId,
@@ -147,6 +135,7 @@ export const api = {
         createdAt: m.createdAt,
       })),
       chatId,
+      ephemeral: ephemeral ?? false,
     }),
 
   continueMessage: (

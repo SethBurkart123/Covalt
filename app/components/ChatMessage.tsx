@@ -4,6 +4,7 @@ import { memo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
+import MemberRunCall from "./MemberRunCall";
 import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
@@ -184,7 +185,8 @@ function ChatMessage({
 
                         if (
                           block.type === "tool_call" ||
-                          block.type === "reasoning"
+                          block.type === "reasoning" ||
+                          block.type === "member_run"
                         ) {
                           const start = i;
                           const group: ContentBlock[] = [];
@@ -194,7 +196,8 @@ function ChatMessage({
                             const b = blocks[j];
                             if (
                               b.type === "tool_call" ||
-                              b.type === "reasoning"
+                              b.type === "reasoning" ||
+                              b.type === "member_run"
                             ) {
                               group.push(b);
                               j++;
@@ -235,6 +238,19 @@ function ChatMessage({
                               return (
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
+                                  content={b.content}
+                                  isGrouped={group.length > 1}
+                                  isFirst={idx === 0}
+                                  isLast={idx === group.length - 1}
+                                  active={!b.isCompleted && !!isStreaming}
+                                  isCompleted={b.isCompleted}
+                                />
+                              );
+                            } else if (b.type === "member_run") {
+                              return (
+                                <MemberRunCall
+                                  key={b.runId || `member-${start}-${idx}`}
+                                  memberName={b.memberName}
                                   content={b.content}
                                   isGrouped={group.length > 1}
                                   isFirst={idx === 0}

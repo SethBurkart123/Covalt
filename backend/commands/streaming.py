@@ -4,11 +4,15 @@ import asyncio
 import json
 import traceback
 import uuid
+import copy
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from agno.agent import Agent, Message, RunEvent
 from agno.media import Audio, File, Image, Video
+from agno.run.agent import BaseAgentRunEvent
+from agno.run.team import BaseTeamRunEvent
 from agno.team import Team
 from agno.team.team import TeamRunEvent
 from pydantic import BaseModel
@@ -41,16 +45,50 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _TEAM_TO_RUN_EVENT: dict[TeamRunEvent, RunEvent] = {
-    getattr(TeamRunEvent, e.name): e
-    for e in RunEvent
-    if hasattr(TeamRunEvent, e.name)
+    getattr(TeamRunEvent, e.name): e for e in RunEvent if hasattr(TeamRunEvent, e.name)
 }
 
 
-def _normalize_event(event: RunEvent | TeamRunEvent) -> RunEvent | None:
+def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
+    """Normalize a TeamRunEvent or raw event string to its RunEvent equivalent."""
     if isinstance(event, RunEvent):
         return event
-    return _TEAM_TO_RUN_EVENT.get(event)
+    if isinstance(event, TeamRunEvent):
+        return _TEAM_TO_RUN_EVENT.get(event)
+    if isinstance(event, str):
+        try:
+            return RunEvent(event)
+        except ValueError:
+            pass
+        try:
+            return _TEAM_TO_RUN_EVENT.get(TeamRunEvent(event))
+        except ValueError:
+            pass
+    return None
+
+
+DELEGATION_TOOL_NAMES = {"delegate_task_to_member", "delegate_task_to_members"}
+
+
+def _is_delegation_tool(tool_name: str | None) -> bool:
+    return tool_name in DELEGATION_TOOL_NAMES
+
+
+def _is_member_event(chunk: Any) -> bool:
+    return isinstance(chunk, BaseAgentRunEvent)
+
+
+def _is_team_event(chunk: Any) -> bool:
+    return isinstance(chunk, BaseTeamRunEvent)
+
+
+@dataclass
+class MemberRunState:
+    run_id: str
+    name: str
+    block_index: int
+    current_text: str = ""
+    current_reasoning: str = ""
 
 
 registry = get_tool_registry()
@@ -492,8 +530,14 @@ async def handle_content_stream(
     assistant_msg_id: str,
     raw_ch: Any,
     chat_id: str = "",
+    ephemeral: bool = False,
 ):
     ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
+
+    def _noop_save(msg_id: str, content: str) -> None:
+        pass
+
+    _save = save_msg_content if not ephemeral else _noop_save
 
     agno_messages = []
     for msg in messages:
@@ -502,18 +546,206 @@ async def handle_content_stream(
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
 
-    run_input: Any = agno_messages if isinstance(agent, Agent) else agno_messages[-1].content
+    run_input: Any = (
+        agno_messages if isinstance(agent, Agent) else agno_messages[-1].content
+    )
     response_stream = agent.arun(
         input=run_input,
         stream=True,
         stream_events=True,
     )
 
-    content_blocks = load_initial_content(assistant_msg_id)
+    content_blocks = [] if ephemeral else load_initial_content(assistant_msg_id)
     current_text = ""
     current_reasoning = ""
     had_error = False
     run_id = None
+
+    active_delegation_tool_id: str | None = None
+    delegation_task: str = ""
+    member_runs: dict[str, MemberRunState] = {}
+
+    def _get_member_run(chunk: Any) -> MemberRunState:
+        rid = str(getattr(chunk, "run_id", "") or "")
+        if rid in member_runs:
+            ms = member_runs[rid]
+            name = getattr(chunk, "agent_name", "") or ""
+            if name:
+                ms.name = name
+                content_blocks[ms.block_index]["memberName"] = name
+            return ms
+
+        name = getattr(chunk, "agent_name", "") or "Member"
+        block = {
+            "type": "member_run",
+            "runId": rid,
+            "memberName": name,
+            "content": [],
+            "isCompleted": False,
+            "task": delegation_task,
+        }
+        content_blocks.append(block)
+        idx = len(content_blocks) - 1
+        ms = MemberRunState(run_id=rid, name=name, block_index=idx)
+        member_runs[rid] = ms
+        ch.send_model(
+            ChatEvent(
+                event="MemberRunStarted",
+                memberName=name,
+                memberRunId=rid,
+                task=delegation_task,
+            )
+        )
+        return ms
+
+    async def _handle_member_event(evt: RunEvent, chunk: Any):
+        ms = _get_member_run(chunk)
+        member_content = content_blocks[ms.block_index]["content"]
+        rid = ms.run_id
+        name = ms.name
+
+        def _make_event(**kwargs: Any) -> ChatEvent:
+            return ChatEvent(memberRunId=rid, memberName=name, **kwargs)
+
+        if evt == RunEvent.run_content:
+            if getattr(chunk, "reasoning_content", None):
+                text = chunk.reasoning_content
+                if ms.current_text and not ms.current_reasoning:
+                    member_content.append({"type": "text", "content": ms.current_text})
+                    ms.current_text = ""
+                ms.current_reasoning += text
+                ch.send_model(_make_event(event="ReasoningStep", reasoningContent=text))
+
+            if chunk.content:
+                text = chunk.content
+                if ms.current_reasoning and not ms.current_text:
+                    member_content.append(
+                        {
+                            "type": "reasoning",
+                            "content": ms.current_reasoning,
+                            "isCompleted": True,
+                        }
+                    )
+                    ms.current_reasoning = ""
+                ms.current_text += text
+                ch.send_model(_make_event(event="RunContent", content=text))
+
+            await asyncio.to_thread(_save, assistant_msg_id, save_state())
+
+        elif evt == RunEvent.reasoning_started:
+            if ms.current_text:
+                member_content.append({"type": "text", "content": ms.current_text})
+                ms.current_text = ""
+            ch.send_model(_make_event(event="ReasoningStarted"))
+
+        elif evt in (RunEvent.reasoning_step, RunEvent.reasoning_content_delta):
+            text = getattr(chunk, "reasoning_content", "") or ""
+            if text:
+                if ms.current_text:
+                    member_content.append({"type": "text", "content": ms.current_text})
+                    ms.current_text = ""
+                ms.current_reasoning += text
+                ch.send_model(_make_event(event="ReasoningStep", reasoningContent=text))
+                await asyncio.to_thread(_save, assistant_msg_id, save_state())
+
+        elif evt == RunEvent.reasoning_completed:
+            if ms.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": ms.current_reasoning,
+                        "isCompleted": True,
+                    }
+                )
+                ms.current_reasoning = ""
+            ch.send_model(_make_event(event="ReasoningCompleted"))
+            await asyncio.to_thread(_save, assistant_msg_id, save_state())
+
+        elif evt == RunEvent.tool_call_started:
+            if ms.current_text:
+                member_content.append({"type": "text", "content": ms.current_text})
+                ms.current_text = ""
+            if ms.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": ms.current_reasoning,
+                        "isCompleted": True,
+                    }
+                )
+                ms.current_reasoning = ""
+            member_content.append(
+                {
+                    "type": "tool_call",
+                    "id": chunk.tool.tool_call_id,
+                    "toolName": chunk.tool.tool_name,
+                    "toolArgs": chunk.tool.tool_args,
+                    "isCompleted": False,
+                }
+            )
+            ch.send_model(
+                _make_event(
+                    event="ToolCallStarted",
+                    tool={
+                        "id": chunk.tool.tool_call_id,
+                        "toolName": chunk.tool.tool_name,
+                        "toolArgs": chunk.tool.tool_args,
+                        "isCompleted": False,
+                    },
+                )
+            )
+
+        elif evt == RunEvent.tool_call_completed:
+            tool_result = (
+                str(chunk.tool.result) if chunk.tool.result is not None else None
+            )
+            for block in member_content:
+                if (
+                    block["type"] == "tool_call"
+                    and block.get("id") == chunk.tool.tool_call_id
+                ):
+                    block["isCompleted"] = True
+                    block["toolResult"] = tool_result
+                    break
+            ch.send_model(
+                _make_event(
+                    event="ToolCallCompleted",
+                    tool={
+                        "id": chunk.tool.tool_call_id,
+                        "toolName": chunk.tool.tool_name,
+                        "toolResult": tool_result,
+                    },
+                )
+            )
+            await asyncio.to_thread(_save, assistant_msg_id, save_state())
+
+        elif evt == RunEvent.run_completed:
+            pass
+
+    def _flush_all_member_runs():
+        for ms in member_runs.values():
+            member_content = content_blocks[ms.block_index]["content"]
+            if ms.current_text:
+                member_content.append({"type": "text", "content": ms.current_text})
+                ms.current_text = ""
+            if ms.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": ms.current_reasoning,
+                        "isCompleted": True,
+                    }
+                )
+                ms.current_reasoning = ""
+            content_blocks[ms.block_index]["isCompleted"] = True
+            ch.send_model(
+                ChatEvent(
+                    event="MemberRunCompleted",
+                    memberName=ms.name,
+                    memberRunId=ms.run_id,
+                )
+            )
+        member_runs.clear()
 
     def flush_text():
         nonlocal current_text
@@ -530,7 +762,7 @@ async def handle_content_stream(
             current_reasoning = ""
 
     def save_state():
-        temp = content_blocks.copy()
+        temp = copy.deepcopy(content_blocks)
         if current_text:
             temp.append({"type": "text", "content": current_text})
         if current_reasoning:
@@ -541,6 +773,22 @@ async def handle_content_stream(
                     "isCompleted": False,
                 }
             )
+        for ms in member_runs.values():
+            if (
+                ms.block_index < len(temp)
+                and temp[ms.block_index].get("type") == "member_run"
+            ):
+                member_content = temp[ms.block_index]["content"]
+                if ms.current_text:
+                    member_content.append({"type": "text", "content": ms.current_text})
+                if ms.current_reasoning:
+                    member_content.append(
+                        {
+                            "type": "reasoning",
+                            "content": ms.current_reasoning,
+                            "isCompleted": False,
+                        }
+                    )
         return json.dumps(temp)
 
     def save_final():
@@ -560,14 +808,17 @@ async def handle_content_stream(
                 if evt is None:
                     continue
 
+                if active_delegation_tool_id and _is_member_event(chunk):
+                    await _handle_member_event(evt, chunk)
+                    continue
+
                 if evt == RunEvent.run_cancelled:
                     flush_text()
                     flush_reasoning()
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-                    with db.db_session() as sess:
-                        db.mark_message_complete(sess, assistant_msg_id)
+                    await asyncio.to_thread(_save, assistant_msg_id, save_final())
+                    if not ephemeral:
+                        with db.db_session() as sess:
+                            db.mark_message_complete(sess, assistant_msg_id)
                     _active_runs.pop(assistant_msg_id, None)
                     ch.send_model(ChatEvent(event="RunCancelled"))
                     if chat_id:
@@ -586,9 +837,7 @@ async def handle_content_stream(
                                 reasoningContent=chunk.reasoning_content,
                             )
                         )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
+                        await asyncio.to_thread(_save, assistant_msg_id, save_state())
 
                     if chunk.content:
                         if current_reasoning and not current_text:
@@ -597,11 +846,18 @@ async def handle_content_stream(
                         ch.send_model(
                             ChatEvent(event="RunContent", content=chunk.content)
                         )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
+                        await asyncio.to_thread(_save, assistant_msg_id, save_state())
 
                 elif evt == RunEvent.tool_call_started:
+                    if _is_team_event(chunk) and _is_delegation_tool(
+                        chunk.tool.tool_name
+                    ):
+                        flush_text()
+                        flush_reasoning()
+                        active_delegation_tool_id = chunk.tool.tool_call_id
+                        delegation_task = (chunk.tool.tool_args or {}).get("task", "")
+                        continue
+
                     flush_text()
                     flush_reasoning()
                     ch.send_model(
@@ -617,6 +873,18 @@ async def handle_content_stream(
                     )
 
                 elif evt == RunEvent.tool_call_completed:
+                    if (
+                        active_delegation_tool_id
+                        and _is_team_event(chunk)
+                        and _is_delegation_tool(chunk.tool.tool_name)
+                        and chunk.tool.tool_call_id == active_delegation_tool_id
+                    ):
+                        _flush_all_member_runs()
+                        active_delegation_tool_id = None
+                        delegation_task = ""
+                        await asyncio.to_thread(_save, assistant_msg_id, save_final())
+                        continue
+
                     flush_text()
                     flush_reasoning()
 
@@ -659,9 +927,7 @@ async def handle_content_stream(
                     else:
                         content_blocks.append(tool_block)
                     ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
+                    await asyncio.to_thread(_save, assistant_msg_id, save_final())
 
                 elif evt == RunEvent.reasoning_started:
                     flush_text()
@@ -678,9 +944,7 @@ async def handle_content_stream(
                                 reasoningContent=chunk.reasoning_content,
                             )
                         )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
+                        await asyncio.to_thread(_save, assistant_msg_id, save_state())
 
                 elif evt == RunEvent.reasoning_completed:
                     flush_reasoning()
@@ -689,11 +953,10 @@ async def handle_content_stream(
                 elif evt == RunEvent.run_completed:
                     flush_text()
                     flush_reasoning()
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-                    with db.db_session() as sess:
-                        db.mark_message_complete(sess, assistant_msg_id)
+                    await asyncio.to_thread(_save, assistant_msg_id, save_final())
+                    if not ephemeral:
+                        with db.db_session() as sess:
+                            db.mark_message_complete(sess, assistant_msg_id)
                     ch.send_model(ChatEvent(event="RunCompleted"))
                     await ch.flush_broadcasts()
                     if chat_id:
@@ -714,9 +977,7 @@ async def handle_content_stream(
                             "timestamp": datetime.utcnow().isoformat(),
                         }
                     )
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
+                    await asyncio.to_thread(_save, assistant_msg_id, save_final())
                     ch.send_model(ChatEvent(event="RunError", content=error_msg))
                     had_error = True
                     await ch.flush_broadcasts()
@@ -760,9 +1021,7 @@ async def handle_content_stream(
                                 tool_info["editableArgs"] = editable_args
                             tools_info.append(tool_info)
 
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
+                        await asyncio.to_thread(_save, assistant_msg_id, save_state())
                         ch.send_model(
                             ChatEvent(
                                 event="ToolApprovalRequired",
@@ -823,9 +1082,7 @@ async def handle_content_stream(
                                 )
                             )
 
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
+                        await asyncio.to_thread(_save, assistant_msg_id, save_state())
 
                         if chat_id:
                             await broadcaster.update_stream_status(chat_id, "streaming")
@@ -851,7 +1108,7 @@ async def handle_content_stream(
         flush_text()
         flush_reasoning()
         try:
-            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
+            await asyncio.to_thread(_save, assistant_msg_id, save_final())
         except Exception as save_err:
             logger.error(f"[stream] Failed to save state on error: {save_err}")
 
@@ -861,7 +1118,7 @@ async def handle_content_stream(
 
     _active_runs.pop(assistant_msg_id, None)
 
-    if not had_error:
+    if not had_error and not ephemeral:
         with db.db_session() as sess:
             message = sess.get(db.Message, assistant_msg_id)
             if message and not message.is_complete:
@@ -1068,6 +1325,7 @@ class StreamAgentChatRequest(BaseModel):
     agentId: str
     messages: List[Dict[str, Any]]
     chatId: Optional[str] = None
+    ephemeral: bool = False
 
 
 @command
@@ -1089,30 +1347,42 @@ async def stream_agent_chat(
     agent_manager = get_agent_manager()
     agent_data = agent_manager.get_agent(body.agentId)
     if not agent_data:
-        channel.send_model(ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found"))
+        channel.send_model(
+            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        )
         return
 
-    chat_id = ensure_chat_initialized(body.chatId, None)
+    ephemeral = body.ephemeral
 
-    with db.db_session() as sess:
-        chat = sess.get(db.Chat, chat_id)
-        parent_id = chat.active_leaf_message_id if chat else None
+    if ephemeral:
+        chat_id = ""
+        assistant_msg_id = str(uuid.uuid4())
+    else:
+        chat_id = ensure_chat_initialized(body.chatId, None)
+        with db.db_session() as sess:
+            chat = sess.get(db.Chat, chat_id)
+            parent_id = chat.active_leaf_message_id if chat else None
+        if messages and messages[-1].role == "user":
+            save_user_msg(messages[-1], chat_id, parent_id)
+            parent_id = messages[-1].id
+        assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 
-    if messages and messages[-1].role == "user":
-        save_user_msg(messages[-1], chat_id, parent_id)
-        parent_id = messages[-1].id
-
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id))
-
-    assistant_msg_id = init_assistant_msg(chat_id, parent_id)
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id or None))
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        agent = build_agent_from_graph(agent_data["graph_data"], chat_id=chat_id)
+        agent = build_agent_from_graph(
+            agent_data["graph_data"], chat_id=chat_id or None
+        )
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
         await handle_content_stream(
-            agent, messages, assistant_msg_id, channel, chat_id=chat_id
+            agent,
+            messages,
+            assistant_msg_id,
+            channel,
+            chat_id=chat_id,
+            ephemeral=ephemeral,
         )
     except Exception as e:
         logger.error(f"[stream_agent] Error: {e}")
@@ -1122,33 +1392,34 @@ async def stream_agent_chat(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
 
-        error_block = {
-            "type": "error",
-            "content": str(e),
-            "traceback": traceback.format_exc(),
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, assistant_msg_id)
-                blocks = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    try:
-                        blocks = (
-                            json.loads(raw)
-                            if raw.startswith("[")
-                            else [{"type": "text", "content": message.content}]
-                        )
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                blocks.append(error_block)
-                db.update_message_content(
-                    sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-                )
-        except Exception as e2:
-            logger.error(f"[stream_agent] Failed to append error block: {e2}")
-            save_msg_content(assistant_msg_id, json.dumps([error_block]))
+        if not ephemeral:
+            error_block = {
+                "type": "error",
+                "content": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            try:
+                with db.db_session() as sess:
+                    message = sess.get(db.Message, assistant_msg_id)
+                    blocks = []
+                    if message and message.content:
+                        raw = message.content.strip()
+                        try:
+                            blocks = (
+                                json.loads(raw)
+                                if raw.startswith("[")
+                                else [{"type": "text", "content": message.content}]
+                            )
+                        except Exception:
+                            blocks = [{"type": "text", "content": message.content}]
+                    blocks.append(error_block)
+                    db.update_message_content(
+                        sess, messageId=assistant_msg_id, content=json.dumps(blocks)
+                    )
+            except Exception as e2:
+                logger.error(f"[stream_agent] Failed to append error block: {e2}")
+                save_msg_content(assistant_msg_id, json.dumps([error_block]))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
