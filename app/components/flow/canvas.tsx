@@ -10,6 +10,7 @@ import {
   type Node,
   type NodeTypes,
   type EdgeProps,
+  type ConnectionLineComponentProps,
   type OnConnectStartParams,
   type FinalConnectionState,
   BackgroundVariant,
@@ -188,6 +189,34 @@ const GradientEdge = memo(function GradientEdge({
     </>
   );
 });
+
+function CustomConnectionLine({
+  fromNode,
+  fromHandle,
+  fromX,
+  fromY,
+  toX,
+  toY,
+  fromPosition,
+  toPosition,
+}: ConnectionLineComponentProps) {
+  const definition = getNodeDefinition(fromNode.type || '');
+  const param = definition?.parameters.find(p => p.id === fromHandle.id);
+  const socketType = (param?.socket?.type ?? 'tools') as SocketTypeId;
+  const { p0, p1, p2, p3 } = getControlPoints(fromX, fromY, toX, toY, fromPosition, toPosition);
+
+  return (
+    <g>
+      <path
+        d={getBezierPathString(p0, p1, p2, p3)}
+        stroke={SOCKET_TYPES[socketType]?.color || '#f59e0b'}
+        strokeWidth={2}
+        fill="none"
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
 
 const edgeTypes = {
   gradient: GradientEdge,
@@ -438,6 +467,7 @@ function FlowCanvasInner() {
         edgeTypes={edgeTypes}
         fitView
         defaultEdgeOptions={defaultEdgeOptions}
+        connectionLineComponent={CustomConnectionLine}
         proOptions={{ hideAttribution: true }}
         panOnScroll
         zoomOnScroll={false}

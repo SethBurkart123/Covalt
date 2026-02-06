@@ -55,10 +55,11 @@ function TestChatInner() {
       className="overflow-hidden h-full shrink-0"
       initial={false}
       animate={{ width: isOpen ? effectiveWidth : 0 }}
-      transition={TRANSITION}
+      transition={isResizing ? { duration: 0 } : TRANSITION}
     >
       <div
         className="h-full bg-card/80 backdrop-blur-sm border-l border-border rounded-l-xl overflow-hidden relative"
+        style={{ width: effectiveWidth }}
       >
         <div
           className={cn(
@@ -131,6 +132,8 @@ function TestChatInner() {
                 models={[]}
                 canSendMessage={chat.canSendMessage}
                 onStop={chat.handleStop}
+                hideModelSelector
+                hideToolSelector
               />
             </div>
           </div>

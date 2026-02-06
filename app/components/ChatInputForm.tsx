@@ -25,6 +25,8 @@ interface LeftToolbarProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
+  hideModelSelector?: boolean;
+  hideToolSelector?: boolean;
 }
 
 const LeftToolbar = memo(function LeftToolbar({
@@ -32,6 +34,8 @@ const LeftToolbar = memo(function LeftToolbar({
   selectedModel,
   setSelectedModel,
   models,
+  hideModelSelector,
+  hideToolSelector,
 }: LeftToolbarProps) {
   return (
     <>
@@ -47,23 +51,27 @@ const LeftToolbar = memo(function LeftToolbar({
         </Button>
       </FileDropZoneTrigger>
 
-      <ModelSelector
-        selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
-        models={models}
-      />
+      {!hideModelSelector && (
+        <ModelSelector
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          models={models}
+        />
+      )}
 
-      <ToolSelector>
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon"
-          className="h-9 w-9 flex-shrink-0 rounded-full p-2"
-          disabled={isLoading}
-        >
-          <MoreHorizontal className="size-5" />
-        </Button>
-      </ToolSelector>
+      {!hideToolSelector && (
+        <ToolSelector>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+            disabled={isLoading}
+          >
+            <MoreHorizontal className="size-5" />
+          </Button>
+        </ToolSelector>
+      )}
     </>
   );
 });
@@ -115,6 +123,8 @@ interface ChatInputFormProps {
   models: ModelInfo[];
   canSendMessage?: boolean;
   onStop?: () => void;
+  hideModelSelector?: boolean;
+  hideToolSelector?: boolean;
 }
 
 const MAX_HEIGHT = 200;
@@ -135,6 +145,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     models,
     canSendMessage = true,
     onStop,
+    hideModelSelector,
+    hideToolSelector,
   }) => {
     const [input, setInput] = useState("");
     const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
@@ -455,6 +467,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
                 models={models}
+                hideModelSelector={hideModelSelector}
+                hideToolSelector={hideToolSelector}
               />
 
               <div className="flex-1" />
