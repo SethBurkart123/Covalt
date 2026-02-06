@@ -67,6 +67,7 @@ export type ContentBlock =
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
       editableArgs?: string[] | boolean;
       renderPlan?: RenderPlan;
+      isDelegation?: boolean;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | {

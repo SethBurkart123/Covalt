@@ -14,7 +14,7 @@ import { Header } from "./Header";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
 import "@/components/tool-renderers";
-import type { AllModelSettingsResponse } from "@/python/api";
+import type { AllModelSettingsResponse, AgentInfo } from "@/python/api";
 import type { Attachment, Message } from "@/lib/types/chat";
 
 export default function ChatPanel() {
@@ -23,6 +23,19 @@ export default function ChatPanel() {
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+
+  const handleAgentsLoaded = useCallback((loaded: AgentInfo[]) => {
+    setAgents(loaded);
+  }, []);
+
+  const hideToolSelector = useMemo(() => {
+    if (!selectedModel.startsWith("agent:")) return false;
+    const agentId = selectedModel.slice("agent:".length);
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return true;
+    return !agent.includeUserTools;
+  }, [selectedModel, agents]);
 
   useEffect(() => {
     getModelSettings()
@@ -181,6 +194,8 @@ export default function ChatPanel() {
                   models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
+                  hideToolSelector={hideToolSelector}
+                  onAgentsLoaded={handleAgentsLoaded}
                 />
               </div>
             </>
@@ -198,6 +213,8 @@ export default function ChatPanel() {
                   models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
+                  hideToolSelector={hideToolSelector}
+                  onAgentsLoaded={handleAgentsLoaded}
                 />
               </div>
             </div>

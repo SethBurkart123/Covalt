@@ -22,6 +22,13 @@ export const chatStart = {
       maxConnections: 1,
       onExceedMax: 'replace',
     },
+    {
+      id: 'includeUserTools',
+      type: 'boolean',
+      label: 'Include User Tools',
+      mode: 'constant',
+      default: false,
+    },
   ],
 } as const satisfies NodeDefinition;
 

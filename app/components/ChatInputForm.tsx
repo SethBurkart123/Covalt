@@ -11,6 +11,7 @@ import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
 import { LayoutGroup } from "framer-motion";
 import type { ModelInfo, AttachmentType, UploadingAttachment, Attachment } from "@/lib/types/chat";
+import type { AgentInfo } from "@/python/api";
 import { ToolSelector } from "@/components/ToolSelector";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
@@ -27,6 +28,7 @@ interface LeftToolbarProps {
   models: ModelInfo[];
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
+  onAgentsLoaded?: (agents: AgentInfo[]) => void;
 }
 
 const LeftToolbar = memo(function LeftToolbar({
@@ -36,6 +38,7 @@ const LeftToolbar = memo(function LeftToolbar({
   models,
   hideModelSelector,
   hideToolSelector,
+  onAgentsLoaded,
 }: LeftToolbarProps) {
   return (
     <>
@@ -56,6 +59,7 @@ const LeftToolbar = memo(function LeftToolbar({
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           models={models}
+          onAgentsLoaded={onAgentsLoaded}
         />
       )}
 
@@ -125,6 +129,7 @@ interface ChatInputFormProps {
   onStop?: () => void;
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
+  onAgentsLoaded?: (agents: AgentInfo[]) => void;
 }
 
 const MAX_HEIGHT = 200;
@@ -147,6 +152,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     onStop,
     hideModelSelector,
     hideToolSelector,
+    onAgentsLoaded,
   }) => {
     const [input, setInput] = useState("");
     const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
@@ -469,6 +475,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 models={models}
                 hideModelSelector={hideModelSelector}
                 hideToolSelector={hideToolSelector}
+                onAgentsLoaded={onAgentsLoaded}
               />
 
               <div className="flex-1" />

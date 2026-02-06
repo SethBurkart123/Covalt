@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Union
 
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
+from agno.team import Team
 
 from .. import db
 from .model_factory import get_model
@@ -15,13 +16,28 @@ _agent_db = InMemoryDb()
 def create_agent_for_chat(
     chat_id: str,
     tool_ids: List[str] = [],
-) -> Agent:
+) -> Union[Agent, Team]:
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             config = db.get_default_agent_config()
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         system_prompt = db.get_system_prompt_setting(sess)
+
+    agent_id = config.get("agent_id")
+    if agent_id:
+        from .agent_manager import get_agent_manager
+        from .graph_executor import build_agent_from_graph
+
+        agent_manager = get_agent_manager()
+        agent_data = agent_manager.get_agent(agent_id)
+        if agent_data:
+            result = build_agent_from_graph(
+                agent_data["graph_data"],
+                chat_id=chat_id,
+                extra_tool_ids=tool_ids or None,
+            )
+            return result.agent
 
     provider = config.get("provider", "openai")
     model_id = config.get("model_id")
