@@ -53,6 +53,7 @@ export function AddNodeMenu({
   const [hoveredItem, setHoveredItem] = useState<HoveredItem | null>(null);
   const [submenuTop, setSubmenuTop] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const browseInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const categoryRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,8 +169,13 @@ export function AddNodeMenu({
       setMode('browse');
       setHoveredCategory(null);
       setHoveredItem(null);
+    } else if (connectionFilter) {
+      setMode('search');
+      setTimeout(() => inputRef.current?.focus(), 10);
+    } else {
+      setTimeout(() => browseInputRef.current?.focus(), 10);
     }
-  }, [isOpen]);
+  }, [isOpen, connectionFilter]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -179,23 +185,10 @@ export function AddNodeMenu({
         if (mode === 'search') {
           setMode('browse');
           setSearch('');
+          setTimeout(() => browseInputRef.current?.focus(), 10);
         } else {
           onClose();
         }
-        return;
-      }
-      
-      if (mode === 'browse' && e.key === 'Enter') {
-        e.preventDefault();
-        setMode('search');
-        setTimeout(() => inputRef.current?.focus(), 10);
-        return;
-      }
-      
-      if (mode === 'browse' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        setMode('search');
-        setSearch(e.key);
-        setTimeout(() => inputRef.current?.focus(), 10);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -239,14 +232,28 @@ export function AddNodeMenu({
       {mode === 'browse' ? (
         <div className="w-44">
           <div
-            onClick={openSearch}
-            className={cn(
-              'flex h-9 cursor-pointer items-center gap-2 rounded-t-md border-b border-border px-3 text-sm',
-              'hover:bg-accent hover:text-accent-foreground'
-            )}
+            className="flex h-9 items-center gap-2 rounded-t-md border-b border-border px-3 text-sm"
           >
             <SearchIcon className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Search...</span>
+            <input
+              ref={browseInputRef}
+              placeholder="Search..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              onChange={(e) => {
+                if (e.target.value) {
+                  setMode('search');
+                  setSearch(e.target.value);
+                  setTimeout(() => inputRef.current?.focus(), 10);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  openSearch();
+                }
+              }}
+              value=""
+            />
           </div>
 
           <div className="overflow-hidden rounded-b-md">

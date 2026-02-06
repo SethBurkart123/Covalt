@@ -242,7 +242,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       };
 
       const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
-        if (isComposing || e.isComposing) return;
+        if (isComposing || e.isComposing || e.defaultPrevented) return;
 
         const activeElement = document.activeElement;
         const isInputFocused =
