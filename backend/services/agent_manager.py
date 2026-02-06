@@ -63,18 +63,32 @@ class AgentManager:
         """List all agents (for grid view, excludes graph_data)."""
         with db_session() as sess:
             agents = sess.query(Agent).order_by(Agent.updated_at.desc()).all()
-            return [
-                {
-                    "id": a.id,
-                    "name": a.name,
-                    "description": a.description,
-                    "icon": a.icon,
-                    "preview_image": a.preview_image,
-                    "created_at": a.created_at,
-                    "updated_at": a.updated_at,
-                }
-                for a in agents
-            ]
+            results = []
+            for a in agents:
+                include_user_tools = False
+                try:
+                    graph = json.loads(a.graph_data)
+                    for node in graph.get("nodes", []):
+                        if node.get("type") == "chat-start":
+                            include_user_tools = bool(
+                                node.get("data", {}).get("includeUserTools", False)
+                            )
+                            break
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                results.append(
+                    {
+                        "id": a.id,
+                        "name": a.name,
+                        "description": a.description,
+                        "icon": a.icon,
+                        "preview_image": a.preview_image,
+                        "include_user_tools": include_user_tools,
+                        "created_at": a.created_at,
+                        "updated_at": a.updated_at,
+                    }
+                )
+            return results
 
     def get_agent(self, agent_id: str) -> dict[str, Any] | None:
         """Get a single agent with full graph data."""

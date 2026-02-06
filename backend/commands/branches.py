@@ -90,7 +90,7 @@ async def continue_message(
     original_msg_id: Optional[str] = None
 
     with db.db_session() as sess:
-        if body.modelId:
+        if body.modelId and not body.modelId.startswith("agent:"):
             provider, model = parse_model_id(body.modelId)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider
@@ -220,7 +220,7 @@ async def retry_message(
 ) -> None:
     parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
-        if body.modelId:
+        if body.modelId and not body.modelId.startswith("agent:"):
             provider, model = parse_model_id(body.modelId)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider
@@ -328,7 +328,7 @@ async def edit_user_message(
     manifest_id: Optional[str] = None
 
     with db.db_session() as sess:
-        if body.modelId:
+        if body.modelId and not body.modelId.startswith("agent:"):
             provider, model = parse_model_id(body.modelId)
             config = db.get_chat_agent_config(sess, body.chatId) or {}
             config["provider"] = provider

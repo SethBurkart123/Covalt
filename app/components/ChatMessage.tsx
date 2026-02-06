@@ -212,7 +212,10 @@ function ChatMessage({
 
                           i = j - 1;
 
-                          const groupItems = group.map((b, idx) => {
+                          const groupItems = group.flatMap((b, idx) => {
+                            if (b.type === "tool_call" && b.isDelegation) {
+                              return [];
+                            }
                             if (b.type === "tool_call") {
                               return (
                                 <ToolCall

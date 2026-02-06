@@ -273,6 +273,11 @@ def load_attachments_as_agno_media(
 
 
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
+    agent_ref: str | None = None
+    if model_id and model_id.startswith("agent:"):
+        agent_ref = model_id[len("agent:") :]
+    effective_model_id = None if agent_ref else model_id
+
     if not chat_id:
         chat_id = str(uuid.uuid4())
         with db.db_session() as sess:
@@ -281,33 +286,37 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
                 sess,
                 id=chat_id,
                 title="New Chat",
-                model=model_id,
+                model=effective_model_id,
                 createdAt=now,
                 updatedAt=now,
             )
-            provider, model = parse_model_id(model_id)
+            provider, model = parse_model_id(effective_model_id)
             config = {
                 "provider": provider,
                 "model_id": model,
                 "tool_ids": db.get_default_tool_ids(sess),
                 "instructions": [],
             }
+            if agent_ref:
+                config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         return chat_id
 
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
-            provider, model = parse_model_id(model_id)
+            provider, model = parse_model_id(effective_model_id)
             config = {
                 "provider": provider,
                 "model_id": model,
                 "tool_ids": db.get_default_tool_ids(sess),
                 "instructions": [],
             }
+            if agent_ref:
+                config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-        elif model_id:
-            provider, model = parse_model_id(model_id)
+        elif effective_model_id:
+            provider, model = parse_model_id(effective_model_id)
             cur_provider = config.get("provider") or ""
             cur_model = config.get("model_id") or ""
             if (provider and provider != cur_provider) or (
@@ -317,7 +326,11 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
                     config["provider"] = provider
                 if model:
                     config["model_id"] = model
+                config.pop("agent_id", None)
                 db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+        elif agent_ref:
+            config["agent_id"] = agent_ref
+            db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
     return chat_id
 
@@ -547,14 +560,11 @@ async def handle_content_stream(
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
 
-    run_input: Any = (
-        agno_messages if isinstance(agent, Agent) else agno_messages[-1].content
-    )
-
     _active_runs[assistant_msg_id] = (None, agent)
 
     response_stream = agent.arun(
-        input=run_input,
+        input=agno_messages,
+        add_history_to_context=True,
         stream=True,
         stream_events=True,
     )
@@ -874,6 +884,16 @@ async def handle_content_stream(
                         flush_reasoning()
                         active_delegation_tool_id = chunk.tool.tool_call_id
                         delegation_task = (chunk.tool.tool_args or {}).get("task", "")
+                        content_blocks.append(
+                            {
+                                "type": "tool_call",
+                                "id": chunk.tool.tool_call_id,
+                                "toolName": chunk.tool.tool_name,
+                                "toolArgs": chunk.tool.tool_args,
+                                "isCompleted": False,
+                                "isDelegation": True,
+                            }
+                        )
                         continue
 
                     flush_text()
@@ -898,6 +918,19 @@ async def handle_content_stream(
                         and chunk.tool.tool_call_id == active_delegation_tool_id
                     ):
                         _flush_all_member_runs()
+                        tool_result = (
+                            str(chunk.tool.result)
+                            if chunk.tool.result is not None
+                            else None
+                        )
+                        for block in content_blocks:
+                            if (
+                                block.get("type") == "tool_call"
+                                and block.get("id") == active_delegation_tool_id
+                            ):
+                                block["isCompleted"] = True
+                                block["toolResult"] = tool_result
+                                break
                         active_delegation_tool_id = None
                         delegation_task = ""
                         await asyncio.to_thread(_save, assistant_msg_id, save_final())
@@ -1303,8 +1336,32 @@ async def stream_chat(
 
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
+    agent_id = None
+    if body.modelId and body.modelId.startswith("agent:"):
+        agent_id = body.modelId[len("agent:") :]
+
     try:
-        agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
+        if agent_id:
+            agent_manager = get_agent_manager()
+            agent_data = agent_manager.get_agent(agent_id)
+            if not agent_data:
+                raise ValueError(f"Agent '{agent_id}' not found")
+
+            result = build_agent_from_graph(
+                agent_data["graph_data"],
+                chat_id=chat_id,
+                extra_tool_ids=body.toolIds or None,
+            )
+            agent = result.agent
+
+            with db.db_session() as sess:
+                config = db.get_chat_agent_config(sess, chat_id)
+                if config:
+                    config["agent_id"] = agent_id
+                    db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+        else:
+            agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
+
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
         await handle_content_stream(
@@ -1397,13 +1454,13 @@ async def stream_agent_chat(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        agent = build_agent_from_graph(
+        result = build_agent_from_graph(
             agent_data["graph_data"], chat_id=chat_id or None
         )
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
         await handle_content_stream(
-            agent,
+            result.agent,
             messages,
             assistant_msg_id,
             channel,

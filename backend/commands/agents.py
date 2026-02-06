@@ -18,6 +18,7 @@ class AgentInfo(BaseModel):
     description: Optional[str] = None
     icon: Optional[str] = None
     preview_image: Optional[str] = None
+    include_user_tools: bool = False
     created_at: str
     updated_at: str
 
@@ -104,6 +105,7 @@ async def list_agents() -> AgentsListResponse:
                 description=a.get("description"),
                 icon=a.get("icon"),
                 preview_image=a.get("preview_image"),
+                include_user_tools=a.get("include_user_tools", False),
                 created_at=a["created_at"],
                 updated_at=a["updated_at"],
             )
@@ -241,7 +243,9 @@ async def upload_agent_preview(file: UploadFile, agent_id: str) -> Dict[str, boo
 
 
 @static
-async def agent_file(agent_id: str, file_type: Literal["icon", "preview"]) -> StaticFile:
+async def agent_file(
+    agent_id: str, file_type: Literal["icon", "preview"]
+) -> StaticFile:
     """Serve agent files (icons and previews)."""
     manager = get_agent_manager()
     agent = manager.get_agent(agent_id)
