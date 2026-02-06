@@ -5,13 +5,14 @@ import { useMessageEditing } from "@/lib/hooks/use-message-editing";
 import { createUserMessage, createAssistantMessage } from "@/lib/utils/message";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
-import type { Attachment, ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
+import type { Attachment, Message, MessageSibling } from "@/lib/types/chat";
 
 export function useTestChatInput(agentId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const editing = useMessageEditing();
   const streamingMessageIdRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<(() => void) | null>(null);
 
   const messageSiblings = useMemo<Record<string, MessageSibling[]>>(() => ({}), []);
   const canSendMessage = useMemo(() => !isLoading, [isLoading]);
@@ -25,15 +26,14 @@ export function useTestChatInput(agentId: string) {
     async (allMessages: Message[]) => {
       setIsLoading(true);
       try {
-        const response = api.streamAgentChat(agentId, allMessages, undefined, true);
+        const { response, abort } = api.streamAgentChat(agentId, allMessages, undefined, true);
+        streamAbortRef.current = abort;
         if (!response.ok) throw new Error(`Stream failed: ${response.statusText}`);
 
-        let streamingContent: ContentBlock[] = [];
         let assistantMsgId: string | null = null;
 
         const result = await processMessageStream(response, {
           onUpdate: (content) => {
-            streamingContent = content;
             if (assistantMsgId) {
               setMessages((prev) => {
                 const withoutStreaming = prev.filter((m) => m.id !== assistantMsgId);
@@ -69,6 +69,7 @@ export function useTestChatInput(agentId: string) {
       } finally {
         setIsLoading(false);
         streamingMessageIdRef.current = null;
+        streamAbortRef.current = null;
       }
     },
     [agentId],
@@ -90,12 +91,18 @@ export function useTestChatInput(agentId: string) {
 
   const handleStop = useCallback(async () => {
     const messageId = streamingMessageIdRef.current;
-    if (!messageId) return;
-    try {
-      await api.cancelRun(messageId);
-    } catch (error) {
-      console.error("Error cancelling run:", error);
+
+    streamAbortRef.current?.();
+    streamAbortRef.current = null;
+
+    if (messageId) {
+      try {
+        await api.cancelRun(messageId);
+      } catch (error) {
+        console.error("Error cancelling run:", error);
+      }
     }
+
     setIsLoading(false);
     streamingMessageIdRef.current = null;
   }, []);

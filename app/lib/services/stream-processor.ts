@@ -465,6 +465,7 @@ export function processEvent(
       break;
 
     case "RunCompleted":
+    case "RunCancelled":
       flushTextBlock(state);
       flushReasoningBlock(state);
       break;
