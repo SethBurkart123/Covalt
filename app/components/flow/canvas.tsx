@@ -240,8 +240,9 @@ function FlowCanvasInner() {
     recordDragEnd,
   } = useFlowActions();
 
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes } = useReactFlow();
   const mousePositionRef = useRef({ x: 0, y: 0 });
+  const isHoveringCanvasRef = useRef(false);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
@@ -337,9 +338,32 @@ function FlowCanvasInner() {
         return;
       }
       
-      if (pending && !connectionState.toNode) {
+      if (pending) {
         const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
         const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
+
+        const target = document.elementFromPoint(clientX, clientY);
+        const isInsideCanvas = target?.closest('.react-flow');
+        const isOverUI = target?.closest('.react-flow__controls, .react-flow__minimap, .react-flow__panel')
+          || !isInsideCanvas;
+
+        const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
+        const isOverNode = getNodes().some((n) => {
+          const w = n.measured?.width ?? n.width ?? 0;
+          const h = n.measured?.height ?? n.height ?? 0;
+          return (
+            flowPos.x >= n.position.x &&
+            flowPos.x <= n.position.x + w &&
+            flowPos.y >= n.position.y &&
+            flowPos.y <= n.position.y + h
+          );
+        });
+
+        if (isOverUI || isOverNode) {
+          pendingConnectionRef.current = null;
+          return;
+        }
+
         mousePositionRef.current = { x: clientX, y: clientY };
         openAddMenu({ socketType: pending.socketType, needsInput: pending.handleType === 'source' });
         return;
@@ -393,7 +417,19 @@ function FlowCanvasInner() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.shiftKey && e.key.toLowerCase() === 'a' && !placingNodeId) {
+      const active = document.activeElement;
+      const isInputFocused =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active?.getAttribute('contenteditable') === 'true';
+
+      if (
+        e.shiftKey &&
+        e.key.toLowerCase() === 'a' &&
+        !placingNodeId &&
+        !isInputFocused &&
+        isHoveringCanvasRef.current
+      ) {
         e.preventDefault();
         openAddMenu();
       }
@@ -449,6 +485,8 @@ function FlowCanvasInner() {
     <div
       className={cn('w-full h-full bg-background', placingNodeId && 'cursor-grabbing')}
       onMouseMove={onMouseMove}
+      onMouseEnter={() => { isHoveringCanvasRef.current = true; }}
+      onMouseLeave={() => { isHoveringCanvasRef.current = false; }}
     >
       <ReactFlow
         nodes={nodes}

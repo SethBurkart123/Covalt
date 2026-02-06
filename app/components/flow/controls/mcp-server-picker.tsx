@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { CheckIcon, ChevronDownIcon, Loader2, KeyRound, Plug, AlertCircle } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, Loader2, KeyRound, Plug, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMcpStatus, type McpServerStatus } from '@/contexts/websocket-context';
 import {
@@ -50,6 +50,7 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
   const [open, setOpen] = useState(false);
   const { mcpServers } = useMcpStatus();
   const [authenticatingId, setAuthenticatingId] = useState<string | null>(null);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -128,6 +129,19 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
       setAuthenticatingId(null);
     }
   }, [pollOauthStatus, stopPolling]);
+
+  const handleReconnect = useCallback(async (serverId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setReconnectingId(serverId);
+    try {
+      await reconnectMcpServer({ body: { id: serverId } });
+    } catch (error) {
+      console.error('Failed to reconnect:', error);
+    } finally {
+      setReconnectingId(null);
+    }
+  }, []);
 
   const connectedServers = mcpServers.filter(s => s.status === 'connected');
   const authRequiredServers = mcpServers.filter(s => s.status === 'requires_auth');
@@ -252,22 +266,50 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
             
             {otherServers.length > 0 && (
               <CommandGroup heading="Unavailable">
-                {otherServers.map((server) => (
-                  <CommandItem
-                    key={server.id}
-                    value={server.id}
-                    disabled
-                    className="opacity-50"
-                  >
-                    <span className="flex items-center gap-2 flex-1 min-w-0">
-                      {getStatusIcon(server.status)}
-                      <span className="truncate">{server.id}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {server.status === 'connecting' ? 'Connecting...' : server.status}
-                    </span>
-                  </CommandItem>
-                ))}
+                {otherServers.map((server) => {
+                  const isReconnecting = reconnectingId === server.id;
+                  const canRetry = server.status === 'error' || server.status === 'disconnected';
+
+                  return (
+                    <CommandItem
+                      key={server.id}
+                      value={server.id}
+                      disabled={!canRetry}
+                      className={cn(!canRetry && "opacity-50", "flex items-center justify-between")}
+                      onSelect={() => {}}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        {getStatusIcon(server.status)}
+                        <span className="truncate opacity-50">{server.id}</span>
+                      </span>
+                      {canRetry ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-6 text-xs px-2 ml-2"
+                          disabled={isReconnecting}
+                          onClick={(e) => handleReconnect(server.id, e)}
+                        >
+                          {isReconnecting ? (
+                            <>
+                              <Loader2 className="size-3 animate-spin mr-1" />
+                              Retrying...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="size-3 mr-1" />
+                              Retry
+                            </>
+                          )}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Connecting...
+                        </span>
+                      )}
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             )}
           </CommandList>
