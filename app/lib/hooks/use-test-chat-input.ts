@@ -10,7 +10,6 @@ import type { Attachment, ContentBlock, Message, MessageSibling } from "@/lib/ty
 export function useTestChatInput(agentId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [chatId, setChatId] = useState<string | null>(null);
   const editing = useMessageEditing();
   const streamingMessageIdRef = useRef<string | null>(null);
 
@@ -19,7 +18,6 @@ export function useTestChatInput(agentId: string) {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    setChatId(null);
     editing.clearEditing();
   }, [editing]);
 
@@ -27,7 +25,7 @@ export function useTestChatInput(agentId: string) {
     async (allMessages: Message[]) => {
       setIsLoading(true);
       try {
-        const response = api.streamAgentChat(agentId, allMessages, chatId ?? undefined);
+        const response = api.streamAgentChat(agentId, allMessages, undefined, true);
         if (!response.ok) throw new Error(`Stream failed: ${response.statusText}`);
 
         let streamingContent: ContentBlock[] = [];
@@ -46,7 +44,7 @@ export function useTestChatInput(agentId: string) {
               });
             }
           },
-          onSessionId: (id) => setChatId(id),
+          onSessionId: () => {},
           onMessageId: (id) => {
             assistantMsgId = id;
             streamingMessageIdRef.current = id;
@@ -73,7 +71,7 @@ export function useTestChatInput(agentId: string) {
         streamingMessageIdRef.current = null;
       }
     },
-    [agentId, chatId],
+    [agentId],
   );
 
   const handleSubmit = useCallback(
@@ -154,7 +152,7 @@ export function useTestChatInput(agentId: string) {
     isLoading,
     canSendMessage,
     messageSiblings,
-    chatId,
+    chatId: null as string | null,
     handleSubmit,
     handleStop,
     handleContinue,

@@ -16,7 +16,7 @@ class ToolCall(BaseModel):
 class ContentBlock(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
-    content: Optional[str] = None
+    content: Optional[Union[str, List["ContentBlock"]]] = None
     id: Optional[str] = None
     toolName: Optional[str] = None
     toolArgs: Optional[Dict[str, Any]] = None
@@ -101,6 +101,9 @@ class ChatEvent(BaseModel):
     error: Optional[str] = None
     blocks: Optional[List[Dict[str, Any]]] = None
     fileRenames: Optional[Dict[str, str]] = None
+    memberName: Optional[str] = None
+    memberRunId: Optional[str] = None
+    task: Optional[str] = None
 
 
 class ToolApprovalResponse(BaseModel):

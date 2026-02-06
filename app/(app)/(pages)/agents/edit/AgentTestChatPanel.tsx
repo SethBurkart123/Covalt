@@ -59,7 +59,6 @@ function TestChatInner() {
     >
       <div
         className="h-full bg-card/80 backdrop-blur-sm border-l border-border rounded-l-xl overflow-hidden relative"
-        style={{ width: effectiveWidth }}
       >
         <div
           className={cn(

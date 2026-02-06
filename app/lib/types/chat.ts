@@ -69,6 +69,14 @@ export type ContentBlock =
       renderPlan?: RenderPlan;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
+  | {
+      type: "member_run";
+      runId: string;
+      memberName: string;
+      content: ContentBlock[];
+      isCompleted: boolean;
+      task?: string;
+    }
   | { type: "error"; content: string };
 
 export interface Message {

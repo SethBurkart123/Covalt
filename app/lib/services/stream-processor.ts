@@ -17,6 +17,11 @@ interface ToolApprovalData {
   tools: ToolData[];
 }
 
+interface MemberBuffers {
+  currentTextBlock: string;
+  currentReasoningBlock: string;
+}
+
 export interface StreamCallbacks {
   onUpdate: (content: ContentBlock[]) => void;
   onSessionId?: (sessionId: string) => void;
@@ -29,6 +34,7 @@ export interface StreamState {
   currentTextBlock: string;
   currentReasoningBlock: string;
   thinkTagDetected: boolean;
+  memberStates: Map<string, MemberBuffers>;
 }
 
 export function createInitialState(): StreamState {
@@ -37,6 +43,7 @@ export function createInitialState(): StreamState {
     currentTextBlock: "",
     currentReasoningBlock: "",
     thinkTagDetected: false,
+    memberStates: new Map(),
   };
 }
 
@@ -58,8 +65,69 @@ function flushReasoningBlock(state: StreamState): void {
   }
 }
 
+type MemberRunBlock = Extract<ContentBlock, { type: "member_run" }>;
+
+function findMemberBlock(state: StreamState, runId: string): MemberRunBlock | null {
+  for (let i = state.contentBlocks.length - 1; i >= 0; i--) {
+    const b = state.contentBlocks[i];
+    if (b.type === "member_run" && b.runId === runId) return b;
+  }
+  return null;
+}
+
+function getMemberState(state: StreamState, runId: string): MemberBuffers {
+  let ms = state.memberStates.get(runId);
+  if (!ms) {
+    ms = { currentTextBlock: "", currentReasoningBlock: "" };
+    state.memberStates.set(runId, ms);
+  }
+  return ms;
+}
+
+function flushMemberText(block: MemberRunBlock, ms: MemberBuffers): void {
+  if (ms.currentTextBlock) {
+    block.content.push({ type: "text", content: ms.currentTextBlock });
+    ms.currentTextBlock = "";
+  }
+}
+
+function flushMemberReasoning(block: MemberRunBlock, ms: MemberBuffers): void {
+  if (ms.currentReasoningBlock) {
+    block.content.push({
+      type: "reasoning",
+      content: ms.currentReasoningBlock,
+      isCompleted: true,
+    });
+    ms.currentReasoningBlock = "";
+  }
+}
+
 function buildCurrentContent(state: StreamState): ContentBlock[] {
-  const content = [...state.contentBlocks];
+  const content: ContentBlock[] = [];
+
+  for (const block of state.contentBlocks) {
+    if (block.type === "member_run") {
+      const ms = state.memberStates.get(block.runId);
+      if (ms && (ms.currentTextBlock || ms.currentReasoningBlock)) {
+        const cloned: MemberRunBlock = { ...block, content: [...block.content] };
+        if (ms.currentTextBlock) {
+          cloned.content.push({ type: "text", content: ms.currentTextBlock });
+        }
+        if (ms.currentReasoningBlock) {
+          cloned.content.push({
+            type: "reasoning",
+            content: ms.currentReasoningBlock,
+            isCompleted: false,
+          });
+        }
+        content.push(cloned);
+      } else {
+        content.push(block);
+      }
+    } else {
+      content.push(block);
+    }
+  }
 
   if (state.currentTextBlock) {
     content.push({ type: "text", content: state.currentTextBlock });
@@ -172,7 +240,7 @@ function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
   const toolBlock = state.contentBlocks.find(
     (b) => b.type === "tool_call" && b.id === t.id,
   );
-  
+
   if (!toolBlock || toolBlock.type !== "tool_call") return;
 
   toolBlock.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
@@ -184,6 +252,139 @@ function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
   }
 }
 
+function processMemberEvent(
+  eventType: string,
+  d: Record<string, unknown>,
+  state: StreamState,
+): void {
+  const runId = d.memberRunId as string;
+  const memberName = (d.memberName as string) || "Member";
+
+  let block = findMemberBlock(state, runId);
+  if (!block) {
+    block = {
+      type: "member_run",
+      runId,
+      memberName,
+      content: [],
+      isCompleted: false,
+      task: (d.task as string) || "",
+    };
+    state.contentBlocks.push(block);
+  }
+
+  if (memberName && memberName !== "Member") {
+    block.memberName = memberName;
+  }
+
+  const ms = getMemberState(state, runId);
+
+  switch (eventType) {
+    case "RunContent": {
+      const text = (d.content as string) || "";
+      if (ms.currentReasoningBlock && !ms.currentTextBlock) {
+        flushMemberReasoning(block, ms);
+      }
+      ms.currentTextBlock += text;
+      break;
+    }
+
+    case "ReasoningStarted":
+      flushMemberText(block, ms);
+      break;
+
+    case "ReasoningStep": {
+      const text = (d.reasoningContent as string) || "";
+      if (text) {
+        if (ms.currentTextBlock && !ms.currentReasoningBlock) {
+          flushMemberText(block, ms);
+        }
+        ms.currentReasoningBlock += text;
+      }
+      break;
+    }
+
+    case "ReasoningCompleted":
+      flushMemberReasoning(block, ms);
+      break;
+
+    case "ToolCallStarted": {
+      flushMemberText(block, ms);
+      flushMemberReasoning(block, ms);
+      const t = d.tool as ToolData;
+      block.content.push({
+        type: "tool_call",
+        id: t.id,
+        toolName: t.toolName,
+        toolArgs: t.toolArgs,
+        isCompleted: false,
+      });
+      break;
+    }
+
+    case "ToolCallCompleted": {
+      const t = d.tool as ToolData;
+      const tc = block.content.find(
+        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
+          b.type === "tool_call" && b.id === t.id,
+      );
+      if (tc) {
+        tc.isCompleted = true;
+        tc.toolResult = t.toolResult;
+      }
+      break;
+    }
+  }
+}
+
+function handleMemberRunStarted(state: StreamState, d: Record<string, unknown>): void {
+  flushTextBlock(state);
+  flushReasoningBlock(state);
+
+  const runId = (d.memberRunId as string) || "";
+  const memberName = (d.memberName as string) || "Member";
+  const task = (d.task as string) || "";
+
+  if (runId && findMemberBlock(state, runId)) return;
+
+  state.contentBlocks.push({
+    type: "member_run",
+    runId,
+    memberName,
+    content: [],
+    isCompleted: false,
+    task,
+  });
+  getMemberState(state, runId);
+}
+
+function handleMemberRunCompleted(state: StreamState, d: Record<string, unknown>): void {
+  const runId = (d.memberRunId as string) || "";
+
+  if (runId) {
+    const block = findMemberBlock(state, runId);
+    if (block) {
+      const ms = getMemberState(state, runId);
+      flushMemberText(block, ms);
+      flushMemberReasoning(block, ms);
+      block.isCompleted = true;
+      state.memberStates.delete(runId);
+    }
+  } else {
+    for (const b of state.contentBlocks) {
+      if (b.type === "member_run" && !b.isCompleted) {
+        const ms = state.memberStates.get(b.runId);
+        if (ms) {
+          flushMemberText(b, ms);
+          flushMemberReasoning(b, ms);
+          state.memberStates.delete(b.runId);
+        }
+        b.isCompleted = true;
+      }
+    }
+  }
+}
+
 export function processEvent(
   eventType: string,
   data: unknown,
@@ -191,7 +392,13 @@ export function processEvent(
   callbacks: StreamCallbacks,
 ): void {
   const d = data as Record<string, unknown>;
-  
+
+  if (d.memberRunId && eventType !== "MemberRunStarted" && eventType !== "MemberRunCompleted") {
+    processMemberEvent(eventType, d, state);
+    scheduleUpdate(state, callbacks.onUpdate);
+    return;
+  }
+
   switch (eventType) {
     case "RunStarted":
       callbacks.onSessionId?.(d.sessionId as string);
@@ -247,6 +454,14 @@ export function processEvent(
 
     case "ToolApprovalResolved":
       handleToolApprovalResolved(state, d.tool);
+      break;
+
+    case "MemberRunStarted":
+      handleMemberRunStarted(state, d);
+      break;
+
+    case "MemberRunCompleted":
+      handleMemberRunCompleted(state, d);
       break;
 
     case "RunCompleted":
@@ -330,4 +545,3 @@ export async function processMessageStream(
 
   return { finalContent: buildCurrentContent(state), messageId };
 }
-
