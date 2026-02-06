@@ -29,8 +29,14 @@ interface StreamingChatEvent {
   [key: string]: unknown;
 }
 
-function createStreamingResponse(channelName: string, body: Record<string, unknown>): Response {
+export interface StreamHandle {
+  response: Response;
+  abort: () => void;
+}
+
+function createStreamingResponse(channelName: string, body: Record<string, unknown>): StreamHandle {
   const encoder = new TextEncoder();
+  const channel = createChannel<StreamingChatEvent>(channelName, { body });
 
   const stream = new ReadableStream<Uint8Array>({
     start: (controller) => {
@@ -39,14 +45,12 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      const channel = createChannel<StreamingChatEvent>(channelName, { body });
-
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
 
         sendEvent(event || "RunContent", rest);
 
-        if (event === "RunCompleted" || event === "RunError") {
+        if (event === "RunCompleted" || event === "RunError" || event === "RunCancelled") {
           controller.close();
           channel.close();
         }
@@ -60,13 +64,15 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
     },
   });
 
-  return new Response(stream, {
+  const response = new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
     },
   });
+
+  return { response, abort: () => channel.close() };
 }
 
 export const api = {
@@ -99,7 +105,7 @@ export const api = {
     chatId?: string,
     toolIds?: string[],
     attachments?: Attachment[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("stream_chat", {
       messages: messages.map((m) => ({
         id: m.id,
@@ -125,7 +131,7 @@ export const api = {
     messages: Message[],
     chatId?: string,
     ephemeral?: boolean,
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("stream_agent_chat", {
       agentId,
       messages: messages.map((m) => ({
@@ -143,7 +149,7 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("continue_message", {
       messageId,
       chatId,
@@ -156,7 +162,7 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("retry_message", {
       messageId,
       chatId,
@@ -172,7 +178,7 @@ export const api = {
     toolIds?: string[],
     existingAttachments?: Attachment[],
     newAttachments?: PendingAttachment[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("edit_user_message", {
       messageId,
       newContent,

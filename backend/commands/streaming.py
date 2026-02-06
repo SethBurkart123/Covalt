@@ -93,6 +93,7 @@ class MemberRunState:
 
 registry = get_tool_registry()
 _active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
+_cancelled_messages: set[str] = set()  # messages cancelled before run_id arrived
 
 
 def extract_error_message(error_content: str) -> str:
@@ -549,11 +550,23 @@ async def handle_content_stream(
     run_input: Any = (
         agno_messages if isinstance(agent, Agent) else agno_messages[-1].content
     )
+
+    _active_runs[assistant_msg_id] = (None, agent)
+
     response_stream = agent.arun(
         input=run_input,
         stream=True,
         stream_events=True,
     )
+
+    if assistant_msg_id in _cancelled_messages:
+        _cancelled_messages.discard(assistant_msg_id)
+        _active_runs.pop(assistant_msg_id, None)
+        ch.send_model(ChatEvent(event="RunCancelled"))
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+        return
 
     content_blocks = [] if ephemeral else load_initial_content(assistant_msg_id)
     current_text = ""
@@ -803,6 +816,11 @@ async def handle_content_stream(
                     logger.info(f"[stream] Captured run_id {run_id}")
                     if chat_id:
                         await broadcaster.update_stream_run_id(chat_id, run_id)
+
+                    if assistant_msg_id in _cancelled_messages:
+                        _cancelled_messages.discard(assistant_msg_id)
+                        logger.info(f"[stream] Early cancel detected for {run_id}")
+                        agent.cancel_run(run_id)
 
                 evt = _normalize_event(chunk.event)
                 if evt is None:
@@ -1117,6 +1135,7 @@ async def handle_content_stream(
             await broadcaster.unregister_stream(chat_id)
 
     _active_runs.pop(assistant_msg_id, None)
+    _cancelled_messages.discard(assistant_msg_id)
 
     if not had_error and not ephemeral:
         with db.db_session() as sess:
@@ -1159,14 +1178,21 @@ async def cancel_run(body: CancelRunRequest) -> dict:
 
     run_id, agent = _active_runs[body.messageId]
     try:
-        logger.info(
-            f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
-        )
-        agent.cancel_run(run_id)
+        if run_id:
+            logger.info(
+                f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
+            )
+            agent.cancel_run(run_id)
+        else:
+            logger.info(
+                f"[cancel_run] Flagging early cancel for message {body.messageId}"
+            )
+            _cancelled_messages.add(body.messageId)
+
         with db.db_session() as sess:
             db.mark_message_complete(sess, body.messageId)
         del _active_runs[body.messageId]
-        logger.info(f"[cancel_run] Successfully cancelled run {run_id}")
+        logger.info(f"[cancel_run] Successfully cancelled for message {body.messageId}")
         return {"cancelled": True}
     except Exception as e:
         logger.info(f"[cancel_run] Error cancelling run: {e}")

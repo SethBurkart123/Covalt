@@ -32,6 +32,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
 
   const streamingMessageIdRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<(() => void) | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
   const activeSubmissionChatIdRef = useRef<string | null>(null);
 
@@ -158,13 +159,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       let sessionId: string | null = null;
 
       try {
-        const response = await api.streamChat(
+        const { response, abort } = api.streamChat(
           newBaseMessages,
           selectedModel,
           chatId || undefined,
           activeToolIds,
           attachments.length > 0 ? attachments : undefined
         );
+        streamAbortRef.current = abort;
 
         if (!response.ok) throw new Error(`Failed to stream chat: ${response.statusText}`);
 
@@ -215,6 +217,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         }
       } finally {
         streamingMessageIdRef.current = null;
+        streamAbortRef.current = null;
         activeSubmissionChatIdRef.current = null;
       }
     },
@@ -230,7 +233,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       try {
         const currentModel = selectedModelRef.current || undefined;
-        const response = await api.continueMessage(messageId, chatId, currentModel, activeToolIds);
+        const { response, abort } = api.continueMessage(messageId, chatId, currentModel, activeToolIds);
+        streamAbortRef.current = abort;
         
         const result = await processMessageStream(response, {
           onUpdate: (content) => updateStreamContent(chatId, content),
@@ -265,7 +269,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       try {
         const currentModel = selectedModelRef.current || undefined;
-        const response = await api.retryMessage(messageId, chatId, currentModel, activeToolIds);
+        const { response, abort } = api.retryMessage(messageId, chatId, currentModel, activeToolIds);
+        streamAbortRef.current = abort;
         
         const result = await processMessageStream(response, {
           onUpdate: (content) => {
@@ -325,7 +330,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
     try {
       const currentModel = selectedModelRef.current || undefined;
-      const response = await api.editUserMessage(
+      const { response, abort } = api.editUserMessage(
         messageId,
         newContent,
         chatId,
@@ -334,6 +339,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         existingAttachments,
         newAttachments.length > 0 ? newAttachments : undefined
       );
+      streamAbortRef.current = abort;
       
       const result = await processMessageStream(response, {
         onUpdate: (content) => {
@@ -371,16 +377,22 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
   const handleStop = useCallback(async () => {
     const messageId = streamingMessageIdRef.current;
-    if (!messageId) return;
 
-    try {
-      const result = await api.cancelRun(messageId);
-      if (result.cancelled && chatId) {
-        await reloadMessages(chatId);
-        unregisterStream(chatId);
+    streamAbortRef.current?.();
+    streamAbortRef.current = null;
+
+    if (messageId) {
+      try {
+        await api.cancelRun(messageId);
+      } catch (error) {
+        console.error("Error cancelling run:", error);
       }
-    } catch (error) {
-      console.error("Error cancelling run:", error);
+    }
+
+    const finalChatId = activeSubmissionChatIdRef.current || chatId;
+    if (finalChatId) {
+      unregisterStream(finalChatId);
+      await reloadMessages(finalChatId).catch(() => {});
     }
 
     streamingMessageIdRef.current = null;
