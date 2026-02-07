@@ -212,10 +212,11 @@ function ChatMessage({
 
                           i = j - 1;
 
-                          const groupItems = group.flatMap((b, idx) => {
-                            if (b.type === "tool_call" && b.isDelegation) {
-                              return [];
-                            }
+                          const visibleGroup = group.filter(
+                            (b) => !(b.type === "tool_call" && b.isDelegation),
+                          );
+
+                          const groupItems = visibleGroup.map((b, idx) => {
                             if (b.type === "tool_call") {
                               return (
                                 <ToolCall
@@ -230,9 +231,9 @@ function ChatMessage({
                                   toolCallId={b.toolCallId}
                                   approvalStatus={b.approvalStatus}
                                   editableArgs={b.editableArgs}
-                                  isGrouped={group.length > 1}
+                                  isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
-                                  isLast={idx === group.length - 1}
+                                  isLast={idx === visibleGroup.length - 1}
                                   renderPlan={b.renderPlan}
                                   chatId={chatId}
                                 />
@@ -242,9 +243,9 @@ function ChatMessage({
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
                                   content={b.content}
-                                  isGrouped={group.length > 1}
+                                  isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
-                                  isLast={idx === group.length - 1}
+                                  isLast={idx === visibleGroup.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
                                   isCompleted={b.isCompleted}
                                 />
@@ -255,9 +256,9 @@ function ChatMessage({
                                   key={b.runId || `member-${start}-${idx}`}
                                   memberName={b.memberName}
                                   content={b.content}
-                                  isGrouped={group.length > 1}
+                                  isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
-                                  isLast={idx === group.length - 1}
+                                  isLast={idx === visibleGroup.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
                                   isCompleted={b.isCompleted}
                                 />
@@ -266,9 +267,9 @@ function ChatMessage({
                             return null;
                           });
 
-                          if (group.length === 1) {
+                          if (visibleGroup.length === 1) {
                             rendered.push(groupItems[0]);
-                          } else if (group.length > 1) {
+                          } else if (visibleGroup.length > 1) {
                             rendered.push(
                               <div
                                 key={`group-${start}`}
