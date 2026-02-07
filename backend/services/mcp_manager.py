@@ -37,6 +37,9 @@ def _extract_error_message(e: BaseException) -> str:
 
 StatusCallback = Callable[[str, ServerStatus, str | None, int], None]
 
+# Backoff delays (seconds) for auto-reconnecting servers that drop from "connected"
+AUTO_RECONNECT_DELAYS = [2, 15, 60]
+
 
 @dataclass
 class MCPServerState:
@@ -57,6 +60,8 @@ class MCPServerState:
     session: ClientSession | None = None
     _cleanup_task: asyncio.Task | None = None
     _connection_event: asyncio.Event = field(default_factory=asyncio.Event)
+    _retry_count: int = 0
+    _retry_task: asyncio.Task | None = None
     oauth_status: OAuthStatus = "none"
     oauth_provider_name: str | None = None
     auth_hint: str | None = None
@@ -245,15 +250,99 @@ class MCPManager:
         self, server_id: str, status: ServerStatus, error: str | None = None
     ) -> None:
         state = self._servers.get(server_id)
-        if state:
-            state.status = status
-            state.error = error
-            self._notify_status_change(
-                server_id,
-                status,
-                error,
-                len(state.tools) if status == "connected" else 0,
+        if not state:
+            return
+
+        prev_status = state.status
+        state.status = status
+        state.error = error
+        self._notify_status_change(
+            server_id,
+            status,
+            error,
+            len(state.tools) if status == "connected" else 0,
+        )
+
+        if status == "connected":
+            state._retry_count = 0
+            self._cancel_retry(state)
+        elif status == "disconnected":
+            state._retry_count = 0
+            self._cancel_retry(state)
+        elif status == "error" and prev_status == "connected":
+            self._schedule_auto_reconnect(server_id, state)
+
+    def _cancel_retry(self, state: MCPServerState) -> None:
+        if state._retry_task and not state._retry_task.done():
+            state._retry_task.cancel()
+        state._retry_task = None
+
+    def _schedule_auto_reconnect(self, server_id: str, state: MCPServerState) -> None:
+        if state._retry_count >= len(AUTO_RECONNECT_DELAYS):
+            return
+        self._cancel_retry(state)
+        state._retry_task = asyncio.create_task(self._auto_reconnect(server_id))
+
+    async def _auto_reconnect(self, server_id: str) -> None:
+        state = self._servers.get(server_id)
+        if not state:
+            return
+
+        while state._retry_count < len(AUTO_RECONNECT_DELAYS):
+            delay = AUTO_RECONNECT_DELAYS[state._retry_count]
+            state._retry_count += 1
+            attempt = state._retry_count
+
+            logger.info(
+                f"MCP server {server_id}: auto-reconnect attempt {attempt}/"
+                f"{len(AUTO_RECONNECT_DELAYS)} in {delay}s"
             )
+
+            await asyncio.sleep(delay)
+
+            if server_id not in self._servers:
+                return
+            if state.status == "connected":
+                return
+            if state.status == "disconnected":
+                return
+
+            try:
+                await self._do_reconnect(server_id)
+            except Exception as e:
+                logger.warning(
+                    f"MCP server {server_id}: auto-reconnect attempt "
+                    f"{attempt} failed: {e}"
+                )
+
+            if state.status == "connected":
+                logger.info(
+                    f"MCP server {server_id}: auto-reconnect succeeded "
+                    f"on attempt {attempt}"
+                )
+                return
+
+        logger.warning(
+            f"MCP server {server_id}: all {len(AUTO_RECONNECT_DELAYS)} "
+            f"auto-reconnect attempts exhausted"
+        )
+
+    async def _do_reconnect(self, server_id: str) -> None:
+        """Reconnect without cancelling the retry task (internal use)."""
+        state = self._servers.get(server_id)
+        if not state:
+            return
+
+        if state._cleanup_task and not state._cleanup_task.done():
+            state._cleanup_task.cancel()
+            try:
+                await state._cleanup_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        state.session = None
+        state.tools = []
+        await self._connect_server(server_id)
 
     async def _connect_server(self, server_id: str) -> None:
         state = self._servers.get(server_id)
@@ -529,6 +618,9 @@ class MCPManager:
         state = self._servers.get(server_id)
         if not state:
             raise ValueError(f"Unknown server: {server_id}")
+
+        self._cancel_retry(state)
+        state._retry_count = 0
 
         if state._cleanup_task and not state._cleanup_task.done():
             state._cleanup_task.cancel()
