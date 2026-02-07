@@ -37,8 +37,7 @@ def _extract_error_message(e: BaseException) -> str:
 
 StatusCallback = Callable[[str, ServerStatus, str | None, int], None]
 
-# Backoff delays (seconds) for auto-reconnecting servers that drop from "connected"
-AUTO_RECONNECT_DELAYS = [2, 15, 60]
+AUTO_RECONNECT_DELAYS = [1, 3, 10, 15, 60]
 
 
 @dataclass
