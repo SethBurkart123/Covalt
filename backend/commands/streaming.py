@@ -272,6 +272,18 @@ def load_attachments_as_agno_media(
     return images, files, audio, videos
 
 
+def update_chat_model_selection(sess, chat_id: str, model_id: str) -> None:
+    config = db.get_chat_agent_config(sess, chat_id) or {}
+    if model_id.startswith("agent:"):
+        config["agent_id"] = model_id[len("agent:") :]
+    else:
+        provider, model = parse_model_id(model_id)
+        config["provider"] = provider
+        config["model_id"] = model
+        config.pop("agent_id", None)
+    db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+
+
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
     agent_ref: str | None = None
     if model_id and model_id.startswith("agent:"):
@@ -315,22 +327,8 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
             if agent_ref:
                 config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-        elif effective_model_id:
-            provider, model = parse_model_id(effective_model_id)
-            cur_provider = config.get("provider") or ""
-            cur_model = config.get("model_id") or ""
-            if (provider and provider != cur_provider) or (
-                model and model != cur_model
-            ):
-                if provider:
-                    config["provider"] = provider
-                if model:
-                    config["model_id"] = model
-                config.pop("agent_id", None)
-                db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-        elif agent_ref:
-            config["agent_id"] = agent_ref
-            db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+        elif model_id:
+            update_chat_model_selection(sess, chat_id, model_id)
 
     return chat_id
 

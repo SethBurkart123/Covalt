@@ -49,7 +49,7 @@ export function useModels() {
     }
 
     const saved = localStorage.getItem("selectedModel");
-    if (saved && models.some((m) => `${m.provider}:${m.modelId}` === saved)) {
+    if (saved && (saved.startsWith("agent:") || models.some((m) => `${m.provider}:${m.modelId}` === saved))) {
       setSelectedModel(saved);
     } else {
       const defaultModel = models.find((m) => m.isDefault) || models[0];
@@ -76,7 +76,7 @@ export function useModels() {
       setModels(response.models);
       setConnectedProviders(response.connectedProviders || []);
       setCachedModels(response.models, response.connectedProviders || []);
-      selectModel(response.models);
+      if (!forceRefresh) selectModel(response.models);
     } catch (error) {
       console.error("Failed to load models:", error);
     } finally {
