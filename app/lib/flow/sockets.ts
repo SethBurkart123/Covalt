@@ -1,11 +1,11 @@
 // Socket type definitions and visual styles
 
-import type { SocketTypeId, Parameter } from './types';
+import type { SocketTypeId, SocketShape, Parameter } from './types';
 
 export interface SocketType {
   id: SocketTypeId;
   color: string;
-  shape: 'circle' | 'square' | 'diamond';
+  shape: SocketShape;
 }
 
 // Socket type registry - visual config only
@@ -59,8 +59,8 @@ export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): bo
 
 export function getSocketStyle(
   typeId: SocketTypeId,
-  overrides?: { color?: string; shape?: 'circle' | 'square' | 'diamond' }
-): { color: string; shape: 'circle' | 'square' | 'diamond' } {
+  overrides?: { color?: string; shape?: SocketShape }
+): { color: string; shape: SocketShape } {
   const base = SOCKET_TYPES[typeId];
   return {
     color: overrides?.color ?? base?.color ?? '#a1a1aa',

@@ -5,6 +5,7 @@
 
 
 export type {
+  SocketShape,
   SocketTypeId,
   ParameterType,
   ParameterMode,

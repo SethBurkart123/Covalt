@@ -6,6 +6,8 @@
 /** Socket type identifier - must match keys in SOCKET_TYPES */
 export type SocketTypeId = 'agent' | 'tools' | 'float' | 'int' | 'string' | 'boolean' | 'color';
 
+export type SocketShape = 'circle' | 'square' | 'diamond';
+
 /** Parameter types that the UI layer understands */
 export type ParameterType =
   | 'float'
@@ -35,7 +37,7 @@ export interface SocketConfig {
   side?: 'left' | 'right';  // Override default positioning (derived from mode if omitted)
   bidirectional?: boolean;  // Can be both source and target (for hub topology)
   color?: string;           // Override default color
-  shape?: 'circle' | 'square' | 'diamond';  // Override default shape
+  shape?: SocketShape;  // Override default shape
 }
 
 /** Base parameter definition */

@@ -41,6 +41,18 @@ function buildNodeTypes(): NodeTypes {
 
 const nodeTypes = buildNodeTypes();
 
+const EDGE_INSET = 5;
+
+function insetPoint(x: number, y: number, position: Position, amount: number): { x: number; y: number } {
+  switch (position) {
+    case Position.Right:  return { x: x - amount, y };
+    case Position.Left:   return { x: x + amount, y };
+    case Position.Bottom: return { x, y: y - amount };
+    case Position.Top:    return { x, y: y + amount };
+    default:              return { x, y };
+  }
+}
+
 function getControlPoints(
   sourceX: number,
   sourceY: number,
@@ -57,8 +69,8 @@ function getControlPoints(
   const horizontalDist = Math.abs(targetX - sourceX);
   const offset = Math.max(25, Math.min(horizontalDist * 0.5, 150));
 
-  const p0 = { x: sourceX, y: sourceY };
-  const p3 = { x: targetX, y: targetY };
+  const p0 = insetPoint(sourceX, sourceY, sourcePosition, EDGE_INSET);
+  const p3 = insetPoint(targetX, targetY, targetPosition, EDGE_INSET);
 
   let p1: { x: number; y: number };
   let p2: { x: number; y: number };
