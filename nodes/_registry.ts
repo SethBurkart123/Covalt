@@ -1,5 +1,5 @@
 import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from './_types';
-import { canConnect } from '@/lib/flow/sockets';
+import { canConnect, canCoerce } from '@/lib/flow/sockets';
 
 import { chatStart } from './core/chat_start/definition';
 import { agent } from './core/agent/definition';
@@ -81,8 +81,9 @@ export function getCompatibleNodeSockets(
       if (needsInput) {
         if (!canConnect(sourceType, p)) continue;
       } else {
-        // Reverse compatibility check: agent→tools is allowed
-        if (p.socket.type !== sourceType && !(p.socket.type === 'agent' && sourceType === 'tools')) continue;
+        // Reverse: we're dragging FROM an input, looking for compatible outputs.
+        // The output's type must be connectable to the input's type.
+        if (!canCoerce(p.socket.type, sourceType)) continue;
       }
 
       results.push({

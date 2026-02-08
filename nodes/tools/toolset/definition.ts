@@ -11,6 +11,7 @@ export const toolset = {
   description: 'Tools from an installed toolset',
   category: 'tools',
   icon: 'Package',
+  executionMode: 'structural',
   
   parameters: [
     // Config: which toolset to use

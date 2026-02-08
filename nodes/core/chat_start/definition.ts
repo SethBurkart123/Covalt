@@ -11,8 +11,10 @@ export const chatStart = {
   description: 'Entry point where user messages enter the graph',
   category: 'core',
   icon: 'MessageSquare',
-  
+  executionMode: 'hybrid',
+
   parameters: [
+    // Structural: topology link to root agent
     {
       id: 'agent',
       type: 'agent',
@@ -21,6 +23,14 @@ export const chatStart = {
       socket: { type: 'agent' },
       maxConnections: 1,
       onExceedMax: 'replace',
+    },
+    // Flow: emits user message into the pipeline
+    {
+      id: 'message',
+      type: 'string',
+      label: 'Message',
+      mode: 'output',
+      socket: { type: 'message' },
     },
     {
       id: 'includeUserTools',

@@ -26,13 +26,14 @@ export type {
   ColorParameter,
   JsonParameter,
   NodeCategory,
+  ExecutionMode,
   NodeDefinition,
   FlowNode,
   FlowEdge,
   FlowGraph,
 } from '@nodes/_types';
 
-export { SOCKET_TYPES, canConnect, getSocketStyle } from './sockets';
+export { SOCKET_TYPES, canConnect, canCoerce, getSocketStyle } from './sockets';
 export type { SocketType } from './sockets';
 
 export {

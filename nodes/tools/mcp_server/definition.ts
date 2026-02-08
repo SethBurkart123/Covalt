@@ -11,6 +11,7 @@ export const mcpServer = {
   description: 'Tools from an MCP server',
   category: 'tools',
   icon: 'Server',
+  executionMode: 'structural',
   
   parameters: [
     // Config: which MCP server to use

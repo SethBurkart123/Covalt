@@ -684,41 +684,112 @@ Verify: tokens stream in chat, conditional branches correctly, dead branch is sk
 
 ---
 
-## Phase 4: Hybrid Agent
+## Phase 4: Type Coercion, Execution Modes, and Hybrid Nodes
 
-### Step 4.1 — Add flow sockets to Agent definition
+Phase 4 addresses fundamental limitations that prevented nodes from participating in both structural composition and data flow pipelines.
 
-**EDIT: `nodes/core/agent/definition.ts`**
+### The Problems
 
-Add `messages_in` (input, type: message) and `messages_out` (output, type: message) parameters alongside the existing structural sockets.
+1. **Agent and Chat Start had no flow sockets** — they couldn't participate in data pipelines.
+2. **No type coercion** — `canConnect()` only did exact type match, so `text` couldn't connect to `string`.
+3. **Graph partitioning was socket-type-based** — naive and inflexible. `STRUCTURAL_SOCKET_TYPES = {"agent", "tools"}` decided which nodes were structural vs flow based on their edge types, not their capabilities.
+4. **No `executionMode` field** on NodeDefinition to declare how nodes participate.
 
-### Step 4.2 — Add `execute()` to Agent executor
+### Step 4.1 — Type Coercion System
 
-**EDIT: `nodes/core/agent/executor.py`**
+Two files, mirrored:
 
-Add the `execute()` method (the hybrid behavior). When the agent node has `messages_in` wired, it runs as a flow node:
+| File | Purpose |
+|------|---------|
+| `app/lib/flow/sockets.ts` | Editor-time: `IMPLICIT_COERCIONS` Set + `canCoerce()` function |
+| `nodes/_coerce.py` | Runtime: `COERCION_TABLE` dict with actual converter functions + `coerce()` |
+
+**Why two files?** The TypeScript side gates editor connections (can you draw this wire?). The Python side performs runtime conversion (transform the data before it reaches the target node). They must stay in sync.
+
+**Coercion table entries:**
+- Numeric widening: `int→float`
+- Primitives → string: `int→string`, `float→string`, `boolean→string`
+- string ↔ text: identity (same data, different semantic)
+- Structured → string/text: `json→string` (compact), `json→text` (pretty)
+- Message unpacking: `message→text`, `message→string`, `message→json`
+- Document unpacking: `document→text`, `document→json`
+- `any` wildcard: anything connects to `any`, `any` connects to anything
+
+**Key design decisions:**
+- **`acceptsTypes` overrides coercion.** If a parameter has `acceptsTypes`, only those exact types are allowed. If not, coercion is checked. This gives node authors precise control.
+- **Coercion is not transitive.** `int→string` and `string→text` doesn't imply `int→text`. Each path must be explicit. (Though `int→string` IS in the table.)
+- **Runtime coercion happens in `_gather_inputs()`** inside the flow engine. The edge's `data.targetType` tells the engine what the target expects.
+
+### Step 4.2 — `executionMode` on NodeDefinition
+
+**EDIT: `nodes/_types.ts`**
+
+```typescript
+export type ExecutionMode = 'structural' | 'flow' | 'hybrid';
+
+export interface NodeDefinition {
+  // ...existing fields...
+  executionMode: ExecutionMode;
+}
+```
+
+- `structural`: Build-time only. Has `build()`, no `execute()`. (MCP Server, Toolset)
+- `flow`: Runtime only. Has `execute()`, no `build()`. (LLM Completion, Prompt Template, Conditional)
+- `hybrid`: Both phases. Has `build()` AND `execute()`. (Agent, Chat Start)
+
+Every node definition now declares its mode. This is validated by `node-contracts.test.ts`.
+
+### Step 4.3 — Capability-Based Node Partitioning
+
+**REWRITE: `backend/services/flow_executor.py`**
+
+The old `partition_graph()` function inspected edge socket types to decide which nodes were structural vs flow. This was replaced by `find_flow_nodes()` which checks **executor capabilities**:
+
+```python
+def find_flow_nodes(nodes, executors):
+    """Return nodes whose executors have an execute() method."""
+    return [n for n in nodes if _is_flow_capable(n["type"], executors)]
+
+def _is_flow_capable(node_type, executors):
+    executor = _get_executor(node_type, executors)
+    return executor is not None and hasattr(executor, "execute")
+```
+
+**Why capability-based?** A node's participation in flow should depend on what it CAN DO, not what it's wired to. A hybrid node with only structural edges today might get flow edges tomorrow.
+
+**Edge filtering still uses socket types.** `STRUCTURAL_HANDLE_TYPES = {"agent", "tools"}` filters out structural edges for data routing. This is correct because structural edges genuinely carry different things (topology, tool composition) than flow edges (runtime data).
+
+### Step 4.4 — Hybrid Agent Node
+
+**EDIT: `nodes/core/agent/definition.ts`** — Added flow sockets:
+- `input` (input, type: `text`, accepts: `['text', 'string', 'message']`)
+- `response` (output, type: `text`)
+
+**EDIT: `nodes/core/agent/executor.py`** — Added `execute()` method:
 
 ```python
 async def execute(self, data, inputs, context):
-    messages = inputs["messages_in"].value
-    agent = context.agent or self.build(data, context).agent
-
-    async for event in agent.arun(messages, stream=True, stream_events=True):
-        yield NodeEvent(event_type="agent_event", data={"agno_event": event}, ...)
-
-    yield ExecutionResult(outputs={
-        "messages_out": DataValue(type="message", value=agent.run_response.content),
+    text = _extract_text(inputs.get("input", DataValue("text", "")))
+    agent = context.agent or _build_minimal_agent(data)
+    response = await agent.arun(text)
+    return ExecutionResult(outputs={
+        "response": DataValue(type="text", value=response.content),
     })
 ```
 
-### Step 4.3 — Verification
+### Step 4.5 — Hybrid Chat Start Node
 
-Build a hybrid flow:
-```
-Chat Start -> Prompt Template -> Agent (with MCP tools) -> Conditional -> ...
-```
+**EDIT: `nodes/core/chat_start/definition.ts`** — Added `message` output socket (type: `message`).
 
-The agent has tools wired structurally (Phase 1 builds them) and sits in a flow pipeline (Phase 2 runs it). Both phases work together.
+**EDIT: `nodes/core/chat_start/executor.py`** — Added `execute()` method that reads `context.state.user_message` and emits it as a `DataValue(type="message", value={"role": "user", "content": ...})`.
+
+### Step 4.6 — Verification
+
+Test counts after Phase 4:
+- Python: 83 passed (flow engine), 38 passed (coercion) = 121 total
+- TypeScript: 132 passed (up from 90)
+
+All flow engine integration tests pass with the new capability-based partitioning.
 
 ---
 

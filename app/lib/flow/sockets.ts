@@ -92,14 +92,60 @@ export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
   },
 } as const;
 
+// Implicit type coercion table.
+// Each entry means "source can safely connect to target without an explicit converter."
+// The coercion functions live in Python (nodes/_coerce.py) — this table is just for
+// editor-time validation. Keep both in sync.
+const IMPLICIT_COERCIONS = new Set<`${SocketTypeId}:${SocketTypeId}`>([
+  // Numeric widening
+  'int:float',
+
+  // Primitives → string
+  'int:string',
+  'float:string',
+  'boolean:string',
+
+  // string ↔ text are identity (same data, different semantic)
+  'string:text',
+  'text:string',
+
+  // Structured → string/text (serialize)
+  'json:string',
+  'json:text',
+
+  // Message unpacking
+  'message:text',
+  'message:string',
+  'message:json',
+
+  // Document unpacking
+  'document:text',
+  'document:json',
+]);
+
+/** Check if sourceType can implicitly coerce to targetType. */
+export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): boolean {
+  if (sourceType === targetType) return true;
+  if (targetType === 'any') return true;
+  if (sourceType === 'any') return true;
+  return IMPLICIT_COERCIONS.has(`${sourceType}:${targetType}`);
+}
+
+/**
+ * Can a source socket connect to a target parameter?
+ *
+ * Priority:
+ *   1. If the target has an explicit `acceptsTypes` list, only those types are allowed.
+ *   2. Otherwise, check exact match or implicit coercion.
+ */
 export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): boolean {
   const targetType = targetParam.socket?.type ?? (targetParam.type as SocketTypeId);
-  
+
   if (targetParam.acceptsTypes) {
     return targetParam.acceptsTypes.includes(sourceType);
   }
-  
-  return sourceType === targetType;
+
+  return canCoerce(sourceType, targetType);
 }
 
 export function getSocketStyle(

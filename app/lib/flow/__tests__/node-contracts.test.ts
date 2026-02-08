@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { NODE_DEFINITIONS } from '@nodes/_registry'
-import type { NodeDefinition, SocketTypeId, ParameterMode, NodeCategory } from '@nodes/_types'
+import type { NodeDefinition, SocketTypeId, ParameterMode, NodeCategory, ExecutionMode } from '@nodes/_types'
 
 const VALID_SOCKET_TYPES: SocketTypeId[] = [
   'agent', 'tools', 'float', 'int', 'string', 'boolean', 'color',
@@ -8,6 +8,7 @@ const VALID_SOCKET_TYPES: SocketTypeId[] = [
 ]
 const VALID_MODES: ParameterMode[] = ['constant', 'hybrid', 'input', 'output']
 const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility', 'ai', 'flow', 'integration', 'rag']
+const VALID_EXECUTION_MODES: ExecutionMode[] = ['structural', 'flow', 'hybrid']
 
 const nodeEntries = Object.entries(NODE_DEFINITIONS)
 
@@ -59,5 +60,9 @@ describe('node contracts', () => {
         expect(param.mode).not.toBe('constant')
       }
     }
+  })
+
+  it.each(nodeEntries)('%s has a valid executionMode', (_id, node: NodeDefinition) => {
+    expect(VALID_EXECUTION_MODES).toContain(node.executionMode)
   })
 })
