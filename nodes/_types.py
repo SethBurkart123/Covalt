@@ -1,0 +1,123 @@
+"""Node executor protocol and runtime types."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Protocol
+import time
+
+
+# ── Runtime data ────────────────────────────────────────────────────
+
+
+@dataclass
+class DataValue:
+    """What flows through edges at runtime."""
+
+    type: str  # matches SocketTypeId
+    value: Any
+
+
+@dataclass
+class BinaryRef:
+    """Pointer to large content stored on disk."""
+
+    ref: str
+    mime_type: str
+    size: int
+    filename: str | None = None
+
+
+# ── Events ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class NodeEvent:
+    """Emitted by nodes during execution. Powers the chat UI + canvas."""
+
+    node_id: str
+    node_type: str
+    event_type: str  # started | progress | completed | error | agent_event
+    run_id: str = ""
+    data: dict[str, Any] | None = None
+    timestamp: float = field(default_factory=time.time)
+
+
+# ── Execution result ────────────────────────────────────────────────
+
+
+@dataclass
+class ExecutionResult:
+    """What execute() returns. Outputs dict = which output ports have values."""
+
+    outputs: dict[str, DataValue]
+    events: list[NodeEvent] = field(default_factory=list)
+
+
+# ── Structural result types ─────────────────────────────────────────
+
+
+@dataclass
+class ToolsResult:
+    tools: list[Any]
+
+
+@dataclass
+class AgentResult:
+    agent: Any  # Agent | Team
+
+
+@dataclass
+class MetadataResult:
+    metadata: dict[str, Any]
+
+
+StructuralResult = ToolsResult | AgentResult | MetadataResult
+
+
+# ── Contexts ────────────────────────────────────────────────────────
+
+
+@dataclass
+class BuildContext:
+    """Provided to structural executors during Phase 1."""
+
+    node_id: str
+    chat_id: str | None
+    tool_sources: list[dict[str, Any]]
+    sub_agents: list[Any]
+    tool_registry: Any
+
+
+@dataclass
+class FlowContext:
+    """Provided to flow executors during Phase 2."""
+
+    node_id: str
+    chat_id: str | None
+    run_id: str
+    state: Any  # FlowState
+    agent: Any | None  # Agent | Team built in Phase 1
+    tool_registry: Any
+
+
+# ── Executor protocol ───────────────────────────────────────────────
+
+
+class StructuralExecutor(Protocol):
+    node_type: str
+
+    def build(
+        self, data: dict[str, Any], context: BuildContext
+    ) -> StructuralResult: ...
+
+
+class FlowExecutor(Protocol):
+    node_type: str
+
+    async def execute(
+        self,
+        data: dict[str, Any],
+        inputs: dict[str, DataValue],
+        context: FlowContext,
+    ) -> ExecutionResult | AsyncIterator[NodeEvent | ExecutionResult]: ...

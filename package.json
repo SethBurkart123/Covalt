@@ -11,7 +11,9 @@
     "build": "next build",
     "start": "next start -p 4096",
     "build:backend": "export SDKROOT=$(xcrun --show-sdk-path) && nuitka main.py --include-package=fastapi --onefile",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/groq": "^1.2.8",
@@ -76,6 +78,8 @@
     "eslint-config-next": "15.3.1",
     "tailwindcss": "^4",
     "typescript": "~5.8.3",
+    "vite-tsconfig-paths": "^6.1.0",
+    "vitest": "^4.0.18",
     "wait-on": "^8.0.1"
   }
 }

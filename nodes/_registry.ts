@@ -1,10 +1,10 @@
-import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from '../types';
-import { canConnect } from '../sockets';
+import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from './_types';
+import { canConnect } from '@/lib/flow/sockets';
 
-import { chatStart } from './chat-start';
-import { agent } from './agent';
-import { mcpServer } from './mcp-server';
-import { toolset } from './toolset';
+import { chatStart } from './core/chat_start/definition';
+import { agent } from './core/agent/definition';
+import { mcpServer } from './tools/mcp_server/definition';
+import { toolset } from './tools/toolset/definition';
 
 const NODE_LIST = [chatStart, agent, mcpServer, toolset] as const;
 

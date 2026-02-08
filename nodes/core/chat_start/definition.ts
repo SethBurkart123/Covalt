@@ -3,7 +3,7 @@
  * Entry point for user messages. Connects to an Agent node.
  */
 
-import type { NodeDefinition } from '../types';
+import type { NodeDefinition } from '../../_types';
 
 export const chatStart = {
   id: 'chat-start',

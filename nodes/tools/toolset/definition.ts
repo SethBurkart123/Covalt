@@ -3,7 +3,7 @@
  * Provides tools from an installed toolset.
  */
 
-import type { NodeDefinition } from '../types';
+import type { NodeDefinition } from '../../_types';
 
 export const toolset = {
   id: 'toolset',
