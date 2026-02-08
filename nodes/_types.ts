@@ -169,6 +169,15 @@ export type Parameter =
 /** Node category for palette organization */
 export type NodeCategory = 'core' | 'tools' | 'ai' | 'flow' | 'data' | 'integration' | 'rag' | 'utility';
 
+/**
+ * How a node participates in graph execution.
+ *
+ * - `structural`: Build-time only. Has build(), no execute(). (MCP Server, Toolset)
+ * - `flow`:       Runtime only. Has execute(), no build(). (LLM Completion, Conditional)
+ * - `hybrid`:     Both phases. Has build() AND execute(). (Agent, Chat Start)
+ */
+export type ExecutionMode = 'structural' | 'flow' | 'hybrid';
+
 /** Complete node definition */
 export interface NodeDefinition {
   id: string;
@@ -176,6 +185,7 @@ export interface NodeDefinition {
   description?: string;
   category: NodeCategory;
   icon: string;  // Lucide icon name
+  executionMode: ExecutionMode;
   parameters: readonly Parameter[];
 }
 

@@ -88,10 +88,18 @@ function getCategoryColor(category: NodeDefinition['category']): string {
   switch (category) {
     case 'core':
       return 'bg-primary/20 text-primary-foreground';
+    case 'ai':
+      return 'bg-violet-500/20 text-violet-950 dark:text-violet-100';
+    case 'flow':
+      return 'bg-rose-500/20 text-rose-950 dark:text-rose-100';
     case 'tools':
       return 'bg-amber-500/20 text-amber-950 dark:text-amber-100';
     case 'data':
       return 'bg-blue-500/20 text-blue-950 dark:text-blue-100';
+    case 'integration':
+      return 'bg-cyan-500/20 text-cyan-950 dark:text-cyan-100';
+    case 'rag':
+      return 'bg-lime-500/20 text-lime-950 dark:text-lime-100';
     case 'utility':
       return 'bg-muted';
     default:
@@ -104,10 +112,18 @@ function getCategoryBorderColor(category: NodeDefinition['category']): string {
   switch (category) {
     case 'core':
       return 'border-primary/20';
+    case 'ai':
+      return 'border-violet-500/20';
+    case 'flow':
+      return 'border-rose-500/20';
     case 'tools':
       return 'border-amber-500/20';
     case 'data':
       return 'border-blue-500/20';
+    case 'integration':
+      return 'border-cyan-500/20';
+    case 'rag':
+      return 'border-lime-500/20';
     case 'utility':
       return 'border-border';
     default:

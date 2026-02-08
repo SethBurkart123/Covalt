@@ -11,6 +11,7 @@ export const llmCompletion = {
   description: 'Single LLM call with streaming output',
   category: 'ai',
   icon: 'Sparkles',
+  executionMode: 'flow',
 
   parameters: [
     {

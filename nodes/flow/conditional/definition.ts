@@ -11,6 +11,7 @@ export const conditional = {
   description: 'Route data based on a condition',
   category: 'flow',
   icon: 'GitBranch',
+  executionMode: 'flow',
 
   parameters: [
     {

@@ -1,16 +1,14 @@
-"""TDD specification for the flow execution engine (Phase 2).
+"""Flow execution engine tests (Phase 2 + 4).
 
-Every test is skipped — the flow engine doesn't exist yet. These define
-the expected behavior and will pass once the engine is built.
+Tests cover:
+  - find_flow_nodes(): capability-based node partitioning (executor has execute())
+  - topological_sort(): ordering with cycle detection
+  - run_flow(): linear pipelines, branching, dead branches, error handling
+  - _flow_edges(): structural edge filtering
 
-Imports from nodes._types (created in Phase 1) for DataValue, ExecutionResult,
-NodeEvent, FlowContext. Flow engine functions (run_flow, partition_graph,
-topological_sort) are imported but don't exist yet.
-
-The entire module is skipped at collection time if the imports aren't
-available. Once Phase 1 + 2 land, remove the top-level pytestmark and
-the try/except guard — the per-class @skip markers remain until each
-feature is implemented.
+Imports from nodes._types for DataValue, ExecutionResult, NodeEvent, FlowContext.
+Flow engine functions (run_flow, find_flow_nodes, topological_sort, _flow_edges)
+from backend.services.flow_executor.
 """
 
 from __future__ import annotations
@@ -36,9 +34,10 @@ from tests.conftest import (
 try:
     from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
     from backend.services.flow_executor import (
-        partition_graph,
+        find_flow_nodes,
         run_flow,
         topological_sort,
+        _flow_edges,
     )
 
     _FLOW_ENGINE_AVAILABLE = True
@@ -81,7 +80,10 @@ except ImportError:
         raise NotImplementedError
         yield  # makes this an async generator
 
-    def partition_graph(*a: Any, **kw: Any) -> Any:  # type: ignore[no-redef]
+    def find_flow_nodes(*a: Any, **kw: Any) -> Any:  # type: ignore[no-redef]
+        raise NotImplementedError
+
+    def _flow_edges(*a: Any, **kw: Any) -> Any:  # type: ignore[no-redef]
         raise NotImplementedError
 
     def topological_sort(*a: Any, **kw: Any) -> Any:  # type: ignore[no-redef]
@@ -264,73 +266,80 @@ STUB_EXECUTORS: dict[str, Any] = {
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class TestPartitionGraph:
-    """partition_graph separates structural and flow subgraphs by edge socket type."""
+class StructuralOnlyExecutor:
+    """Executor with build() but NO execute() — purely structural."""
 
-    def test_partition_mixed_graph(self):
-        """Mixed graph (structural + flow edges) → correct separation."""
-        graph = make_graph(
-            nodes=[
-                make_node("cs", "chat-start"),
-                make_node("ag", "agent"),
-                make_node("mcp", "mcp-server", server="test"),
-                make_node("llm", "llm-completion"),
-            ],
-            edges=[
-                make_edge("cs", "ag", "agent", "agent"),  # structural
-                make_edge("mcp", "ag", "tools", "tools"),  # structural
-                make_edge("ag", "llm", "messages_out", "prompt"),  # flow
-            ],
-        )
-        structural, flow = partition_graph(graph["nodes"], graph["edges"])
+    node_type = "structural-only"
 
-        structural_ids = {n["id"] for n in structural}
+    def build(self, data: dict, context: Any) -> Any:
+        return None
+
+
+class TestFindFlowNodes:
+    """find_flow_nodes returns only nodes whose executor has execute()."""
+
+    def test_mixed_graph_returns_only_flow_capable(self):
+        """Graph with both structural and flow-capable nodes → only flow-capable returned."""
+        nodes = [
+            make_node("cs", "chat-start"),
+            make_node("ag", "agent"),
+            make_node("mcp", "structural-only"),
+            make_node("llm", "llm-completion"),
+        ]
+        executors = {
+            **STUB_EXECUTORS,
+            "structural-only": StructuralOnlyExecutor(),
+        }
+        flow = find_flow_nodes(nodes, executors)
         flow_ids = {n["id"] for n in flow}
 
-        assert "cs" in structural_ids
-        assert "ag" in structural_ids
-        assert "mcp" in structural_ids
-        assert "llm" in flow_ids
-
-    def test_partition_pure_structural(self):
-        """Pure structural graph → no flow nodes detected."""
-        graph = make_graph(
-            nodes=[
-                make_node("cs", "chat-start"),
-                make_node("ag", "agent"),
-                make_node("ts", "toolset", toolset="web"),
-            ],
-            edges=[
-                make_edge("cs", "ag", "agent", "agent"),
-                make_edge("ts", "ag", "tools", "tools"),
-            ],
+        assert "cs" in flow_ids, "chat-start has execute() → flow-capable"
+        assert "ag" not in flow_ids, "agent not in STUB_EXECUTORS → not flow-capable"
+        assert "mcp" not in flow_ids, (
+            "structural-only has no execute() → not flow-capable"
         )
-        structural, flow = partition_graph(graph["nodes"], graph["edges"])
-        assert len(flow) == 0
-        assert len(structural) == 3
+        assert "llm" in flow_ids, "llm-completion has execute() → flow-capable"
 
-    def test_partition_hybrid_node_appears_in_both(self):
-        """Agent with both structural edges (tools) and flow edges (messages) → in both."""
-        graph = make_graph(
-            nodes=[
-                make_node("cs", "chat-start"),
-                make_node("ag", "agent"),
-                make_node("mcp", "mcp-server", server="s1"),
-                make_node("pt", "prompt-template"),
-            ],
-            edges=[
-                make_edge("cs", "ag", "agent", "agent"),  # structural
-                make_edge("mcp", "ag", "tools", "tools"),  # structural
-                make_edge("pt", "ag", "text", "messages_in"),  # flow
-            ],
-        )
-        structural, flow = partition_graph(graph["nodes"], graph["edges"])
+    def test_pure_structural_returns_empty(self):
+        """All structural executors → empty result."""
+        nodes = [
+            make_node("a", "structural-only"),
+            make_node("b", "structural-only"),
+        ]
+        executors = {"structural-only": StructuralOnlyExecutor()}
+        flow = find_flow_nodes(nodes, executors)
+        assert flow == []
 
-        structural_ids = {n["id"] for n in structural}
+    def test_hybrid_nodes_appear_in_flow(self):
+        """Hybrid executors (both build() and execute()) appear in flow results."""
+
+        class HybridExecutor:
+            node_type = "hybrid-test"
+
+            def build(self, data: dict, context: Any) -> Any:
+                return None
+
+            async def execute(
+                self, data: dict, inputs: dict[str, DataValue], context: FlowContext
+            ) -> ExecutionResult:
+                return ExecutionResult(outputs={})
+
+        nodes = [
+            make_node("h1", "hybrid-test"),
+            make_node("s1", "structural-only"),
+            make_node("f1", "passthrough"),
+        ]
+        executors = {
+            "hybrid-test": HybridExecutor(),
+            "structural-only": StructuralOnlyExecutor(),
+            "passthrough": PassthroughExecutor(),
+        }
+        flow = find_flow_nodes(nodes, executors)
         flow_ids = {n["id"] for n in flow}
 
-        assert "ag" in structural_ids, "Agent should be in structural partition"
-        assert "ag" in flow_ids, "Agent should also be in flow partition"
+        assert "h1" in flow_ids, "Hybrid executor has execute() → in flow"
+        assert "s1" not in flow_ids, "Structural-only → not in flow"
+        assert "f1" in flow_ids, "Pure flow executor → in flow"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -860,26 +869,32 @@ class TestFlowIntegration:
 
     @pytest.mark.asyncio
     async def test_pure_structural_graph_returns_early(self, flow_ctx):
-        """Pure structural graph (no flow nodes) → run_flow returns None/early."""
+        """Pure structural graph (no flow-capable executors) → run_flow yields nothing."""
+        structural_executors = {
+            "struct-a": StructuralOnlyExecutor(),
+            "struct-b": StructuralOnlyExecutor(),
+            "struct-c": StructuralOnlyExecutor(),
+        }
         graph = make_graph(
             nodes=[
-                make_node("cs", "chat-start"),
-                make_node("ag", "agent"),
-                make_node("mcp", "mcp-server", server="s1"),
+                make_node("a", "struct-a"),
+                make_node("b", "struct-b"),
+                make_node("c", "struct-c"),
             ],
             edges=[
-                make_edge("cs", "ag", "agent", "agent"),
-                make_edge("mcp", "ag", "tools", "tools"),
+                make_edge("a", "b", "agent", "agent"),
+                make_edge("c", "b", "tools", "tools"),
             ],
         )
         flow_ctx.state.user_message = "hello"
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(
+            graph, None, flow_ctx, executors=structural_executors
+        ):
             events.append(event)
 
-        # No flow nodes → no events
-        assert events == []
+        assert events == [], "No flow-capable executors → no events"
 
     @pytest.mark.asyncio
     async def test_full_pipeline_with_branching(self, flow_ctx):

@@ -1,15 +1,25 @@
 """Flow execution engine (Phase 2).
 
 Executes flow nodes in topological order, routing DataValues through edges.
-Structural nodes (agent/tools wiring) are handled by Phase 1 (graph_executor.py).
-This engine handles everything else — data transforms, LLM calls, conditionals, etc.
+Structural composition (agent/tools wiring) is handled by Phase 1 (graph_executor.py).
+This engine handles runtime data flow — transforms, LLM calls, conditionals, agents in
+pipeline mode, etc.
 
 The algorithm:
-  1. Partition graph into structural vs flow subgraphs by edge socket type
-  2. Topologically sort flow nodes
-  3. For each node: gather inputs from upstream outputs, execute, store outputs
-  4. Skip nodes whose required inputs aren't satisfied (dead branches)
-  5. Forward NodeEvents to the caller (which routes them to the chat UI)
+  1. Find flow-capable nodes (executors with an execute() method)
+  2. Filter to flow edges (non-structural) for data routing
+  3. Topologically sort flow nodes by flow edges
+  4. For each node: gather inputs (with type coercion), execute, store outputs
+  5. Skip nodes whose required inputs aren't satisfied (dead branches)
+  6. Forward NodeEvents to the caller (which routes them to the chat UI)
+
+Node partitioning is based on executor capabilities, NOT socket types:
+  - Has build()    → structural (Phase 1)
+  - Has execute()  → flow (Phase 2)
+  - Has both       → hybrid (both phases)
+
+Edge partitioning remains socket-type-based because structural edges (agent/tools)
+genuinely carry different things (topology, tool composition) than flow edges (data).
 """
 
 from __future__ import annotations
@@ -18,47 +28,30 @@ import logging
 import uuid
 from typing import Any, AsyncIterator
 
+from nodes._coerce import coerce
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 logger = logging.getLogger(__name__)
 
-STRUCTURAL_SOCKET_TYPES = {"agent", "tools"}
+# Edges through these handle types carry topology/composition, not runtime data.
+# Used for edge filtering only — node partitioning uses executor capabilities.
+STRUCTURAL_HANDLE_TYPES = {"agent", "tools"}
 
 
-# ── Graph partitioning ──────────────────────────────────────────────
+# ── Node partitioning ────────────────────────────────────────────────
 
 
-def partition_graph(
-    nodes: list[dict], edges: list[dict]
-) -> tuple[list[dict], list[dict]]:
-    """Separate nodes into structural and flow subgraphs by edge socket type.
+def _is_flow_capable(node_type: str, executors: dict[str, Any] | None) -> bool:
+    """Check if a node type has an executor with an execute() method."""
+    executor = _get_executor(node_type, executors)
+    return executor is not None and hasattr(executor, "execute")
 
-    Structural edges connect agent/tools sockets. Everything else is flow.
-    Hybrid nodes (like Agent with both structural and flow edges) appear in both.
-    """
-    structural_ids: set[str] = set()
-    flow_ids: set[str] = set()
 
-    for edge in edges:
-        source_handle = edge.get("sourceHandle", "")
-        target_handle = edge.get("targetHandle", "")
-
-        is_structural = (
-            source_handle in STRUCTURAL_SOCKET_TYPES
-            or target_handle in STRUCTURAL_SOCKET_TYPES
-        )
-        if is_structural:
-            structural_ids.add(edge["source"])
-            structural_ids.add(edge["target"])
-        else:
-            flow_ids.add(edge["source"])
-            flow_ids.add(edge["target"])
-
-    nodes_by_id = {n["id"]: n for n in nodes}
-    structural = [nodes_by_id[nid] for nid in structural_ids if nid in nodes_by_id]
-    flow = [nodes_by_id[nid] for nid in flow_ids if nid in nodes_by_id]
-
-    return structural, flow
+def find_flow_nodes(
+    nodes: list[dict], executors: dict[str, Any] | None = None
+) -> list[dict]:
+    """Return nodes whose executors have an execute() method."""
+    return [n for n in nodes if _is_flow_capable(n.get("type", ""), executors)]
 
 
 # ── Topological sort ────────────────────────────────────────────────
@@ -76,7 +69,6 @@ def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
             adjacency[src].append(tgt)
             in_degree[tgt] += 1
 
-    # Sorted for deterministic ordering
     queue = sorted(nid for nid in node_ids if in_degree[nid] == 0)
     result: list[str] = []
 
@@ -95,16 +87,16 @@ def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
     return result
 
 
-# ── Flow edge helpers ───────────────────────────────────────────────
+# ── Edge helpers ─────────────────────────────────────────────────────
 
 
 def _flow_edges(edges: list[dict]) -> list[dict]:
-    """Filter to only flow (non-structural) edges."""
+    """Filter to edges that carry runtime data (not structural topology)."""
     return [
         e
         for e in edges
-        if e.get("sourceHandle", "") not in STRUCTURAL_SOCKET_TYPES
-        and e.get("targetHandle", "") not in STRUCTURAL_SOCKET_TYPES
+        if e.get("sourceHandle", "") not in STRUCTURAL_HANDLE_TYPES
+        and e.get("targetHandle", "") not in STRUCTURAL_HANDLE_TYPES
     ]
 
 
@@ -113,15 +105,25 @@ def _gather_inputs(
     edges: list[dict],
     port_values: dict[str, dict[str, DataValue]],
 ) -> dict[str, DataValue]:
-    """Pull DataValues from upstream output ports into this node's input ports."""
+    """Pull DataValues from upstream output ports, applying type coercion."""
     inputs: dict[str, DataValue] = {}
     for edge in edges:
         if edge["target"] != node_id:
             continue
         source_outputs = port_values.get(edge["source"], {})
         value = source_outputs.get(edge.get("sourceHandle", "output"))
-        if value is not None:
-            inputs[edge.get("targetHandle", "input")] = value
+        if value is None:
+            continue
+
+        # Coerce if the edge knows the target's expected type
+        target_type = (edge.get("data") or {}).get("targetType")
+        if target_type and value.type != target_type:
+            try:
+                value = coerce(value, target_type)
+            except TypeError:
+                pass  # let the executor handle the raw value
+
+        inputs[edge.get("targetHandle", "input")] = value
     return inputs
 
 
@@ -152,7 +154,7 @@ async def run_flow(
     nodes_list = graph_data.get("nodes", [])
     edges = graph_data.get("edges", [])
 
-    _, flow_nodes = partition_graph(nodes_list, edges)
+    flow_nodes = find_flow_nodes(nodes_list, executors)
     if not flow_nodes:
         return
 
@@ -162,7 +164,6 @@ async def run_flow(
     run_id = getattr(context, "run_id", str(uuid.uuid4()))
     state = getattr(context, "state", None)
 
-    # node_id -> {port_name: DataValue}
     port_values: dict[str, dict[str, DataValue]] = {}
     nodes_by_id = {n["id"]: n for n in flow_nodes}
 
@@ -174,23 +175,16 @@ async def run_flow(
         node_type = node.get("type", "")
         data = node.get("data", {})
 
-        # Look up executor
         executor = _get_executor(node_type, executors)
         if executor is None or not hasattr(executor, "execute"):
-            if executor is None:
-                logger.warning(f"No executor for flow node type: {node_type}")
-            else:
-                logger.warning(f"Executor for '{node_type}' has no execute() method")
             continue
 
-        # Gather inputs from upstream edges
         inputs = _gather_inputs(node_id, flow_edge_list, port_values)
 
-        # Dead branch detection: has incoming edges but none produced data → skip
+        # Dead branch detection: has incoming flow edges but none produced data
         if _has_incoming_edges(node_id, flow_edge_list) and not inputs:
             continue
 
-        # Create per-node FlowContext
         node_context = FlowContext(
             node_id=node_id,
             chat_id=getattr(context, "chat_id", None),
@@ -200,7 +194,6 @@ async def run_flow(
             tool_registry=getattr(context, "tool_registry", None),
         )
 
-        # Execute
         on_error = data.get("on_error", "stop")
         try:
             async for item in _run_executor(
@@ -245,11 +238,9 @@ async def _run_executor(
     result = executor.execute(data, inputs, context)
 
     if hasattr(result, "__aiter__"):
-        # Streaming executor — yields NodeEvent/ExecutionResult directly
         async for item in result:
             yield item
     else:
-        # Sync executor — returns ExecutionResult via coroutine
         execution_result = await result
         if isinstance(execution_result, ExecutionResult):
             yield NodeEvent(
@@ -270,9 +261,9 @@ async def _run_executor(
 # ── Utilities for streaming.py integration ──────────────────────────
 
 
-def has_flow_nodes(graph_data: dict[str, Any]) -> bool:
-    """Quick check: does this graph have any flow (non-structural) nodes?"""
+def has_flow_nodes(
+    graph_data: dict[str, Any], executors: dict[str, Any] | None = None
+) -> bool:
+    """Quick check: does this graph have any flow-capable nodes?"""
     nodes = graph_data.get("nodes", [])
-    edges = graph_data.get("edges", [])
-    _, flow = partition_graph(nodes, edges)
-    return len(flow) > 0
+    return len(find_flow_nodes(nodes, executors)) > 0

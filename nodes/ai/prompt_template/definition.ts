@@ -11,6 +11,7 @@ export const promptTemplate = {
   description: 'Interpolate variables into a template string',
   category: 'ai',
   icon: 'FileText',
+  executionMode: 'flow',
 
   parameters: [
     {
