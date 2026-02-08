@@ -18,7 +18,7 @@ from ..services.file_storage import (
 from ..services.workspace_manager import get_workspace_manager
 from .streaming import (
     handle_content_stream,
-    parse_model_id,
+    update_chat_model_selection,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,12 +90,8 @@ async def continue_message(
     original_msg_id: Optional[str] = None
 
     with db.db_session() as sess:
-        if body.modelId and not body.modelId.startswith("agent:"):
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+        if body.modelId:
+            update_chat_model_selection(sess, body.chatId, body.modelId)
 
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
@@ -182,6 +178,7 @@ async def continue_message(
         agent = create_agent_for_chat(
             body.chatId,
             tool_ids=body.toolIds,
+            model_id=body.modelId,
         )
 
         await handle_content_stream(
@@ -220,12 +217,8 @@ async def retry_message(
 ) -> None:
     parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
-        if body.modelId and not body.modelId.startswith("agent:"):
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+        if body.modelId:
+            update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
@@ -288,6 +281,7 @@ async def retry_message(
         agent = create_agent_for_chat(
             body.chatId,
             tool_ids=body.toolIds,
+            model_id=body.modelId,
         )
 
         await handle_content_stream(
@@ -328,12 +322,8 @@ async def edit_user_message(
     manifest_id: Optional[str] = None
 
     with db.db_session() as sess:
-        if body.modelId and not body.modelId.startswith("agent:"):
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+        if body.modelId:
+            update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
@@ -496,6 +486,7 @@ async def edit_user_message(
         agent = create_agent_for_chat(
             body.chatId,
             tool_ids=body.toolIds,
+            model_id=body.modelId,
         )
 
         await handle_content_stream(

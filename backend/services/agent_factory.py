@@ -16,6 +16,7 @@ _agent_db = InMemoryDb()
 def create_agent_for_chat(
     chat_id: str,
     tool_ids: List[str] = [],
+    model_id: str | None = None,
 ) -> Union[Agent, Team]:
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
@@ -24,7 +25,17 @@ def create_agent_for_chat(
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         system_prompt = db.get_system_prompt_setting(sess)
 
-    agent_id = config.get("agent_id")
+    if model_id and model_id.startswith("agent:"):
+        agent_id = model_id[len("agent:") :]
+    elif model_id:
+        agent_id = None
+        if ":" in model_id:
+            provider, model = model_id.split(":", 1)
+            config["provider"] = provider
+            config["model_id"] = model
+    else:
+        agent_id = config.get("agent_id")
+
     if agent_id:
         from .agent_manager import get_agent_manager
         from .graph_executor import build_agent_from_graph
