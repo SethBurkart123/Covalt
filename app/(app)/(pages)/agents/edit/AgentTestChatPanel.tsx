@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useLayoutEffect } from "react";
 import { X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAgentTestChat } from "@/contexts/agent-test-chat-context";
@@ -37,7 +37,7 @@ function TestChatInner() {
 
   const effectiveWidth = artifactOpen ? Math.max(width, 800) : width;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setRightOffset(isOpen ? effectiveWidth : 0);
     return () => setRightOffset(0);
   }, [isOpen, effectiveWidth, setRightOffset]);
