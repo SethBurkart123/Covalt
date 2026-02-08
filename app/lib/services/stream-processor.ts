@@ -334,6 +334,18 @@ function processMemberEvent(
       }
       break;
     }
+
+    case "RunError":
+    case "MemberRunError": {
+      flushMemberText(block, ms);
+      flushMemberReasoning(block, ms);
+      const errorContent = (d.content as string) || (d.error as string) || "Member agent encountered an error.";
+      block.content.push({ type: "error", content: errorContent });
+      block.isCompleted = true;
+      block.hasError = true;
+      state.memberStates.delete(runId);
+      break;
+    }
   }
 }
 
@@ -463,6 +475,26 @@ export function processEvent(
     case "MemberRunCompleted":
       handleMemberRunCompleted(state, d);
       break;
+
+    case "MemberRunError": {
+      const runId = (d.memberRunId as string) || "";
+      if (runId) {
+        const block = findMemberBlock(state, runId);
+        if (block) {
+          const ms = getMemberState(state, runId);
+          flushMemberText(block, ms);
+          flushMemberReasoning(block, ms);
+          block.content.push({
+            type: "error",
+            content: (d.content as string) || "Member agent encountered an error.",
+          });
+          block.isCompleted = true;
+          block.hasError = true;
+          state.memberStates.delete(runId);
+        }
+      }
+      break;
+    }
 
     case "RunCompleted":
     case "RunCancelled":

@@ -22,6 +22,7 @@ interface MemberRunCallProps {
   isFirst?: boolean;
   isLast?: boolean;
   isCompleted?: boolean;
+  hasError?: boolean;
 }
 
 export default function MemberRunCall({
@@ -32,6 +33,7 @@ export default function MemberRunCall({
   isFirst = false,
   isLast = false,
   isCompleted = false,
+  hasError = false,
 }: MemberRunCallProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
@@ -80,9 +82,33 @@ export default function MemberRunCall({
     (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
       b.type === "tool_call" && !b.isCompleted,
   );
-  const rightLabel = activeTools.length > 0
-    ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
-    : undefined;
+  const rightLabel = hasError
+    ? undefined
+    : activeTools.length > 0
+      ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
+      : undefined;
+
+  if (hasError) {
+    return (
+      <Collapsible
+        open={false}
+        isGrouped={isGrouped}
+        isFirst={isFirst}
+        isLast={isLast}
+        disableToggle
+      >
+        <CollapsibleTrigger>
+          <CollapsibleHeader>
+            <CollapsibleIcon icon={Bot} />
+            <span className="text-sm font-mono text-foreground">{memberName || "Member"}</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
+              Failed
+            </span>
+          </CollapsibleHeader>
+        </CollapsibleTrigger>
+      </Collapsible>
+    );
+  }
 
   return (
     <Collapsible
@@ -143,6 +169,13 @@ export default function MemberRunCall({
                   isCompleted={block.isCompleted}
                   mode="minimal"
                 />
+              );
+            }
+            if (block.type === "error") {
+              return (
+                <div key={`error-${i}`} className="text-sm text-destructive px-1 py-1">
+                  {block.content}
+                </div>
               );
             }
             return null;

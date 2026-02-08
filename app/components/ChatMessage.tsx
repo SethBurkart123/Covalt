@@ -261,6 +261,7 @@ function ChatMessage({
                                   isLast={idx === visibleGroup.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
                                   isCompleted={b.isCompleted}
+                                  hasError={b.hasError}
                                 />
                               );
                             }

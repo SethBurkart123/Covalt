@@ -77,6 +77,7 @@ export type ContentBlock =
       content: ContentBlock[];
       isCompleted: boolean;
       task?: string;
+      hasError?: boolean;
     }
   | { type: "error"; content: string };
 
