@@ -742,6 +742,31 @@ async def handle_content_stream(
             )
             await asyncio.to_thread(_save, assistant_msg_id, save_state())
 
+        elif evt == RunEvent.run_error:
+            if ms.current_text:
+                member_content.append({"type": "text", "content": ms.current_text})
+                ms.current_text = ""
+            if ms.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": ms.current_reasoning,
+                        "isCompleted": True,
+                    }
+                )
+                ms.current_reasoning = ""
+
+            error_msg = extract_error_message(
+                chunk.content if chunk.content else str(chunk)
+            )
+            member_content.append({"type": "error", "content": error_msg})
+            content_blocks[ms.block_index]["isCompleted"] = True
+            content_blocks[ms.block_index]["hasError"] = True
+
+            ch.send_model(_make_event(event="MemberRunError", content=error_msg))
+            member_runs.pop(rid, None)
+            await asyncio.to_thread(_save, assistant_msg_id, save_state())
+
         elif evt == RunEvent.run_completed:
             pass
 
@@ -1158,11 +1183,20 @@ async def handle_content_stream(
         logger.error(f"[stream] Exception in stream handler: {e}")
         flush_text()
         flush_reasoning()
+        error_msg = extract_error_message(str(e))
+        content_blocks.append(
+            {
+                "type": "error",
+                "content": error_msg,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        )
+        had_error = True
         try:
             await asyncio.to_thread(_save, assistant_msg_id, save_final())
         except Exception as save_err:
             logger.error(f"[stream] Failed to save state on error: {save_err}")
-
+        ch.send_model(ChatEvent(event="RunError", content=error_msg))
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)

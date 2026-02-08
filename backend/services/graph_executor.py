@@ -143,7 +143,7 @@ def _build_node(
             description=description,
             instructions=instructions or None,
             markdown=True,
-            stream_intermediate_steps=True,
+            stream_events=True,
             db=_agent_db,
         )
 
@@ -159,7 +159,7 @@ def _build_node(
         description=description,
         instructions=instructions or None,
         markdown=True,
-        stream_intermediate_steps=True,
+        stream_events=True,
         stream_member_events=True,
         db=_agent_db,
     )

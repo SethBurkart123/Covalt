@@ -29,6 +29,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+agno = { git = "https://github.com/SethBurkart123/agno.git", branch = "fix/delegation-error-propagation", subdirectory = "libs/agno" }
 agno-toolset = { path = "agno-toolset" }
 zynk = { path = "zynk" }
 

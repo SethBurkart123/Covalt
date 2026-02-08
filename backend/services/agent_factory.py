@@ -67,7 +67,7 @@ def create_agent_for_chat(
         description=description,
         instructions=instructions or None,
         markdown=True,
-        stream_intermediate_steps=True,
+        stream_events=True,
         db=_agent_db,
     )
 
