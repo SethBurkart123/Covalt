@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Brain, Loader2, Check } from "lucide-react";
+import { Bot } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import ToolCall from "./ToolCall";
+import ThinkingCall from "./ThinkingCall";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -20,22 +22,6 @@ interface MemberRunCallProps {
   isFirst?: boolean;
   isLast?: boolean;
   isCompleted?: boolean;
-}
-
-function ToolPill({ toolName, toolResult, isCompleted }: { toolName: string; toolResult?: string; isCompleted: boolean }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground"
-      title={toolResult ? `Result: ${toolResult.slice(0, 200)}` : undefined}
-    >
-      {isCompleted ? (
-        <Check size={10} className="text-emerald-500" />
-      ) : (
-        <Loader2 size={10} className="animate-spin" />
-      )}
-      {toolName}
-    </span>
-  );
 }
 
 export default function MemberRunCall({
@@ -137,29 +123,26 @@ export default function MemberRunCall({
             }
             if (block.type === "tool_call") {
               return (
-                <div key={block.id || `tool-${i}`} className="my-1.5">
-                  <ToolPill toolName={block.toolName} toolResult={block.toolResult} isCompleted={block.isCompleted} />
-                </div>
+                <ToolCall
+                  key={block.id || `tool-${i}`}
+                  toolName={block.toolName}
+                  toolArgs={block.toolArgs}
+                  toolResult={block.toolResult}
+                  isCompleted={block.isCompleted}
+                  renderer={block.renderer}
+                  mode="minimal"
+                />
               );
             }
             if (block.type === "reasoning") {
               return (
-                <details
+                <ThinkingCall
                   key={`reason-${i}`}
-                  className="my-1.5 text-xs text-muted-foreground"
-                  open={!block.isCompleted}
-                >
-                  <summary className="cursor-pointer select-none inline-flex items-center gap-1.5 font-mono">
-                    <Brain size={12} />
-                    {block.isCompleted ? "Thought" : "Thinking..."}
-                    {!block.isCompleted && <Loader2 size={10} className="animate-spin" />}
-                  </summary>
-                  {block.content && (
-                    <div className="mt-1 pl-4 border-l border-border italic opacity-75">
-                      <MarkdownRenderer content={block.content} />
-                    </div>
-                  )}
-                </details>
+                  content={block.content}
+                  active={!block.isCompleted}
+                  isCompleted={block.isCompleted}
+                  mode="minimal"
+                />
               );
             }
             return null;

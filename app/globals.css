@@ -332,6 +332,27 @@ button {
   }
 }
 
+.shimmer-text {
+  --_shimmer-dim: color-mix(in oklch, var(--muted-foreground) 50%, var(--background));
+  background: linear-gradient(
+    90deg,
+    var(--_shimmer-dim) 0%,
+    var(--_shimmer-dim) 30%,
+    var(--foreground) 50%,
+    var(--_shimmer-dim) 70%,
+    var(--_shimmer-dim) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text 1.5s linear infinite;
+}
+@keyframes shimmer-text {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 body {
   scroll-behavior: smooth;
   
