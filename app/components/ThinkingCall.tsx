@@ -9,6 +9,7 @@ import {
   CollapsibleIcon,
   CollapsibleHeader,
   CollapsibleContent,
+  type CollapsibleMode,
 } from "@/components/ui/collapsible";
 
 interface ThinkingCallProps {
@@ -18,6 +19,7 @@ interface ThinkingCallProps {
   isFirst?: boolean;
   isLast?: boolean;
   isCompleted?: boolean;
+  mode?: CollapsibleMode;
 }
 
 export default function ThinkingCall({
@@ -27,6 +29,7 @@ export default function ThinkingCall({
   isFirst = false,
   isLast = false,
   isCompleted = false,
+  mode = "regular",
 }: ThinkingCallProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
@@ -80,6 +83,7 @@ export default function ThinkingCall({
       isFirst={isFirst}
       isLast={isLast}
       shimmer={active}
+      mode={mode}
       data-thinkingcall
     >
       <CollapsibleTrigger

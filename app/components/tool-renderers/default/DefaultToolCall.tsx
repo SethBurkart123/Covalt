@@ -27,6 +27,7 @@ export function DefaultToolCall({
   isGrouped = false,
   isFirst = false,
   isLast = false,
+  mode = "regular",
 }: ToolCallRendererProps) {
   const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus || "pending");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -98,6 +99,7 @@ export function DefaultToolCall({
       isLast={isLast}
       shimmer={!isCompleted && approvalStatus !== "pending"}
       disableToggle={!(!requiresApproval || approvalStatus !== "pending")}
+      mode={mode}
       data-toolcall
     >
       <CollapsibleTrigger>
