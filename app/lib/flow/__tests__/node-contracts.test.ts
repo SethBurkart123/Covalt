@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { NODE_DEFINITIONS } from '@nodes/_registry'
 import type { NodeDefinition, SocketTypeId, ParameterMode, NodeCategory } from '@nodes/_types'
 
-const VALID_SOCKET_TYPES: SocketTypeId[] = ['agent', 'tools', 'float', 'int', 'string', 'boolean', 'color']
+const VALID_SOCKET_TYPES: SocketTypeId[] = [
+  'agent', 'tools', 'float', 'int', 'string', 'boolean', 'color',
+  'json', 'text', 'binary', 'array', 'message', 'document', 'vector', 'trigger', 'any',
+]
 const VALID_MODES: ParameterMode[] = ['constant', 'hybrid', 'input', 'output']
-const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility']
+const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility', 'ai', 'flow', 'integration', 'rag']
 
 const nodeEntries = Object.entries(NODE_DEFINITIONS)
 

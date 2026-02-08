@@ -5,8 +5,11 @@ import { chatStart } from './core/chat_start/definition';
 import { agent } from './core/agent/definition';
 import { mcpServer } from './tools/mcp_server/definition';
 import { toolset } from './tools/toolset/definition';
+import { llmCompletion } from './ai/llm_completion/definition';
+import { promptTemplate } from './ai/prompt_template/definition';
+import { conditional } from './flow/conditional/definition';
 
-const NODE_LIST = [chatStart, agent, mcpServer, toolset] as const;
+const NODE_LIST = [chatStart, agent, mcpServer, toolset, llmCompletion, promptTemplate, conditional] as const;
 
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = Object.fromEntries(
   NODE_LIST.map(node => [node.id, node])

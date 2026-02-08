@@ -4,7 +4,10 @@
  */
 
 /** Socket type identifier - must match keys in SOCKET_TYPES */
-export type SocketTypeId = 'agent' | 'tools' | 'float' | 'int' | 'string' | 'boolean' | 'color';
+export type SocketTypeId =
+  | 'agent' | 'tools'
+  | 'float' | 'int' | 'string' | 'boolean' | 'color'
+  | 'json' | 'text' | 'binary' | 'array' | 'message' | 'document' | 'vector' | 'trigger' | 'any';
 
 export type SocketShape = 'circle' | 'square' | 'diamond';
 
@@ -164,7 +167,7 @@ export type Parameter =
   | JsonParameter;
 
 /** Node category for palette organization */
-export type NodeCategory = 'core' | 'tools' | 'data' | 'utility';
+export type NodeCategory = 'core' | 'tools' | 'ai' | 'flow' | 'data' | 'integration' | 'rag' | 'utility';
 
 /** Complete node definition */
 export interface NodeDefinition {
