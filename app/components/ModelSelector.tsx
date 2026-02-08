@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useMemo, useEffect, useCallback, memo, useRef, useLayoutEffect } from "react";
+import { Fragment, useState, useMemo, useEffect, memo, useRef, useLayoutEffect } from "react";
 import { Bot, CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { ModelInfo } from "@/lib/types/chat";
-import type { AgentInfo } from "@/python/api";
-import { listAgents, agentFileUrl } from "@/python/api";
+import { agentFileUrl } from "@/python/api";
 import { PROVIDER_MAP } from "@/(app)/(pages)/settings/providers/ProviderRegistry";
 import { getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
@@ -104,7 +103,6 @@ interface ModelSelectorProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
-  onAgentsLoaded?: (agents: AgentInfo[]) => void;
   hideAgents?: boolean;
   className?: string;
 }
@@ -117,45 +115,32 @@ function ModelSelector({
   selectedModel,
   setSelectedModel,
   models,
-  onAgentsLoaded,
   hideAgents,
   className,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
-  const [agents, setAgents] = useState<AgentInfo[]>([]);
-  const { refreshModels } = useChat();
-
-  const refreshAgents = useCallback(() => {
-    if (hideAgents) return;
-    listAgents()
-      .then((res) => {
-        setAgents(res.agents);
-        onAgentsLoaded?.(res.agents);
-      })
-      .catch(console.error);
-  }, [onAgentsLoaded, hideAgents]);
+  const { agents, refreshAgents, refreshModels } = useChat();
 
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
     if (isOpen) {
       refreshModels();
-      refreshAgents();
+      if (!hideAgents) refreshAgents();
     }
   };
 
   useEffect(() => {
-    refreshAgents();
-  }, [refreshAgents]);
-
-  useEffect(() => {
     if (!open) return;
-    const interval = setInterval(() => {
-      refreshModels();
-      refreshAgents();
-    }, 7000);
-    return () => clearInterval(interval);
-  }, [open, refreshModels, refreshAgents]);
+
+    const modelInterval = setInterval(refreshModels, 7000);
+    const agentInterval = hideAgents ? null : setInterval(refreshAgents, 15000);
+
+    return () => {
+      clearInterval(modelInterval);
+      if (agentInterval) clearInterval(agentInterval);
+    };
+  }, [open, refreshModels, refreshAgents, hideAgents]);
 
   const providers = useMemo(() => {
     const uniqueProviders = [...new Set(models.map((m) => m.provider))];

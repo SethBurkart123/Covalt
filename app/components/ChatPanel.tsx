@@ -14,20 +14,15 @@ import { Header } from "./Header";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
 import "@/components/tool-renderers";
-import type { AllModelSettingsResponse, AgentInfo } from "@/python/api";
+import type { AllModelSettingsResponse } from "@/python/api";
 import type { Attachment, Message } from "@/lib/types/chat";
 
 export default function ChatPanel() {
-  const { selectedModel, setSelectedModel, models: availableModels, chatId } = useChat();
+  const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
-  const [agents, setAgents] = useState<AgentInfo[]>([]);
-
-  const handleAgentsLoaded = useCallback((loaded: AgentInfo[]) => {
-    setAgents(loaded);
-  }, []);
 
   const hideToolSelector = useMemo(() => {
     if (!selectedModel.startsWith("agent:")) return false;
@@ -195,7 +190,6 @@ export default function ChatPanel() {
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                   hideToolSelector={hideToolSelector}
-                  onAgentsLoaded={handleAgentsLoaded}
                 />
               </div>
             </>
@@ -214,7 +208,6 @@ export default function ChatPanel() {
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                   hideToolSelector={hideToolSelector}
-                  onAgentsLoaded={handleAgentsLoaded}
                 />
               </div>
             </div>
