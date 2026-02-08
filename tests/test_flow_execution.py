@@ -264,7 +264,6 @@ STUB_EXECUTORS: dict[str, Any] = {
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestPartitionGraph:
     """partition_graph separates structural and flow subgraphs by edge socket type."""
 
@@ -339,7 +338,6 @@ class TestPartitionGraph:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestTopologicalSort:
     """topological_sort produces valid execution orderings."""
 
@@ -417,7 +415,6 @@ class TestTopologicalSort:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowLinear:
     """Linear pipeline: each node gets correct inputs from upstream output ports."""
 
@@ -487,7 +484,6 @@ class TestFlowLinear:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowBranching:
     """Conditional routing: data on one port executes that branch, other is skipped."""
 
@@ -582,7 +578,6 @@ class TestFlowBranching:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowDeadBranch:
     """Nodes with unsatisfied required inputs are skipped entirely."""
 
@@ -645,7 +640,6 @@ class TestFlowDeadBranch:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowEvents:
     """Event protocol: started before completed, ordering matches topo sort."""
 
@@ -761,7 +755,6 @@ class TestFlowEvents:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowErrors:
     """Error modes: stop, continue-on-fail, missing executor."""
 
@@ -862,7 +855,6 @@ class TestFlowErrors:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowIntegration:
     """End-to-end scenarios combining multiple features."""
 
@@ -1009,7 +1001,6 @@ class TestFlowIntegration:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(reason="Flow engine not yet implemented")
 class TestFlowEdgeCases:
     """Parametrized tests for boundary conditions."""
 

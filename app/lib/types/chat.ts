@@ -79,7 +79,17 @@ export type ContentBlock =
       task?: string;
       hasError?: boolean;
     }
-  | { type: "error"; content: string };
+  | { type: "error"; content: string }
+  | {
+      type: "flow_step";
+      nodeId: string;
+      nodeType: string;
+      nodeName?: string;
+      status: "started" | "completed" | "error";
+      summary?: string;
+      detail?: Record<string, unknown>;
+      durationMs?: number;
+    };
 
 export interface Message {
   id: string;

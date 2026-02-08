@@ -45,6 +45,51 @@ export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
     color: '#eab308',
     shape: 'circle',
   },
+  json: {
+    id: 'json',
+    color: '#f97316',
+    shape: 'circle',
+  },
+  text: {
+    id: 'text',
+    color: '#06b6d4',
+    shape: 'circle',
+  },
+  binary: {
+    id: 'binary',
+    color: '#ec4899',
+    shape: 'square',
+  },
+  array: {
+    id: 'array',
+    color: '#8b5cf6',
+    shape: 'square',
+  },
+  message: {
+    id: 'message',
+    color: '#a855f7',
+    shape: 'circle',
+  },
+  document: {
+    id: 'document',
+    color: '#84cc16',
+    shape: 'square',
+  },
+  vector: {
+    id: 'vector',
+    color: '#14b8a6',
+    shape: 'diamond',
+  },
+  trigger: {
+    id: 'trigger',
+    color: '#ef4444',
+    shape: 'diamond',
+  },
+  any: {
+    id: 'any',
+    color: '#6b7280',
+    shape: 'circle',
+  },
 } as const;
 
 export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): boolean {

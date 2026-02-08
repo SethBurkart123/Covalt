@@ -24,6 +24,7 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.agent_manager import get_agent_manager
+from ..services.flow_executor import has_flow_nodes
 from ..services.graph_executor import build_agent_from_graph
 from ..services.file_storage import (
     get_extension_from_mime,
@@ -1379,8 +1380,9 @@ async def stream_chat(
             if not agent_data:
                 raise ValueError(f"Agent '{agent_id}' not found")
 
+            graph_data = agent_data["graph_data"]
             result = build_agent_from_graph(
-                agent_data["graph_data"],
+                graph_data,
                 chat_id=chat_id,
                 extra_tool_ids=body.toolIds or None,
             )
@@ -1391,6 +1393,11 @@ async def stream_chat(
                 if config:
                     config["agent_id"] = agent_id
                     db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+
+            if has_flow_nodes(graph_data):
+                logger.info(
+                    f"[stream] Graph has flow nodes — flow engine ready (not yet wired for streaming)"
+                )
         else:
             agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
 
@@ -1486,9 +1493,14 @@ async def stream_agent_chat(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        result = build_agent_from_graph(
-            agent_data["graph_data"], chat_id=chat_id or None
-        )
+        graph_data = agent_data["graph_data"]
+        result = build_agent_from_graph(graph_data, chat_id=chat_id or None)
+
+        if has_flow_nodes(graph_data):
+            logger.info(
+                f"[stream_agent] Graph has flow nodes — flow engine ready (not yet wired for streaming)"
+            )
+
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")
         await handle_content_stream(

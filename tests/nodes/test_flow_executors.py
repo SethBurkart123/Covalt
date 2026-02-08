@@ -1,71 +1,41 @@
 """TDD specs for flow node executors (execute() method).
 
-These tests define the contract for executors that process data at runtime
-in Phase 2. They import from future module paths and are skipped until the
-executors are implemented.
+These tests define the contract for executors that process data at runtime.
+Phase 3 executors (LLM Completion, Prompt Template, Conditional) are live.
+Phase 5+ executors are guarded and skipped until implemented.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ── Guarded imports — will resolve once the executors land ──────────
-# These modules don't exist yet. We import them conditionally so pytest
-# can collect (and skip) this file without ImportError.
+# ── Core types — always available ────────────────────────────────────
+from nodes._types import (
+    DataValue,
+    ExecutionResult,
+    FlowContext,
+    NodeEvent,
+)
 
+# ── Phase 3 executors — available now ────────────────────────────────
+from nodes.ai.llm_completion.executor import LlmCompletionExecutor
+from nodes.ai.prompt_template.executor import PromptTemplateExecutor
+from nodes.flow.conditional.executor import ConditionalExecutor
+
+# ── Phase 5+ executors — guarded until implemented ──────────────────
 try:
-    from nodes._types import (
-        DataValue,
-        ExecutionResult,
-        FlowContext,
-        NodeEvent,
-    )
-    from nodes.ai.llm_completion.executor import LlmCompletionExecutor
-    from nodes.ai.prompt_template.executor import PromptTemplateExecutor
     from nodes.data.filter.executor import FilterExecutor
     from nodes.data.text_split.executor import TextSplitExecutor
     from nodes.data.type_converter.executor import TypeConverterExecutor
-    from nodes.flow.conditional.executor import ConditionalExecutor
     from nodes.integration.http_request.executor import HttpRequestExecutor
 
-    _FLOW_EXECUTORS_AVAILABLE = True
+    _FUTURE_EXECUTORS_AVAILABLE = True
 except ImportError:
-    _FLOW_EXECUTORS_AVAILABLE = False
-
-    # Lightweight stand-ins so the file parses without error.
-    @dataclass
-    class DataValue:  # type: ignore[no-redef]
-        type: str = ""
-        value: Any = None
-
-    @dataclass
-    class ExecutionResult:  # type: ignore[no-redef]
-        outputs: dict[str, Any] | None = None
-
-    @dataclass
-    class FlowContext:  # type: ignore[no-redef]
-        node_id: str = ""
-        chat_id: str | None = None
-        run_id: str = ""
-        state: Any = None
-        agent: Any = None
-        tool_registry: Any = None
-
-    @dataclass
-    class NodeEvent:  # type: ignore[no-redef]
-        event_type: str = ""
-        data: dict[str, Any] | None = None
-
-    class LlmCompletionExecutor:  # type: ignore[no-redef]
-        node_type = "llm-completion"
-
-    class PromptTemplateExecutor:  # type: ignore[no-redef]
-        node_type = "prompt-template"
+    _FUTURE_EXECUTORS_AVAILABLE = False
 
     class FilterExecutor:  # type: ignore[no-redef]
         node_type = "filter"
@@ -76,16 +46,13 @@ except ImportError:
     class TypeConverterExecutor:  # type: ignore[no-redef]
         node_type = "type-converter"
 
-    class ConditionalExecutor:  # type: ignore[no-redef]
-        node_type = "conditional"
-
     class HttpRequestExecutor:  # type: ignore[no-redef]
         node_type = "http-request"
 
 
-pytestmark = pytest.mark.skipif(
-    not _FLOW_EXECUTORS_AVAILABLE,
-    reason="Flow node executors not yet implemented",
+_skip_future = pytest.mark.skipif(
+    not _FUTURE_EXECUTORS_AVAILABLE,
+    reason="Phase 5+ executors not yet implemented",
 )
 
 # ── conftest re-exports ─────────────────────────────────────────────
@@ -131,7 +98,6 @@ async def _fake_astream(*tokens: str):
         yield t
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
 class TestLlmCompletionExecutor:
     """LLM Completion: prompt in, streamed text out."""
 
@@ -278,7 +244,6 @@ class TestLlmCompletionExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
 class TestPromptTemplateExecutor:
     """Prompt Template: variable interpolation into a template string."""
 
@@ -359,7 +324,6 @@ class TestPromptTemplateExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
 class TestConditionalExecutor:
     """Conditional: evaluate condition, route data to true/false port."""
 
@@ -471,7 +435,7 @@ class TestConditionalExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
+@_skip_future
 class TestHttpRequestExecutor:
     """HTTP Request: async HTTP calls with streaming events."""
 
@@ -647,7 +611,7 @@ class TestHttpRequestExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
+@_skip_future
 class TestFilterExecutor:
     """Filter: split array into pass/reject based on condition."""
 
@@ -732,7 +696,7 @@ class TestFilterExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
+@_skip_future
 class TestTypeConverterExecutor:
     """Type Converter: explicit type coercion between socket types."""
 
@@ -818,7 +782,7 @@ class TestTypeConverterExecutor:
 # ====================================================================
 
 
-@pytest.mark.skip(reason="Executors not yet implemented")
+@_skip_future
 class TestTextSplitExecutor:
     """Text Split: split, chunk, or join text."""
 
