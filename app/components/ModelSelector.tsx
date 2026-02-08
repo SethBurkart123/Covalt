@@ -105,6 +105,8 @@ interface ModelSelectorProps {
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
   onAgentsLoaded?: (agents: AgentInfo[]) => void;
+  hideAgents?: boolean;
+  className?: string;
 }
 
 const getModelKey = (model: ModelInfo) => `${model.provider}:${model.modelId}`;
@@ -116,6 +118,8 @@ function ModelSelector({
   setSelectedModel,
   models,
   onAgentsLoaded,
+  hideAgents,
+  className,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
@@ -123,13 +127,14 @@ function ModelSelector({
   const { refreshModels } = useChat();
 
   const refreshAgents = useCallback(() => {
+    if (hideAgents) return;
     listAgents()
       .then((res) => {
         setAgents(res.agents);
         onAgentsLoaded?.(res.agents);
       })
       .catch(console.error);
-  }, [onAgentsLoaded]);
+  }, [onAgentsLoaded, hideAgents]);
 
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
@@ -206,7 +211,7 @@ function ModelSelector({
     ];
   }, [models, providerFilter]);
 
-  const showAgents = !providerFilter || providerFilter === AGENT_FILTER;
+  const showAgents = !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
 
   const fuzzyItems = useMemo(() => {
     const modelItems = groupedModels.flatMap((group) =>
@@ -241,7 +246,7 @@ function ModelSelector({
           variant="secondary"
           role="combobox"
           aria-expanded={open}
-          className="flex flex-shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20"
+          className={cn("flex flex-shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20", className)}
         >
           {selectedAgent ? (
             <span className="flex min-w-0 items-center gap-1.5">
@@ -287,7 +292,7 @@ function ModelSelector({
             >
               All
             </button>
-            {agents.length > 0 && (
+            {!hideAgents && agents.length > 0 && (
               <button
                 onClick={() => setProviderFilter(AGENT_FILTER)}
                 className={cn(
