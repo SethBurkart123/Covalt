@@ -3,7 +3,7 @@
  * An LLM-powered agent that can use tools and act as a sub-agent.
  */
 
-import type { NodeDefinition } from '../types';
+import type { NodeDefinition } from '../../_types';
 
 export const agent = {
   id: 'agent',

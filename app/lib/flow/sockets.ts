@@ -1,6 +1,6 @@
 // Socket type definitions and visual styles
 
-import type { SocketTypeId, SocketShape, Parameter } from './types';
+import type { SocketTypeId, SocketShape, Parameter } from '@nodes/_types';
 
 export interface SocketType {
   id: SocketTypeId;

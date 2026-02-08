@@ -3,7 +3,7 @@
  * Provides tools from a configured MCP server.
  */
 
-import type { NodeDefinition } from '../types';
+import type { NodeDefinition } from '../../_types';
 
 export const mcpServer = {
   id: 'mcp-server',

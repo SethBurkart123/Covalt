@@ -30,7 +30,7 @@ export type {
   FlowNode,
   FlowEdge,
   FlowGraph,
-} from './types';
+} from '@nodes/_types';
 
 export { SOCKET_TYPES, canConnect, getSocketStyle } from './sockets';
 export type { SocketType } from './sockets';
@@ -46,7 +46,7 @@ export {
   agent,
   mcpServer,
   toolset,
-} from './nodes';
-export type { CompatibleNodeSocket } from './nodes';
+} from '@nodes/_registry';
+export type { CompatibleNodeSocket } from '@nodes/_registry';
 
 export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection } from './context';

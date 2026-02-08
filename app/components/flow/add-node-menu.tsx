@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from 'cmdk';
 import { SearchIcon, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getNodesByCategory, getCompatibleNodeSockets } from '@/lib/flow/nodes';
+import { getNodesByCategory, getCompatibleNodeSockets } from '@/lib/flow';
 import type { NodeDefinition, SocketTypeId } from '@/lib/flow';
 
 export interface ConnectionFilter {

@@ -5,15 +5,14 @@ from dataclasses import dataclass
 from typing import Any, Union
 
 from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
 from agno.team import Team
 
-from .model_factory import get_model
+from nodes import get_executor
+from nodes._types import BuildContext, ToolsResult
+
 from .tool_registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
-
-_agent_db = InMemoryDb()
 
 
 @dataclass
@@ -35,24 +34,13 @@ def build_agent_from_graph(
     """
     nodes, edges = _parse_graph(graph_data)
 
-    include_user_tools = False
-    for node in nodes.values():
-        if node.get("type") == "chat-start":
-            include_user_tools = bool(
-                node.get("data", {}).get("includeUserTools", False)
-            )
-            break
+    include_user_tools = _extract_include_user_tools(nodes)
 
     root_id = _find_root_agent_id(nodes, edges)
     agent = _build_node(root_id, nodes, edges, chat_id, visited=set())
 
     if include_user_tools and extra_tool_ids:
-        registry = get_tool_registry()
-        user_tools = registry.resolve_tool_ids(extra_tool_ids, chat_id=chat_id)
-        if user_tools:
-            existing = list(agent.tools or [])
-            existing.extend(user_tools)
-            agent.tools = existing
+        _merge_extra_tools(agent, extra_tool_ids, chat_id)
 
     return GraphBuildResult(agent=agent, include_user_tools=include_user_tools)
 
@@ -63,6 +51,13 @@ def _parse_graph(
     nodes_by_id = {n["id"]: n for n in graph_data.get("nodes", [])}
     edges = graph_data.get("edges", [])
     return nodes_by_id, edges
+
+
+def _extract_include_user_tools(nodes: dict[str, dict]) -> bool:
+    for node in nodes.values():
+        if node.get("type") == "chat-start":
+            return bool(node.get("data", {}).get("includeUserTools", False))
+    return False
 
 
 def _find_root_agent_id(
@@ -123,56 +118,27 @@ def _build_node(
 
     node = nodes[node_id]
     data = node.get("data", {})
-    model = _resolve_model(data)
 
     tool_source_ids, sub_agent_ids = _get_tool_sources(node_id, nodes, edges)
-    tools = _resolve_tools(tool_source_ids, nodes, chat_id)
+    resolved_tools = _resolve_tools(tool_source_ids, nodes, chat_id)
 
-    instructions = []
-    if data.get("instructions"):
-        instructions.append(data["instructions"])
-
-    name = data.get("name", "Agent")
-    description = data.get("description", "")
-
-    if not sub_agent_ids:
-        return Agent(
-            name=name,
-            model=model,
-            tools=tools or None,
-            description=description,
-            instructions=instructions or None,
-            markdown=True,
-            stream_events=True,
-            db=_agent_db,
-        )
-
-    members = [
+    sub_agents = [
         _build_node(sid, nodes, edges, chat_id, visited) for sid in sub_agent_ids
     ]
 
-    return Team(
-        name=name,
-        model=model,
-        members=members,
-        tools=tools or None,
-        description=description,
-        instructions=instructions or None,
-        markdown=True,
-        stream_events=True,
-        stream_member_events=True,
-        db=_agent_db,
+    executor = get_executor("agent")
+    if executor is None:
+        raise ValueError("No executor registered for node type 'agent'")
+
+    context = BuildContext(
+        node_id=node_id,
+        chat_id=chat_id,
+        tool_sources=[{"tools": resolved_tools}] if resolved_tools else [],
+        sub_agents=sub_agents,
+        tool_registry=get_tool_registry(),
     )
-
-
-def _resolve_model(data: dict[str, Any]) -> Any:
-    model_str = data.get("model", "")
-    if ":" not in model_str:
-        raise ValueError(
-            f"Invalid model format '{model_str}' — expected 'provider:model_id'"
-        )
-    provider, model_id = model_str.split(":", 1)
-    return get_model(provider, model_id)
+    result = executor.build(data, context)
+    return result.agent
 
 
 def _resolve_tools(
@@ -180,7 +146,7 @@ def _resolve_tools(
     nodes: dict[str, dict],
     chat_id: str | None,
 ) -> list[Any]:
-    """Resolve MCP server and toolset nodes into tool functions."""
+    """Resolve tool source nodes into tool functions via their executors."""
     tools: list[Any] = []
     registry = get_tool_registry()
 
@@ -192,23 +158,33 @@ def _resolve_tools(
         node_type = source["type"]
         source_data = source.get("data", {})
 
-        if node_type == "mcp-server":
-            server_id = source_data.get("server")
-            if server_id:
-                tools.extend(
-                    registry.resolve_tool_ids([f"mcp:{server_id}"], chat_id=chat_id)
-                )
+        executor = get_executor(node_type)
+        if executor is None:
+            logger.warning(f"No executor for node type: {node_type}")
+            continue
 
-        elif node_type == "toolset":
-            toolset_id = source_data.get("toolset")
-            if toolset_id:
-                tools.extend(
-                    registry.resolve_tool_ids(
-                        [f"toolset:{toolset_id}"], chat_id=chat_id
-                    )
-                )
-
-        else:
-            logger.warning(f"Unknown tool source node type: {node_type}")
+        context = BuildContext(
+            node_id=source_id,
+            chat_id=chat_id,
+            tool_sources=[],
+            sub_agents=[],
+            tool_registry=registry,
+        )
+        result = executor.build(source_data, context)
+        if isinstance(result, ToolsResult):
+            tools.extend(result.tools)
 
     return tools
+
+
+def _merge_extra_tools(
+    agent: Agent | Team,
+    extra_tool_ids: list[str],
+    chat_id: str | None,
+) -> None:
+    registry = get_tool_registry()
+    user_tools = registry.resolve_tool_ids(extra_tool_ids, chat_id=chat_id)
+    if user_tools:
+        existing = list(agent.tools or [])
+        existing.extend(user_tools)
+        agent.tools = existing

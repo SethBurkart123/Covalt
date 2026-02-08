@@ -22,8 +22,8 @@ import {
   type OnEdgesChange,
 } from '@xyflow/react';
 
-import type { FlowNode, FlowEdge, Parameter, SocketTypeId } from './types';
-import { getNodeDefinition } from './nodes';
+import type { FlowNode, FlowEdge, Parameter, SocketTypeId } from '@nodes/_types';
+import { getNodeDefinition } from '@nodes/_registry';
 import { canConnect } from './sockets';
 
 function getSocketTypeFromParam(param: Parameter): SocketTypeId {
