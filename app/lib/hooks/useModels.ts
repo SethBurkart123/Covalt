@@ -79,9 +79,6 @@ export function useModels() {
       selectModel(response.models);
     } catch (error) {
       console.error("Failed to load models:", error);
-      setModels([]);
-      setConnectedProviders([]);
-      setSelectedModel("");
     } finally {
       setIsLoading(false);
     }
