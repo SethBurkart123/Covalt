@@ -14,23 +14,12 @@ export const chatStart = {
   executionMode: 'hybrid',
 
   parameters: [
-    // Structural: topology link to root agent
     {
-      id: 'agent',
-      type: 'agent',
-      label: 'Agent',
+      id: 'output',
+      type: 'data',
+      label: 'Data',
       mode: 'output',
-      socket: { type: 'agent' },
-      maxConnections: 1,
-      onExceedMax: 'replace',
-    },
-    // Flow: emits user message into the pipeline
-    {
-      id: 'message',
-      type: 'string',
-      label: 'Message',
-      mode: 'output',
-      socket: { type: 'message' },
+      socket: { type: 'data' },
     },
     {
       id: 'includeUserTools',

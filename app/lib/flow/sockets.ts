@@ -10,9 +10,9 @@ export interface SocketType {
 
 // Socket type registry - visual config only
 export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
-  agent: {
-    id: 'agent',
-    color: '#7c3aed',
+  data: {
+    id: 'data',
+    color: '#94a3b8',
     shape: 'circle',
   },
   tools: {
@@ -40,54 +40,19 @@ export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
     color: '#10b981',
     shape: 'diamond',
   },
-  color: {
-    id: 'color',
-    color: '#eab308',
-    shape: 'circle',
-  },
   json: {
     id: 'json',
     color: '#f97316',
     shape: 'circle',
   },
-  text: {
-    id: 'text',
-    color: '#06b6d4',
-    shape: 'circle',
-  },
-  binary: {
-    id: 'binary',
-    color: '#ec4899',
-    shape: 'square',
-  },
-  array: {
-    id: 'array',
-    color: '#8b5cf6',
-    shape: 'square',
-  },
-  message: {
-    id: 'message',
+  messages: {
+    id: 'messages',
     color: '#a855f7',
     shape: 'circle',
   },
-  document: {
-    id: 'document',
-    color: '#84cc16',
-    shape: 'square',
-  },
-  vector: {
-    id: 'vector',
-    color: '#14b8a6',
-    shape: 'diamond',
-  },
-  trigger: {
-    id: 'trigger',
-    color: '#ef4444',
-    shape: 'diamond',
-  },
-  any: {
-    id: 'any',
-    color: '#6b7280',
+  model: {
+    id: 'model',
+    color: '#06b6d4',
     shape: 'circle',
   },
 } as const;
@@ -100,34 +65,22 @@ const IMPLICIT_COERCIONS = new Set<`${SocketTypeId}:${SocketTypeId}`>([
   // Numeric widening
   'int:float',
 
-  // Primitives → string
+  // Primitives → string (serialize)
   'int:string',
   'float:string',
   'boolean:string',
 
-  // string ↔ text are identity (same data, different semantic)
-  'string:text',
-  'text:string',
-
-  // Structured → string/text (serialize)
+  // Structured → string (serialize)
   'json:string',
-  'json:text',
 
-  // Message unpacking
-  'message:text',
-  'message:string',
-  'message:json',
-
-  // Document unpacking
-  'document:text',
-  'document:json',
+  // messages ↔ string
+  'messages:string',
+  'string:messages',
 ]);
 
 /** Check if sourceType can implicitly coerce to targetType. */
 export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): boolean {
   if (sourceType === targetType) return true;
-  if (targetType === 'any') return true;
-  if (sourceType === 'any') return true;
   return IMPLICIT_COERCIONS.has(`${sourceType}:${targetType}`);
 }
 
@@ -135,11 +88,21 @@ export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): b
  * Can a source socket connect to a target parameter?
  *
  * Priority:
- *   1. If the target has an explicit `acceptsTypes` list, only those types are allowed.
- *   2. Otherwise, check exact match or implicit coercion.
+ *   1. Data spine: data → data always works
+ *   2. Data → non-data: allowed if target's acceptsTypes includes 'data' (e.g. sub-agent composition)
+ *   3. Non-data → data: blocked
+ *   4. Typed sockets: check acceptsTypes or implicit coercion
  */
 export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): boolean {
   const targetType = targetParam.socket?.type ?? (targetParam.type as SocketTypeId);
+
+  if (sourceType === 'data') {
+    if (targetType === 'data') return true;
+    if (targetParam.acceptsTypes?.includes('data')) return true;
+    return false;
+  }
+
+  if (targetType === 'data') return false;
 
   if (targetParam.acceptsTypes) {
     return targetParam.acceptsTypes.includes(sourceType);

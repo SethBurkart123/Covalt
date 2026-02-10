@@ -8,7 +8,7 @@ runtime conversion when a DataValue arrives at a port with a different type.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Callable
 
 from nodes._types import DataValue
 
@@ -16,10 +16,6 @@ from nodes._types import DataValue
 # ── Conversion functions ─────────────────────────────────────────────
 # Each takes a DataValue and returns a new DataValue with the target type.
 # They assume the source type is correct (the table only maps valid pairs).
-
-
-def _identity(target: str) -> Callable[[DataValue], DataValue]:
-    return lambda v: DataValue(type=target, value=v.value)
 
 
 def _int_to_float(v: DataValue) -> DataValue:
@@ -38,35 +34,21 @@ def _json_to_string(v: DataValue) -> DataValue:
     return DataValue(type="string", value=json.dumps(v.value, separators=(",", ":")))
 
 
-def _json_to_text(v: DataValue) -> DataValue:
-    return DataValue(type="text", value=json.dumps(v.value, indent=2))
-
-
-def _message_to_text(v: DataValue) -> DataValue:
-    content = v.value.get("content", "") if isinstance(v.value, dict) else str(v.value)
-    return DataValue(type="text", value=content)
-
-
-def _message_to_string(v: DataValue) -> DataValue:
-    content = v.value.get("content", "") if isinstance(v.value, dict) else str(v.value)
-    return DataValue(type="string", value=content)
-
-
-def _message_to_json(v: DataValue) -> DataValue:
+def _messages_to_string(v: DataValue) -> DataValue:
+    if isinstance(v.value, list):
+        return DataValue(
+            type="string",
+            value="\n".join(
+                m.get("content", "") if isinstance(m, dict) else str(m) for m in v.value
+            ),
+        )
     if isinstance(v.value, dict):
-        return DataValue(type="json", value=v.value)
-    return DataValue(type="json", value={"content": str(v.value)})
+        return DataValue(type="string", value=v.value.get("content", str(v.value)))
+    return DataValue(type="string", value=str(v.value))
 
 
-def _document_to_text(v: DataValue) -> DataValue:
-    text = v.value.get("text", "") if isinstance(v.value, dict) else str(v.value)
-    return DataValue(type="text", value=text)
-
-
-def _document_to_json(v: DataValue) -> DataValue:
-    if isinstance(v.value, dict):
-        return DataValue(type="json", value=v.value)
-    return DataValue(type="json", value={"text": str(v.value)})
+def _string_to_messages(v: DataValue) -> DataValue:
+    return DataValue(type="messages", value=[{"role": "user", "content": str(v.value)}])
 
 
 # ── Coercion table ──────────────────────────────────────────────────
@@ -80,19 +62,11 @@ COERCION_TABLE: dict[tuple[str, str], Callable[[DataValue], DataValue]] = {
     ("int", "string"): _to_string,
     ("float", "string"): _to_string,
     ("boolean", "string"): _bool_to_string,
-    # string ↔ text (identity)
-    ("string", "text"): _identity("text"),
-    ("text", "string"): _identity("string"),
-    # Structured → string/text
+    # Structured → string
     ("json", "string"): _json_to_string,
-    ("json", "text"): _json_to_text,
-    # Message unpacking
-    ("message", "text"): _message_to_text,
-    ("message", "string"): _message_to_string,
-    ("message", "json"): _message_to_json,
-    # Document unpacking
-    ("document", "text"): _document_to_text,
-    ("document", "json"): _document_to_json,
+    # messages ↔ string
+    ("messages", "string"): _messages_to_string,
+    ("string", "messages"): _string_to_messages,
 }
 
 

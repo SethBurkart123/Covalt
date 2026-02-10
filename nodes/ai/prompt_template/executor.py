@@ -19,7 +19,7 @@ class PromptTemplateExecutor:
     ) -> ExecutionResult:
         template = data.get("template", "")
         undefined_behavior = data.get("undefinedBehavior", "empty")
-        variables = inputs.get("data", DataValue("json", {})).value or {}
+        variables = inputs.get("input", DataValue("data", {})).value or {}
 
         def _replace(match: re.Match) -> str:
             key = match.group(1)
@@ -35,7 +35,9 @@ class PromptTemplateExecutor:
 
         rendered = _VAR_PATTERN.sub(_replace, template)
 
-        return ExecutionResult(outputs={"text": DataValue(type="text", value=rendered)})
+        return ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"text": rendered})}
+        )
 
 
 executor = PromptTemplateExecutor()

@@ -115,13 +115,13 @@ class TestLlmCompletionExecutor:
             events, result = await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o"},
-                    {"prompt": _dv("text", "Say hi")},
+                    {"prompt": _dv("string", "Say hi")},
                     ctx,
                 )
             )
 
         assert isinstance(result, ExecutionResult)
-        assert result.outputs["text"].value == "Hello world"
+        assert result.outputs["output"].value["text"] == "Hello world"
 
     @pytest.mark.asyncio
     async def test_yields_progress_events_per_token(self) -> None:
@@ -136,7 +136,7 @@ class TestLlmCompletionExecutor:
         ):
             events, result = await collect_events(
                 executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("text", "go")}, ctx
+                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "go")}, ctx
                 )
             )
 
@@ -157,7 +157,7 @@ class TestLlmCompletionExecutor:
         ):
             events, _ = await collect_events(
                 executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("text", "")}, ctx
+                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx
                 )
             )
 
@@ -181,7 +181,7 @@ class TestLlmCompletionExecutor:
         ):
             events, result = await collect_events(
                 executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("text", "")}, ctx
+                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx
                 )
             )
 
@@ -212,7 +212,7 @@ class TestLlmCompletionExecutor:
             await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o", "temperature": 0.7, "max_tokens": 100},
-                    {"prompt": _dv("text", "hi")},
+                    {"prompt": _dv("string", "hi")},
                     ctx,
                 )
             )
@@ -236,7 +236,7 @@ class TestLlmCompletionExecutor:
             )
 
         assert isinstance(result, ExecutionResult)
-        assert result.outputs["text"].value == ""
+        assert result.outputs["output"].value["text"] == ""
 
 
 # ====================================================================
@@ -252,12 +252,15 @@ class TestPromptTemplateExecutor:
         executor = PromptTemplateExecutor()
         result = await executor.execute(
             {"template": "Hello, {{name}}! You are {{age}} years old."},
-            {"data": _dv("json", {"name": "Alice", "age": 30})},
+            {"input": _dv("data", {"name": "Alice", "age": 30})},
             _flow_ctx(),
         )
 
         assert isinstance(result, ExecutionResult)
-        assert result.outputs["text"].value == "Hello, Alice! You are 30 years old."
+        assert (
+            result.outputs["output"].value["text"]
+            == "Hello, Alice! You are 30 years old."
+        )
 
     @pytest.mark.asyncio
     async def test_undefined_variable_empty_mode(self) -> None:
@@ -267,22 +270,22 @@ class TestPromptTemplateExecutor:
                 "template": "Hi {{name}}, your id is {{id}}",
                 "undefinedBehavior": "empty",
             },
-            {"data": _dv("json", {"name": "Bob"})},
+            {"input": _dv("data", {"name": "Bob"})},
             _flow_ctx(),
         )
 
-        assert result.outputs["text"].value == "Hi Bob, your id is "
+        assert result.outputs["output"].value["text"] == "Hi Bob, your id is "
 
     @pytest.mark.asyncio
     async def test_undefined_variable_keep_mode(self) -> None:
         executor = PromptTemplateExecutor()
         result = await executor.execute(
             {"template": "Hi {{name}}, your id is {{id}}", "undefinedBehavior": "keep"},
-            {"data": _dv("json", {"name": "Bob"})},
+            {"input": _dv("data", {"name": "Bob"})},
             _flow_ctx(),
         )
 
-        assert result.outputs["text"].value == "Hi Bob, your id is {{id}}"
+        assert result.outputs["output"].value["text"] == "Hi Bob, your id is {{id}}"
 
     @pytest.mark.asyncio
     async def test_undefined_variable_error_mode(self) -> None:
@@ -291,7 +294,7 @@ class TestPromptTemplateExecutor:
         with pytest.raises(Exception, match="id"):
             await executor.execute(
                 {"template": "{{id}}", "undefinedBehavior": "error"},
-                {"data": _dv("json", {})},
+                {"input": _dv("data", {})},
                 _flow_ctx(),
             )
 
@@ -300,11 +303,11 @@ class TestPromptTemplateExecutor:
         executor = PromptTemplateExecutor()
         result = await executor.execute(
             {"template": '{"key": "{{val}}"}', "outputFormat": "json"},
-            {"data": _dv("json", {"val": "hello"})},
+            {"input": _dv("data", {"val": "hello"})},
             _flow_ctx(),
         )
 
-        parsed = json.loads(result.outputs["text"].value)
+        parsed = json.loads(result.outputs["output"].value["text"])
         assert parsed == {"key": "hello"}
 
     @pytest.mark.asyncio
@@ -312,11 +315,11 @@ class TestPromptTemplateExecutor:
         executor = PromptTemplateExecutor()
         result = await executor.execute(
             {"template": ""},
-            {"data": _dv("json", {"x": 1})},
+            {"input": _dv("data", {"x": 1})},
             _flow_ctx(),
         )
 
-        assert result.outputs["text"].value == ""
+        assert result.outputs["output"].value["text"] == ""
 
 
 # ====================================================================
@@ -332,7 +335,7 @@ class TestConditionalExecutor:
         executor = ConditionalExecutor()
         result = await executor.execute(
             {"field": "status", "operator": "equals", "value": "active"},
-            {"input": _dv("json", {"status": "active"})},
+            {"input": _dv("data", {"status": "active"})},
             _flow_ctx(),
         )
 
@@ -345,7 +348,7 @@ class TestConditionalExecutor:
         executor = ConditionalExecutor()
         result = await executor.execute(
             {"field": "status", "operator": "equals", "value": "active"},
-            {"input": _dv("json", {"status": "inactive"})},
+            {"input": _dv("data", {"status": "inactive"})},
             _flow_ctx(),
         )
 
@@ -390,7 +393,7 @@ class TestConditionalExecutor:
         executor = ConditionalExecutor()
         result = await executor.execute(
             {"field": "val", "operator": operator, "value": compare_val},
-            {"input": _dv("json", {"val": field_val})},
+            {"input": _dv("data", {"val": field_val})},
             _flow_ctx(),
         )
 
@@ -408,7 +411,7 @@ class TestConditionalExecutor:
                 "value": "alice",
                 "caseSensitive": False,
             },
-            {"input": _dv("json", {"name": "ALICE"})},
+            {"input": _dv("data", {"name": "ALICE"})},
             _flow_ctx(),
         )
 
@@ -419,7 +422,7 @@ class TestConditionalExecutor:
         executor = ConditionalExecutor()
         result = await executor.execute(
             {"field": "missing_key", "operator": "equals", "value": "anything"},
-            {"input": _dv("json", {"other_key": "value"})},
+            {"input": _dv("data", {"other_key": "value"})},
             _flow_ctx(),
         )
 

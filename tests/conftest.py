@@ -184,8 +184,8 @@ def make_graph(
 def make_edge(
     source: str,
     target: str,
-    source_handle: str = "agent",
-    target_handle: str = "agent",
+    source_handle: str = "output",
+    target_handle: str = "input",
 ) -> dict[str, str]:
     """Build an edge dict for the graph schema."""
     return {

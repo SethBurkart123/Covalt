@@ -9,7 +9,6 @@ from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 
 def resolve_model(model_str: str) -> Any:
-    """Parse 'provider:model_id' and return a model instance."""
     if ":" not in model_str:
         raise ValueError(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
@@ -24,7 +23,7 @@ class LlmCompletionExecutor:
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ):
-        prompt = inputs.get("prompt", DataValue("text", "")).value or data.get(
+        prompt = inputs.get("prompt", DataValue("string", "")).value or data.get(
             "prompt", ""
         )
         model_str = data.get("model", "")
@@ -67,12 +66,14 @@ class LlmCompletionExecutor:
                 data={"error": str(e)},
             )
             yield ExecutionResult(
-                outputs={"text": DataValue(type="text", value=full_response)}
+                outputs={
+                    "output": DataValue(type="data", value={"text": full_response})
+                }
             )
             return
 
         yield ExecutionResult(
-            outputs={"text": DataValue(type="text", value=full_response)}
+            outputs={"output": DataValue(type="data", value={"text": full_response})}
         )
 
 

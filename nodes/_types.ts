@@ -5,14 +5,16 @@
 
 /** Socket type identifier - must match keys in SOCKET_TYPES */
 export type SocketTypeId =
-  | 'agent' | 'tools'
-  | 'float' | 'int' | 'string' | 'boolean' | 'color'
-  | 'json' | 'text' | 'binary' | 'array' | 'message' | 'document' | 'vector' | 'trigger' | 'any';
+  | 'data'
+  | 'tools'
+  | 'float' | 'int' | 'string' | 'boolean'
+  | 'json' | 'messages' | 'model';
 
 export type SocketShape = 'circle' | 'square' | 'diamond';
 
 /** Parameter types that the UI layer understands */
 export type ParameterType =
+  | 'data'
   | 'float'
   | 'int'
   | 'string'
@@ -22,9 +24,7 @@ export type ParameterType =
   | 'model'
   | 'mcp-server'
   | 'toolset'
-  | 'agent'
   | 'tools'
-  | 'color'
   | 'json';
 
 /** How the parameter behaves */
@@ -41,6 +41,12 @@ export interface SocketConfig {
   bidirectional?: boolean;  // Can be both source and target (for hub topology)
   color?: string;           // Override default color
   shape?: SocketShape;  // Override default shape
+}
+
+/** Conditional visibility — show this parameter only when a condition is met */
+export interface ShowWhen {
+  /** Show only when this parameter's socket has a connection */
+  connected: string;
 }
 
 /** Base parameter definition */
@@ -64,6 +70,9 @@ export interface ParameterBase {
   
   /** Socket types this input accepts. Omit = same type only */
   acceptsTypes?: readonly SocketTypeId[];
+  
+  /** Conditional visibility — only render when condition is met */
+  showWhen?: ShowWhen;
 }
 
 /** Float parameter */
@@ -126,28 +135,21 @@ export interface ToolsetParameter extends ParameterBase {
   type: 'toolset';
 }
 
-/** Agent socket parameter */
-export interface AgentParameter extends ParameterBase {
-  type: 'agent';
-  socket: SocketConfig;
-}
-
 /** Tools socket parameter */
 export interface ToolsParameter extends ParameterBase {
   type: 'tools';
   socket: SocketConfig;
 }
 
-/** Color parameter */
-export interface ColorParameter extends ParameterBase {
-  type: 'color';
-  default?: string;
-}
-
 /** JSON parameter */
 export interface JsonParameter extends ParameterBase {
   type: 'json';
   default?: unknown;
+}
+
+/** Data spine parameter — generic JSON flow */
+export interface DataParameter extends ParameterBase {
+  type: 'data';
 }
 
 /** Union of all parameter types */
@@ -161,10 +163,9 @@ export type Parameter =
   | ModelParameter
   | McpServerParameter
   | ToolsetParameter
-  | AgentParameter
   | ToolsParameter
-  | ColorParameter
-  | JsonParameter;
+  | JsonParameter
+  | DataParameter;
 
 /** Node category for palette organization */
 export type NodeCategory = 'core' | 'tools' | 'ai' | 'flow' | 'data' | 'integration' | 'rag' | 'utility';
@@ -195,6 +196,8 @@ export interface FlowNode {
   type: string;  // NodeDefinition.id
   position: { x: number; y: number };
   data: Record<string, unknown>;
+  /** User-facing display name. Defaults to NodeDefinition.name. Used by $() expressions. */
+  label?: string;
 }
 
 /** Edge between nodes */

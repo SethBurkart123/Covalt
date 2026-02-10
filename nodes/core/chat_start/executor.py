@@ -31,7 +31,6 @@ class ChatStartExecutor:
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
-        """Emit the user message from flow state into the pipeline."""
         user_message = ""
         if context.state is not None:
             user_message = getattr(context.state, "user_message", "") or ""
@@ -39,12 +38,7 @@ class ChatStartExecutor:
                 user_message = context.state.get("user_message", "")
 
         return ExecutionResult(
-            outputs={
-                "message": DataValue(
-                    type="message",
-                    value={"role": "user", "content": user_message},
-                )
-            }
+            outputs={"output": DataValue(type="data", value={"message": user_message})}
         )
 
 

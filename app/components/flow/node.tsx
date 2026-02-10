@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useCallback, type ComponentType } from 'react';
-import type { NodeProps } from '@xyflow/react';
+import { memo, useCallback, useMemo, type ComponentType } from 'react';
+import { useStore, type NodeProps } from '@xyflow/react';
 import { ChevronDown } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import type { NodeDefinition } from '@/lib/flow';
@@ -28,7 +28,7 @@ function getIcon(name: string) {
  * Renders any node type based on its definition from the registry.
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
-  const { updateNodeData, getConnectedInputs } = useFlowActions();
+  const { updateNodeData } = useFlowActions();
 
   const handleParameterChange = useCallback(
     (paramId: string, value: unknown) => {
@@ -39,6 +39,23 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 
   const definition = getNodeDefinition(type);
 
+  const connectedInputKey = useStore(
+    useCallback((state) => {
+      const connected = new Set<string>();
+      for (const edge of state.edges) {
+        if (edge.target === id && edge.targetHandle) {
+          connected.add(edge.targetHandle);
+        }
+      }
+      return JSON.stringify(Array.from(connected).sort());
+    }, [id])
+  );
+
+  const connectedInputs = useMemo(
+    () => new Set(connectedInputKey ? JSON.parse(connectedInputKey) as string[] : []),
+    [connectedInputKey]
+  );
+
   if (!definition) {
     return (
       <div className="bg-destructive/50 border border-destructive rounded p-2 text-xs text-destructive-foreground">
@@ -48,7 +65,6 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   }
 
   const Icon = getIcon(definition.icon);
-  const connectedInputs = getConnectedInputs(id);
 
   return (
     <div
@@ -68,15 +84,20 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
         </div>
 
         <div className="py-1 bg-card rounded-lg border-t border-border">
-          {definition.parameters.map(param => (
-            <ParameterRow
-              key={param.id}
-              param={param}
-              value={data[param.id]}
-              isConnected={connectedInputs.has(param.id)}
-              onParamChange={handleParameterChange}
-            />
-          ))}
+          {definition.parameters
+            .filter(param => {
+              if (!param.showWhen) return true;
+              return connectedInputs.has(param.showWhen.connected);
+            })
+            .map(param => (
+              <ParameterRow
+                key={param.id}
+                param={param}
+                value={data[param.id]}
+                isConnected={connectedInputs.has(param.id)}
+                onParamChange={handleParameterChange}
+              />
+            ))}
         </div>
       </div>
     </div>

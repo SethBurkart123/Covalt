@@ -265,6 +265,52 @@ class TestTeamCreation:
         build_agent_from_graph(graph)
         assert mock_model.call_count == 2
 
+    @patch(f"{GX_PATH}.get_tool_registry", return_value=_mock_registry())
+    @patch(f"{AGENT_EXEC_PATH}.get_model", return_value=_fake_model)
+    def test_model_wire_overrides_inline_model(self, mock_model, mock_reg):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start", name="Start"),
+                make_node("m1", "model-selector", model="google:gemini-2.5-flash"),
+                make_node("a1", "agent", name="A", model="openai:gpt-4o"),
+            ],
+            edges=[
+                make_edge("cs", "a1"),
+                make_edge("m1", "a1", source_handle="output", target_handle="model"),
+            ],
+        )
+
+        build_agent_from_graph(graph)
+
+        mock_model.assert_called_once_with("google", "gemini-2.5-flash")
+
+    @patch(f"{GX_PATH}.get_tool_registry", return_value=_mock_registry())
+    @patch(f"{AGENT_EXEC_PATH}.get_model", return_value=_fake_model)
+    def test_duplicate_sub_agent_edges_are_deduped(self, mock_model, mock_reg):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start", name="Start"),
+                make_node("leader", "agent", name="Leader", model="openai:gpt-4o"),
+                make_node("worker", "agent", name="Worker", model="anthropic:claude-3"),
+            ],
+            edges=[
+                make_edge("cs", "leader"),
+                make_edge(
+                    "worker", "leader", source_handle="input", target_handle="tools"
+                ),
+                # duplicate legacy edge shape should not create a fake cycle
+                make_edge(
+                    "worker", "leader", source_handle="agent", target_handle="tools"
+                ),
+            ],
+        )
+
+        result = build_agent_from_graph(graph)
+
+        assert isinstance(result.agent, Team)
+        assert len(result.agent.members) == 1
+        assert result.agent.members[0].name == "Worker"
+
 
 # ===========================================================================
 # 4. Error cases

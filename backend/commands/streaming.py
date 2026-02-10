@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import traceback
+import types
 import uuid
 import copy
 from dataclasses import dataclass
@@ -24,7 +25,8 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.agent_manager import get_agent_manager
-from ..services.flow_executor import has_flow_nodes
+from ..services.flow_executor import has_flow_nodes, run_flow
+from nodes._types import DataValue, ExecutionResult, NodeEvent
 from ..services.graph_executor import build_agent_from_graph
 from ..services.file_storage import (
     get_extension_from_mime,
@@ -537,6 +539,172 @@ def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
         return []
 
 
+async def handle_flow_stream(
+    graph_data: dict,
+    agent: Any,
+    messages: List[ChatMessage],
+    assistant_msg_id: str,
+    raw_ch: Any,
+    chat_id: str = "",
+    ephemeral: bool = False,
+) -> None:
+    """Run the flow engine and forward NodeEvents to the WebSocket as ChatEvents."""
+    ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
+
+    def _noop_save(msg_id: str, content: str) -> None:
+        pass
+
+    _save = save_msg_content if not ephemeral else _noop_save
+
+    if chat_id:
+        await broadcaster.register_stream(chat_id, assistant_msg_id)
+
+    user_message = ""
+    if messages and messages[-1].role == "user":
+        content = messages[-1].content
+        user_message = content if isinstance(content, str) else json.dumps(content)
+
+    state = types.SimpleNamespace(user_message=user_message)
+    context = types.SimpleNamespace(
+        run_id=str(uuid.uuid4()),
+        chat_id=chat_id,
+        state=state,
+        tool_registry=registry,
+    )
+
+    content_blocks: List[Dict[str, Any]] = (
+        [] if ephemeral else load_initial_content(assistant_msg_id)
+    )
+    current_text = ""
+    final_output: DataValue | None = None
+
+    try:
+        async for item in run_flow(graph_data, agent, context):
+            if isinstance(item, NodeEvent):
+                if item.event_type == "started":
+                    ch.send_model(
+                        ChatEvent(
+                            event="FlowNodeStarted",
+                            content=json.dumps(
+                                {"nodeId": item.node_id, "nodeType": item.node_type}
+                            ),
+                        )
+                    )
+
+                elif item.event_type == "progress":
+                    token = (item.data or {}).get("token", "")
+                    if token:
+                        current_text += token
+                        ch.send_model(ChatEvent(event="RunContent", content=token))
+                        await asyncio.to_thread(
+                            _save,
+                            assistant_msg_id,
+                            json.dumps(
+                                content_blocks
+                                + (
+                                    [{"type": "text", "content": current_text}]
+                                    if current_text
+                                    else []
+                                )
+                            ),
+                        )
+
+                elif item.event_type == "completed":
+                    ch.send_model(
+                        ChatEvent(
+                            event="FlowNodeCompleted",
+                            content=json.dumps(
+                                {"nodeId": item.node_id, "nodeType": item.node_type}
+                            ),
+                        )
+                    )
+
+                elif item.event_type == "error":
+                    error_msg = (item.data or {}).get("error", "Unknown node error")
+                    content_blocks.append(
+                        {
+                            "type": "error",
+                            "content": f"[{item.node_type}] {error_msg}",
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+                    )
+                    ch.send_model(
+                        ChatEvent(
+                            event="RunError", content=f"[{item.node_type}] {error_msg}"
+                        )
+                    )
+                    await asyncio.to_thread(
+                        _save, assistant_msg_id, json.dumps(content_blocks)
+                    )
+
+            elif isinstance(item, ExecutionResult):
+                final_output = _pick_text_output(item.outputs)
+
+        if current_text:
+            content_blocks.append({"type": "text", "content": current_text})
+        elif final_output and not any(b.get("type") == "text" for b in content_blocks):
+            text = str(final_output.value) if final_output.value is not None else ""
+            if text:
+                content_blocks.append({"type": "text", "content": text})
+                ch.send_model(ChatEvent(event="RunContent", content=text))
+
+        await asyncio.to_thread(_save, assistant_msg_id, json.dumps(content_blocks))
+
+        if not ephemeral:
+            with db.db_session() as sess:
+                db.mark_message_complete(sess, assistant_msg_id)
+
+        ch.send_model(ChatEvent(event="RunCompleted"))
+
+        if hasattr(ch, "flush_broadcasts"):
+            await ch.flush_broadcasts()
+
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+
+    except Exception as e:
+        logger.error(f"[flow_stream] Exception: {e}")
+        traceback.print_exc()
+
+        if current_text:
+            content_blocks.append({"type": "text", "content": current_text})
+
+        error_msg = extract_error_message(str(e))
+        content_blocks.append(
+            {
+                "type": "error",
+                "content": error_msg,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        )
+        await asyncio.to_thread(_save, assistant_msg_id, json.dumps(content_blocks))
+        ch.send_model(ChatEvent(event="RunError", content=error_msg))
+
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
+
+
+def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
+    """Pick the most relevant text output from a node's data spine output."""
+    if not outputs:
+        return None
+    data_output = outputs.get("output") or outputs.get("true") or outputs.get("false")
+    if data_output is None:
+        for v in outputs.values():
+            if v.type == "string":
+                return v
+        return next(iter(outputs.values()))
+    value = data_output.value
+    if isinstance(value, dict):
+        text = value.get("response") or value.get("text") or value.get("message")
+        if text is not None:
+            return DataValue(type="string", value=str(text))
+        return DataValue(type="string", value=str(value))
+    return DataValue(type="string", value=str(value) if value else "")
+
+
 async def handle_content_stream(
     agent: Agent | Team,
     messages: List[ChatMessage],
@@ -1033,7 +1201,8 @@ async def handle_content_stream(
                         with db.db_session() as sess:
                             db.mark_message_complete(sess, assistant_msg_id)
                     ch.send_model(ChatEvent(event="RunCompleted"))
-                    await ch.flush_broadcasts()
+                    if hasattr(ch, "flush_broadcasts"):
+                        await ch.flush_broadcasts()
                     if chat_id:
                         await broadcaster.update_stream_status(chat_id, "completed")
                         await broadcaster.unregister_stream(chat_id)
@@ -1055,7 +1224,8 @@ async def handle_content_stream(
                     await asyncio.to_thread(_save, assistant_msg_id, save_final())
                     ch.send_model(ChatEvent(event="RunError", content=error_msg))
                     had_error = True
-                    await ch.flush_broadcasts()
+                    if hasattr(ch, "flush_broadcasts"):
+                        await ch.flush_broadcasts()
                     if chat_id:
                         await broadcaster.update_stream_status(
                             chat_id, "error", error_msg
@@ -1395,9 +1565,18 @@ async def stream_chat(
                     db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
             if has_flow_nodes(graph_data):
-                logger.info(
-                    f"[stream] Graph has flow nodes — flow engine ready (not yet wired for streaming)"
+                logger.info("[stream] Graph has flow nodes — running flow engine")
+                if not messages or messages[-1].role != "user":
+                    raise ValueError("No user message found in request")
+                await handle_flow_stream(
+                    graph_data,
+                    agent,
+                    messages,
+                    assistant_msg_id,
+                    channel,
+                    chat_id=chat_id,
                 )
+                return
         else:
             agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
 
@@ -1497,9 +1676,19 @@ async def stream_agent_chat(
         result = build_agent_from_graph(graph_data, chat_id=chat_id or None)
 
         if has_flow_nodes(graph_data):
-            logger.info(
-                f"[stream_agent] Graph has flow nodes — flow engine ready (not yet wired for streaming)"
+            logger.info("[stream_agent] Graph has flow nodes — running flow engine")
+            if not messages or messages[-1].role != "user":
+                raise ValueError("No user message found in request")
+            await handle_flow_stream(
+                graph_data,
+                result.agent,
+                messages,
+                assistant_msg_id,
+                channel,
+                chat_id=chat_id,
+                ephemeral=ephemeral,
             )
+            return
 
         if not messages or messages[-1].role != "user":
             raise ValueError("No user message found in request")

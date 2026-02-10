@@ -407,7 +407,7 @@ function FlowCanvasInner() {
       const flowPosition = screenToFlowPosition(mousePositionRef.current);
       const newNodeId = addNode(nodeType, flowPosition);
       selectNode(newNodeId);
-      const newSocketType: SocketTypeId = getNodeDefinition(nodeType)?.parameters.find(p => p.id === socketId)?.socket?.type ?? 'agent';
+      const newSocketType: SocketTypeId = getNodeDefinition(nodeType)?.parameters.find(p => p.id === socketId)?.socket?.type ?? 'data';
 
       if (pending.handleType === 'source') {
         onConnect(

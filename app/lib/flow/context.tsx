@@ -28,9 +28,8 @@ import { canConnect } from './sockets';
 
 function getSocketTypeFromParam(param: Parameter): SocketTypeId {
   if (param.socket?.type) return param.socket.type;
-  if (param.type === 'agent') return 'agent';
   if (param.type === 'tools') return 'tools';
-  return 'agent';
+  return 'data';
 }
 
 function getSocketTypeForHandle(
@@ -40,13 +39,13 @@ function getSocketTypeForHandle(
   isSource: boolean
 ): SocketTypeId {
   const node = nodes.find(n => n.id === nodeId);
-  if (!node) return isSource ? 'agent' : 'tools';
+  if (!node) return isSource ? 'data' : 'tools';
 
   const definition = getNodeDefinition(node.type || '');
-  if (!definition) return isSource ? 'agent' : 'tools';
+  if (!definition) return isSource ? 'data' : 'tools';
 
   const param = definition.parameters.find(p => p.id === handleId);
-  if (!param) return isSource ? 'agent' : 'tools';
+  if (!param) return isSource ? 'data' : 'tools';
 
   return getSocketTypeFromParam(param);
 }
@@ -63,6 +62,52 @@ function getParameterForHandle(
   if (!definition) return undefined;
 
   return definition.parameters.find(p => p.id === handleId);
+}
+
+function canHandleActAsSource(param: Parameter | undefined): boolean {
+  if (!param?.socket) return false;
+  return param.mode === 'output' || Boolean(param.socket.bidirectional);
+}
+
+function canHandleActAsTarget(param: Parameter | undefined): boolean {
+  if (!param?.socket) return false;
+  return param.mode !== 'output' || Boolean(param.socket.bidirectional);
+}
+
+function normalizeConnectionDirection(
+  connection: Connection | Edge,
+  nodes: Node[]
+): Connection | Edge {
+  const sourceParam = getParameterForHandle(
+    nodes,
+    connection.source || '',
+    connection.sourceHandle
+  );
+  const targetParam = getParameterForHandle(
+    nodes,
+    connection.target || '',
+    connection.targetHandle
+  );
+
+  if (!sourceParam || !targetParam) {
+    return connection;
+  }
+
+  if (canHandleActAsSource(sourceParam) && canHandleActAsTarget(targetParam)) {
+    return connection;
+  }
+
+  if (canHandleActAsSource(targetParam) && canHandleActAsTarget(sourceParam)) {
+    return {
+      ...connection,
+      source: connection.target,
+      sourceHandle: connection.targetHandle,
+      target: connection.source,
+      targetHandle: connection.sourceHandle,
+    } as typeof connection;
+  }
+
+  return connection;
 }
 
 function countEdgesFrom(
@@ -277,59 +322,74 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
   const isValidConnection = useCallback(
     (connection: Connection | Edge) => {
+      const normalized = normalizeConnectionDirection(connection, nodesRef.current);
+
       const sourceType = getSocketTypeForHandle(
         nodesRef.current,
-        connection.source || '',
-        connection.sourceHandle,
+        normalized.source || '',
+        normalized.sourceHandle,
         true
+      );
+      const sourceParam = getParameterForHandle(
+        nodesRef.current,
+        normalized.source || '',
+        normalized.sourceHandle
       );
       const targetParam = getParameterForHandle(
         nodesRef.current,
-        connection.target || '',
-        connection.targetHandle
+        normalized.target || '',
+        normalized.targetHandle
       );
 
-      if (!targetParam) return false;
+      if (!sourceParam || !targetParam) return false;
+
+      // Sub-agent composition: only allow Agent Data input -> Agent Tools.
+      // This edge is structural (for recursive team build), not flow routing.
+      if (targetParam.id === 'tools' && targetParam.type === 'tools' && sourceParam.type === 'data') {
+        return sourceParam.id === 'input';
+      }
+
       return canConnect(sourceType, targetParam);
     },
     []
   );
 
   const onConnect = useCallback(
-    (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
+    (connection: Connection, _socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
+      const normalized = normalizeConnectionDirection(connection, nodesRef.current) as Connection;
       pushHistory();
 
-      const sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
+      const sourceType = getSocketTypeForHandle(
         nodesRef.current,
-        connection.source || '',
-        connection.sourceHandle,
+        normalized.source || '',
+        normalized.sourceHandle,
         true
       );
-      const targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
+      const targetType = getSocketTypeForHandle(
         nodesRef.current,
-        connection.target || '',
-        connection.targetHandle,
+        normalized.target || '',
+        normalized.targetHandle,
         false
       );
 
       const edge: Edge = {
-        ...connection,
-        id: generateEdgeId(connection.source || '', connection.target || ''),
+        ...normalized,
+        id: generateEdgeId(normalized.source || '', normalized.target || ''),
         type: 'gradient',
         data: { sourceType, targetType },
       };
 
       const sourceParam = getParameterForHandle(
         nodesRef.current,
-        connection.source || '',
-        connection.sourceHandle
+        normalized.source || '',
+        normalized.sourceHandle
       );
 
       setEdges(currentEdges => {
         const currentCount = countEdgesFrom(
           currentEdges,
-          connection.source || '',
-          connection.sourceHandle
+          normalized.source || '',
+          normalized.sourceHandle
         );
 
         if (!sourceParam?.maxConnections || currentCount < sourceParam.maxConnections) {
@@ -338,7 +398,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
         if (sourceParam.onExceedMax === 'replace') {
           const filtered = currentEdges.filter(
-            e => !(e.source === connection.source && e.sourceHandle === connection.sourceHandle)
+            e => !(e.source === normalized.source && e.sourceHandle === normalized.sourceHandle)
           );
           return addEdge(edge, filtered);
         }
@@ -366,6 +426,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       }
 
       const id = generateNodeId(type);
+      data._label = definition.name;
       const node: Node = { id, type, position, data };
 
       setNodes(nds => [...nds, node]);

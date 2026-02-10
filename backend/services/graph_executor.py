@@ -64,6 +64,7 @@ def _find_root_agent_id(
     nodes: dict[str, dict],
     edges: list[dict],
 ) -> str:
+    """Find the root agent by following data spine edges from Chat Start."""
     chat_start_ids = {nid for nid, n in nodes.items() if n["type"] == "chat-start"}
     if not chat_start_ids:
         raise ValueError("Graph has no Chat Start node")
@@ -71,14 +72,14 @@ def _find_root_agent_id(
     for edge in edges:
         if (
             edge["source"] in chat_start_ids
-            and edge.get("sourceHandle") == "agent"
-            and edge.get("targetHandle") == "agent"
+            and edge.get("sourceHandle") == "output"
+            and edge.get("targetHandle") == "input"
         ):
             target = edge["target"]
             if nodes.get(target, {}).get("type") == "agent":
                 return target
 
-    raise ValueError("Chat Start is not connected to an Agent node")
+    raise ValueError("Chat Start is not connected to an Agent node via data spine")
 
 
 def _get_tool_sources(
@@ -89,19 +90,44 @@ def _get_tool_sources(
     """Split tool sources into (regular tool node IDs, sub-agent node IDs)."""
     tool_ids: list[str] = []
     agent_ids: list[str] = []
+    seen_tool_ids: set[str] = set()
+    seen_agent_ids: set[str] = set()
 
     for edge in edges:
         if edge["target"] != agent_node_id or edge.get("targetHandle") != "tools":
             continue
-        source = nodes.get(edge["source"])
+        source_id = edge["source"]
+        source = nodes.get(source_id)
         if not source:
             continue
         if source["type"] == "agent":
-            agent_ids.append(edge["source"])
+            if source_id not in seen_agent_ids:
+                seen_agent_ids.add(source_id)
+                agent_ids.append(source_id)
         else:
-            tool_ids.append(edge["source"])
+            if source_id not in seen_tool_ids:
+                seen_tool_ids.add(source_id)
+                tool_ids.append(source_id)
 
     return tool_ids, agent_ids
+
+
+def _resolve_wired_model(
+    agent_node_id: str,
+    nodes: dict[str, dict],
+    edges: list[dict],
+) -> str | None:
+    """Resolve a model wired into an Agent node's model input, if present."""
+    for edge in edges:
+        if edge.get("target") != agent_node_id or edge.get("targetHandle") != "model":
+            continue
+        source = nodes.get(edge.get("source"))
+        if not source:
+            continue
+        model = source.get("data", {}).get("model")
+        if isinstance(model, str) and model:
+            return model
+    return None
 
 
 def _build_node(
@@ -117,7 +143,11 @@ def _build_node(
     visited.add(node_id)
 
     node = nodes[node_id]
-    data = node.get("data", {})
+    data = dict(node.get("data", {}))
+
+    wired_model = _resolve_wired_model(node_id, nodes, edges)
+    if wired_model:
+        data["model"] = wired_model
 
     tool_source_ids, sub_agent_ids = _get_tool_sources(node_id, nodes, edges)
     resolved_tools = _resolve_tools(tool_source_ids, nodes, chat_id)

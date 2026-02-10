@@ -14,14 +14,7 @@ export const agent = {
   executionMode: 'hybrid',
 
   parameters: [
-    // Structural: topology + tool composition
-    {
-      id: 'agent',
-      type: 'agent',
-      label: 'Agent',
-      mode: 'input',
-      socket: { type: 'agent', bidirectional: true },
-    },
+    // Structural: tool composition
     {
       id: 'tools',
       type: 'tools',
@@ -29,31 +22,53 @@ export const agent = {
       mode: 'input',
       multiple: true,
       socket: { type: 'tools', side: 'right' },
-      acceptsTypes: ['tools', 'agent'],
+      acceptsTypes: ['tools', 'data'],
     },
-    // Flow: data in/out for pipeline participation
+    // Flow: data spine
     {
       id: 'input',
-      type: 'string',
-      label: 'Input',
+      type: 'data',
+      label: 'Data',
       mode: 'input',
-      socket: { type: 'text', side: 'left' },
-      acceptsTypes: ['text', 'string', 'message'],
+      socket: { type: 'data', bidirectional: true },
     },
     {
-      id: 'response',
-      type: 'string',
-      label: 'Response',
+      id: 'output',
+      type: 'data',
+      label: 'Data',
       mode: 'output',
-      socket: { type: 'text' },
+      socket: { type: 'data' },
     },
     // Config
     {
       id: 'model',
       type: 'model',
       label: 'Model',
-      mode: 'constant',
+      mode: 'hybrid',
+      socket: { type: 'model', side: 'left' },
     },
+    {
+      id: 'instructions',
+      type: 'text-area',
+      label: 'Instructions',
+      mode: 'hybrid',
+      default: '',
+      placeholder: 'System prompt / personality',
+      rows: 4,
+      socket: { type: 'string', side: 'left' },
+    },
+    {
+      id: 'temperature',
+      type: 'float',
+      label: 'Temperature',
+      mode: 'hybrid',
+      default: 0.7,
+      min: 0,
+      max: 2,
+      step: 0.1,
+      socket: { type: 'float', side: 'left' },
+    },
+    // Sub-agent identity
     {
       id: 'name',
       type: 'string',
@@ -70,15 +85,6 @@ export const agent = {
       default: '',
       placeholder: 'What does this agent do?',
       rows: 2,
-    },
-    {
-      id: 'instructions',
-      type: 'text-area',
-      label: 'Instructions',
-      mode: 'constant',
-      default: '',
-      placeholder: 'System prompt / personality',
-      rows: 4,
     },
   ],
 } as const satisfies NodeDefinition;

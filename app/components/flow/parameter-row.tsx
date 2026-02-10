@@ -73,16 +73,14 @@ export const ParameterRow = memo(function ParameterRow({ param, value, isConnect
           config={socket}
         />
       )}
-      
+
+      <span className="text-xs text-muted-foreground">{param.label}</span>
       {showControl && (
-        <>
-          <span className="text-xs text-muted-foreground">{param.label}</span>
-          <ParameterControl
-            param={param}
-            value={value}
-            onChange={handleChange}
-          />
-        </>
+        <ParameterControl
+          param={param}
+          value={value}
+          onChange={handleChange}
+        />
       )}
       
       {hasSocket && socketSide === 'right' && (

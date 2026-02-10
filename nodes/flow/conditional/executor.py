@@ -73,7 +73,7 @@ class ConditionalExecutor:
         compare_val = data.get("value")
         case_sensitive = data.get("caseSensitive", True)
 
-        input_data = inputs.get("input", DataValue("any", None))
+        input_data = inputs.get("input", DataValue("data", {}))
         value = input_data.value
 
         # Extract field from input data (dict or object)
