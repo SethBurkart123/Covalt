@@ -6,7 +6,7 @@ import {
   createFlowNode,
 } from '@nodes/_registry'
 
-const EXPECTED_NODE_IDS = ['chat-start', 'agent', 'mcp-server', 'toolset']
+const EXPECTED_NODE_IDS = ['chat-start', 'agent', 'mcp-server', 'toolset', 'llm-completion', 'prompt-template', 'conditional', 'model-selector']
 
 describe('registry', () => {
   it.each(EXPECTED_NODE_IDS)('has %s registered', (id) => {
@@ -45,8 +45,14 @@ describe('registry', () => {
       expect(toolIds).toContain('toolset')
     })
 
+    it('returns utility nodes', () => {
+      const utilNodes = getNodesByCategory('utility')
+      const utilIds = utilNodes.map(n => n.id)
+      expect(utilIds).toContain('model-selector')
+    })
+
     it('returns empty array for unused category', () => {
-      expect(getNodesByCategory('utility')).toEqual([])
+      expect(getNodesByCategory('rag')).toEqual([])
     })
   })
 

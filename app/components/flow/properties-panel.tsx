@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, memo, type ComponentType } from 'react';
-import { useNodesData } from '@xyflow/react';
+import { useNodesData, useStore } from '@xyflow/react';
 import * as Icons from 'lucide-react';
 import type { Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
@@ -33,6 +33,24 @@ export function PropertiesPanel() {
     [selectedNodeId, updateNodeData]
   );
 
+  const connectedInputKey = useStore(
+    useCallback((state) => {
+      if (!selectedNodeId) return '[]';
+      const connected = new Set<string>();
+      for (const edge of state.edges) {
+        if (edge.target === selectedNodeId && edge.targetHandle) {
+          connected.add(edge.targetHandle);
+        }
+      }
+      return JSON.stringify(Array.from(connected).sort());
+    }, [selectedNodeId])
+  );
+
+  const connectedInputs = useMemo(
+    () => new Set(connectedInputKey ? JSON.parse(connectedInputKey) as string[] : []),
+    [connectedInputKey]
+  );
+
   if (!selectedNodeId || !selectedNodeData?.type) {
     return null;
   }
@@ -49,9 +67,11 @@ export function PropertiesPanel() {
 
   const Icon = getIcon(definition.icon);
 
-  const panelParams = definition.parameters.filter(
-    p => p.mode === 'constant' || p.mode === 'hybrid'
-  );
+  const panelParams = definition.parameters.filter(p => {
+    if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
+    if (p.showWhen) return connectedInputs.has(p.showWhen.connected);
+    return true;
+  });
 
   return (
     <div className="flex flex-col bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-[calc(100vh-8rem)] overflow-hidden">

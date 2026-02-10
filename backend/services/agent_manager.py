@@ -47,12 +47,70 @@ DEFAULT_GRAPH = {
         {
             "id": "e1",
             "source": "chat-start-1",
-            "sourceHandle": "agent",
+            "sourceHandle": "output",
             "target": "agent-1",
-            "targetHandle": "agent",
+            "targetHandle": "input",
         },
     ],
 }
+
+
+def _normalize_graph_edges(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Normalize legacy handles and dedupe structural edge duplicates.
+
+    Legacy compatibility:
+      - chat-start `agent -> agent` becomes `output -> input`
+      - agent `agent -> tools` becomes `input -> tools`
+    """
+    nodes_by_id = {n.get("id"): n for n in nodes}
+    normalized: list[dict[str, Any]] = []
+    seen_signatures: set[tuple[str, str, str, str]] = set()
+
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        source_handle = edge.get("sourceHandle")
+        target_handle = edge.get("targetHandle")
+
+        source_type = nodes_by_id.get(source, {}).get("type")
+        if (
+            source_type == "chat-start"
+            and source_handle == "agent"
+            and target_handle == "agent"
+        ):
+            source_handle = "output"
+            target_handle = "input"
+        elif (
+            source_type == "agent"
+            and source_handle == "agent"
+            and target_handle == "tools"
+        ):
+            source_handle = "input"
+
+        if not source or not target:
+            continue
+
+        signature = (
+            source,
+            target,
+            source_handle or "",
+            target_handle or "",
+        )
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+
+        normalized.append(
+            {
+                **edge,
+                "sourceHandle": source_handle,
+                "targetHandle": target_handle,
+            }
+        )
+
+    return normalized
 
 
 class AgentManager:
@@ -173,7 +231,8 @@ class AgentManager:
             if not agent:
                 return False
 
-            agent.graph_data = json.dumps({"nodes": nodes, "edges": edges})
+            normalized_edges = _normalize_graph_edges(nodes, edges)
+            agent.graph_data = json.dumps({"nodes": nodes, "edges": normalized_edges})
             agent.updated_at = datetime.now().isoformat()
             sess.commit()
 

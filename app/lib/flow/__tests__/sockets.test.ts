@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { canConnect, canCoerce, getSocketStyle, SOCKET_TYPES } from '../sockets'
 import type { SocketTypeId, Parameter } from '@nodes/_types'
 
-const ALL_SOCKET_TYPES: SocketTypeId[] = ['agent', 'tools', 'float', 'int', 'string', 'boolean', 'color']
+const ALL_SOCKET_TYPES: SocketTypeId[] = [
+  'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'messages', 'model',
+]
 
 /** Helper to build a minimal Parameter for canConnect tests */
 function makeParam(socketType: SocketTypeId, acceptsTypes?: readonly SocketTypeId[]): Parameter {
@@ -31,10 +33,10 @@ describe('canConnect', () => {
   })
 
   const incompatiblePairs: [SocketTypeId, SocketTypeId][] = [
-    ['agent', 'float'],
+    ['tools', 'float'],
     ['tools', 'string'],
     ['int', 'boolean'],
-    ['color', 'agent'],
+    ['model', 'tools'],
     ['float', 'tools'],
   ]
 
@@ -46,13 +48,35 @@ describe('canConnect', () => {
   )
 
   it('allows connection when source is in acceptsTypes', () => {
-    const param = makeParam('tools', ['tools', 'agent'])
-    expect(canConnect('agent', param)).toBe(true)
+    const param = makeParam('tools', ['tools', 'model'])
+    expect(canConnect('model', param)).toBe(true)
   })
 
   it('rejects connection when source is not in acceptsTypes', () => {
-    const param = makeParam('tools', ['tools', 'agent'])
+    const param = makeParam('tools', ['tools', 'model'])
     expect(canConnect('float', param)).toBe(false)
+  })
+
+  it('allows data -> data connection', () => {
+    expect(canConnect('data', makeParam('data'))).toBe(true)
+  })
+
+  it('rejects data -> string cross-domain', () => {
+    expect(canConnect('data', makeParam('string'))).toBe(false)
+  })
+
+  it('rejects string -> data cross-domain', () => {
+    expect(canConnect('string', makeParam('data'))).toBe(false)
+  })
+
+  it('allows data -> tools when acceptsTypes includes data (sub-agent)', () => {
+    const param = makeParam('tools', ['tools', 'data'])
+    expect(canConnect('data', param)).toBe(true)
+  })
+
+  it('rejects data -> tools when acceptsTypes does not include data', () => {
+    const param = makeParam('tools', ['tools', 'model'])
+    expect(canConnect('data', param)).toBe(false)
   })
 })
 
@@ -66,15 +90,9 @@ describe('canCoerce', () => {
     ['int', 'string'],
     ['float', 'string'],
     ['boolean', 'string'],
-    ['string', 'text'],
-    ['text', 'string'],
     ['json', 'string'],
-    ['json', 'text'],
-    ['message', 'text'],
-    ['message', 'string'],
-    ['message', 'json'],
-    ['document', 'text'],
-    ['document', 'json'],
+    ['messages', 'string'],
+    ['string', 'messages'],
   ]
 
   it.each(validCoercions)(
@@ -84,25 +102,13 @@ describe('canCoerce', () => {
     }
   )
 
-  it('any target accepts everything', () => {
-    for (const src of ['int', 'string', 'json', 'message', 'binary'] as SocketTypeId[]) {
-      expect(canCoerce(src, 'any')).toBe(true)
-    }
-  })
-
-  it('any source connects everywhere', () => {
-    for (const tgt of ['int', 'string', 'json', 'float', 'text'] as SocketTypeId[]) {
-      expect(canCoerce('any', tgt)).toBe(true)
-    }
-  })
-
   const invalidCoercions: [SocketTypeId, SocketTypeId][] = [
     ['boolean', 'float'],
-    ['binary', 'string'],
-    ['vector', 'int'],
-    ['trigger', 'json'],
-    ['agent', 'string'],
-    ['tools', 'text'],
+    ['tools', 'string'],
+    ['tools', 'json'],
+    ['model', 'int'],
+    ['json', 'boolean'],
+    ['messages', 'float'],
   ]
 
   it.each(invalidCoercions)(
@@ -116,9 +122,8 @@ describe('canCoerce', () => {
 describe('canConnect with coercion', () => {
   const coerciblePairs: [SocketTypeId, SocketTypeId][] = [
     ['int', 'float'],
-    ['string', 'text'],
-    ['text', 'string'],
-    ['message', 'text'],
+    ['messages', 'string'],
+    ['string', 'messages'],
     ['json', 'string'],
   ]
 
@@ -150,9 +155,9 @@ describe('getSocketStyle', () => {
   })
 
   it('applies color override', () => {
-    const style = getSocketStyle('agent', { color: '#ff0000' })
+    const style = getSocketStyle('tools', { color: '#ff0000' })
     expect(style.color).toBe('#ff0000')
-    expect(style.shape).toBe(SOCKET_TYPES.agent.shape)
+    expect(style.shape).toBe(SOCKET_TYPES.tools.shape)
   })
 
   it('applies shape override', () => {

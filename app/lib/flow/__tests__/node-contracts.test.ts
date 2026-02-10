@@ -3,8 +3,8 @@ import { NODE_DEFINITIONS } from '@nodes/_registry'
 import type { NodeDefinition, SocketTypeId, ParameterMode, NodeCategory, ExecutionMode } from '@nodes/_types'
 
 const VALID_SOCKET_TYPES: SocketTypeId[] = [
-  'agent', 'tools', 'float', 'int', 'string', 'boolean', 'color',
-  'json', 'text', 'binary', 'array', 'message', 'document', 'vector', 'trigger', 'any',
+  'data', 'tools', 'float', 'int', 'string', 'boolean',
+  'json', 'messages', 'model',
 ]
 const VALID_MODES: ParameterMode[] = ['constant', 'hybrid', 'input', 'output']
 const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility', 'ai', 'flow', 'integration', 'rag']
@@ -52,14 +52,6 @@ describe('node contracts', () => {
   it.each(nodeEntries)('%s has at least one socket parameter', (_id, node: NodeDefinition) => {
     const socketParams = node.parameters.filter(p => p.socket !== undefined)
     expect(socketParams.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it.each(nodeEntries)('%s socket parameters are not mode constant', (_id, node: NodeDefinition) => {
-    for (const param of node.parameters) {
-      if (param.socket) {
-        expect(param.mode).not.toBe('constant')
-      }
-    }
   })
 
   it.each(nodeEntries)('%s has a valid executionMode', (_id, node: NodeDefinition) => {

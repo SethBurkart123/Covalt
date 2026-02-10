@@ -7,6 +7,8 @@ Hybrid executor:
 
 from __future__ import annotations
 
+import asyncio
+from enum import Enum
 from typing import Any
 
 from agno.agent import Agent
@@ -24,6 +26,7 @@ from nodes._types import (
 )
 
 _agent_db = InMemoryDb()
+AGENT_STREAM_IDLE_TIMEOUT_SECONDS = 20.0
 
 
 class AgentExecutor:
@@ -70,15 +73,18 @@ class AgentExecutor:
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ):
-        """Run the agent with input data, streaming events and producing response text."""
-        input_value = inputs.get("input", DataValue("text", "")).value
-        # Normalize: message dicts → extract content, everything else → str
-        if isinstance(input_value, dict):
-            message = input_value.get("content", str(input_value))
-        else:
-            message = str(input_value) if input_value else ""
+        input_dv = inputs.get("input", DataValue("data", {}))
+        raw = input_dv.value
+        input_value = raw if isinstance(raw, dict) else {"message": str(raw)}
 
-        # Use agent from Phase 1 if available, otherwise build a minimal one
+        message = (
+            input_value.get("message")
+            or input_value.get("text")
+            or input_value.get("response")
+            or input_value.get("content")
+            or str(input_value)
+        )
+
         agent = context.agent
         if agent is None:
             model = _resolve_model(data)
@@ -102,11 +108,53 @@ class AgentExecutor:
         )
 
         try:
-            response = await agent.arun(message)
-            content = response.content if response else ""
+            content_parts: list[str] = []
+            fallback_final = ""
+
+            stream = agent.arun(message, stream=True, stream_events=True).__aiter__()
+
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream.__anext__(),
+                        timeout=AGENT_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                event_name = _event_name(getattr(chunk, "event", None))
+
+                if event_name in {"RunContent", "TeamRunContent"}:
+                    token = str(getattr(chunk, "content", "") or "")
+                    if token:
+                        content_parts.append(token)
+                        yield NodeEvent(
+                            node_id=context.node_id,
+                            node_type=self.node_type,
+                            event_type="progress",
+                            run_id=context.run_id,
+                            data={"token": token},
+                        )
+                    continue
+
+                if event_name in {"RunCompleted", "TeamRunCompleted"}:
+                    if not content_parts:
+                        fallback_final = str(getattr(chunk, "content", "") or "")
+                    break
+
+                if event_name in {"RunError", "TeamRunError"}:
+                    raise RuntimeError(
+                        str(getattr(chunk, "content", None) or "Agent run failed")
+                    )
+
+            content = "".join(content_parts) if content_parts else fallback_final
 
             yield ExecutionResult(
-                outputs={"response": DataValue(type="text", value=content or "")}
+                outputs={
+                    "output": DataValue(type="data", value={"response": content or ""})
+                }
             )
         except Exception as e:
             yield NodeEvent(
@@ -117,8 +165,14 @@ class AgentExecutor:
                 data={"error": str(e)},
             )
             yield ExecutionResult(
-                outputs={"response": DataValue(type="text", value="")}
+                outputs={"output": DataValue(type="data", value={"response": ""})}
             )
+
+
+def _event_name(event: Any) -> str:
+    if isinstance(event, Enum):
+        return str(event.value)
+    return str(event) if event is not None else ""
 
 
 def _resolve_model(data: dict[str, Any]) -> Any:
@@ -128,6 +182,9 @@ def _resolve_model(data: dict[str, Any]) -> Any:
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
     provider, model_id = model_str.split(":", 1)
+    temperature = data.get("temperature")
+    if temperature is not None:
+        return get_model(provider, model_id, temperature=float(temperature))
     return get_model(provider, model_id)
 
 

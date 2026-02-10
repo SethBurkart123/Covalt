@@ -8,8 +8,9 @@ import { toolset } from './tools/toolset/definition';
 import { llmCompletion } from './ai/llm_completion/definition';
 import { promptTemplate } from './ai/prompt_template/definition';
 import { conditional } from './flow/conditional/definition';
+import { modelSelector } from './utility/model_selector/definition';
 
-const NODE_LIST = [chatStart, agent, mcpServer, toolset, llmCompletion, promptTemplate, conditional] as const;
+const NODE_LIST = [chatStart, agent, mcpServer, toolset, llmCompletion, promptTemplate, conditional, modelSelector] as const;
 
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = Object.fromEntries(
   NODE_LIST.map(node => [node.id, node])

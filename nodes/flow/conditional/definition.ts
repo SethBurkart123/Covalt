@@ -16,10 +16,10 @@ export const conditional = {
   parameters: [
     {
       id: 'input',
-      type: 'json',
+      type: 'data',
       label: 'Input',
       mode: 'input',
-      socket: { type: 'any', side: 'left' },
+      socket: { type: 'data' },
     },
     {
       id: 'field',
@@ -47,17 +47,17 @@ export const conditional = {
     },
     {
       id: 'true',
-      type: 'json',
+      type: 'data',
       label: 'True',
       mode: 'output',
-      socket: { type: 'any' },
+      socket: { type: 'data' },
     },
     {
       id: 'false',
-      type: 'json',
+      type: 'data',
       label: 'False',
       mode: 'output',
-      socket: { type: 'any' },
+      socket: { type: 'data' },
     },
   ],
 } as const satisfies NodeDefinition;

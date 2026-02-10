@@ -111,7 +111,7 @@ class PassthroughExecutor:
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
         return ExecutionResult(
-            outputs={"output": inputs.get("input", DataValue("text", ""))}
+            outputs={"output": inputs.get("input", DataValue("string", ""))}
         )
 
 
@@ -123,8 +123,10 @@ class UpperCaseExecutor:
     async def execute(
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
-        text = inputs.get("input", DataValue("text", "")).value
-        return ExecutionResult(outputs={"output": DataValue("text", str(text).upper())})
+        text = inputs.get("input", DataValue("string", "")).value
+        return ExecutionResult(
+            outputs={"output": DataValue("string", str(text).upper())}
+        )
 
 
 class ConditionalStubExecutor:
@@ -136,7 +138,7 @@ class ConditionalStubExecutor:
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
         condition_met = bool(data.get("condition", False))
-        inp = inputs.get("input", DataValue("any", None))
+        inp = inputs.get("input", DataValue("data", {}))
         outputs = {"true": inp} if condition_met else {"false": inp}
         return ExecutionResult(outputs=outputs)
 
@@ -149,15 +151,23 @@ class FilterStubExecutor:
     async def execute(
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
-        items = inputs.get("input", DataValue("array", [])).value
+        raw = inputs.get("input", DataValue("data", {})).value
+        if isinstance(raw, dict):
+            items = (
+                raw.get("message") or raw.get("items") or list(raw.values())[0]
+                if raw
+                else []
+            )
+        else:
+            items = raw if isinstance(raw, list) else []
         threshold = data.get("threshold", 0)
         passed = [x for x in items if x >= threshold]
         rejected = [x for x in items if x < threshold]
         outputs: dict[str, DataValue] = {}
         if passed:
-            outputs["pass"] = DataValue("array", passed)
+            outputs["pass"] = DataValue("json", passed)
         if rejected:
-            outputs["reject"] = DataValue("array", rejected)
+            outputs["reject"] = DataValue("json", rejected)
         return ExecutionResult(outputs=outputs)
 
 
@@ -182,7 +192,9 @@ class StreamingStubExecutor:
         yield NodeEvent(
             node_id=context.node_id, node_type="streaming", event_type="completed"
         )
-        yield ExecutionResult(outputs={"output": DataValue("text", "streamed")})
+        yield ExecutionResult(
+            outputs={"output": DataValue("data", {"text": "streamed"})}
+        )
 
 
 class ExplodingExecutor:
@@ -205,7 +217,7 @@ class ChatStartStubExecutor:
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
         msg = getattr(context.state, "user_message", "hello")
-        return ExecutionResult(outputs={"message": DataValue("message", msg)})
+        return ExecutionResult(outputs={"output": DataValue("data", {"message": msg})})
 
 
 class PromptTemplateStubExecutor:
@@ -217,10 +229,13 @@ class PromptTemplateStubExecutor:
         self, data: dict, inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
         template = data.get("template", "{input}")
-        text = template.replace(
-            "{input}", str(inputs.get("input", DataValue("text", "")).value)
-        )
-        return ExecutionResult(outputs={"text": DataValue("text", text)})
+        val = inputs.get("input", DataValue("data", {})).value
+        if isinstance(val, dict):
+            text_val = val.get("message", val.get("text", str(val)))
+        else:
+            text_val = str(val)
+        text = template.replace("{input}", text_val)
+        return ExecutionResult(outputs={"output": DataValue("data", {"text": text})})
 
 
 class LLMCompletionStubExecutor:
@@ -234,14 +249,19 @@ class LLMCompletionStubExecutor:
         yield NodeEvent(
             node_id=context.node_id, node_type="llm-completion", event_type="started"
         )
-        response = f"LLM says: {inputs.get('prompt', DataValue('text', '')).value}"
+        prompt_val = inputs.get("prompt", DataValue("string", "")).value
+        if isinstance(prompt_val, dict):
+            prompt_val = (
+                prompt_val.get("text") or prompt_val.get("message") or str(prompt_val)
+            )
+        response = f"LLM says: {prompt_val}"
         yield NodeEvent(
             node_id=context.node_id,
             node_type="llm-completion",
             event_type="completed",
             data={"response": response},
         )
-        yield ExecutionResult(outputs={"text": DataValue("text", response)})
+        yield ExecutionResult(outputs={"output": DataValue("data", {"text": response})})
 
 
 # Registry of stub executors for tests
@@ -437,8 +457,8 @@ class TestFlowLinear:
                 make_node("llm", "llm-completion"),
             ],
             edges=[
-                make_edge("cs", "pt", "message", "input"),
-                make_edge("pt", "llm", "text", "prompt"),
+                make_edge("cs", "pt", "output", "input"),
+                make_edge("pt", "llm", "output", "prompt"),
             ],
         )
 
@@ -452,7 +472,6 @@ class TestFlowLinear:
         ):
             events.append(event)
 
-        # The LLM stub prefixes "LLM says: " to its prompt input
         results = [e for e in events if isinstance(e, ExecutionResult)]
         assert len(results) > 0
 
@@ -467,8 +486,8 @@ class TestFlowLinear:
             if isinstance(event, ExecutionResult):
                 final_outputs.update(event.outputs)
 
-        assert "text" in final_outputs
-        assert isinstance(final_outputs["text"], DataValue)
+        assert "output" in final_outputs
+        assert isinstance(final_outputs["output"], DataValue)
 
     @pytest.mark.asyncio
     async def test_linear_flow_each_node_gets_upstream_output(
@@ -483,9 +502,8 @@ class TestFlowLinear:
             if isinstance(event, NodeEvent):
                 node_events.append(event)
 
-        # All three nodes should have started events
         started = [e for e in node_events if e.event_type == "started"]
-        assert len(started) >= 1  # At minimum the streaming LLM emits started
+        assert len(started) >= 1
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -511,7 +529,7 @@ class TestFlowBranching:
                 make_node("branch_b", "passthrough"),
             ],
             edges=[
-                make_edge("input", "cond", "message", "input"),
+                make_edge("input", "cond", "output", "input"),
                 make_edge("cond", "branch_a", "true", "input"),
                 make_edge("cond", "branch_b", "false", "input"),
             ],
@@ -521,7 +539,6 @@ class TestFlowBranching:
     async def test_conditional_true_branch_executes(self, branching_graph, flow_ctx):
         """Conditional with condition=True → branch A executes, branch B skipped."""
         flow_ctx.state.user_message = "hello"
-        # Set condition on the conditional node
         branching_graph["nodes"][1]["data"]["condition"] = True
 
         node_events: list[NodeEvent] = []
@@ -550,7 +567,6 @@ class TestFlowBranching:
                 node_events.append(event)
 
         executed_nodes = {e.node_id for e in node_events if e.event_type == "started"}
-        # branch_b (passthrough) should execute, not branch_a
         assert "branch_b" not in {
             e.node_id for e in node_events if e.event_type == "error"
         }
@@ -566,7 +582,7 @@ class TestFlowBranching:
                 make_node("low", "passthrough"),
             ],
             edges=[
-                make_edge("src", "flt", "message", "input"),
+                make_edge("src", "flt", "output", "input"),
                 make_edge("flt", "high", "pass", "input"),
                 make_edge("flt", "low", "reject", "input"),
             ],
@@ -578,7 +594,6 @@ class TestFlowBranching:
             if isinstance(event, ExecutionResult):
                 results.update(event.outputs)
 
-        # Both branches should have produced output
         assert len(results) > 0
 
 
@@ -601,7 +616,7 @@ class TestFlowDeadBranch:
                 make_node("dead", "passthrough"),  # on false branch, but condition=True
             ],
             edges=[
-                make_edge("cs", "cond", "message", "input"),
+                make_edge("cs", "cond", "output", "input"),
                 make_edge("cond", "live", "true", "input"),
                 make_edge("cond", "dead", "false", "input"),
             ],
@@ -627,7 +642,7 @@ class TestFlowDeadBranch:
                 make_node("skipped", "streaming"),  # streaming node on dead branch
             ],
             edges=[
-                make_edge("cs", "cond", "message", "input"),
+                make_edge("cs", "cond", "output", "input"),
                 make_edge("cond", "skipped", "false", "input"),  # dead: condition=True
             ],
         )
@@ -660,7 +675,7 @@ class TestFlowEvents:
                 make_node("cs", "chat-start"),
                 make_node("s1", "streaming"),
             ],
-            edges=[make_edge("cs", "s1", "message", "input")],
+            edges=[make_edge("cs", "s1", "output", "input")],
         )
         flow_ctx.state.user_message = "go"
 
@@ -686,7 +701,7 @@ class TestFlowEvents:
                 make_node("C", "passthrough"),
             ],
             edges=[
-                make_edge("A", "B", "message", "input"),
+                make_edge("A", "B", "output", "input"),
                 make_edge("B", "C", "output", "input"),
             ],
         )
@@ -702,7 +717,6 @@ class TestFlowEvents:
             if e.node_id not in node_first_event:
                 node_first_event[e.node_id] = i
 
-        # A's first event must come before B's, B's before C's
         assert node_first_event.get("A", 0) < node_first_event.get("B", 999)
         assert node_first_event.get("B", 0) < node_first_event.get("C", 999)
 
@@ -716,7 +730,7 @@ class TestFlowEvents:
                 make_node("cs", "chat-start"),
                 make_node("str", "streaming"),
             ],
-            edges=[make_edge("cs", "str", "message", "input")],
+            edges=[make_edge("cs", "str", "output", "input")],
         )
         flow_ctx.state.user_message = "stream"
 
@@ -729,7 +743,6 @@ class TestFlowEvents:
         assert types[0] == "started"
         assert types[-1] == "completed"
         assert "progress" in types
-        # Progress events are between started and completed
         progress_indices = [i for i, t in enumerate(types) if t == "progress"]
         assert all(0 < i < len(types) - 1 for i in progress_indices)
 
@@ -743,7 +756,7 @@ class TestFlowEvents:
                 make_node("ghost", "streaming"),
             ],
             edges=[
-                make_edge("cs", "cond", "message", "input"),
+                make_edge("cs", "cond", "output", "input"),
                 make_edge("cond", "ghost", "false", "input"),
             ],
         )
@@ -777,7 +790,7 @@ class TestFlowErrors:
                 make_node("after", "passthrough"),  # should NOT execute
             ],
             edges=[
-                make_edge("cs", "boom", "message", "input"),
+                make_edge("cs", "boom", "output", "input"),
                 make_edge("boom", "after", "output", "input"),
             ],
         )
@@ -793,7 +806,6 @@ class TestFlowErrors:
         assert len(error_events) >= 1
         assert error_events[0].node_id == "boom"
 
-        # Node after the error should not have run
         after_events = [
             e for e in events if isinstance(e, NodeEvent) and e.node_id == "after"
         ]
@@ -809,11 +821,10 @@ class TestFlowErrors:
                 make_node("after", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "boom", "message", "input"),
+                make_edge("cs", "boom", "output", "input"),
                 make_edge("boom", "after", "output", "input"),
             ],
         )
-        # Mark the exploding node as continue-on-fail
         graph["nodes"][1]["data"]["on_error"] = "continue"
         flow_ctx.state.user_message = "trigger"
 
@@ -821,7 +832,6 @@ class TestFlowErrors:
         async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
-        # The "after" node should have received error data and executed
         after_events = [
             e for e in events if isinstance(e, NodeEvent) and e.node_id == "after"
         ]
@@ -839,7 +849,7 @@ class TestFlowErrors:
                 make_node("after", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "mystery", "message", "input"),
+                make_edge("cs", "mystery", "output", "input"),
                 make_edge("mystery", "after", "output", "input"),
             ],
         )
@@ -882,7 +892,7 @@ class TestFlowIntegration:
                 make_node("c", "struct-c"),
             ],
             edges=[
-                make_edge("a", "b", "agent", "agent"),
+                make_edge("a", "b", "tools", "tools"),
                 make_edge("c", "b", "tools", "tools"),
             ],
         )
@@ -914,9 +924,9 @@ class TestFlowIntegration:
                 make_node("branch_b", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "pt", "message", "input"),
-                make_edge("pt", "llm", "text", "prompt"),
-                make_edge("llm", "cond", "text", "input"),
+                make_edge("cs", "pt", "output", "input"),
+                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("llm", "cond", "output", "input"),
                 make_edge("cond", "branch_a", "true", "input"),
                 make_edge("cond", "branch_b", "false", "input"),
             ],
@@ -929,20 +939,16 @@ class TestFlowIntegration:
             all_events.append(event)
 
         node_events = [e for e in all_events if isinstance(e, NodeEvent)]
-
-        # Verify the pipeline executed in order
         executed_nodes = []
         for e in node_events:
             if e.node_id not in executed_nodes:
                 executed_nodes.append(e.node_id)
 
-        # cs, pt, llm, cond should all have executed
         assert "cs" in executed_nodes
         assert "pt" in executed_nodes
         assert "llm" in executed_nodes
         assert "cond" in executed_nodes
 
-        # branch_a should execute (true path), branch_b should not
         assert "branch_a" in executed_nodes
         assert "branch_b" not in executed_nodes
 
@@ -959,9 +965,9 @@ class TestFlowIntegration:
                 make_node("branch_b", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "pt", "message", "input"),
-                make_edge("pt", "llm", "text", "prompt"),
-                make_edge("llm", "cond", "text", "input"),
+                make_edge("cs", "pt", "output", "input"),
+                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("llm", "cond", "output", "input"),
                 make_edge("cond", "branch_a", "true", "input"),
                 make_edge("cond", "branch_b", "false", "input"),
             ],
@@ -993,8 +999,8 @@ class TestFlowIntegration:
                 make_node("D", "passthrough"),
             ],
             edges=[
-                make_edge("A", "B", "message", "input"),
-                make_edge("A", "C", "message", "input"),
+                make_edge("A", "B", "output", "input"),
+                make_edge("A", "C", "output", "input"),
                 make_edge("B", "D", "output", "input_b"),
                 make_edge("C", "D", "output", "input_c"),
             ],
@@ -1040,7 +1046,7 @@ class TestFlowEdgeCases:
                 make_node("dead", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "cond", "message", "input"),
+                make_edge("cs", "cond", "output", "input"),
                 make_edge("cond", "live", "true", "input"),
                 make_edge("cond", "dead", "false", "input"),
             ],
@@ -1081,7 +1087,7 @@ class TestFlowEdgeCases:
                 make_node("low", "passthrough"),
             ],
             edges=[
-                make_edge("src", "flt", "message", "input"),
+                make_edge("src", "flt", "output", "input"),
                 make_edge("flt", "high", "pass", "input"),
                 make_edge("flt", "low", "reject", "input"),
             ],
