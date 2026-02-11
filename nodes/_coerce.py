@@ -74,8 +74,6 @@ def can_coerce(source_type: str, target_type: str) -> bool:
     """Check if source_type can implicitly convert to target_type."""
     if source_type == target_type:
         return True
-    if target_type == "any" or source_type == "any":
-        return True
     return (source_type, target_type) in COERCION_TABLE
 
 
@@ -87,12 +85,6 @@ def coerce(value: DataValue, target_type: str) -> DataValue:
     """
     if value.type == target_type:
         return value
-
-    # any accepts everything as-is; any-typed values pass through to any target
-    if target_type == "any":
-        return value
-    if value.type == "any":
-        return DataValue(type=target_type, value=value.value)
 
     converter = COERCION_TABLE.get((value.type, target_type))
     if converter is None:

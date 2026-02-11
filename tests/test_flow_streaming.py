@@ -51,6 +51,17 @@ class EchoStub:
         )
 
 
+class ZeroResponseStub:
+    """Returns a falsy numeric response in the data spine."""
+
+    node_type = "zero-response"
+
+    async def execute(
+        self, data: dict, inputs: dict[str, DataValue], context: FlowContext
+    ) -> ExecutionResult:
+        return ExecutionResult(outputs={"output": DataValue("data", {"response": 0})})
+
+
 class StreamingStub:
     """Emits progress events (simulating token streaming) then a result."""
 
@@ -99,7 +110,13 @@ class FailingStub:
 
 STUBS = {
     cls.node_type: cls()
-    for cls in [ChatStartStub, EchoStub, StreamingStub, FailingStub]
+    for cls in [
+        ChatStartStub,
+        EchoStub,
+        ZeroResponseStub,
+        StreamingStub,
+        FailingStub,
+    ]
 }
 
 
@@ -211,6 +228,34 @@ class TestFlowStreamingBasic:
         assert len(content_events) >= 1
         all_content = "".join(e.get("content", "") for e in content_events)
         assert "echo:" in all_content
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_falsy_output_is_emitted(self):
+        """Data outputs like 0 should still be emitted as final text."""
+        from backend.commands.streaming import handle_flow_stream
+
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("zr", "zero-response"),
+            ],
+            edges=[make_edge("cs", "zr", "output", "input")],
+        )
+
+        with _patched_env():
+            channel = _make_channel()
+            await handle_flow_stream(
+                graph,
+                None,
+                [_make_chat_message("ignored")],
+                "asst-1",
+                channel,
+            )
+
+        content_events = [
+            e for e in _collect_events(channel) if e.get("event") == "RunContent"
+        ]
+        assert any(e.get("content") == "0" for e in content_events)
 
 
 class TestFlowStreamingTokens:

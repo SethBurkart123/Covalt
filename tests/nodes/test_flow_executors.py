@@ -7,7 +7,9 @@ Phase 5+ executors are guarded and skipped until implemented.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from types import SimpleNamespace
 from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +26,7 @@ from nodes._types import (
 # ── Phase 3 executors — available now ────────────────────────────────
 from nodes.ai.llm_completion.executor import LlmCompletionExecutor
 from nodes.ai.prompt_template.executor import PromptTemplateExecutor
+from nodes.core.agent.executor import AgentExecutor
 from nodes.flow.conditional.executor import ConditionalExecutor
 
 # ── Phase 5+ executors — guarded until implemented ──────────────────
@@ -237,6 +240,154 @@ class TestLlmCompletionExecutor:
 
         assert isinstance(result, ExecutionResult)
         assert result.outputs["output"].value["text"] == ""
+
+    @pytest.mark.asyncio
+    async def test_model_input_overrides_inline_model(self) -> None:
+        executor = LlmCompletionExecutor()
+        ctx = _flow_ctx()
+
+        mock_model = MagicMock()
+        mock_model.astream = lambda prompt: _fake_astream("ok")
+
+        with patch(
+            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
+        ) as resolve_model_mock:
+            await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "prompt": _dv("string", "go"),
+                        "model": _dv("model", "google:gemini-2.5-flash"),
+                    },
+                    ctx,
+                )
+            )
+
+        resolve_model_mock.assert_called_once_with("google:gemini-2.5-flash")
+
+    @pytest.mark.asyncio
+    async def test_prompt_and_kwargs_can_come_from_inputs(self) -> None:
+        executor = LlmCompletionExecutor()
+        ctx = _flow_ctx()
+
+        mock_model = MagicMock()
+        captured: dict[str, Any] = {}
+
+        async def _capturing_astream(prompt: str, **kwargs: Any):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            async for token in _fake_astream("ok"):
+                yield token
+
+        mock_model.astream = _capturing_astream
+
+        with patch(
+            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
+        ):
+            await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv("data", {"text": "from-input"}),
+                        "temperature": _dv("float", 0.25),
+                        "max_tokens": _dv("int", 16),
+                    },
+                    ctx,
+                )
+            )
+
+        assert captured["prompt"] == "from-input"
+        assert captured["temperature"] == 0.25
+        assert captured["max_tokens"] == 16
+
+
+class _FakeStreamingAgent:
+    def __init__(self, chunks: list[SimpleNamespace]) -> None:
+        self._chunks = chunks
+        self.model: Any = None
+        self.instructions: list[str] | None = None
+
+    def arun(self, *_args: Any, **_kwargs: Any):
+        async def _stream():
+            for chunk in self._chunks:
+                yield chunk
+
+        return _stream()
+
+
+class _SlowAgent:
+    model: Any = None
+    instructions: list[str] | None = None
+
+    def arun(self, *_args: Any, **_kwargs: Any):
+        async def _stream():
+            await asyncio.sleep(0.05)
+            yield SimpleNamespace(event="RunCompleted", content="late")
+
+        return _stream()
+
+
+class TestAgentExecutor:
+    @pytest.mark.asyncio
+    async def test_model_and_instructions_inputs_override_context_agent(self) -> None:
+        executor = AgentExecutor()
+        fake_agent = _FakeStreamingAgent(
+            [
+                SimpleNamespace(event="RunContent", content="ok"),
+                SimpleNamespace(event="RunCompleted", content=""),
+            ]
+        )
+        ctx = _flow_ctx(agent=fake_agent)
+        resolved_model = object()
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value=resolved_model
+        ) as get_model_mock:
+            events, result = await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o", "instructions": "inline"},
+                    {
+                        "input": _dv("data", {"message": "hello"}),
+                        "model": _dv("model", "google:gemini-2.5-flash"),
+                        "temperature": _dv("float", 0.3),
+                        "instructions": _dv("string", "be concise"),
+                    },
+                    ctx,
+                )
+            )
+
+        assert any(e.event_type == "started" for e in events)
+        assert isinstance(result, ExecutionResult)
+        assert result.outputs["output"].value["response"] == "ok"
+        get_model_mock.assert_called_once_with(
+            "google", "gemini-2.5-flash", temperature=0.3
+        )
+        assert fake_agent.model is resolved_model
+        assert fake_agent.instructions == ["be concise"]
+
+    @pytest.mark.asyncio
+    async def test_timeout_emits_error_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        executor = AgentExecutor()
+        ctx = _flow_ctx(agent=_SlowAgent())
+        monkeypatch.setattr(
+            "nodes.core.agent.executor.AGENT_STREAM_IDLE_TIMEOUT_SECONDS", 0.001
+        )
+
+        events, result = await collect_events(
+            executor.execute(
+                {},
+                {"input": _dv("data", {"message": "hi"})},
+                ctx,
+            )
+        )
+
+        error_events = [e for e in events if e.event_type == "error"]
+        assert len(error_events) == 1
+        assert "timed out" in error_events[0].data["error"].lower()
+        assert isinstance(result, ExecutionResult)
+        assert result.outputs["output"].value["response"] == ""
 
 
 # ====================================================================
