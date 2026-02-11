@@ -691,7 +691,38 @@ def _require_user_message(messages: List[ChatMessage]) -> None:
         raise ValueError("No user message found in request")
 
 
-async def _run_graph_chat_runtime(
+def get_graph_data_for_chat(
+    chat_id: str,
+    model_id: Optional[str],
+) -> dict[str, Any] | None:
+    agent_id: str | None = None
+
+    if model_id:
+        if model_id.startswith("agent:"):
+            agent_id = model_id[len("agent:") :]
+        else:
+            return None
+
+    if not agent_id:
+        with db.db_session() as sess:
+            config = db.get_chat_agent_config(sess, chat_id)
+        if isinstance(config, dict):
+            configured_agent = config.get("agent_id")
+            if isinstance(configured_agent, str) and configured_agent:
+                agent_id = configured_agent
+
+    if not agent_id:
+        return None
+
+    agent_manager = get_agent_manager()
+    agent_data = agent_manager.get_agent(agent_id)
+    if not agent_data:
+        raise ValueError(f"Agent '{agent_id}' not found")
+
+    return agent_data["graph_data"]
+
+
+async def run_graph_chat_runtime(
     graph_data: dict[str, Any],
     messages: List[ChatMessage],
     assistant_msg_id: str,
@@ -1576,22 +1607,16 @@ async def stream_chat(
         agent_id = body.modelId[len("agent:") :]
 
     try:
-        if agent_id:
-            agent_manager = get_agent_manager()
-            agent_data = agent_manager.get_agent(agent_id)
-            if not agent_data:
-                raise ValueError(f"Agent '{agent_id}' not found")
-
-            graph_data = agent_data["graph_data"]
-
+        graph_data = get_graph_data_for_chat(chat_id, body.modelId)
+        if graph_data is not None:
             with db.db_session() as sess:
                 config = db.get_chat_agent_config(sess, chat_id)
-                if config:
+                if isinstance(config, dict) and agent_id:
                     config["agent_id"] = agent_id
                     db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
             logger.info("[stream] Graph-backed chat — running graph runtime")
-            await _run_graph_chat_runtime(
+            await run_graph_chat_runtime(
                 graph_data,
                 messages,
                 assistant_msg_id,
@@ -1601,8 +1626,8 @@ async def stream_chat(
                 extra_tool_ids=body.toolIds or None,
             )
             return
-        else:
-            agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
+
+        agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
 
         _require_user_message(messages)
         await handle_content_stream(
@@ -1697,7 +1722,7 @@ async def stream_agent_chat(
     try:
         graph_data = agent_data["graph_data"]
         logger.info("[stream_agent] Graph-backed chat — running graph runtime")
-        await _run_graph_chat_runtime(
+        await run_graph_chat_runtime(
             graph_data,
             messages,
             assistant_msg_id,
