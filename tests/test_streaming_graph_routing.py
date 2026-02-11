@@ -34,7 +34,6 @@ def _make_db_mock() -> MagicMock:
     db_mock.db_session.return_value.__enter__.return_value = sess
     db_mock.db_session.return_value.__exit__.return_value = False
     db_mock.Chat = object()
-    db_mock.get_chat_agent_config.return_value = {}
     return db_mock
 
 
@@ -43,7 +42,7 @@ def _user_message_payload() -> list[dict[str, str]]:
 
 
 @pytest.mark.asyncio
-async def test_stream_chat_agent_model_routes_through_graph_runtime() -> None:
+async def test_stream_chat_agent_model_uses_graph_runtime() -> None:
     channel = MagicMock()
     body = streaming.StreamChatRequest(
         messages=_user_message_payload(),
@@ -51,34 +50,47 @@ async def test_stream_chat_agent_model_routes_through_graph_runtime() -> None:
         chatId="chat-1",
     )
 
-    agent_manager = MagicMock()
-    agent_manager.get_agent.return_value = {"graph_data": _graph_data()}
-
-    flow_stream = AsyncMock()
-    content_stream = AsyncMock()
+    graph_runtime = AsyncMock()
 
     with (
         patch.object(streaming, "ensure_chat_initialized", return_value="chat-1"),
         patch.object(streaming, "save_user_msg"),
         patch.object(streaming, "init_assistant_msg", return_value="asst-1"),
-        patch.object(streaming, "get_agent_manager", return_value=agent_manager),
-        patch.object(
-            streaming,
-            "build_agent_from_graph",
-            return_value=SimpleNamespace(agent=MagicMock()),
-        ),
-        patch.object(streaming, "handle_flow_stream", new=flow_stream),
-        patch.object(streaming, "handle_content_stream", new=content_stream),
         patch.object(streaming, "db", _make_db_mock()),
+        patch.object(streaming, "get_graph_data_for_chat", return_value=_graph_data()),
+        patch.object(streaming, "run_graph_chat_runtime", new=graph_runtime),
     ):
         await streaming.stream_chat(channel, body)
 
-    flow_stream.assert_awaited_once()
-    content_stream.assert_not_awaited()
+    graph_runtime.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_stream_agent_chat_routes_through_graph_runtime() -> None:
+async def test_stream_chat_non_agent_model_uses_graph_runtime() -> None:
+    channel = MagicMock()
+    body = streaming.StreamChatRequest(
+        messages=_user_message_payload(),
+        modelId="openai:gpt-4o-mini",
+        chatId="chat-1",
+    )
+
+    graph_runtime = AsyncMock()
+
+    with (
+        patch.object(streaming, "ensure_chat_initialized", return_value="chat-1"),
+        patch.object(streaming, "save_user_msg"),
+        patch.object(streaming, "init_assistant_msg", return_value="asst-1"),
+        patch.object(streaming, "db", _make_db_mock()),
+        patch.object(streaming, "get_graph_data_for_chat", return_value=_graph_data()),
+        patch.object(streaming, "run_graph_chat_runtime", new=graph_runtime),
+    ):
+        await streaming.stream_chat(channel, body)
+
+    graph_runtime.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_chat_uses_graph_runtime() -> None:
     channel = MagicMock()
     body = streaming.StreamAgentChatRequest(
         agentId="agent-1",
@@ -88,48 +100,12 @@ async def test_stream_agent_chat_routes_through_graph_runtime() -> None:
 
     agent_manager = MagicMock()
     agent_manager.get_agent.return_value = {"graph_data": _graph_data()}
-
-    flow_stream = AsyncMock()
-    content_stream = AsyncMock()
+    graph_runtime = AsyncMock()
 
     with (
         patch.object(streaming, "get_agent_manager", return_value=agent_manager),
-        patch.object(
-            streaming,
-            "build_agent_from_graph",
-            return_value=SimpleNamespace(agent=MagicMock()),
-        ),
-        patch.object(streaming, "handle_flow_stream", new=flow_stream),
-        patch.object(streaming, "handle_content_stream", new=content_stream),
+        patch.object(streaming, "run_graph_chat_runtime", new=graph_runtime),
     ):
         await streaming.stream_agent_chat(channel, body)
 
-    flow_stream.assert_awaited_once()
-    content_stream.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_stream_chat_non_agent_model_keeps_content_stream_path() -> None:
-    channel = MagicMock()
-    body = streaming.StreamChatRequest(
-        messages=_user_message_payload(),
-        modelId="openai:gpt-4o-mini",
-        chatId="chat-1",
-    )
-
-    flow_stream = AsyncMock()
-    content_stream = AsyncMock()
-
-    with (
-        patch.object(streaming, "ensure_chat_initialized", return_value="chat-1"),
-        patch.object(streaming, "save_user_msg"),
-        patch.object(streaming, "init_assistant_msg", return_value="asst-1"),
-        patch.object(streaming, "create_agent_for_chat", return_value=MagicMock()),
-        patch.object(streaming, "handle_flow_stream", new=flow_stream),
-        patch.object(streaming, "handle_content_stream", new=content_stream),
-        patch.object(streaming, "db", _make_db_mock()),
-    ):
-        await streaming.stream_chat(channel, body)
-
-    flow_stream.assert_not_awaited()
-    content_stream.assert_awaited_once()
+    graph_runtime.assert_awaited_once()

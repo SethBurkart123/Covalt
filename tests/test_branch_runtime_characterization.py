@@ -1,7 +1,7 @@
 """Characterization tests for current branch command runtime behavior.
 
-These tests freeze command-level event envelopes and streaming delegation for
-continue/retry/edit flows prior to runtime unification.
+These tests freeze command-level event envelopes and current graph-runtime
+delegation for continue/retry/edit flows.
 """
 
 from __future__ import annotations
@@ -82,17 +82,18 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
         branch_ids=["assistant-new"],
     )
 
-    fake_agent = object()
-    stream_mock = AsyncMock()
+    graph_data = {
+        "nodes": [{"id": "cs", "type": "chat-start", "data": {}}],
+        "edges": [],
+    }
+    runtime_mock = AsyncMock()
     channel = CapturingChannel()
     body = branches.ContinueMessageRequest(messageId="assistant-old", chatId=chat_id)
 
     with (
         patch.object(branches, "db", db_mock),
-        patch.object(
-            branches, "create_agent_for_chat", return_value=fake_agent
-        ) as create_agent,
-        patch.object(branches, "handle_content_stream", new=stream_mock),
+        patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
+        patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.continue_message(channel, body)
 
@@ -102,10 +103,11 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
     assert events[1]["content"] == "assistant-new"
     assert events[1]["blocks"] == [{"type": "text", "content": "partial"}]
 
-    create_agent.assert_called_once_with(chat_id, tool_ids=[], model_id=None)
-    stream_mock.assert_awaited_once()
-    args = stream_mock.await_args.args
-    assert args[0] is fake_agent
+    runtime_mock.assert_awaited_once()
+    await_args = runtime_mock.await_args
+    assert await_args is not None
+    args = await_args.args
+    assert args[0] == graph_data
     assert args[2] == "assistant-new"
     assert args[3] is channel
     assert args[1][-1].role == "user"
@@ -136,17 +138,18 @@ async def test_retry_message_current_event_and_delegation_shape() -> None:
         branch_ids=["assistant-retry"],
     )
 
-    fake_agent = object()
-    stream_mock = AsyncMock()
+    graph_data = {
+        "nodes": [{"id": "cs", "type": "chat-start", "data": {}}],
+        "edges": [],
+    }
+    runtime_mock = AsyncMock()
     channel = CapturingChannel()
     body = branches.RetryMessageRequest(messageId="assistant-old", chatId=chat_id)
 
     with (
         patch.object(branches, "db", db_mock),
-        patch.object(
-            branches, "create_agent_for_chat", return_value=fake_agent
-        ) as create_agent,
-        patch.object(branches, "handle_content_stream", new=stream_mock),
+        patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
+        patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.retry_message(channel, body)
 
@@ -156,10 +159,11 @@ async def test_retry_message_current_event_and_delegation_shape() -> None:
     assert events[1]["content"] == "assistant-retry"
     assert events[1].get("blocks") is None
 
-    create_agent.assert_called_once_with(chat_id, tool_ids=[], model_id=None)
-    stream_mock.assert_awaited_once()
-    args = stream_mock.await_args.args
-    assert args[0] is fake_agent
+    runtime_mock.assert_awaited_once()
+    await_args = runtime_mock.await_args
+    assert await_args is not None
+    args = await_args.args
+    assert args[0] == graph_data
     assert args[2] == "assistant-retry"
     assert args[3] is channel
 
@@ -190,8 +194,11 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
         branch_ids=["user-new", "assistant-new"],
     )
 
-    fake_agent = object()
-    stream_mock = AsyncMock()
+    graph_data = {
+        "nodes": [{"id": "cs", "type": "chat-start", "data": {}}],
+        "edges": [],
+    }
+    runtime_mock = AsyncMock()
     channel = CapturingChannel()
     body = branches.EditUserMessageRequest(
         messageId="user-old",
@@ -201,10 +208,8 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
 
     with (
         patch.object(branches, "db", db_mock),
-        patch.object(
-            branches, "create_agent_for_chat", return_value=fake_agent
-        ) as create_agent,
-        patch.object(branches, "handle_content_stream", new=stream_mock),
+        patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
+        patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.edit_user_message(channel, body)
 
@@ -213,10 +218,11 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
     events = extract_channel_events(channel)
     assert events[1]["content"] == "assistant-new"
 
-    create_agent.assert_called_once_with(chat_id, tool_ids=[], model_id=None)
-    stream_mock.assert_awaited_once()
-    args = stream_mock.await_args.args
-    assert args[0] is fake_agent
+    runtime_mock.assert_awaited_once()
+    await_args = runtime_mock.await_args
+    assert await_args is not None
+    args = await_args.args
+    assert args[0] == graph_data
     assert args[2] == "assistant-new"
     assert args[3] is channel
 

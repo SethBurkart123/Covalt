@@ -17,6 +17,7 @@ from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 
 from backend.commands import streaming
+from backend.services import run_control
 from backend.models.chat import ChatMessage
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
@@ -101,15 +102,9 @@ class FakeAgent:
 
 @pytest.fixture(autouse=True)
 def _reset_streaming_state():
-    streaming._active_runs.clear()
-    streaming._cancelled_messages.clear()
-    streaming._approval_events.clear()
-    streaming._approval_responses.clear()
+    run_control.reset_state()
     yield
-    streaming._active_runs.clear()
-    streaming._cancelled_messages.clear()
-    streaming._approval_events.clear()
-    streaming._approval_responses.clear()
+    run_control.reset_state()
 
 
 @pytest.mark.asyncio
@@ -225,14 +220,14 @@ async def test_approval_pause_resume_event_sequence() -> None:
     channel = CapturingChannel()
 
     async def _auto_approve() -> None:
-        while run_id not in streaming._approval_events:
+        while run_control.get_approval_waiter(run_id) is None:
             await asyncio.sleep(0)
-        streaming._approval_responses[run_id] = {
-            "approved": True,
-            "tool_decisions": {"approval-1": True},
-            "edited_args": {},
-        }
-        streaming._approval_events[run_id].set()
+        run_control.set_approval_response(
+            run_id,
+            approved=True,
+            tool_decisions={"approval-1": True},
+            edited_args={},
+        )
 
     await asyncio.wait_for(
         asyncio.gather(

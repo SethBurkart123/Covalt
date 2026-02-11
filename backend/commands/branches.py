@@ -10,18 +10,16 @@ from zynk import Channel, command
 
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
-from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
 )
-from ..services.workspace_manager import get_workspace_manager
-from .streaming import (
+from ..services.chat_graph_runner import (
     get_graph_data_for_chat,
-    handle_content_stream,
     run_graph_chat_runtime,
     update_chat_model_selection,
 )
+from ..services.workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
 
@@ -178,30 +176,15 @@ async def continue_message(
 
     try:
         graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
-        if graph_data is not None:
-            await run_graph_chat_runtime(
-                graph_data,
-                chat_messages,
-                new_msg_id,
-                channel,
-                chat_id=body.chatId,
-                ephemeral=False,
-                extra_tool_ids=body.toolIds or None,
-            )
-        else:
-            agent = create_agent_for_chat(
-                body.chatId,
-                tool_ids=body.toolIds,
-                model_id=body.modelId,
-            )
-
-            await handle_content_stream(
-                agent,
-                chat_messages,
-                new_msg_id,
-                channel,
-                chat_id=body.chatId,
-            )
+        await run_graph_chat_runtime(
+            graph_data,
+            chat_messages,
+            new_msg_id,
+            channel,
+            chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
+        )
 
     except Exception as e:
         logger.error(f"continue_message error: {e}")
@@ -293,30 +276,15 @@ async def retry_message(
 
     try:
         graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
-        if graph_data is not None:
-            await run_graph_chat_runtime(
-                graph_data,
-                chat_messages,
-                new_msg_id,
-                channel,
-                chat_id=body.chatId,
-                ephemeral=False,
-                extra_tool_ids=body.toolIds or None,
-            )
-        else:
-            agent = create_agent_for_chat(
-                body.chatId,
-                tool_ids=body.toolIds,
-                model_id=body.modelId,
-            )
-
-            await handle_content_stream(
-                agent,
-                chat_messages,
-                new_msg_id,
-                channel,
-                chat_id=body.chatId,
-            )
+        await run_graph_chat_runtime(
+            graph_data,
+            chat_messages,
+            new_msg_id,
+            channel,
+            chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
+        )
 
     except Exception as e:
         logger.error(f"retry_message error: {e}")
@@ -510,30 +478,15 @@ async def edit_user_message(
 
     try:
         graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
-        if graph_data is not None:
-            await run_graph_chat_runtime(
-                graph_data,
-                chat_messages,
-                assistant_msg_id,
-                channel,
-                chat_id=body.chatId,
-                ephemeral=False,
-                extra_tool_ids=body.toolIds or None,
-            )
-        else:
-            agent = create_agent_for_chat(
-                body.chatId,
-                tool_ids=body.toolIds,
-                model_id=body.modelId,
-            )
-
-            await handle_content_stream(
-                agent,
-                chat_messages,
-                assistant_msg_id,
-                channel,
-                chat_id=body.chatId,
-            )
+        await run_graph_chat_runtime(
+            graph_data,
+            chat_messages,
+            assistant_msg_id,
+            channel,
+            chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
+        )
 
     except Exception as e:
         logger.error(f"edit_user_message error: {e}")

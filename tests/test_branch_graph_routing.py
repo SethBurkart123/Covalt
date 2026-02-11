@@ -80,7 +80,6 @@ async def test_continue_message_agent_model_routes_to_graph_runtime() -> None:
         "edges": [],
     }
     graph_runtime = AsyncMock()
-    content_stream = AsyncMock()
     channel = CapturingChannel()
 
     body = branches.ContinueMessageRequest(
@@ -94,8 +93,6 @@ async def test_continue_message_agent_model_routes_to_graph_runtime() -> None:
         patch.object(branches, "update_chat_model_selection"),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=graph_runtime),
-        patch.object(branches, "create_agent_for_chat") as create_agent,
-        patch.object(branches, "handle_content_stream", new=content_stream),
     ):
         await branches.continue_message(channel, body)
 
@@ -105,8 +102,6 @@ async def test_continue_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["blocks"] == [{"type": "text", "content": "partial"}]
 
     graph_runtime.assert_awaited_once()
-    create_agent.assert_not_called()
-    content_stream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -139,7 +134,6 @@ async def test_retry_message_agent_model_routes_to_graph_runtime() -> None:
         "edges": [],
     }
     graph_runtime = AsyncMock()
-    content_stream = AsyncMock()
     channel = CapturingChannel()
 
     body = branches.RetryMessageRequest(
@@ -153,8 +147,6 @@ async def test_retry_message_agent_model_routes_to_graph_runtime() -> None:
         patch.object(branches, "update_chat_model_selection"),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=graph_runtime),
-        patch.object(branches, "create_agent_for_chat") as create_agent,
-        patch.object(branches, "handle_content_stream", new=content_stream),
     ):
         await branches.retry_message(channel, body)
 
@@ -163,8 +155,6 @@ async def test_retry_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["content"] == "assistant-retry"
 
     graph_runtime.assert_awaited_once()
-    create_agent.assert_not_called()
-    content_stream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -198,7 +188,6 @@ async def test_edit_message_agent_model_routes_to_graph_runtime() -> None:
         "edges": [],
     }
     graph_runtime = AsyncMock()
-    content_stream = AsyncMock()
     channel = CapturingChannel()
 
     body = branches.EditUserMessageRequest(
@@ -213,8 +202,6 @@ async def test_edit_message_agent_model_routes_to_graph_runtime() -> None:
         patch.object(branches, "update_chat_model_selection"),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=graph_runtime),
-        patch.object(branches, "create_agent_for_chat") as create_agent,
-        patch.object(branches, "handle_content_stream", new=content_stream),
     ):
         await branches.edit_user_message(channel, body)
 
@@ -223,5 +210,3 @@ async def test_edit_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["content"] == "assistant-new"
 
     graph_runtime.assert_awaited_once()
-    create_agent.assert_not_called()
-    content_stream.assert_not_awaited()
