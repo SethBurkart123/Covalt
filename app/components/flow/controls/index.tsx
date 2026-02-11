@@ -23,15 +23,15 @@ type AnyControl = ComponentType<ControlProps>;
 
 /** Registry mapping parameter types to control components */
 const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
-  float: FloatControl,
-  int: FloatControl,
-  string: StringControl,
-  boolean: BooleanControl,
-  enum: EnumControl,
-  'text-area': TextAreaControl,
-  model: ModelPicker,
-  'mcp-server': McpServerPicker,
-  toolset: ToolsetPicker,
+  float: FloatControl as AnyControl,
+  int: FloatControl as AnyControl,
+  string: StringControl as AnyControl,
+  boolean: BooleanControl as AnyControl,
+  enum: EnumControl as AnyControl,
+  'text-area': TextAreaControl as AnyControl,
+  model: ModelPicker as AnyControl,
+  'mcp-server': McpServerPicker as AnyControl,
+  toolset: ToolsetPicker as AnyControl,
 };
 
 /** Get the control component for a parameter type */

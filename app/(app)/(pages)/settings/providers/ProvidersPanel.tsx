@@ -39,8 +39,8 @@ export default function ProvidersPanel() {
 
         map[p.provider] = {
           provider: p.provider,
-          apiKey: p.apiKey ?? p.api_key ?? '',
-          baseUrl: p.baseUrl ?? p.base_url ?? '',
+          apiKey: p.apiKey ?? '',
+          baseUrl: p.baseUrl ?? '',
           extra,
           enabled: Boolean(p.enabled ?? true),
         };
@@ -59,7 +59,7 @@ export default function ProvidersPanel() {
       }
 
       setProviderConfigs(map);
-    } catch (e) {
+    } catch {
       const fallback: Record<string, ProviderConfig> = {};
       for (const def of PROVIDERS) {
         fallback[def.key] = {
