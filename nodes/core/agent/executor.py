@@ -35,7 +35,9 @@ class AgentExecutor:
     # ── Phase 1: structural composition ─────────────────────────────
 
     def build(self, data: dict[str, Any], context: BuildContext) -> AgentResult:
-        model = _resolve_model(data)
+        model = _resolve_model(
+            str(data.get("model", "")), _coerce_optional_float(data.get("temperature"))
+        )
         tools = _collect_tools(context)
         instructions = [data["instructions"]] if data.get("instructions") else None
 
@@ -77,18 +79,31 @@ class AgentExecutor:
         raw = input_dv.value
         input_value = raw if isinstance(raw, dict) else {"message": str(raw)}
 
-        message = (
-            input_value.get("message")
-            or input_value.get("text")
-            or input_value.get("response")
-            or input_value.get("content")
-            or str(input_value)
+        message = _extract_text(input_value)
+
+        model_input = inputs.get("model")
+        model_str = _extract_text(model_input.value) if model_input else ""
+        if not model_str:
+            model_str = str(data.get("model", ""))
+
+        temperature_input = inputs.get("temperature")
+        temperature = (
+            _coerce_optional_float(temperature_input.value)
+            if temperature_input is not None and temperature_input.value is not None
+            else _coerce_optional_float(data.get("temperature"))
         )
+
+        instructions_input = inputs.get("instructions")
+        instructions_text = (
+            _extract_text(instructions_input.value)
+            if instructions_input is not None and instructions_input.value is not None
+            else _extract_text(data.get("instructions", ""))
+        )
+        instructions = [instructions_text] if instructions_text else None
 
         agent = context.agent
         if agent is None:
-            model = _resolve_model(data)
-            instructions = [data["instructions"]] if data.get("instructions") else None
+            model = _resolve_model(model_str, temperature)
             agent = Agent(
                 name=data.get("name", "Agent"),
                 model=model,
@@ -98,6 +113,11 @@ class AgentExecutor:
                 stream_events=True,
                 db=_agent_db,
             )
+        else:
+            if model_str:
+                agent.model = _resolve_model(model_str, temperature)
+            if hasattr(agent, "instructions"):
+                agent.instructions = instructions
 
         yield NodeEvent(
             node_id=context.node_id,
@@ -122,7 +142,9 @@ class AgentExecutor:
                 except StopAsyncIteration:
                     break
                 except asyncio.TimeoutError:
-                    break
+                    raise RuntimeError(
+                        f"Agent stream timed out after {AGENT_STREAM_IDLE_TIMEOUT_SECONDS:.0f}s"
+                    )
 
                 event_name = _event_name(getattr(chunk, "event", None))
 
@@ -175,16 +197,32 @@ def _event_name(event: Any) -> str:
     return str(event) if event is not None else ""
 
 
-def _resolve_model(data: dict[str, Any]) -> Any:
-    model_str = data.get("model", "")
+def _extract_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in ("message", "text", "response", "content"):
+            candidate = value.get(key)
+            if candidate is not None:
+                return str(candidate)
+        return str(value)
+    return str(value)
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _resolve_model(model_str: str, temperature: float | None = None) -> Any:
     if ":" not in model_str:
         raise ValueError(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
     provider, model_id = model_str.split(":", 1)
-    temperature = data.get("temperature")
     if temperature is not None:
-        return get_model(provider, model_id, temperature=float(temperature))
+        return get_model(provider, model_id, temperature=temperature)
     return get_model(provider, model_id)
 
 

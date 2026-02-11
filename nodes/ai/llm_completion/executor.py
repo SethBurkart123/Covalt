@@ -17,18 +17,49 @@ def resolve_model(model_str: str) -> Any:
     return get_model(provider, model_id)
 
 
+def _extract_prompt(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in ("text", "message", "response", "content"):
+            candidate = value.get(key)
+            if candidate is not None:
+                return str(candidate)
+        return str(value)
+    return str(value)
+
+
 class LlmCompletionExecutor:
     node_type = "llm-completion"
 
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ):
-        prompt = inputs.get("prompt", DataValue("string", "")).value or data.get(
-            "prompt", ""
+        prompt_input = inputs.get("prompt") or inputs.get("input")
+        prompt = _extract_prompt(
+            prompt_input.value if prompt_input is not None else data.get("prompt", "")
         )
-        model_str = data.get("model", "")
-        temperature = data.get("temperature")
-        max_tokens = data.get("max_tokens")
+
+        model_input = inputs.get("model")
+        model_str = (
+            str(model_input.value)
+            if model_input is not None and model_input.value
+            else str(data.get("model", ""))
+        )
+
+        temperature_input = inputs.get("temperature")
+        temperature = (
+            temperature_input.value
+            if temperature_input is not None and temperature_input.value is not None
+            else data.get("temperature")
+        )
+
+        max_tokens_input = inputs.get("max_tokens")
+        max_tokens = (
+            max_tokens_input.value
+            if max_tokens_input is not None and max_tokens_input.value is not None
+            else data.get("max_tokens")
+        )
 
         model = resolve_model(model_str)
 
@@ -43,9 +74,9 @@ class LlmCompletionExecutor:
         full_response = ""
         kwargs: dict[str, Any] = {}
         if temperature is not None:
-            kwargs["temperature"] = temperature
+            kwargs["temperature"] = float(temperature)
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            kwargs["max_tokens"] = int(max_tokens)
 
         try:
             async for token in model.astream(prompt, **kwargs):

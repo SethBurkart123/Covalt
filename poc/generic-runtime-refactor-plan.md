@@ -467,7 +467,7 @@ Current progress note:
 - `stream_chat`, `stream_agent_chat`, and `continue/retry/edit` paths now run through graph runtime without `has_flow_nodes` bifurcation.
 - Non-agent chats use a canonical generated graph path (Chat Start -> Agent).
 - `backend/services/chat_graph_runner.py` now owns graph resolution (`agent:<id>` vs canonical graph) and shared graph-runtime orchestration.
-- Flow-to-chat event bridging (`handle_flow_stream`) now lives in `backend/services/chat_graph_runner.py`; commands call service adapters.
+- Flow-to-chat event bridging (`handle_flow_stream`, `handle_content_stream`) now lives in `backend/services/chat_graph_runner.py`; commands call service adapters.
 - `backend/services/run_control.py` now owns active-run, early-cancel, and tool-approval synchronization state.
 
 ## Phase 7 - Branch commands use same adapter
@@ -512,6 +512,7 @@ Current progress note:
 
 - Streaming command now delegates active-run + approval state to `run_control`.
 - Added dedicated unit coverage for run-control state transitions and command integration.
+- Streaming keeps compatibility wrappers for adapter entrypoints while command orchestration continues to slim down.
 
 ## Phase 9 - Remove legacy architecture
 

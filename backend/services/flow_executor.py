@@ -204,7 +204,7 @@ def _get_node_label(node: dict) -> str:
     return (
         node.get("data", {}).get("_label")
         or node.get("data", {}).get("label")
-        or node.get("type", "")
+        or node.get("id", "")
     )
 
 
@@ -246,6 +246,7 @@ async def run_flow(
 
     port_values: dict[str, dict[str, DataValue]] = {}
     upstream_outputs: dict[str, Any] = {}
+    label_sources: dict[str, str] = {}
     nodes_by_id = {n["id"]: n for n in active_flow_nodes}
 
     for node_id in order:
@@ -294,6 +295,17 @@ async def run_flow(
                         or item.outputs.get("false")
                     )
                     if data_output is not None:
+                        upstream_outputs[node_id] = data_output.value
+                        prior_node_id = label_sources.get(label)
+                        if prior_node_id and prior_node_id != node_id:
+                            logger.warning(
+                                "Duplicate node label '%s' seen on %s and %s; "
+                                "label-based expressions may be ambiguous",
+                                label,
+                                prior_node_id,
+                                node_id,
+                            )
+                        label_sources[label] = node_id
                         upstream_outputs[label] = data_output.value
         except Exception as e:
             yield NodeEvent(

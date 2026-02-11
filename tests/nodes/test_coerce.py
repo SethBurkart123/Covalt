@@ -42,6 +42,10 @@ class TestCanCoerce:
         assert can_coerce("json", "boolean") is False
         assert can_coerce("messages", "float") is False
 
+    def test_any_is_not_a_supported_socket_type(self):
+        assert can_coerce("any", "string") is False
+        assert can_coerce("string", "any") is False
+
 
 # ── coerce ───────────────────────────────────────────────────────────
 
@@ -125,3 +129,7 @@ class TestCoerce:
     def test_tools_to_string_raises(self):
         with pytest.raises(TypeError, match="No implicit coercion"):
             coerce(DataValue(type="tools", value="x"), "string")
+
+    def test_any_to_string_raises(self):
+        with pytest.raises(TypeError, match="No implicit coercion"):
+            coerce(DataValue(type="any", value="x"), "string")

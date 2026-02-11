@@ -373,6 +373,38 @@ class TestE2EExpressions:
 
         assert len(results) >= 2
 
+    @pytest.mark.asyncio
+    async def test_node_id_expression_reference_is_supported(self):
+        """Node expressions can reference upstream output by node id key."""
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node(
+                    "pt1",
+                    "prompt-template",
+                    template="Echo {{message}}",
+                    _label="Friendly Prompt",
+                ),
+                make_node(
+                    "pt2",
+                    "prompt-template",
+                    template="From first: {{ $('pt1').item.json.text }}",
+                ),
+            ],
+            edges=[
+                make_edge("cs", "pt1", "output", "input"),
+                make_edge("pt1", "pt2", "output", "input"),
+            ],
+        )
+        ctx = _flow_ctx("hello")
+
+        results: list[ExecutionResult] = []
+        async for item in run_flow(graph, None, ctx, executors=STUBS):
+            if isinstance(item, ExecutionResult):
+                results.append(item)
+
+        assert results[-1].outputs["output"].value["text"] == "From first: Echo hello"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Test: Edge filtering — structural edges excluded from flow
