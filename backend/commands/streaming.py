@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import traceback
-import types
 import uuid
 import copy
 from dataclasses import dataclass
@@ -23,11 +22,16 @@ from zynk import Channel, command
 
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
-from ..services.agent_factory import create_agent_for_chat
 from ..services.agent_manager import get_agent_manager
+from ..services.chat_graph_runner import (
+    get_graph_data_for_chat,
+    handle_flow_stream as _service_handle_flow_stream,
+    parse_model_id,
+    run_graph_chat_runtime,
+    update_chat_model_selection,
+)
 from ..services.flow_executor import run_flow
-from nodes._types import DataValue, ExecutionResult, NodeEvent
-from ..services.graph_executor import build_agent_from_graph
+from ..services import run_control
 from ..services.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
@@ -95,8 +99,6 @@ class MemberRunState:
 
 
 registry = get_tool_registry()
-_active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
-_cancelled_messages: set[str] = set()  # messages cancelled before run_id arrived
 
 
 def extract_error_message(error_content: str) -> str:
@@ -164,13 +166,6 @@ class BroadcastingChannel:
             self._pending_broadcasts.clear()
 
 
-_approval_events: Dict[str, asyncio.Event] = {}
-
-_approval_responses: Dict[
-    str, Dict[str, Any]
-] = {}  # approval_id -> {approved: bool, edited_args: dict}
-
-
 class AttachmentInput(BaseModel):
     id: str
     type: str
@@ -194,15 +189,6 @@ class StreamChatRequest(BaseModel):
     chatId: Optional[str] = None
     toolIds: List[str] = []
     attachments: List[AttachmentMeta] = []
-
-
-def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
-    if not model_id:
-        return "", ""
-    if ":" in model_id:
-        provider, model = model_id.split(":", 1)
-        return provider, model
-    return "", model_id
 
 
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
@@ -273,18 +259,6 @@ def load_attachments_as_agno_media(
             files.append(File(filepath=filepath, name=att.name))
 
     return images, files, audio, videos
-
-
-def update_chat_model_selection(sess, chat_id: str, model_id: str) -> None:
-    config = db.get_chat_agent_config(sess, chat_id) or {}
-    if model_id.startswith("agent:"):
-        config["agent_id"] = model_id[len("agent:") :]
-    else:
-        provider, model = parse_model_id(model_id)
-        config["provider"] = provider
-        config["model_id"] = model
-        config.pop("agent_id", None)
-    db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
 
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
@@ -540,7 +514,7 @@ def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
 
 
 async def handle_flow_stream(
-    graph_data: dict,
+    graph_data: dict[str, Any],
     agent: Any,
     messages: List[ChatMessage],
     assistant_msg_id: str,
@@ -548,224 +522,17 @@ async def handle_flow_stream(
     chat_id: str = "",
     ephemeral: bool = False,
 ) -> None:
-    """Run the flow engine and forward NodeEvents to the WebSocket as ChatEvents."""
-    ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
-
-    def _noop_save(msg_id: str, content: str) -> None:
-        pass
-
-    _save = save_msg_content if not ephemeral else _noop_save
-
-    if chat_id:
-        await broadcaster.register_stream(chat_id, assistant_msg_id)
-
-    user_message = ""
-    if messages and messages[-1].role == "user":
-        content = messages[-1].content
-        user_message = content if isinstance(content, str) else json.dumps(content)
-
-    state = types.SimpleNamespace(user_message=user_message)
-    context = types.SimpleNamespace(
-        run_id=str(uuid.uuid4()),
-        chat_id=chat_id,
-        state=state,
-        tool_registry=registry,
-    )
-
-    content_blocks: List[Dict[str, Any]] = (
-        [] if ephemeral else load_initial_content(assistant_msg_id)
-    )
-    current_text = ""
-    final_output: DataValue | None = None
-
-    try:
-        async for item in run_flow(graph_data, agent, context):
-            if isinstance(item, NodeEvent):
-                if item.event_type == "started":
-                    ch.send_model(
-                        ChatEvent(
-                            event="FlowNodeStarted",
-                            content=json.dumps(
-                                {"nodeId": item.node_id, "nodeType": item.node_type}
-                            ),
-                        )
-                    )
-
-                elif item.event_type == "progress":
-                    token = (item.data or {}).get("token", "")
-                    if token:
-                        current_text += token
-                        ch.send_model(ChatEvent(event="RunContent", content=token))
-                        await asyncio.to_thread(
-                            _save,
-                            assistant_msg_id,
-                            json.dumps(
-                                content_blocks
-                                + (
-                                    [{"type": "text", "content": current_text}]
-                                    if current_text
-                                    else []
-                                )
-                            ),
-                        )
-
-                elif item.event_type == "completed":
-                    ch.send_model(
-                        ChatEvent(
-                            event="FlowNodeCompleted",
-                            content=json.dumps(
-                                {"nodeId": item.node_id, "nodeType": item.node_type}
-                            ),
-                        )
-                    )
-
-                elif item.event_type == "error":
-                    error_msg = (item.data or {}).get("error", "Unknown node error")
-                    content_blocks.append(
-                        {
-                            "type": "error",
-                            "content": f"[{item.node_type}] {error_msg}",
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }
-                    )
-                    ch.send_model(
-                        ChatEvent(
-                            event="RunError", content=f"[{item.node_type}] {error_msg}"
-                        )
-                    )
-                    await asyncio.to_thread(
-                        _save, assistant_msg_id, json.dumps(content_blocks)
-                    )
-
-            elif isinstance(item, ExecutionResult):
-                final_output = _pick_text_output(item.outputs)
-
-        if current_text:
-            content_blocks.append({"type": "text", "content": current_text})
-        elif final_output and not any(b.get("type") == "text" for b in content_blocks):
-            text = str(final_output.value) if final_output.value is not None else ""
-            if text:
-                content_blocks.append({"type": "text", "content": text})
-                ch.send_model(ChatEvent(event="RunContent", content=text))
-
-        await asyncio.to_thread(_save, assistant_msg_id, json.dumps(content_blocks))
-
-        if not ephemeral:
-            with db.db_session() as sess:
-                db.mark_message_complete(sess, assistant_msg_id)
-
-        ch.send_model(ChatEvent(event="RunCompleted"))
-
-        if hasattr(ch, "flush_broadcasts"):
-            await ch.flush_broadcasts()
-
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "completed")
-            await broadcaster.unregister_stream(chat_id)
-
-    except Exception as e:
-        logger.error(f"[flow_stream] Exception: {e}")
-        traceback.print_exc()
-
-        if current_text:
-            content_blocks.append({"type": "text", "content": current_text})
-
-        error_msg = extract_error_message(str(e))
-        content_blocks.append(
-            {
-                "type": "error",
-                "content": error_msg,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
-        await asyncio.to_thread(_save, assistant_msg_id, json.dumps(content_blocks))
-        ch.send_model(ChatEvent(event="RunError", content=error_msg))
-
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", str(e))
-            await broadcaster.unregister_stream(chat_id)
-
-
-def _require_user_message(messages: List[ChatMessage]) -> None:
-    if not messages or messages[-1].role != "user":
-        raise ValueError("No user message found in request")
-
-
-def get_graph_data_for_chat(
-    chat_id: str,
-    model_id: Optional[str],
-) -> dict[str, Any] | None:
-    agent_id: str | None = None
-
-    if model_id:
-        if model_id.startswith("agent:"):
-            agent_id = model_id[len("agent:") :]
-        else:
-            return None
-
-    if not agent_id:
-        with db.db_session() as sess:
-            config = db.get_chat_agent_config(sess, chat_id)
-        if isinstance(config, dict):
-            configured_agent = config.get("agent_id")
-            if isinstance(configured_agent, str) and configured_agent:
-                agent_id = configured_agent
-
-    if not agent_id:
-        return None
-
-    agent_manager = get_agent_manager()
-    agent_data = agent_manager.get_agent(agent_id)
-    if not agent_data:
-        raise ValueError(f"Agent '{agent_id}' not found")
-
-    return agent_data["graph_data"]
-
-
-async def run_graph_chat_runtime(
-    graph_data: dict[str, Any],
-    messages: List[ChatMessage],
-    assistant_msg_id: str,
-    channel: Channel,
-    *,
-    chat_id: str,
-    ephemeral: bool,
-    extra_tool_ids: list[str] | None = None,
-) -> None:
-    result = build_agent_from_graph(
+    """Compatibility wrapper delegating flow streaming to chat_graph_runner."""
+    await _service_handle_flow_stream(
         graph_data,
-        chat_id=chat_id or None,
-        extra_tool_ids=extra_tool_ids,
-    )
-    _require_user_message(messages)
-    await handle_flow_stream(
-        graph_data,
-        result.agent,
+        agent,
         messages,
         assistant_msg_id,
-        channel,
+        raw_ch,
         chat_id=chat_id,
         ephemeral=ephemeral,
+        run_flow_impl=run_flow,
     )
-
-
-def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
-    """Pick the most relevant text output from a node's data spine output."""
-    if not outputs:
-        return None
-    data_output = outputs.get("output") or outputs.get("true") or outputs.get("false")
-    if data_output is None:
-        for v in outputs.values():
-            if v.type == "string":
-                return v
-        return next(iter(outputs.values()))
-    value = data_output.value
-    if isinstance(value, dict):
-        text = value.get("response") or value.get("text") or value.get("message")
-        if text is not None:
-            return DataValue(type="string", value=str(text))
-        return DataValue(type="string", value=str(value))
-    return DataValue(type="string", value=str(value) if value else "")
 
 
 async def handle_content_stream(
@@ -790,7 +557,7 @@ async def handle_content_stream(
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
 
-    _active_runs[assistant_msg_id] = (None, agent)
+    run_control.register_active_run(assistant_msg_id, agent)
 
     response_stream = agent.arun(
         input=agno_messages,
@@ -799,9 +566,8 @@ async def handle_content_stream(
         stream_events=True,
     )
 
-    if assistant_msg_id in _cancelled_messages:
-        _cancelled_messages.discard(assistant_msg_id)
-        _active_runs.pop(assistant_msg_id, None)
+    if run_control.consume_early_cancel(assistant_msg_id):
+        run_control.remove_active_run(assistant_msg_id)
         ch.send_model(ChatEvent(event="RunCancelled"))
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "completed")
@@ -1077,13 +843,12 @@ async def handle_content_stream(
             async for chunk in response_stream:
                 if not run_id and chunk.run_id:
                     run_id = chunk.run_id
-                    _active_runs[assistant_msg_id] = (run_id, agent)
+                    run_control.set_active_run_id(assistant_msg_id, run_id)
                     logger.info(f"[stream] Captured run_id {run_id}")
                     if chat_id:
                         await broadcaster.update_stream_run_id(chat_id, run_id)
 
-                    if assistant_msg_id in _cancelled_messages:
-                        _cancelled_messages.discard(assistant_msg_id)
+                    if run_control.consume_early_cancel(assistant_msg_id):
                         logger.info(f"[stream] Early cancel detected for {run_id}")
                         agent.cancel_run(run_id)
 
@@ -1102,7 +867,7 @@ async def handle_content_stream(
                     if not ephemeral:
                         with db.db_session() as sess:
                             db.mark_message_complete(sess, assistant_msg_id)
-                    _active_runs.pop(assistant_msg_id, None)
+                    run_control.remove_active_run(assistant_msg_id)
                     ch.send_model(ChatEvent(event="RunCancelled"))
                     if chat_id:
                         await broadcaster.update_stream_status(chat_id, "completed")
@@ -1338,7 +1103,7 @@ async def handle_content_stream(
                         )
 
                         approval_event = asyncio.Event()
-                        _approval_events[run_id] = approval_event
+                        run_control.register_approval_waiter(run_id, approval_event)
 
                         timed_out = False
                         try:
@@ -1348,7 +1113,7 @@ async def handle_content_stream(
                             for tool in chunk.tools_requiring_confirmation:
                                 tool.confirmed = False
                         else:
-                            response = _approval_responses.get(run_id, {})
+                            response = run_control.get_approval_response(run_id)
                             tool_decisions = response.get("tool_decisions", {})
                             edited_args = response.get("edited_args", {})
                             default_approved = response.get("approved", False)
@@ -1360,8 +1125,7 @@ async def handle_content_stream(
                                 if tool_id and tool_id in edited_args:
                                     tool.tool_args = edited_args[tool_id]
 
-                        _approval_events.pop(run_id, None)
-                        _approval_responses.pop(run_id, None)
+                        run_control.clear_approval(run_id)
 
                         for tool in chunk.tools_requiring_confirmation:
                             tool_id = tool.tool_call_id
@@ -1408,8 +1172,7 @@ async def handle_content_stream(
 
     except asyncio.CancelledError:
         if run_id:
-            _approval_events.pop(run_id, None)
-            _approval_responses.pop(run_id, None)
+            run_control.clear_approval(run_id)
         raise
     except Exception as e:
         logger.error(f"[stream] Exception in stream handler: {e}")
@@ -1433,8 +1196,8 @@ async def handle_content_stream(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
 
-    _active_runs.pop(assistant_msg_id, None)
-    _cancelled_messages.discard(assistant_msg_id)
+    run_control.remove_active_run(assistant_msg_id)
+    run_control.clear_early_cancel(assistant_msg_id)
 
     if not had_error and not ephemeral:
         with db.db_session() as sess:
@@ -1459,23 +1222,23 @@ class RespondToToolApprovalInput(BaseModel):
 
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    _approval_responses[body.runId] = {
-        "approved": body.approved,
-        "tool_decisions": body.toolDecisions or {},
-        "edited_args": body.editedArgs or {},
-    }
-    if body.runId in _approval_events:
-        _approval_events[body.runId].set()
+    run_control.set_approval_response(
+        body.runId,
+        approved=body.approved,
+        tool_decisions=body.toolDecisions or {},
+        edited_args=body.editedArgs or {},
+    )
     return {"success": True}
 
 
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
-    if body.messageId not in _active_runs:
+    active_run = run_control.get_active_run(body.messageId)
+    if active_run is None:
         logger.info(f"[cancel_run] No active run found for message {body.messageId}")
         return {"cancelled": False}
 
-    run_id, agent = _active_runs[body.messageId]
+    run_id, agent = active_run
     try:
         if run_id:
             logger.info(
@@ -1486,11 +1249,11 @@ async def cancel_run(body: CancelRunRequest) -> dict:
             logger.info(
                 f"[cancel_run] Flagging early cancel for message {body.messageId}"
             )
-            _cancelled_messages.add(body.messageId)
+            run_control.mark_early_cancel(body.messageId)
 
         with db.db_session() as sess:
             db.mark_message_complete(sess, body.messageId)
-        del _active_runs[body.messageId]
+        run_control.remove_active_run(body.messageId)
         logger.info(f"[cancel_run] Successfully cancelled for message {body.messageId}")
         return {"cancelled": True}
     except Exception as e:
@@ -1602,37 +1365,19 @@ async def stream_chat(
 
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
-    agent_id = None
-    if body.modelId and body.modelId.startswith("agent:"):
-        agent_id = body.modelId[len("agent:") :]
-
     try:
         graph_data = get_graph_data_for_chat(chat_id, body.modelId)
-        if graph_data is not None:
-            with db.db_session() as sess:
-                config = db.get_chat_agent_config(sess, chat_id)
-                if isinstance(config, dict) and agent_id:
-                    config["agent_id"] = agent_id
-                    db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-
-            logger.info("[stream] Graph-backed chat — running graph runtime")
-            await run_graph_chat_runtime(
-                graph_data,
-                messages,
-                assistant_msg_id,
-                channel,
-                chat_id=chat_id,
-                ephemeral=False,
-                extra_tool_ids=body.toolIds or None,
-            )
-            return
-
-        agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
-
-        _require_user_message(messages)
-        await handle_content_stream(
-            agent, messages, assistant_msg_id, channel, chat_id=chat_id
+        logger.info("[stream] Unified chat runtime — running graph runtime")
+        await run_graph_chat_runtime(
+            graph_data,
+            messages,
+            assistant_msg_id,
+            channel,
+            chat_id=chat_id,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
         )
+        return
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
 

@@ -42,9 +42,8 @@ This gives us a runtime that scales to arbitrary custom nodes without changing c
 1. Runtime is still partially coupled to agent/tool semantics.
    - Example: `backend/services/flow_executor.py` still hardcodes Chat Start rooted subgraph selection.
 2. There are multiple execution paths.
-   - `stream_chat` still has separate non-graph and graph code paths.
-   - Graph-backed `stream_chat`, `stream_agent_chat`, and graph-backed branch commands now run graph runtime directly.
-   - Non-graph chats still use the direct content stream path.
+   - All chat entrypoints now route through graph runtime.
+   - Remaining duplication is mostly command-side message lifecycle/error persistence glue.
 3. Node API is inconsistent.
    - Agent node has `execute()` but much of logic is effectively prebuilt in separate services in current architecture.
 4. Multi-agent pipeline semantics are fragile.
@@ -465,7 +464,11 @@ Exit criteria:
 
 Current progress note:
 
-- Graph-backed `stream_chat`, `stream_agent_chat`, and `continue/retry/edit` paths now run through graph runtime without `has_flow_nodes` bifurcation.
+- `stream_chat`, `stream_agent_chat`, and `continue/retry/edit` paths now run through graph runtime without `has_flow_nodes` bifurcation.
+- Non-agent chats use a canonical generated graph path (Chat Start -> Agent).
+- `backend/services/chat_graph_runner.py` now owns graph resolution (`agent:<id>` vs canonical graph) and shared graph-runtime orchestration.
+- Flow-to-chat event bridging (`handle_flow_stream`) now lives in `backend/services/chat_graph_runner.py`; commands call service adapters.
+- `backend/services/run_control.py` now owns active-run, early-cancel, and tool-approval synchronization state.
 
 ## Phase 7 - Branch commands use same adapter
 
@@ -483,8 +486,7 @@ Files:
 
 Exit criteria:
 
-- Graph-backed branch actions use same runtime path.
-- Full branch unification completes when non-graph chats also execute via canonical graph path.
+- Branch actions use same graph runtime path as stream commands.
 
 ## Phase 8 - Extract run control service
 
@@ -505,6 +507,11 @@ Files:
 Exit criteria:
 
 - Cancel/approval behavior parity across all actions.
+
+Current progress note:
+
+- Streaming command now delegates active-run + approval state to `run_control`.
+- Added dedicated unit coverage for run-control state transitions and command integration.
 
 ## Phase 9 - Remove legacy architecture
 
