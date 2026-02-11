@@ -21,7 +21,7 @@ export const agent = {
       label: 'Tools',
       mode: 'input',
       multiple: true,
-      socket: { type: 'tools', side: 'right' },
+      socket: { type: 'tools', side: 'right', channel: 'link' },
       acceptsTypes: ['tools', 'data'],
     },
     // Flow: data spine

@@ -186,13 +186,15 @@ def make_edge(
     target: str,
     source_handle: str = "output",
     target_handle: str = "input",
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Build an edge dict for the graph schema."""
+    channel = "link" if source_handle == "tools" or target_handle == "tools" else "flow"
     return {
         "source": source,
         "target": target,
         "sourceHandle": source_handle,
         "targetHandle": target_handle,
+        "data": {"channel": channel},
     }
 
 
@@ -239,3 +241,32 @@ def assert_event_order(
             f"Full actual: {actual}"
         )
         idx += 1
+
+
+# ---------------------------------------------------------------------------
+# Channel capture helpers
+# ---------------------------------------------------------------------------
+
+
+class CapturingChannel:
+    """Minimal channel test double that records emitted ChatEvents."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    def send_model(self, event: Any) -> None:
+        if hasattr(event, "model_dump"):
+            self.events.append(event.model_dump())
+            return
+        if hasattr(event, "dict"):
+            self.events.append(event.dict())
+            return
+        self.events.append({"event": str(event)})
+
+
+def extract_channel_events(channel: CapturingChannel) -> list[dict[str, Any]]:
+    return list(channel.events)
+
+
+def extract_event_names(channel: CapturingChannel) -> list[str]:
+    return [evt.get("event", "") for evt in channel.events]

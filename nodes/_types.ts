@@ -12,6 +12,8 @@ export type SocketTypeId =
 
 export type SocketShape = 'circle' | 'square' | 'diamond';
 
+export type EdgeChannel = 'flow' | 'link';
+
 /** Parameter types that the UI layer understands */
 export type ParameterType =
   | 'data'
@@ -39,6 +41,7 @@ export interface SocketConfig {
   type: SocketTypeId;
   side?: 'left' | 'right';  // Override default positioning (derived from mode if omitted)
   bidirectional?: boolean;  // Can be both source and target (for hub topology)
+  channel?: EdgeChannel;    // Optional explicit routing channel (flow/link)
   color?: string;           // Override default color
   shape?: SocketShape;  // Override default shape
 }
@@ -211,6 +214,7 @@ export interface FlowEdge {
   data?: {
     sourceType?: string;
     targetType?: string;
+    channel?: EdgeChannel;
   };
 }
 

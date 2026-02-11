@@ -18,8 +18,9 @@ Node partitioning is based on executor capabilities, NOT socket types:
   - Has execute()  → flow (Phase 2)
   - Has both       → hybrid (both phases)
 
-Edge partitioning remains socket-type-based because structural edges (agent/tools)
-genuinely carry different things (topology, tool composition) than flow edges (data).
+Edge partitioning is channel-based (`edge.data.channel`):
+  - `flow` carries runtime data
+  - `link` carries structural composition
 """
 
 from __future__ import annotations
@@ -35,9 +36,7 @@ from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 logger = logging.getLogger(__name__)
 
-# Edges through these handle types carry topology/composition, not runtime data.
-# Used for edge filtering only — node partitioning uses executor capabilities.
-STRUCTURAL_HANDLE_TYPES = {"tools"}
+FLOW_EDGE_CHANNEL = "flow"
 
 
 # ── Node partitioning ────────────────────────────────────────────────
@@ -93,13 +92,28 @@ def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
 
 
 def _flow_edges(edges: list[dict]) -> list[dict]:
-    """Filter to edges that carry runtime data (not structural topology)."""
-    return [
-        e
-        for e in edges
-        if e.get("sourceHandle", "") not in STRUCTURAL_HANDLE_TYPES
-        and e.get("targetHandle", "") not in STRUCTURAL_HANDLE_TYPES
-    ]
+    """Filter to edges that carry runtime data (channel=flow)."""
+
+    flow_edges: list[dict] = []
+    for edge in edges:
+        data = edge.get("data")
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Edge '{edge.get('id', '<unknown>')}' missing data payload"
+            )
+
+        channel = data.get("channel")
+        if channel == FLOW_EDGE_CHANNEL:
+            flow_edges.append(edge)
+            continue
+        if channel == "link":
+            continue
+
+        raise ValueError(
+            f"Edge '{edge.get('id', '<unknown>')}' has invalid channel: {channel!r}"
+        )
+
+    return flow_edges
 
 
 def _select_active_flow_subgraph(
@@ -335,14 +349,3 @@ async def _run_executor(
                 event_type="completed",
                 run_id=run_id,
             )
-
-
-# ── Utilities for streaming.py integration ──────────────────────────
-
-
-def has_flow_nodes(
-    graph_data: dict[str, Any], executors: dict[str, Any] | None = None
-) -> bool:
-    """Quick check: does this graph have any flow-capable nodes?"""
-    nodes = graph_data.get("nodes", [])
-    return len(find_flow_nodes(nodes, executors)) > 0

@@ -54,6 +54,38 @@ class ExecutionResult:
     events: list[NodeEvent] = field(default_factory=list)
 
 
+class RuntimeApi(Protocol):
+    """Generic runtime surface exposed to node executors.
+
+    The runtime kernel owns graph orchestration; nodes use this protocol for
+    graph lookups and link/materialization dependency resolution.
+    """
+
+    def get_node(self, node_id: str) -> dict[str, Any]: ...
+
+    def incoming_edges(
+        self,
+        node_id: str,
+        *,
+        channel: str | None = None,
+        target_handle: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def outgoing_edges(
+        self,
+        node_id: str,
+        *,
+        channel: str | None = None,
+        source_handle: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def resolve_links(self, node_id: str, target_handle: str) -> list[Any]: ...
+
+    def cache_get(self, namespace: str, key: str) -> Any | None: ...
+
+    def cache_set(self, namespace: str, key: str, value: Any) -> None: ...
+
+
 # ── Structural result types ─────────────────────────────────────────
 
 
@@ -99,6 +131,8 @@ class FlowContext:
     state: Any  # FlowState
     agent: Any | None  # Agent | Team built in Phase 1
     tool_registry: Any
+    runtime: RuntimeApi | None = None
+    services: Any = None
 
 
 # ── Executor protocol ───────────────────────────────────────────────
@@ -121,3 +155,14 @@ class FlowExecutor(Protocol):
         inputs: dict[str, DataValue],
         context: FlowContext,
     ) -> ExecutionResult | AsyncIterator[NodeEvent | ExecutionResult]: ...
+
+
+class LinkMaterializer(Protocol):
+    node_type: str
+
+    async def materialize(
+        self,
+        data: dict[str, Any],
+        output_handle: str,
+        context: FlowContext,
+    ) -> Any: ...

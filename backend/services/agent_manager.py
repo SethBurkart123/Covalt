@@ -11,6 +11,7 @@ from typing import Any
 from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import Agent
+from .graph_normalizer import normalize_graph_data
 
 logger = logging.getLogger(__name__)
 
@@ -50,67 +51,14 @@ DEFAULT_GRAPH = {
             "sourceHandle": "output",
             "target": "agent-1",
             "targetHandle": "input",
+            "data": {
+                "sourceType": "data",
+                "targetType": "data",
+                "channel": "flow",
+            },
         },
     ],
 }
-
-
-def _normalize_graph_edges(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Normalize legacy handles and dedupe structural edge duplicates.
-
-    Legacy compatibility:
-      - chat-start `agent -> agent` becomes `output -> input`
-      - agent `agent -> tools` becomes `input -> tools`
-    """
-    nodes_by_id = {n.get("id"): n for n in nodes}
-    normalized: list[dict[str, Any]] = []
-    seen_signatures: set[tuple[str, str, str, str]] = set()
-
-    for edge in edges:
-        source = edge.get("source")
-        target = edge.get("target")
-        source_handle = edge.get("sourceHandle")
-        target_handle = edge.get("targetHandle")
-
-        source_type = nodes_by_id.get(source, {}).get("type")
-        if (
-            source_type == "chat-start"
-            and source_handle == "agent"
-            and target_handle == "agent"
-        ):
-            source_handle = "output"
-            target_handle = "input"
-        elif (
-            source_type == "agent"
-            and source_handle == "agent"
-            and target_handle == "tools"
-        ):
-            source_handle = "input"
-
-        if not source or not target:
-            continue
-
-        signature = (
-            source,
-            target,
-            source_handle or "",
-            target_handle or "",
-        )
-        if signature in seen_signatures:
-            continue
-        seen_signatures.add(signature)
-
-        normalized.append(
-            {
-                **edge,
-                "sourceHandle": source_handle,
-                "targetHandle": target_handle,
-            }
-        )
-
-    return normalized
 
 
 class AgentManager:
@@ -155,7 +103,10 @@ class AgentManager:
             if not agent:
                 return None
 
-            graph = json.loads(agent.graph_data)
+            raw_graph = json.loads(agent.graph_data)
+            graph = normalize_graph_data(
+                raw_graph.get("nodes", []), raw_graph.get("edges", [])
+            )
             return {
                 "id": agent.id,
                 "name": agent.name,
@@ -176,6 +127,9 @@ class AgentManager:
         """Create a new agent with default Chat Start -> Agent graph."""
         agent_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
+        default_graph = normalize_graph_data(
+            DEFAULT_GRAPH["nodes"], DEFAULT_GRAPH["edges"]
+        )
 
         with db_session() as sess:
             agent = Agent(
@@ -183,7 +137,7 @@ class AgentManager:
                 name=name,
                 description=description,
                 icon=icon,
-                graph_data=json.dumps(DEFAULT_GRAPH),
+                graph_data=json.dumps(default_graph),
                 created_at=now,
                 updated_at=now,
             )
@@ -231,8 +185,8 @@ class AgentManager:
             if not agent:
                 return False
 
-            normalized_edges = _normalize_graph_edges(nodes, edges)
-            agent.graph_data = json.dumps({"nodes": nodes, "edges": normalized_edges})
+            normalized_graph = normalize_graph_data(nodes, edges)
+            agent.graph_data = json.dumps(normalized_graph)
             agent.updated_at = datetime.now().isoformat()
             sess.commit()
 

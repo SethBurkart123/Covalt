@@ -275,6 +275,7 @@ class TestE2EFullPipeline:
             e for e in events if e.node_id == "llm" and e.event_type == "started"
         ]
         assert len(llm_started) == 1
+        assert llm_started[0].data is not None
         assert llm_started[0].data["model"] == "mock:gpt-test"
 
         dead_events = [e for e in events if e.node_id == "dead"]
@@ -379,7 +380,7 @@ class TestE2EExpressions:
 
 
 class TestE2EEdgeFiltering:
-    """Structural edges (tools handles) are excluded from flow routing."""
+    """Link-channel edges are excluded from flow routing."""
 
     def test_structural_edges_filtered(self):
         edges = [
@@ -390,7 +391,7 @@ class TestE2EEdgeFiltering:
         ]
         flow = _flow_edges(edges)
         assert len(flow) == 2
-        assert all(e["targetHandle"] not in ("tools",) for e in flow)
+        assert all((e.get("data") or {}).get("channel") == "flow" for e in flow)
 
     def test_mixed_graph_partitions_correctly(self):
         """Graph with structural + flow nodes partitions correctly."""

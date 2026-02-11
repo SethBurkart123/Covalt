@@ -28,7 +28,7 @@ export const mcpServer = {
       type: 'tools',
       label: 'Tools',
       mode: 'output',
-      socket: { type: 'tools', side: 'left' },
+      socket: { type: 'tools', side: 'left', channel: 'link' },
     },
   ],
 } as const satisfies NodeDefinition;
