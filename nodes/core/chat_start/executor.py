@@ -10,17 +10,70 @@ from nodes._types import DataValue, ExecutionResult, FlowContext
 class ChatStartExecutor:
     node_type = "chat-start"
 
-    async def execute(
-        self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
-    ) -> ExecutionResult:
-        user_message = ""
+    def _get_chat_input(self, context: FlowContext) -> Any:
+        services = context.services
+        if services is None:
+            return None
+        return getattr(services, "chat_input", None)
+
+    def _get_last_user_message(self, context: FlowContext) -> str:
+        chat_input = self._get_chat_input(context)
+        if chat_input is not None:
+            message = getattr(chat_input, "last_user_message", "")
+            if message:
+                return str(message)
+
         if context.state is not None:
             user_message = getattr(context.state, "user_message", "") or ""
             if not user_message and isinstance(context.state, dict):
                 user_message = context.state.get("user_message", "")
+            return str(user_message)
+
+        return ""
+
+    def _get_chat_history(self, context: FlowContext) -> list[dict[str, Any]]:
+        chat_input = self._get_chat_input(context)
+        if chat_input is None:
+            return []
+
+        history = getattr(chat_input, "history", None)
+        if not isinstance(history, list):
+            return []
+        return [entry for entry in history if isinstance(entry, dict)]
+
+    def _get_last_user_attachments(self, context: FlowContext) -> list[dict[str, Any]]:
+        chat_input = self._get_chat_input(context)
+        if chat_input is None:
+            return []
+
+        attachments = getattr(chat_input, "last_user_attachments", None)
+        if not isinstance(attachments, list):
+            return []
+        return [
+            attachment for attachment in attachments if isinstance(attachment, dict)
+        ]
+
+    async def execute(
+        self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
+    ) -> ExecutionResult:
+        del data, inputs
+
+        user_message = self._get_last_user_message(context)
+        chat_history = self._get_chat_history(context)
+        attachments = self._get_last_user_attachments(context)
 
         return ExecutionResult(
-            outputs={"output": DataValue(type="data", value={"message": user_message})}
+            outputs={
+                "output": DataValue(
+                    type="data",
+                    value={
+                        "message": user_message,
+                        "last_user_message": user_message,
+                        "history": chat_history,
+                        "attachments": attachments,
+                    },
+                )
+            }
         )
 
 

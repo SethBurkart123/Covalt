@@ -66,7 +66,7 @@ class AgentExecutor:
         raw = input_dv.value
         input_value = raw if isinstance(raw, dict) else {"message": str(raw)}
 
-        message = _extract_text(input_value)
+        message = _resolve_agent_message(input_value)
 
         model_input = inputs.get("model")
         model_str = _extract_text(model_input.value) if model_input else ""
@@ -113,8 +113,14 @@ class AgentExecutor:
             fallback_final = ""
             seen_member_run_ids: set[str] = set()
             active_run_id = ""
+            run_input = _resolve_run_input(context, message)
 
-            stream = agent.arun(message, stream=True, stream_events=True).__aiter__()
+            stream = agent.arun(
+                input=run_input,
+                add_history_to_context=True,
+                stream=True,
+                stream_events=True,
+            ).__aiter__()
 
             while True:
                 try:
@@ -293,8 +299,11 @@ class AgentExecutor:
                             "toolName": tool_name,
                             "toolArgs": tool_args,
                         }
-                        editable_args = context.tool_registry.get_editable_args(
-                            tool_name
+                        tool_registry = _get_tool_registry(context)
+                        editable_args = (
+                            tool_registry.get_editable_args(tool_name)
+                            if tool_registry is not None
+                            else None
                         )
                         if editable_args:
                             tool_info["editableArgs"] = editable_args
@@ -467,6 +476,53 @@ def _extract_text(value: Any) -> str:
     return str(value)
 
 
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "text":
+                continue
+            part = block.get("content")
+            if part is not None:
+                text_parts.append(str(part))
+        return "".join(text_parts)
+    return _extract_text(content)
+
+
+def _last_user_message_from_history(history: Any) -> str:
+    if not isinstance(history, list):
+        return ""
+
+    for entry in reversed(history):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") != "user":
+            continue
+        return _content_to_text(entry.get("content"))
+
+    return ""
+
+
+def _resolve_agent_message(input_value: dict[str, Any]) -> str:
+    for key in ("message", "last_user_message", "text", "response", "content"):
+        candidate = input_value.get(key)
+        if candidate is None:
+            continue
+        message = _content_to_text(candidate)
+        if message:
+            return message
+
+    history_message = _last_user_message_from_history(input_value.get("history"))
+    if history_message:
+        return history_message
+
+    return _extract_text(input_value)
+
+
 def _coerce_optional_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -510,6 +566,32 @@ def _get_run_handle(context: FlowContext) -> Any | None:
     if services is None:
         return None
     return getattr(services, "run_handle", None)
+
+
+def _get_chat_input(context: FlowContext) -> Any | None:
+    services = context.services
+    if services is None:
+        return None
+    return getattr(services, "chat_input", None)
+
+
+def _resolve_run_input(context: FlowContext, default_message: str) -> Any:
+    chat_input = _get_chat_input(context)
+    if chat_input is None:
+        return default_message
+
+    agno_messages = getattr(chat_input, "agno_messages", None)
+    if isinstance(agno_messages, list) and agno_messages:
+        return agno_messages
+
+    return default_message
+
+
+def _get_tool_registry(context: FlowContext) -> Any | None:
+    services = context.services
+    if services is None:
+        return None
+    return getattr(services, "tool_registry", None)
 
 
 def _member_event_fields(chunk: Any) -> dict[str, Any]:
@@ -609,7 +691,7 @@ async def _resolve_link_dependencies(
 
     tools: list[Any] = []
     sub_agents: list[Any] = []
-    for artifact in artifacts:
+    for artifact in _flatten_link_artifacts(artifacts):
         if isinstance(artifact, (Agent, Team)):
             sub_agents.append(artifact)
             continue
@@ -631,13 +713,24 @@ def _resolve_extra_tools(context: FlowContext) -> list[Any]:
     if not _should_include_extra_tools(context):
         return []
 
-    if context.tool_registry is None:
+    tool_registry = _get_tool_registry(context)
+    if tool_registry is None:
         return []
 
-    return context.tool_registry.resolve_tool_ids(
+    return tool_registry.resolve_tool_ids(
         list(extra_tool_ids),
         chat_id=context.chat_id,
     )
+
+
+def _flatten_link_artifacts(artifacts: list[Any]) -> list[Any]:
+    flattened: list[Any] = []
+    for artifact in artifacts:
+        if isinstance(artifact, list):
+            flattened.extend(_flatten_link_artifacts(artifact))
+            continue
+        flattened.append(artifact)
+    return flattened
 
 
 def _should_include_extra_tools(context: FlowContext) -> bool:

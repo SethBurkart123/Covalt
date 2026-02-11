@@ -90,14 +90,20 @@ def _flow_ctx(
     services: Any = None,
 ) -> FlowContext:
     """Construct a FlowContext with sensible defaults."""
+    resolved_services = services or SimpleNamespace()
+    resolved_registry = tool_registry or getattr(
+        resolved_services, "tool_registry", MagicMock()
+    )
+    if getattr(resolved_services, "tool_registry", None) is None:
+        setattr(resolved_services, "tool_registry", resolved_registry)
+
     return FlowContext(
         node_id=node_id,
         chat_id=chat_id,
         run_id=run_id,
         state=state or MagicMock(),
-        tool_registry=tool_registry or MagicMock(),
         runtime=runtime,
-        services=services,
+        services=resolved_services,
     )
 
 
@@ -440,6 +446,36 @@ class TestAgentExecutor:
         assert child_agent in runnable.members
         assert runnable.tools is not None
         assert len(runnable.tools) == 1
+
+    @pytest.mark.asyncio
+    async def test_materialize_flattens_nested_link_artifacts_in_agent_executor(
+        self,
+    ) -> None:
+        executor = AgentExecutor()
+        child_agent = Agent(
+            name="Child",
+            model="openai:gpt-4o-mini",
+            markdown=True,
+            stream_events=True,
+            db=InMemoryDb(),
+        )
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[["tool-a"], child_agent])
+        runtime.incoming_edges.return_value = []
+        ctx = _flow_ctx(runtime=runtime)
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
+        ):
+            runnable = await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "input",
+                ctx,
+            )
+
+        assert isinstance(runnable, Team)
+        assert runnable.tools == ["tool-a"]
+        assert child_agent in runnable.members
 
     @pytest.mark.asyncio
     async def test_materialize_rejects_unknown_output_handle(self) -> None:

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from backend.models.chat import ChatMessage
+from backend.models.chat import ChatMessage, ContentBlock
 from backend.services import run_control
 from backend.services.chat_graph_runner import (
     handle_flow_stream,
@@ -239,6 +239,12 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
 
     async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
         captured["extra_tool_ids"] = context.services.extra_tool_ids
+        chat_input = context.services.chat_input
+        captured["history_len"] = len(chat_input.history)
+        captured["last_user_message"] = chat_input.last_user_message
+        captured["agno_roles"] = [
+            str(getattr(message, "role", "")) for message in chat_input.agno_messages
+        ]
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
         )
@@ -246,7 +252,15 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     await handle_flow_stream(
         _graph(),
         None,
-        [ChatMessage(id="user-1", role="user", content="hello")],
+        [
+            ChatMessage(id="user-1", role="user", content="hello"),
+            ChatMessage(
+                id="assistant-0",
+                role="assistant",
+                content=[ContentBlock(type="text", content="hi")],
+            ),
+            ChatMessage(id="user-2", role="user", content="final"),
+        ],
         "assistant-1",
         CapturingChannel(),
         ephemeral=True,
@@ -255,6 +269,9 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     )
 
     assert captured["extra_tool_ids"] == ["mcp:github"]
+    assert captured["history_len"] == 3
+    assert captured["last_user_message"] == "final"
+    assert captured["agno_roles"] == ["user", "assistant", "user"]
 
 
 @pytest.mark.asyncio

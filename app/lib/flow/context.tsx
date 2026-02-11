@@ -358,12 +358,6 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
       if (!sourceParam || !targetParam) return false;
 
-      // Sub-agent composition: only allow Agent Data input -> Agent Tools.
-      // This edge is structural (for recursive team build), not flow routing.
-      if (targetParam.id === 'tools' && targetParam.type === 'tools' && sourceParam.type === 'data') {
-        return sourceParam.id === 'input';
-      }
-
       return canConnect(sourceType, targetParam);
     },
     []

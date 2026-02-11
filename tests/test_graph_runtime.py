@@ -98,8 +98,7 @@ def _runtime(
         run_id="run-1",
         chat_id="chat-1",
         state=SimpleNamespace(user_message="hello"),
-        tool_registry=SimpleNamespace(),
-        services=SimpleNamespace(),
+        services=SimpleNamespace(tool_registry=SimpleNamespace()),
         executors=executors,
     )
 
@@ -174,8 +173,8 @@ async def test_runtime_resolve_links_supports_nested_dependencies_and_cache_hits
     first = await runtime.resolve_links("root", "deps")
     second = await runtime.resolve_links("root", "deps")
 
-    assert first == ["leaf", "composite"]
-    assert second == ["leaf", "composite"]
+    assert first == [["leaf", "composite"]]
+    assert second == [["leaf", "composite"]]
     assert literal.calls == 1
     assert composite.calls == 1
 
@@ -255,8 +254,7 @@ async def test_run_flow_injects_graph_runtime_into_flow_context() -> None:
         run_id="run-1",
         chat_id="chat-1",
         state=SimpleNamespace(user_message="hello"),
-        tool_registry=SimpleNamespace(),
-        services=SimpleNamespace(),
+        services=SimpleNamespace(tool_registry=SimpleNamespace()),
     )
 
     outputs: list[ExecutionResult] = []

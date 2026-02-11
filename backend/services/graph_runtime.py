@@ -39,14 +39,12 @@ class GraphRuntime(RuntimeApi):
         run_id: str,
         chat_id: str | None,
         state: Any,
-        tool_registry: Any,
         services: Any,
         executors: dict[str, Any] | None = None,
     ) -> None:
         self._run_id = run_id
         self._chat_id = chat_id
         self._state = state
-        self._tool_registry = tool_registry
         self._services = services
         self._executors = executors
 
@@ -148,10 +146,7 @@ class GraphRuntime(RuntimeApi):
                 artifact = await self._materialize_node_output(source_id, output_handle)
                 if artifact is None:
                     continue
-                if isinstance(artifact, list):
-                    resolved.extend(artifact)
-                else:
-                    resolved.append(artifact)
+                resolved.append(artifact)
 
             self.cache_set("resolved_links", cache_key, resolved)
             return list(resolved)
@@ -196,7 +191,6 @@ class GraphRuntime(RuntimeApi):
                 chat_id=self._chat_id,
                 run_id=self._run_id,
                 state=self._state,
-                tool_registry=self._tool_registry,
                 runtime=self,
                 services=self._services,
             )
