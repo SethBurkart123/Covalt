@@ -23,6 +23,13 @@ const AUTOSAVE_MAX_WAIT_MS = 4000;
 
 type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
 
+function normalizeEdgeData(
+  data: unknown
+): Record<string, unknown> | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  return data as Record<string, unknown>;
+}
+
 interface AgentEditorContextValue {
   agentId: string;
   agent: AgentDetailResponse | null;
@@ -80,6 +87,7 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
         sourceHandle: e.sourceHandle ?? '',
         target: e.target,
         targetHandle: e.targetHandle ?? '',
+        data: normalizeEdgeData(e.data),
       }));
 
       loadGraph(graphNodes, graphEdges, { skipHistory: true });
@@ -99,6 +107,7 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
           sourceHandle: e.sourceHandle || undefined,
           target: e.target,
           targetHandle: e.targetHandle || undefined,
+          data: normalizeEdgeData(e.data),
         }))
       );
       lastSaveTimeRef.current = Date.now();
@@ -139,6 +148,7 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
           sourceHandle: e.sourceHandle || undefined,
           target: e.target,
           targetHandle: e.targetHandle || undefined,
+          data: normalizeEdgeData(e.data),
         }))
       ),
     [edges]
@@ -164,6 +174,7 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
         sourceHandle: e.sourceHandle || undefined,
         target: e.target,
         targetHandle: e.targetHandle || undefined,
+        data: normalizeEdgeData(e.data),
       }));
 
       await saveAgentGraph({

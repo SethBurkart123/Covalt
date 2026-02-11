@@ -22,7 +22,7 @@ import {
   type OnEdgesChange,
 } from '@xyflow/react';
 
-import type { FlowNode, FlowEdge, Parameter, SocketTypeId } from '@nodes/_types';
+import type { EdgeChannel, FlowNode, FlowEdge, Parameter, SocketTypeId } from '@nodes/_types';
 import { getNodeDefinition } from '@nodes/_registry';
 import { canConnect } from './sockets';
 
@@ -30,6 +30,18 @@ function getSocketTypeFromParam(param: Parameter): SocketTypeId {
   if (param.socket?.type) return param.socket.type;
   if (param.type === 'tools') return 'tools';
   return 'data';
+}
+
+function getEdgeChannel(
+  sourceParam: Parameter | undefined,
+  targetParam: Parameter | undefined,
+  sourceType: SocketTypeId,
+  targetType: SocketTypeId
+): EdgeChannel {
+  const explicitChannel = sourceParam?.socket?.channel ?? targetParam?.socket?.channel;
+  if (explicitChannel) return explicitChannel;
+  if (sourceType === 'tools' || targetType === 'tools') return 'link';
+  return 'flow';
 }
 
 function getSocketTypeForHandle(
@@ -121,11 +133,14 @@ function countEdgesFrom(
 function enrichEdgeWithSocketTypes(edge: FlowEdge, nodes: Node[]): FlowEdge {
   const sourceType = getSocketTypeForHandle(nodes, edge.source, edge.sourceHandle, true);
   const targetType = getSocketTypeForHandle(nodes, edge.target, edge.targetHandle, false);
+  const sourceParam = getParameterForHandle(nodes, edge.source, edge.sourceHandle);
+  const targetParam = getParameterForHandle(nodes, edge.target, edge.targetHandle);
+  const channel = edge.data?.channel ?? getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
 
   return {
     ...edge,
     type: 'gradient',
-    data: { ...edge.data, sourceType, targetType },
+    data: { ...edge.data, sourceType, targetType, channel },
   };
 }
 
@@ -355,35 +370,41 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   );
 
   const onConnect = useCallback(
-    (connection: Connection, _socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
+    (connection: Connection, socketTypes?: { sourceType: SocketTypeId; targetType: SocketTypeId }) => {
       const normalized = normalizeConnectionDirection(connection, nodesRef.current) as Connection;
       pushHistory();
 
-      const sourceType = getSocketTypeForHandle(
+      const sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
         nodesRef.current,
         normalized.source || '',
         normalized.sourceHandle,
         true
       );
-      const targetType = getSocketTypeForHandle(
+      const targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
         nodesRef.current,
         normalized.target || '',
         normalized.targetHandle,
         false
       );
 
-      const edge: Edge = {
-        ...normalized,
-        id: generateEdgeId(normalized.source || '', normalized.target || ''),
-        type: 'gradient',
-        data: { sourceType, targetType },
-      };
-
       const sourceParam = getParameterForHandle(
         nodesRef.current,
         normalized.source || '',
         normalized.sourceHandle
       );
+      const targetParam = getParameterForHandle(
+        nodesRef.current,
+        normalized.target || '',
+        normalized.targetHandle
+      );
+      const channel = getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
+
+      const edge: Edge = {
+        ...normalized,
+        id: generateEdgeId(normalized.source || '', normalized.target || ''),
+        type: 'gradient',
+        data: { sourceType, targetType, channel },
+      };
 
       setEdges(currentEdges => {
         const currentCount = countEdgesFrom(

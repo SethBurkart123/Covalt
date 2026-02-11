@@ -25,7 +25,7 @@ from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_factory import create_agent_for_chat
 from ..services.agent_manager import get_agent_manager
-from ..services.flow_executor import has_flow_nodes, run_flow
+from ..services.flow_executor import run_flow
 from nodes._types import DataValue, ExecutionResult, NodeEvent
 from ..services.graph_executor import build_agent_from_graph
 from ..services.file_storage import (
@@ -684,6 +684,38 @@ async def handle_flow_stream(
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
+
+
+def _require_user_message(messages: List[ChatMessage]) -> None:
+    if not messages or messages[-1].role != "user":
+        raise ValueError("No user message found in request")
+
+
+async def _run_graph_chat_runtime(
+    graph_data: dict[str, Any],
+    messages: List[ChatMessage],
+    assistant_msg_id: str,
+    channel: Channel,
+    *,
+    chat_id: str,
+    ephemeral: bool,
+    extra_tool_ids: list[str] | None = None,
+) -> None:
+    result = build_agent_from_graph(
+        graph_data,
+        chat_id=chat_id or None,
+        extra_tool_ids=extra_tool_ids,
+    )
+    _require_user_message(messages)
+    await handle_flow_stream(
+        graph_data,
+        result.agent,
+        messages,
+        assistant_msg_id,
+        channel,
+        chat_id=chat_id,
+        ephemeral=ephemeral,
+    )
 
 
 def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
@@ -1551,12 +1583,6 @@ async def stream_chat(
                 raise ValueError(f"Agent '{agent_id}' not found")
 
             graph_data = agent_data["graph_data"]
-            result = build_agent_from_graph(
-                graph_data,
-                chat_id=chat_id,
-                extra_tool_ids=body.toolIds or None,
-            )
-            agent = result.agent
 
             with db.db_session() as sess:
                 config = db.get_chat_agent_config(sess, chat_id)
@@ -1564,24 +1590,21 @@ async def stream_chat(
                     config["agent_id"] = agent_id
                     db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
-            if has_flow_nodes(graph_data):
-                logger.info("[stream] Graph has flow nodes — running flow engine")
-                if not messages or messages[-1].role != "user":
-                    raise ValueError("No user message found in request")
-                await handle_flow_stream(
-                    graph_data,
-                    agent,
-                    messages,
-                    assistant_msg_id,
-                    channel,
-                    chat_id=chat_id,
-                )
-                return
+            logger.info("[stream] Graph-backed chat — running graph runtime")
+            await _run_graph_chat_runtime(
+                graph_data,
+                messages,
+                assistant_msg_id,
+                channel,
+                chat_id=chat_id,
+                ephemeral=False,
+                extra_tool_ids=body.toolIds or None,
+            )
+            return
         else:
             agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
 
-        if not messages or messages[-1].role != "user":
-            raise ValueError("No user message found in request")
+        _require_user_message(messages)
         await handle_content_stream(
             agent, messages, assistant_msg_id, channel, chat_id=chat_id
         )
@@ -1673,27 +1696,9 @@ async def stream_agent_chat(
 
     try:
         graph_data = agent_data["graph_data"]
-        result = build_agent_from_graph(graph_data, chat_id=chat_id or None)
-
-        if has_flow_nodes(graph_data):
-            logger.info("[stream_agent] Graph has flow nodes — running flow engine")
-            if not messages or messages[-1].role != "user":
-                raise ValueError("No user message found in request")
-            await handle_flow_stream(
-                graph_data,
-                result.agent,
-                messages,
-                assistant_msg_id,
-                channel,
-                chat_id=chat_id,
-                ephemeral=ephemeral,
-            )
-            return
-
-        if not messages or messages[-1].role != "user":
-            raise ValueError("No user message found in request")
-        await handle_content_stream(
-            result.agent,
+        logger.info("[stream_agent] Graph-backed chat — running graph runtime")
+        await _run_graph_chat_runtime(
+            graph_data,
             messages,
             assistant_msg_id,
             channel,

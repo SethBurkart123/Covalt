@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from zynk import StaticFile, UploadFile, command, static, upload
 
 from ..services.agent_manager import get_agent_manager
@@ -35,12 +35,21 @@ class GraphNode(BaseModel):
     data: Dict[str, Any]
 
 
+class GraphEdgeData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    sourceType: Optional[str] = None
+    targetType: Optional[str] = None
+    channel: Optional[str] = None
+
+
 class GraphEdge(BaseModel):
     id: str
     source: str
     sourceHandle: Optional[str] = None
     target: str
     targetHandle: Optional[str] = None
+    data: Optional[GraphEdgeData] = None
 
 
 class GraphData(BaseModel):
@@ -147,6 +156,7 @@ async def get_agent(body: AgentIdRequest) -> AgentDetailResponse:
                     sourceHandle=e.get("sourceHandle"),
                     target=e["target"],
                     targetHandle=e.get("targetHandle"),
+                    data=e.get("data"),
                 )
                 for e in graph.get("edges", [])
             ],

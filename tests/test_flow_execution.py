@@ -4,12 +4,14 @@ Tests cover:
   - find_flow_nodes(): capability-based node partitioning (executor has execute())
   - topological_sort(): ordering with cycle detection
   - run_flow(): linear pipelines, branching, dead branches, error handling
-  - _flow_edges(): structural edge filtering
+  - _flow_edges(): channel-based edge filtering
 
 Imports from nodes._types for DataValue, ExecutionResult, NodeEvent, FlowContext.
 Flow engine functions (run_flow, find_flow_nodes, topological_sort, _flow_edges)
 from backend.services.flow_executor.
 """
+
+# pyright: reportAssignmentType=false
 
 from __future__ import annotations
 
