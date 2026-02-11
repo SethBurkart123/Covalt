@@ -15,6 +15,7 @@ from ..services.file_storage import (
     get_pending_attachment_path,
 )
 from ..services.chat_graph_runner import (
+    append_error_block_to_message,
     get_graph_data_for_chat,
     run_graph_chat_runtime,
     update_chat_model_selection,
@@ -188,22 +189,7 @@ async def continue_message(
 
     except Exception as e:
         logger.error(f"continue_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, new_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=new_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(new_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -288,22 +274,7 @@ async def retry_message(
 
     except Exception as e:
         logger.error(f"retry_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, new_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=new_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(new_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -490,22 +461,7 @@ async def edit_user_message(
 
     except Exception as e:
         logger.error(f"edit_user_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, assistant_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(assistant_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 

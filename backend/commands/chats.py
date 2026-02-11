@@ -22,8 +22,7 @@ from ..models.chat import (
     UpdateChatInput,
     UpdateChatModelInput,
 )
-from ..services.agent_factory import update_agent_model, update_agent_tools
-from ..services.file_storage import get_extension_from_mime
+from ..services.chat_config import update_chat_model_provider, update_chat_tool_ids
 from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
@@ -149,12 +148,12 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 
 @command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
-    update_agent_tools(body.chatId, body.toolIds)
+    update_chat_tool_ids(body.chatId, body.toolIds)
 
 
 @command
 async def update_chat_model(body: UpdateChatModelInput) -> None:
-    update_agent_model(body.chatId, body.provider, body.modelId)
+    update_chat_model_provider(body.chatId, body.provider, body.modelId)
 
 
 @command

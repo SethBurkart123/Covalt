@@ -1,7 +1,7 @@
 """Flow execution engine (Phase 2).
 
 Executes flow nodes in topological order, routing DataValues through edges.
-Structural composition (agent/tools wiring) is handled by Phase 1 (graph_executor.py).
+Structural composition (agent/tools wiring) is handled in node build capabilities.
 This engine handles runtime data flow — transforms, LLM calls, conditionals, agents in
 pipeline mode, etc.
 

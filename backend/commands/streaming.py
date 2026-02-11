@@ -18,7 +18,9 @@ from zynk import Channel, command
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_manager import get_agent_manager
+from ..services.chat_attachments import prepare_stream_attachments
 from ..services.chat_graph_runner import (
+    append_error_block_to_message,
     handle_content_stream as _service_handle_content_stream,
     get_graph_data_for_chat,
     handle_flow_stream as _service_handle_flow_stream,
@@ -29,10 +31,6 @@ from ..services.chat_graph_runner import (
 )
 from ..services.flow_executor import run_flow
 from ..services import run_control
-from ..services.file_storage import (
-    get_extension_from_mime,
-    get_pending_attachment_path,
-)
 from ..services import stream_broadcaster as broadcaster
 from ..services.workspace_manager import get_workspace_manager
 
@@ -494,63 +492,14 @@ async def stream_chat(
     file_renames = {}
 
     if body.attachments:
-        logger.info(
-            f"[stream] Processing {len(body.attachments)} attachments for chat {chat_id}"
+        attachment_state = prepare_stream_attachments(
+            chat_id,
+            body.attachments,
+            source_ref=messages[-1].id if messages else None,
         )
-
-        files_to_add: List[tuple[str, bytes]] = []
-        for att in body.attachments:
-            extension = get_extension_from_mime(att.mimeType)
-            pending_path = get_pending_attachment_path(att.id, extension)
-
-            if pending_path.exists():
-                content = pending_path.read_bytes()
-                files_to_add.append((att.name, content))
-                logger.info(f"[stream] Loaded pending file: {att.name}")
-            else:
-                logger.warning(
-                    f"[stream] Attachment {att.id} ({att.name}) not found in pending storage"
-                )
-                continue
-
-        if files_to_add:
-            with db.db_session() as sess:
-                chat = sess.get(db.Chat, chat_id)
-                parent_msg_id = chat.active_leaf_message_id if chat else None
-                parent_manifest_id = (
-                    db.get_manifest_for_message(sess, parent_msg_id)
-                    if parent_msg_id
-                    else None
-                )
-
-            workspace_manager = get_workspace_manager(chat_id)
-            manifest_id, file_renames = workspace_manager.add_files(
-                files=files_to_add,
-                parent_manifest_id=parent_manifest_id,
-                source="user_upload",
-                source_ref=messages[-1].id if messages else None,
-            )
-
-            for att in body.attachments:
-                saved_attachments.append(
-                    Attachment(
-                        id=att.id,
-                        type=att.type,
-                        name=file_renames.get(att.name, att.name),
-                        mimeType=att.mimeType,
-                        size=att.size,
-                    )
-                )
-
-            for att in body.attachments:
-                extension = get_extension_from_mime(att.mimeType)
-                pending_path = get_pending_attachment_path(att.id, extension)
-                if pending_path.exists():
-                    pending_path.unlink()
-
-            logger.info(
-                f"[stream] Added {len(files_to_add)} files to workspace, {len(file_renames)} renamed"
-            )
+        saved_attachments = attachment_state.attachments
+        manifest_id = attachment_state.manifest_id
+        file_renames = attachment_state.file_renames
 
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
@@ -596,33 +545,27 @@ async def stream_chat(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
 
-        error_block = {
-            "type": "error",
-            "content": str(e),
-            "traceback": traceback.format_exc(),
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
         try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, assistant_msg_id)
-                blocks = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    try:
-                        blocks = (
-                            json.loads(raw)
-                            if raw.startswith("[")
-                            else [{"type": "text", "content": message.content}]
-                        )
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                blocks.append(error_block)
-                db.update_message_content(
-                    sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-                )
+            append_error_block_to_message(
+                assistant_msg_id,
+                error_message=str(e),
+                traceback_text=traceback.format_exc(),
+            )
         except Exception as e2:
             logger.info(f"[stream] Failed to append error block, falling back: {e2}")
-            save_msg_content(assistant_msg_id, json.dumps([error_block]))
+            save_msg_content(
+                assistant_msg_id,
+                json.dumps(
+                    [
+                        {
+                            "type": "error",
+                            "content": str(e),
+                            "traceback": traceback.format_exc(),
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    ]
+                ),
+            )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -695,33 +638,27 @@ async def stream_agent_chat(
             await broadcaster.unregister_stream(chat_id)
 
         if not ephemeral:
-            error_block = {
-                "type": "error",
-                "content": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
             try:
-                with db.db_session() as sess:
-                    message = sess.get(db.Message, assistant_msg_id)
-                    blocks = []
-                    if message and message.content:
-                        raw = message.content.strip()
-                        try:
-                            blocks = (
-                                json.loads(raw)
-                                if raw.startswith("[")
-                                else [{"type": "text", "content": message.content}]
-                            )
-                        except Exception:
-                            blocks = [{"type": "text", "content": message.content}]
-                    blocks.append(error_block)
-                    db.update_message_content(
-                        sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-                    )
+                append_error_block_to_message(
+                    assistant_msg_id,
+                    error_message=str(e),
+                    traceback_text=traceback.format_exc(),
+                )
             except Exception as e2:
                 logger.error(f"[stream_agent] Failed to append error block: {e2}")
-                save_msg_content(assistant_msg_id, json.dumps([error_block]))
+                save_msg_content(
+                    assistant_msg_id,
+                    json.dumps(
+                        [
+                            {
+                                "type": "error",
+                                "content": str(e),
+                                "traceback": traceback.format_exc(),
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        ]
+                    ),
+                )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 

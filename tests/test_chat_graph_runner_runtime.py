@@ -5,7 +5,10 @@ from typing import Any
 import pytest
 
 from backend.models.chat import ChatMessage
-from backend.services.chat_graph_runner import run_graph_chat_runtime
+from backend.services.chat_graph_runner import (
+    parse_message_blocks,
+    run_graph_chat_runtime,
+)
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
 
 
@@ -71,3 +74,19 @@ async def test_runtime_requires_user_message() -> None:
             ephemeral=False,
             flow_stream_handler=fake_flow_handler,
         )
+
+
+def test_parse_message_blocks_normalizes_non_dict_entries() -> None:
+    blocks = parse_message_blocks('[{"type":"text","content":"ok"}, 123]')
+    assert blocks == [
+        {"type": "text", "content": "ok"},
+        {"type": "text", "content": "123"},
+    ]
+
+
+def test_parse_message_blocks_strips_trailing_errors() -> None:
+    blocks = parse_message_blocks(
+        '[{"type":"text","content":"ok"},{"type":"error","content":"x"}]',
+        strip_trailing_errors=True,
+    )
+    assert blocks == [{"type": "text", "content": "ok"}]
