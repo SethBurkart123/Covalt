@@ -331,20 +331,73 @@ def load_initial_content(msg_id: str) -> list[dict[str, Any]]:
             if not message or not message.content:
                 return []
 
-            raw = message.content.strip()
-            blocks = (
-                json.loads(raw)
-                if raw.startswith("[")
-                else [{"type": "text", "content": raw}]
+            return parse_message_blocks(
+                message.content,
+                strip_trailing_errors=True,
             )
-
-            while blocks and blocks[-1].get("type") == "error":
-                blocks.pop()
-
-            return blocks
     except Exception as e:
         logger.info(f"[flow_stream] Warning loading initial content: {e}")
         return []
+
+
+def parse_message_blocks(
+    content: str,
+    *,
+    strip_trailing_errors: bool = False,
+) -> list[dict[str, Any]]:
+    raw = content.strip()
+    if not raw:
+        return []
+
+    blocks: list[dict[str, Any]]
+    try:
+        if raw.startswith("["):
+            parsed = json.loads(raw)
+            blocks = parsed if isinstance(parsed, list) else []
+        else:
+            blocks = [{"type": "text", "content": content}]
+    except Exception:
+        blocks = [{"type": "text", "content": content}]
+
+    normalized: list[dict[str, Any]] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            normalized.append(block)
+        else:
+            normalized.append({"type": "text", "content": str(block)})
+
+    if strip_trailing_errors:
+        while normalized and normalized[-1].get("type") == "error":
+            normalized.pop()
+
+    return normalized
+
+
+def append_error_block_to_message(
+    message_id: str,
+    *,
+    error_message: str,
+    traceback_text: str | None = None,
+) -> None:
+    error_block: dict[str, Any] = {
+        "type": "error",
+        "content": error_message,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+    if traceback_text:
+        error_block["traceback"] = traceback_text
+
+    with db.db_session() as sess:
+        message = sess.get(db.Message, message_id)
+        blocks = (
+            parse_message_blocks(message.content)
+            if message and isinstance(message.content, str)
+            else []
+        )
+        blocks.append(error_block)
+        db.update_message_content(
+            sess, messageId=message_id, content=json.dumps(blocks)
+        )
 
 
 def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
