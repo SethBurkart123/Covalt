@@ -94,27 +94,31 @@ class FlowRunHandle:
         self._run_id: str | None = None
         self._cancel_requested = False
 
+    def _apply_cancel_if_ready(self) -> None:
+        if not self._cancel_requested or self._agent is None or not self._run_id:
+            return
+
+        try:
+            self._agent.cancel_run(self._run_id)
+        except Exception:
+            logger.exception("[flow_stream] Failed to cancel bound agent run")
+
     def bind_agent(self, agent: Any) -> None:
         self._agent = agent
-        if self._cancel_requested and self._run_id:
-            try:
-                self._agent.cancel_run(self._run_id)
-            except Exception:
-                logger.exception("[flow_stream] Failed to cancel bound agent run")
+        self._apply_cancel_if_ready()
 
     def set_run_id(self, run_id: str) -> None:
-        self._run_id = run_id
-        if self._cancel_requested and self._agent:
-            try:
-                self._agent.cancel_run(run_id)
-            except Exception:
-                logger.exception("[flow_stream] Failed to cancel run by id")
+        if run_id:
+            self._run_id = run_id
+        self._apply_cancel_if_ready()
+
+    def request_cancel(self) -> None:
+        self._cancel_requested = True
+        self._apply_cancel_if_ready()
 
     def cancel_run(self, run_id: str) -> None:
-        self._cancel_requested = True
         self._run_id = run_id
-        if self._agent is not None:
-            self._agent.cancel_run(run_id)
+        self.request_cancel()
 
     def is_cancel_requested(self) -> bool:
         return self._cancel_requested
@@ -546,6 +550,14 @@ async def handle_flow_stream(
     runtime_run_flow = run_flow_impl or run_flow
     had_error = False
     was_cancelled = False
+    terminal_event: str | None = None
+
+    def _flush_current_text() -> None:
+        nonlocal current_text
+        if not current_text:
+            return
+        content_blocks.append({"type": "text", "content": current_text})
+        current_text = ""
 
     try:
         async for item in runtime_run_flow(graph_data, context):
@@ -594,6 +606,8 @@ async def handle_flow_stream(
                         await broadcaster.update_stream_status(chat_id, "streaming")
                 elif item.event_type == "cancelled":
                     was_cancelled = True
+                    terminal_event = "RunCancelled"
+                    _flush_current_text()
                     await asyncio.to_thread(
                         save_content,
                         assistant_msg_id,
@@ -615,31 +629,40 @@ async def handle_flow_stream(
                     )
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
+                    error_text = f"[{item.node_type}] {error_msg}"
+                    _flush_current_text()
                     content_blocks.append(
                         {
                             "type": "error",
-                            "content": f"[{item.node_type}] {error_msg}",
+                            "content": error_text,
                             "timestamp": datetime.now(UTC).isoformat(),
                         }
                     )
-                    ch.send_model(
-                        ChatEvent(
-                            event="RunError", content=f"[{item.node_type}] {error_msg}"
-                        )
-                    )
+                    ch.send_model(ChatEvent(event="RunError", content=error_text))
                     await asyncio.to_thread(
                         save_content, assistant_msg_id, json.dumps(content_blocks)
                     )
                     had_error = True
+                    terminal_event = "RunError"
+                    if chat_id:
+                        await broadcaster.update_stream_status(
+                            chat_id, "error", error_text
+                        )
+                        await broadcaster.unregister_stream(chat_id)
+                    return
             elif isinstance(item, ExecutionResult):
                 final_output = _pick_text_output(item.outputs)
 
-        if current_text:
-            content_blocks.append({"type": "text", "content": current_text})
-        elif final_output and not any(
+        if terminal_event is not None:
+            return
+
+        _flush_current_text()
+
+        if final_output is not None and not any(
             block.get("type") == "text" for block in content_blocks
         ):
-            text = str(final_output.value) if final_output.value is not None else ""
+            final_value = final_output.value
+            text = str(final_value) if final_value is not None else ""
             if text:
                 content_blocks.append({"type": "text", "content": text})
                 ch.send_model(ChatEvent(event="RunContent", content=text))
@@ -652,6 +675,7 @@ async def handle_flow_stream(
             with db.db_session() as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
 
+        terminal_event = "RunCompleted"
         ch.send_model(ChatEvent(event="RunCompleted"))
 
         if hasattr(ch, "flush_broadcasts"):
@@ -664,8 +688,10 @@ async def handle_flow_stream(
         logger.error(f"[flow_stream] Exception: {e}")
         traceback.print_exc()
 
-        if current_text:
-            content_blocks.append({"type": "text", "content": current_text})
+        if terminal_event is not None:
+            return
+
+        _flush_current_text()
 
         error_msg = extract_error_message(str(e))
         content_blocks.append(
@@ -680,6 +706,7 @@ async def handle_flow_stream(
         )
         ch.send_model(ChatEvent(event="RunError", content=error_msg))
         had_error = True
+        terminal_event = "RunError"
 
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))

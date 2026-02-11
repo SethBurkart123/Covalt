@@ -894,9 +894,7 @@ class TestFlowIntegration:
         flow_ctx.state.user_message = "hello"
 
         events: list = []
-        async for event in run_flow(
-            graph, None, flow_ctx, executors=structural_executors
-        ):
+        async for event in run_flow(graph, flow_ctx, executors=structural_executors):
             events.append(event)
 
         assert events == [], "No flow-capable executors → no events"

@@ -88,9 +88,36 @@ async def test_cancel_run_without_run_id_marks_early_cancel(
     result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="msg-2"))
 
     assert result == {"cancelled": True}
-    assert run_control.get_active_run("msg-2") is None
+    assert run_control.get_active_run("msg-2") == (None, fake_agent)
+    assert fake_agent.cancelled_run_ids == []
     assert run_control.consume_early_cancel("msg-2") is True
     assert getattr(fake_db, "last_marked_id") == "msg-2"
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_before_run_id_on_flow_handle_applies_after_late_bind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent = _FakeAgent()
+    fake_db = _FakeDb()
+    monkeypatch.setattr(streaming, "db", fake_db)
+
+    flow_handle = FlowRunHandle()
+    run_control.register_active_run("msg-flow-early", flow_handle)
+
+    result = await streaming.cancel_run(
+        streaming.CancelRunRequest(messageId="msg-flow-early")
+    )
+
+    assert result == {"cancelled": True}
+    assert run_control.get_active_run("msg-flow-early") == (None, flow_handle)
+
+    flow_handle.bind_agent(fake_agent)
+    flow_handle.set_run_id("run-flow-early")
+
+    assert fake_agent.cancelled_run_ids == ["run-flow-early"]
+    assert run_control.consume_early_cancel("msg-flow-early") is True
+    assert getattr(fake_db, "last_marked_id") == "msg-flow-early"
 
 
 @pytest.mark.asyncio
