@@ -1,32 +1,14 @@
-"""Chat Start node — bridge between the chat interface and the graph.
-
-Hybrid executor:
-  build()   → Phase 1: provide metadata (includeUserTools)
-  execute() → Phase 2: emit user message into the flow as the entry point
-"""
+"""Chat Start node — bridge between the chat interface and the graph."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from nodes._types import (
-    BuildContext,
-    DataValue,
-    ExecutionResult,
-    FlowContext,
-    MetadataResult,
-)
+from nodes._types import DataValue, ExecutionResult, FlowContext
 
 
 class ChatStartExecutor:
     node_type = "chat-start"
-
-    def build(self, data: dict[str, Any], context: BuildContext) -> MetadataResult:
-        return MetadataResult(
-            metadata={
-                "includeUserTools": bool(data.get("includeUserTools", False)),
-            }
-        )
 
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext

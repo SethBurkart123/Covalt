@@ -40,7 +40,7 @@ class GraphEdgeData(BaseModel):
 
     sourceType: Optional[str] = None
     targetType: Optional[str] = None
-    channel: Optional[str] = None
+    channel: str
 
 
 class GraphEdge(BaseModel):
@@ -49,7 +49,7 @@ class GraphEdge(BaseModel):
     sourceHandle: Optional[str] = None
     target: str
     targetHandle: Optional[str] = None
-    data: Optional[GraphEdgeData] = None
+    data: GraphEdgeData
 
 
 class GraphData(BaseModel):

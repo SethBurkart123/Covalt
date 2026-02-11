@@ -162,8 +162,8 @@ def _patched_env():
     """Patch DB/broadcaster and wire run_flow to use our stubs."""
     from backend.services.flow_executor import run_flow as real_run_flow
 
-    async def stubbed_run_flow(graph_data, agent, context, **kwargs):
-        async for item in real_run_flow(graph_data, agent, context, executors=STUBS):
+    async def stubbed_run_flow(graph_data, context, **kwargs):
+        async for item in real_run_flow(graph_data, context, executors=STUBS):
             yield item
 
     with (

@@ -2,21 +2,32 @@
 
 from __future__ import annotations
 from typing import Any
-from nodes._types import ToolsResult, BuildContext
+
+from nodes._types import FlowContext
 
 
 class McpServerExecutor:
     node_type = "mcp-server"
 
-    def build(self, data: dict[str, Any], context: BuildContext) -> ToolsResult:
+    async def materialize(
+        self,
+        data: dict[str, Any],
+        output_handle: str,
+        context: FlowContext,
+    ) -> list[Any]:
+        if output_handle != "tools":
+            raise ValueError(
+                f"mcp-server node cannot materialize unknown output handle: {output_handle}"
+            )
+
         server_id = data.get("server")
         if not server_id:
-            return ToolsResult(tools=[])
-        tools = context.tool_registry.resolve_tool_ids(
+            return []
+
+        return context.tool_registry.resolve_tool_ids(
             [f"mcp:{server_id}"],
             chat_id=context.chat_id,
         )
-        return ToolsResult(tools=tools)
 
 
 executor = McpServerExecutor()

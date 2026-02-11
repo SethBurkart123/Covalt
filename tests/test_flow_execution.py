@@ -64,7 +64,6 @@ except ImportError:
         chat_id: str | None = None
         run_id: str = ""
         state: Any = None
-        agent: Any = None
         tool_registry: Any = None
 
     @dataclass
@@ -469,9 +468,7 @@ class TestFlowLinear:
         """Input data flows through edges correctly."""
         flow_ctx.state.user_message = "Hello world"
         events = []
-        async for event in run_flow(
-            linear_graph, None, flow_ctx, executors=STUB_EXECUTORS
-        ):
+        async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         results = [e for e in events if isinstance(e, ExecutionResult)]
@@ -482,9 +479,7 @@ class TestFlowLinear:
         """Final output is accessible from the last node."""
         flow_ctx.state.user_message = "test input"
         final_outputs = {}
-        async for event in run_flow(
-            linear_graph, None, flow_ctx, executors=STUB_EXECUTORS
-        ):
+        async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, ExecutionResult):
                 final_outputs.update(event.outputs)
 
@@ -498,9 +493,7 @@ class TestFlowLinear:
         """Each node receives the correct inputs from its upstream node's output ports."""
         flow_ctx.state.user_message = "data"
         node_events: list[NodeEvent] = []
-        async for event in run_flow(
-            linear_graph, None, flow_ctx, executors=STUB_EXECUTORS
-        ):
+        async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent):
                 node_events.append(event)
 
@@ -545,7 +538,7 @@ class TestFlowBranching:
 
         node_events: list[NodeEvent] = []
         async for event in run_flow(
-            branching_graph, None, flow_ctx, executors=STUB_EXECUTORS
+            branching_graph, flow_ctx, executors=STUB_EXECUTORS
         ):
             if isinstance(event, NodeEvent):
                 node_events.append(event)
@@ -563,7 +556,7 @@ class TestFlowBranching:
 
         node_events: list[NodeEvent] = []
         async for event in run_flow(
-            branching_graph, None, flow_ctx, executors=STUB_EXECUTORS
+            branching_graph, flow_ctx, executors=STUB_EXECUTORS
         ):
             if isinstance(event, NodeEvent):
                 node_events.append(event)
@@ -592,7 +585,7 @@ class TestFlowBranching:
         flow_ctx.state.user_message = [1, 3, 5, 7, 9]  # mixed above/below threshold
 
         results: dict[str, DataValue] = {}
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, ExecutionResult):
                 results.update(event.outputs)
 
@@ -627,7 +620,7 @@ class TestFlowDeadBranch:
         flow_ctx.state.user_message = "test"
 
         all_events: list[NodeEvent] = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent):
                 all_events.append(event)
 
@@ -652,7 +645,7 @@ class TestFlowDeadBranch:
         flow_ctx.state.user_message = "test"
 
         all_events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             all_events.append(event)
 
         skipped_events = [
@@ -682,7 +675,7 @@ class TestFlowEvents:
         flow_ctx.state.user_message = "go"
 
         events: list[NodeEvent] = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent):
                 events.append(event)
 
@@ -710,7 +703,7 @@ class TestFlowEvents:
         flow_ctx.state.user_message = "chain"
 
         events: list[NodeEvent] = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent):
                 events.append(event)
 
@@ -737,7 +730,7 @@ class TestFlowEvents:
         flow_ctx.state.user_message = "stream"
 
         events: list[NodeEvent] = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent) and event.node_id == "str":
                 events.append(event)
 
@@ -766,7 +759,7 @@ class TestFlowEvents:
         flow_ctx.state.user_message = "x"
 
         events: list[NodeEvent] = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             if isinstance(event, NodeEvent):
                 events.append(event)
 
@@ -799,7 +792,7 @@ class TestFlowErrors:
         flow_ctx.state.user_message = "trigger"
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         error_events = [
@@ -831,7 +824,7 @@ class TestFlowErrors:
         flow_ctx.state.user_message = "trigger"
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         after_events = [
@@ -858,7 +851,7 @@ class TestFlowErrors:
         flow_ctx.state.user_message = "test"
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         mystery_started = [
@@ -937,7 +930,7 @@ class TestFlowIntegration:
         flow_ctx.state.user_message = "pipeline test"
 
         all_events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             all_events.append(event)
 
         node_events = [e for e in all_events if isinstance(e, NodeEvent)]
@@ -978,7 +971,7 @@ class TestFlowIntegration:
         flow_ctx.state.user_message = "false path"
 
         all_events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             all_events.append(event)
 
         node_events = [e for e in all_events if isinstance(e, NodeEvent)]
@@ -1010,7 +1003,7 @@ class TestFlowIntegration:
         flow_ctx.state.user_message = "diamond"
 
         all_events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             all_events.append(event)
 
         node_events = [e for e in all_events if isinstance(e, NodeEvent)]
@@ -1057,7 +1050,7 @@ class TestFlowEdgeCases:
         flow_ctx.state.user_message = "param_test"
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         node_events = [e for e in events if isinstance(e, NodeEvent)]
@@ -1097,7 +1090,7 @@ class TestFlowEdgeCases:
         flow_ctx.state.user_message = items
 
         events: list = []
-        async for event in run_flow(graph, None, flow_ctx, executors=STUB_EXECUTORS):
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
             events.append(event)
 
         node_events = [e for e in events if isinstance(e, NodeEvent)]
