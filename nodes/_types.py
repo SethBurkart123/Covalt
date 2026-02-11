@@ -99,7 +99,6 @@ class FlowContext:
     chat_id: str | None
     run_id: str
     state: Any  # FlowState
-    tool_registry: Any
     runtime: RuntimeApi | None = None
     services: Any = None
 

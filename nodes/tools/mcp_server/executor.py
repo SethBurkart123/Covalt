@@ -9,6 +9,12 @@ from nodes._types import FlowContext
 class McpServerExecutor:
     node_type = "mcp-server"
 
+    def _get_tool_registry(self, context: FlowContext) -> Any | None:
+        services = context.services
+        if services is None:
+            return None
+        return getattr(services, "tool_registry", None)
+
     async def materialize(
         self,
         data: dict[str, Any],
@@ -24,7 +30,13 @@ class McpServerExecutor:
         if not server_id:
             return []
 
-        return context.tool_registry.resolve_tool_ids(
+        tool_registry = self._get_tool_registry(context)
+        if tool_registry is None:
+            raise ValueError(
+                "mcp-server node requires tool_registry in context.services"
+            )
+
+        return tool_registry.resolve_tool_ids(
             [f"mcp:{server_id}"],
             chat_id=context.chat_id,
         )

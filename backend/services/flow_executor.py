@@ -24,6 +24,7 @@ Edge partitioning is channel-based (`edge.data.channel`):
 from __future__ import annotations
 
 import logging
+import types
 import uuid
 from typing import Any, AsyncIterator
 
@@ -188,15 +189,13 @@ async def run_flow(
     run_id = getattr(context, "run_id", str(uuid.uuid4()))
     chat_id = getattr(context, "chat_id", None)
     state = getattr(context, "state", None)
-    tool_registry = getattr(context, "tool_registry", None)
-    services = getattr(context, "services", None)
+    services = getattr(context, "services", None) or types.SimpleNamespace()
 
     runtime = GraphRuntime(
         graph_data,
         run_id=run_id,
         chat_id=chat_id,
         state=state,
-        tool_registry=tool_registry,
         services=services,
         executors=executors,
     )
@@ -233,7 +232,6 @@ async def run_flow(
             chat_id=chat_id,
             run_id=run_id,
             state=state,
-            tool_registry=tool_registry,
             runtime=runtime,
             services=services,
         )

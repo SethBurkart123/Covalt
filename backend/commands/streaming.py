@@ -5,10 +5,9 @@ import json
 import traceback
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from agno.agent import Agent, Message
-from agno.media import Audio, File, Image, Video
 from agno.team import Team
 from pydantic import BaseModel
 from rich.logging import RichHandler
@@ -21,6 +20,7 @@ from ..services.agent_manager import get_agent_manager
 from ..services.chat_attachments import prepare_stream_attachments
 from ..services.chat_graph_runner import (
     append_error_block_to_message,
+    convert_chat_message_to_agno_messages,
     handle_content_stream as _service_handle_content_stream,
     get_graph_data_for_chat,
     handle_flow_stream as _service_handle_flow_stream,
@@ -68,76 +68,6 @@ class StreamChatRequest(BaseModel):
     chatId: Optional[str] = None
     toolIds: List[str] = []
     attachments: List[AttachmentMeta] = []
-
-
-MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
-
-AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
-    "image/*",
-    "audio/*",
-    "video/*",
-    "application/pdf",
-    "text/plain",
-    "text/csv",
-    "application/json",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/msword",
-]
-
-
-def is_allowed_attachment_mime(mime_type: str) -> bool:
-    if not mime_type:
-        return False
-    for prefix, wildcard in [
-        ("image/", "image/*"),
-        ("audio/", "audio/*"),
-        ("video/", "video/*"),
-    ]:
-        if mime_type.startswith(prefix):
-            return wildcard in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-    return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-
-
-def load_attachments_as_agno_media(
-    chat_id: str, attachments: List[Attachment]
-) -> tuple[Sequence[Image], Sequence[File], Sequence[Audio], Sequence[Video]]:
-    images: List[Image] = []
-    files: List[File] = []
-    audio: List[Audio] = []
-    videos: List[Video] = []
-
-    workspace_manager = get_workspace_manager(chat_id)
-
-    for att in attachments:
-        if att.size > MAX_ATTACHMENT_BYTES:
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): {att.size} bytes exceeds {MAX_ATTACHMENT_BYTES}"
-            )
-            continue
-
-        if not is_allowed_attachment_mime(att.mimeType):
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): MIME '{att.mimeType}' not allowed for Agno"
-            )
-            continue
-
-        filepath = workspace_manager.workspace_dir / att.name
-        if not filepath.exists():
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): file not found in workspace"
-            )
-            continue
-
-        if att.type == "image":
-            images.append(Image(filepath=filepath))
-        elif att.type == "audio":
-            audio.append(Audio(filepath=filepath))
-        elif att.type == "video":
-            videos.append(Video(filepath=filepath))
-        else:
-            files.append(File(filepath=filepath, name=att.name))
-
-    return images, files, audio, videos
 
 
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
@@ -269,108 +199,7 @@ def convert_to_agno_messages(
     chat_msg: ChatMessage,
     chat_id: Optional[str] = None,
 ) -> List[Message]:
-    if chat_msg.role == "user":
-        content = chat_msg.content
-        if isinstance(content, list):
-            content = json.dumps(content)
-
-        images_list: Optional[List[Image]] = None
-        files_list: Optional[List[File]] = None
-        audio_list: Optional[List[Audio]] = None
-        videos_list: Optional[List[Video]] = None
-
-        if chat_id and chat_msg.attachments:
-            images, files, audio, videos = load_attachments_as_agno_media(
-                chat_id, chat_msg.attachments
-            )
-            if images:
-                images_list = list(images)
-            if files:
-                files_list = list(files)
-            if audio:
-                audio_list = list(audio)
-            if videos:
-                videos_list = list(videos)
-
-        return [
-            Message(
-                role="user",
-                content=content,
-                images=images_list,
-                files=files_list,
-                audio=audio_list,
-                videos=videos_list,
-            )
-        ]
-
-    if chat_msg.role == "assistant":
-        content = chat_msg.content
-
-        if isinstance(content, str):
-            return [Message(role="assistant", content=content)]
-
-        if not isinstance(content, list):
-            return [Message(role="assistant", content=str(content))]
-
-        messages = []
-        text_parts = []
-
-        for block in content:
-            if block.type == "text":
-                text_parts.append(block.content or "")
-
-            elif block.type == "tool_call":
-                if text_parts:
-                    messages.append(
-                        Message(
-                            role="assistant",
-                            content=" ".join(text_parts),
-                            tool_calls=[
-                                {
-                                    "id": block.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": block.toolName,
-                                        "arguments": json.dumps(block.toolArgs or {}),
-                                    },
-                                }
-                            ],
-                        )
-                    )
-                    text_parts = []
-                else:
-                    messages.append(
-                        Message(
-                            role="assistant",
-                            content=None,
-                            tool_calls=[
-                                {
-                                    "id": block.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": block.toolName,
-                                        "arguments": json.dumps(block.toolArgs or {}),
-                                    },
-                                }
-                            ],
-                        )
-                    )
-
-                if block.toolResult:
-                    messages.append(
-                        Message(
-                            role="tool",
-                            tool_call_id=block.id,
-                            content=str(block.toolResult),
-                        )
-                    )
-
-        if text_parts:
-            messages.append(Message(role="assistant", content=" ".join(text_parts)))
-
-        return messages if messages else [Message(role="assistant", content="")]
-
-    return []
+    return convert_chat_message_to_agno_messages(chat_msg, chat_id)
 
 
 async def handle_flow_stream(
