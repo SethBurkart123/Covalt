@@ -450,21 +450,27 @@ async def cancel_run(body: CancelRunRequest) -> dict:
         return {"cancelled": False}
 
     run_id, agent = active_run
+    remove_active_run = False
     try:
         if run_id:
             logger.info(
                 f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
             )
             agent.cancel_run(run_id)
+            remove_active_run = True
         else:
             logger.info(
                 f"[cancel_run] Flagging early cancel for message {body.messageId}"
             )
             run_control.mark_early_cancel(body.messageId)
+            request_cancel = getattr(agent, "request_cancel", None)
+            if callable(request_cancel):
+                request_cancel()
 
         with db.db_session() as sess:
             db.mark_message_complete(sess, body.messageId)
-        run_control.remove_active_run(body.messageId)
+        if remove_active_run:
+            run_control.remove_active_run(body.messageId)
         logger.info(f"[cancel_run] Successfully cancelled for message {body.messageId}")
         return {"cancelled": True}
     except Exception as e:

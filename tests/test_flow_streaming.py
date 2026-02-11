@@ -323,7 +323,8 @@ class TestFlowStreamingError:
             )
 
         events = _event_names(channel)
-        assert "RunCompleted" in events or "RunError" in events
+        assert "RunError" in events
+        assert "RunCompleted" not in events
 
 
 class TestFlowStreamingEmpty:

@@ -185,6 +185,55 @@ async def test_handle_flow_stream_emits_cancelled_when_runtime_cancels() -> None
 
 
 @pytest.mark.asyncio
+async def test_handle_flow_stream_error_is_terminal_and_no_content_after_error() -> (
+    None
+):
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="progress",
+            run_id="run-1",
+            data={"token": "hello "},
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="error",
+            run_id="run-1",
+            data={"error": "boom"},
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="progress",
+            run_id="run-1",
+            data={"token": "late "},
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "late"})}
+        )
+
+    channel = CapturingChannel()
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        channel,
+        ephemeral=True,
+        run_flow_impl=fake_run_flow,
+    )
+
+    event_names = [event.get("event") for event in channel.events]
+    assert event_names.count("RunError") == 1
+    assert "RunCompleted" not in event_names
+
+    error_index = event_names.index("RunError")
+    assert "RunContent" not in event_names[error_index + 1 :]
+
+
+@pytest.mark.asyncio
 async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -> None:
     captured: dict[str, Any] = {}
 
