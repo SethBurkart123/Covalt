@@ -43,8 +43,8 @@ This gives us a runtime that scales to arbitrary custom nodes without changing c
    - Example: `backend/services/flow_executor.py` still hardcodes Chat Start rooted subgraph selection.
 2. There are multiple execution paths.
    - `stream_chat` still has separate non-graph and graph code paths.
-   - `stream_agent_chat` and graph-backed `stream_chat` now run graph runtime directly (no `has_flow_nodes` bifurcation), but branch commands remain divergent.
-   - `branches.py` (`continue/retry/edit`) uses a separate code path (`create_agent_for_chat` + direct content stream).
+   - Graph-backed `stream_chat`, `stream_agent_chat`, and graph-backed branch commands now run graph runtime directly.
+   - Non-graph chats still use the direct content stream path.
 3. Node API is inconsistent.
    - Agent node has `execute()` but much of logic is effectively prebuilt in separate services in current architecture.
 4. Multi-agent pipeline semantics are fragile.
@@ -465,7 +465,7 @@ Exit criteria:
 
 Current progress note:
 
-- Graph-backed chat paths now run through graph runtime without `has_flow_nodes` bifurcation.
+- Graph-backed `stream_chat`, `stream_agent_chat`, and `continue/retry/edit` paths now run through graph runtime without `has_flow_nodes` bifurcation.
 
 ## Phase 7 - Branch commands use same adapter
 
@@ -483,7 +483,8 @@ Files:
 
 Exit criteria:
 
-- All branch actions use same runtime path.
+- Graph-backed branch actions use same runtime path.
+- Full branch unification completes when non-graph chats also execute via canonical graph path.
 
 ## Phase 8 - Extract run control service
 
