@@ -80,6 +80,46 @@ class MemberRunState:
     current_reasoning: str = ""
 
 
+class FlowRunHandle:
+    """Run-control bridge for graph runtime flows.
+
+    The cancel endpoint expects an object with cancel_run(run_id). The graph runtime
+    path does not have a single long-lived Agent/Team at adapter level, so this
+    handle binds to whichever runnable is active in the agent node and proxies
+    cancellation calls.
+    """
+
+    def __init__(self) -> None:
+        self._agent: Any = None
+        self._run_id: str | None = None
+        self._cancel_requested = False
+
+    def bind_agent(self, agent: Any) -> None:
+        self._agent = agent
+        if self._cancel_requested and self._run_id:
+            try:
+                self._agent.cancel_run(self._run_id)
+            except Exception:
+                logger.exception("[flow_stream] Failed to cancel bound agent run")
+
+    def set_run_id(self, run_id: str) -> None:
+        self._run_id = run_id
+        if self._cancel_requested and self._agent:
+            try:
+                self._agent.cancel_run(run_id)
+            except Exception:
+                logger.exception("[flow_stream] Failed to cancel run by id")
+
+    def cancel_run(self, run_id: str) -> None:
+        self._cancel_requested = True
+        self._run_id = run_id
+        if self._agent is not None:
+            self._agent.cancel_run(run_id)
+
+    def is_cancel_requested(self) -> bool:
+        return self._cancel_requested
+
+
 def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
     if not model_id:
         return "", ""
@@ -421,6 +461,29 @@ def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
     return DataValue(type="string", value="" if raw_value is None else str(raw_value))
 
 
+def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | None:
+    event_name = str(data.get("event") or "")
+    if not event_name:
+        return None
+
+    payload: dict[str, Any] = {"event": event_name}
+
+    if "content" in data:
+        payload["content"] = data.get("content")
+    if "reasoningContent" in data:
+        payload["reasoningContent"] = data.get("reasoningContent")
+    if "tool" in data:
+        payload["tool"] = data.get("tool")
+    if "memberRunId" in data:
+        payload["memberRunId"] = data.get("memberRunId")
+    if "memberName" in data:
+        payload["memberName"] = data.get("memberName")
+    if "task" in data:
+        payload["task"] = data.get("task")
+
+    return ChatEvent(**payload)
+
+
 async def handle_flow_stream(
     graph_data: dict[str, Any],
     agent: Any,
@@ -429,6 +492,7 @@ async def handle_flow_stream(
     raw_ch: Any,
     chat_id: str = "",
     ephemeral: bool = False,
+    extra_tool_ids: list[str] | None = None,
     run_flow_impl: Callable[..., Any] | None = None,
     save_content_impl: Callable[[str, str], None] | None = None,
     load_initial_content_impl: Callable[[str], list[dict[str, Any]]] | None = None,
@@ -443,8 +507,19 @@ async def handle_flow_stream(
     load_initial_fn = load_initial_content_impl or load_initial_content
     save_content = save_content_fn if not ephemeral else _noop_save
 
+    run_handle = FlowRunHandle()
+    run_control.register_active_run(assistant_msg_id, run_handle)
+
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
+
+    if run_control.consume_early_cancel(assistant_msg_id):
+        run_control.remove_active_run(assistant_msg_id)
+        ch.send_model(ChatEvent(event="RunCancelled"))
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+        return
 
     user_message = ""
     if messages and messages[-1].role == "user":
@@ -457,6 +532,10 @@ async def handle_flow_stream(
         chat_id=chat_id,
         state=state,
         tool_registry=registry,
+        services=types.SimpleNamespace(
+            run_handle=run_handle,
+            extra_tool_ids=list(extra_tool_ids or []),
+        ),
     )
 
     content_blocks: list[dict[str, Any]] = (
@@ -465,9 +544,11 @@ async def handle_flow_stream(
     current_text = ""
     final_output: DataValue | None = None
     runtime_run_flow = run_flow_impl or run_flow
+    had_error = False
+    was_cancelled = False
 
     try:
-        async for item in runtime_run_flow(graph_data, agent, context):
+        async for item in runtime_run_flow(graph_data, context):
             if isinstance(item, NodeEvent):
                 if item.event_type == "started":
                     ch.send_model(
@@ -495,6 +576,34 @@ async def handle_flow_stream(
                                 )
                             ),
                         )
+                elif item.event_type == "agent_run_id":
+                    run_id = str((item.data or {}).get("run_id") or "")
+                    if run_id:
+                        run_control.set_active_run_id(assistant_msg_id, run_id)
+                        if chat_id:
+                            await broadcaster.update_stream_run_id(chat_id, run_id)
+                elif item.event_type == "agent_event":
+                    chat_event = _chat_event_from_agent_runtime_event(item.data or {})
+                    if chat_event is not None:
+                        ch.send_model(chat_event)
+
+                    event_name = str((item.data or {}).get("event") or "")
+                    if event_name == "ToolApprovalRequired" and chat_id:
+                        await broadcaster.update_stream_status(chat_id, "paused_hitl")
+                    elif event_name == "ToolApprovalResolved" and chat_id:
+                        await broadcaster.update_stream_status(chat_id, "streaming")
+                elif item.event_type == "cancelled":
+                    was_cancelled = True
+                    await asyncio.to_thread(
+                        save_content,
+                        assistant_msg_id,
+                        json.dumps(content_blocks),
+                    )
+                    ch.send_model(ChatEvent(event="RunCancelled"))
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "completed")
+                        await broadcaster.unregister_stream(chat_id)
+                    return
                 elif item.event_type == "completed":
                     ch.send_model(
                         ChatEvent(
@@ -521,6 +630,7 @@ async def handle_flow_stream(
                     await asyncio.to_thread(
                         save_content, assistant_msg_id, json.dumps(content_blocks)
                     )
+                    had_error = True
             elif isinstance(item, ExecutionResult):
                 final_output = _pick_text_output(item.outputs)
 
@@ -569,10 +679,20 @@ async def handle_flow_stream(
             save_content, assistant_msg_id, json.dumps(content_blocks)
         )
         ch.send_model(ChatEvent(event="RunError", content=error_msg))
+        had_error = True
 
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
+    finally:
+        run_control.remove_active_run(assistant_msg_id)
+        run_control.clear_early_cancel(assistant_msg_id)
+
+        if not had_error and not was_cancelled and not ephemeral:
+            with db.db_session() as sess:
+                message = sess.get(db.Message, assistant_msg_id)
+                if message and not message.is_complete:
+                    db.mark_message_complete(sess, assistant_msg_id)
 
 
 async def handle_content_stream(
@@ -1302,7 +1422,6 @@ async def run_graph_chat_runtime(
     extra_tool_ids: list[str] | None = None,
     flow_stream_handler: FlowStreamHandler | None = None,
 ) -> None:
-    del extra_tool_ids
     _require_user_message(messages)
 
     handler = flow_stream_handler or handle_flow_stream
@@ -1315,4 +1434,5 @@ async def run_graph_chat_runtime(
         channel,
         chat_id=chat_id,
         ephemeral=ephemeral,
+        extra_tool_ids=extra_tool_ids,
     )

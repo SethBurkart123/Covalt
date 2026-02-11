@@ -25,9 +25,15 @@ type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
 
 function normalizeEdgeData(
   data: unknown
-): Record<string, unknown> | undefined {
-  if (!data || typeof data !== 'object') return undefined;
-  return data as Record<string, unknown>;
+): Record<string, unknown> {
+  if (!data || typeof data !== 'object') return { channel: 'flow' };
+
+  const normalized = { ...(data as Record<string, unknown>) };
+  const sourceType = typeof normalized.sourceType === 'string' ? normalized.sourceType : undefined;
+  const targetType = typeof normalized.targetType === 'string' ? normalized.targetType : undefined;
+  const inferredChannel = sourceType === 'tools' || targetType === 'tools' ? 'link' : 'flow';
+  normalized.channel = typeof normalized.channel === 'string' ? normalized.channel : inferredChannel;
+  return normalized;
 }
 
 interface AgentEditorContextValue {

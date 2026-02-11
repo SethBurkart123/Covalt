@@ -381,6 +381,7 @@ async def handle_flow_stream(
     raw_ch: Any,
     chat_id: str = "",
     ephemeral: bool = False,
+    extra_tool_ids: List[str] | None = None,
 ) -> None:
     """Compatibility wrapper delegating flow streaming to chat_graph_runner."""
     await _service_handle_flow_stream(
@@ -391,6 +392,7 @@ async def handle_flow_stream(
         raw_ch,
         chat_id=chat_id,
         ephemeral=ephemeral,
+        extra_tool_ids=extra_tool_ids,
         run_flow_impl=run_flow,
         save_content_impl=save_msg_content,
         load_initial_content_impl=load_initial_content,

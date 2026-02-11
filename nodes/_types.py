@@ -81,44 +81,14 @@ class RuntimeApi(Protocol):
 
     async def resolve_links(self, node_id: str, target_handle: str) -> list[Any]: ...
 
+    async def materialize_output(self, node_id: str, output_handle: str) -> Any: ...
+
     def cache_get(self, namespace: str, key: str) -> Any | None: ...
 
     def cache_set(self, namespace: str, key: str, value: Any) -> None: ...
 
 
-# ── Structural result types ─────────────────────────────────────────
-
-
-@dataclass
-class ToolsResult:
-    tools: list[Any]
-
-
-@dataclass
-class AgentResult:
-    agent: Any  # Agent | Team
-
-
-@dataclass
-class MetadataResult:
-    metadata: dict[str, Any]
-
-
-StructuralResult = ToolsResult | AgentResult | MetadataResult
-
-
 # ── Contexts ────────────────────────────────────────────────────────
-
-
-@dataclass
-class BuildContext:
-    """Provided to structural executors during Phase 1."""
-
-    node_id: str
-    chat_id: str | None
-    tool_sources: list[dict[str, Any]]
-    sub_agents: list[Any]
-    tool_registry: Any
 
 
 @dataclass
@@ -129,21 +99,12 @@ class FlowContext:
     chat_id: str | None
     run_id: str
     state: Any  # FlowState
-    agent: Any | None  # Agent | Team built in Phase 1
     tool_registry: Any
     runtime: RuntimeApi | None = None
     services: Any = None
 
 
 # ── Executor protocol ───────────────────────────────────────────────
-
-
-class StructuralExecutor(Protocol):
-    node_type: str
-
-    def build(
-        self, data: dict[str, Any], context: BuildContext
-    ) -> StructuralResult: ...
 
 
 class FlowExecutor(Protocol):

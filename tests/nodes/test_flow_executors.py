@@ -10,10 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 from types import SimpleNamespace
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from agno.agent import Agent
+from agno.db.in_memory import InMemoryDb
+from agno.team import Team
+from backend.services import run_control
 
 # ── Core types — always available ────────────────────────────────────
 from nodes._types import (
@@ -28,6 +32,9 @@ from nodes.ai.llm_completion.executor import LlmCompletionExecutor
 from nodes.ai.prompt_template.executor import PromptTemplateExecutor
 from nodes.core.agent.executor import AgentExecutor
 from nodes.flow.conditional.executor import ConditionalExecutor
+from nodes.tools.mcp_server.executor import McpServerExecutor
+from nodes.tools.toolset.executor import ToolsetExecutor
+from nodes.utility.model_selector.executor import ModelSelectorExecutor
 
 # ── Phase 5+ executors — guarded until implemented ──────────────────
 try:
@@ -62,6 +69,13 @@ _skip_future = pytest.mark.skipif(
 from tests.conftest import collect_events
 
 
+@pytest.fixture(autouse=True)
+def _reset_run_control_state() -> Iterator[None]:
+    run_control.reset_state()
+    yield
+    run_control.reset_state()
+
+
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
@@ -71,8 +85,9 @@ def _flow_ctx(
     chat_id: str | None = "chat-1",
     run_id: str = "run-1",
     state: Any = None,
-    agent: Any = None,
     tool_registry: Any = None,
+    runtime: Any = None,
+    services: Any = None,
 ) -> FlowContext:
     """Construct a FlowContext with sensible defaults."""
     return FlowContext(
@@ -80,8 +95,9 @@ def _flow_ctx(
         chat_id=chat_id,
         run_id=run_id,
         state=state or MagicMock(),
-        agent=agent,
         tool_registry=tool_registry or MagicMock(),
+        runtime=runtime,
+        services=services,
     )
 
 
@@ -327,9 +343,37 @@ class _SlowAgent:
         return _stream()
 
 
+class _ApprovalStreamingAgent:
+    def __init__(self, paused_tools: list[Any], continued_chunks: list[Any]) -> None:
+        self._paused_tools = paused_tools
+        self._continued_chunks = continued_chunks
+        self.continue_calls: list[dict[str, Any]] = []
+
+    def arun(self, *_args: Any, **_kwargs: Any):
+        async def _stream():
+            yield SimpleNamespace(
+                event="RunPaused",
+                run_id="run-approval",
+                tools=self._paused_tools,
+            )
+
+        return _stream()
+
+    def acontinue_run(self, **kwargs: Any):
+        self.continue_calls.append(kwargs)
+
+        async def _stream():
+            for chunk in self._continued_chunks:
+                yield chunk
+
+        return _stream()
+
+
 class TestAgentExecutor:
     @pytest.mark.asyncio
-    async def test_model_and_instructions_inputs_override_context_agent(self) -> None:
+    async def test_model_and_instructions_inputs_override_runtime_configuration(
+        self,
+    ) -> None:
         executor = AgentExecutor()
         fake_agent = _FakeStreamingAgent(
             [
@@ -337,12 +381,13 @@ class TestAgentExecutor:
                 SimpleNamespace(event="RunCompleted", content=""),
             ]
         )
-        ctx = _flow_ctx(agent=fake_agent)
-        resolved_model = object()
+        ctx = _flow_ctx()
 
+        build_runnable = AsyncMock(return_value=fake_agent)
         with patch(
-            "nodes.core.agent.executor.get_model", return_value=resolved_model
-        ) as get_model_mock:
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=build_runnable,
+        ):
             events, result = await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o", "instructions": "inline"},
@@ -359,35 +404,391 @@ class TestAgentExecutor:
         assert any(e.event_type == "started" for e in events)
         assert isinstance(result, ExecutionResult)
         assert result.outputs["output"].value["response"] == "ok"
-        get_model_mock.assert_called_once_with(
-            "google", "gemini-2.5-flash", temperature=0.3
+
+        assert build_runnable.await_count == 1
+        await_args = build_runnable.await_args
+        assert await_args is not None
+        assert await_args.kwargs["model_str"] == "google:gemini-2.5-flash"
+        assert await_args.kwargs["temperature"] == 0.3
+        assert await_args.kwargs["instructions"] == ["be concise"]
+
+    @pytest.mark.asyncio
+    async def test_materialize_resolves_runtime_link_dependencies(self) -> None:
+        executor = AgentExecutor()
+        child_agent = Agent(
+            name="Child",
+            model="openai:gpt-4o-mini",
+            markdown=True,
+            stream_events=True,
+            db=InMemoryDb(),
         )
-        assert fake_agent.model is resolved_model
-        assert fake_agent.instructions == ["be concise"]
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[MagicMock(), child_agent])
+        ctx = _flow_ctx(runtime=runtime)
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
+        ):
+            runnable = await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "input",
+                ctx,
+            )
+
+        assert isinstance(runnable, Team)
+        runtime.resolve_links.assert_awaited_once_with("test-node", "tools")
+        assert child_agent in runnable.members
+        assert runnable.tools is not None
+        assert len(runnable.tools) == 1
+
+    @pytest.mark.asyncio
+    async def test_materialize_rejects_unknown_output_handle(self) -> None:
+        executor = AgentExecutor()
+
+        with pytest.raises(ValueError, match="unknown output handle"):
+            await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "unknown",
+                _flow_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_materialize_uses_wired_model_input(self) -> None:
+        executor = AgentExecutor()
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[])
+
+        def _incoming_edges(
+            node_id: str,
+            *,
+            channel: str | None = None,
+            target_handle: str | None = None,
+        ) -> list[dict[str, str]]:
+            if (
+                node_id == "test-node"
+                and channel == "flow"
+                and target_handle == "model"
+            ):
+                return [{"source": "model-1", "sourceHandle": "output"}]
+            return []
+
+        runtime.incoming_edges.side_effect = _incoming_edges
+        runtime.materialize_output = AsyncMock(return_value="openai:gpt-4o-mini")
+        ctx = _flow_ctx(runtime=runtime)
+        build_runnable = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=build_runnable,
+        ):
+            await executor.materialize(
+                {"model": ""},
+                "input",
+                ctx,
+            )
+
+        assert build_runnable.await_count == 1
+        await_args = build_runnable.await_args
+        assert await_args is not None
+        assert await_args.kwargs["model_str"] == "openai:gpt-4o-mini"
+        runtime.materialize_output.assert_awaited_once_with("model-1", "output")
+
+    @pytest.mark.asyncio
+    async def test_materialize_includes_extra_tool_ids_from_services(self) -> None:
+        executor = AgentExecutor()
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[])
+        runtime.incoming_edges.return_value = []
+
+        tool_registry = MagicMock()
+        tool_registry.resolve_tool_ids.return_value = [MagicMock()]
+        ctx = _flow_ctx(
+            runtime=runtime,
+            tool_registry=tool_registry,
+            services=SimpleNamespace(extra_tool_ids=["mcp:github"]),
+        )
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
+        ):
+            runnable = await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "input",
+                ctx,
+            )
+
+        tool_registry.resolve_tool_ids.assert_called_once_with(
+            ["mcp:github"],
+            chat_id=ctx.chat_id,
+        )
+        assert runnable.tools is not None
+        assert len(runnable.tools) == 1
+
+    @pytest.mark.asyncio
+    async def test_materialize_skips_extra_tools_when_chat_start_disables_them(
+        self,
+    ) -> None:
+        executor = AgentExecutor()
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[])
+
+        def _incoming_edges(
+            node_id: str,
+            *,
+            channel: str | None = None,
+            target_handle: str | None = None,
+        ) -> list[dict[str, str]]:
+            del node_id
+            if channel == "flow" and target_handle == "input":
+                return [{"source": "chat-start-1"}]
+            return []
+
+        runtime.incoming_edges.side_effect = _incoming_edges
+        runtime.get_node.return_value = {
+            "id": "chat-start-1",
+            "type": "chat-start",
+            "data": {"includeUserTools": False},
+        }
+
+        tool_registry = MagicMock()
+        ctx = _flow_ctx(
+            runtime=runtime,
+            tool_registry=tool_registry,
+            services=SimpleNamespace(extra_tool_ids=["mcp:github"]),
+        )
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
+        ):
+            runnable = await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "input",
+                ctx,
+            )
+
+        tool_registry.resolve_tool_ids.assert_not_called()
+        assert not runnable.tools
 
     @pytest.mark.asyncio
     async def test_timeout_emits_error_event(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         executor = AgentExecutor()
-        ctx = _flow_ctx(agent=_SlowAgent())
+        ctx = _flow_ctx()
         monkeypatch.setattr(
             "nodes.core.agent.executor.AGENT_STREAM_IDLE_TIMEOUT_SECONDS", 0.001
         )
 
-        events, result = await collect_events(
-            executor.execute(
-                {},
-                {"input": _dv("data", {"message": "hi"})},
-                ctx,
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=AsyncMock(return_value=_SlowAgent()),
+        ):
+            events, result = await collect_events(
+                executor.execute(
+                    {},
+                    {"input": _dv("data", {"message": "hi"})},
+                    ctx,
+                )
             )
-        )
 
         error_events = [e for e in events if e.event_type == "error"]
         assert len(error_events) == 1
         assert "timed out" in error_events[0].data["error"].lower()
         assert isinstance(result, ExecutionResult)
         assert result.outputs["output"].value["response"] == ""
+
+    @pytest.mark.asyncio
+    async def test_run_paused_emits_approval_events_and_resumes(self) -> None:
+        executor = AgentExecutor()
+        tool = SimpleNamespace(
+            tool_call_id="tool-1",
+            tool_name="search_docs",
+            tool_args={"query": "agno"},
+        )
+        fake_agent = _ApprovalStreamingAgent(
+            paused_tools=[tool],
+            continued_chunks=[
+                SimpleNamespace(
+                    event="RunContent", run_id="run-approval", content="ok"
+                ),
+                SimpleNamespace(
+                    event="RunCompleted", run_id="run-approval", content=""
+                ),
+            ],
+        )
+        ctx = _flow_ctx()
+
+        async def _auto_approve() -> None:
+            while run_control.get_approval_waiter("run-approval") is None:
+                await asyncio.sleep(0)
+            run_control.set_approval_response(
+                "run-approval",
+                approved=True,
+                tool_decisions={"tool-1": True},
+                edited_args={"tool-1": {"query": "updated"}},
+            )
+
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=AsyncMock(return_value=fake_agent),
+        ):
+            events, result = await asyncio.wait_for(
+                asyncio.gather(
+                    collect_events(
+                        executor.execute(
+                            {"model": "openai:gpt-4o"},
+                            {"input": _dv("data", {"message": "hello"})},
+                            ctx,
+                        )
+                    ),
+                    _auto_approve(),
+                ),
+                timeout=3,
+            )
+
+        flow_events, final = events
+        agent_events = [
+            e.data.get("event")
+            for e in flow_events
+            if isinstance(e, NodeEvent)
+            and e.event_type == "agent_event"
+            and isinstance(e.data, dict)
+        ]
+
+        assert "ToolApprovalRequired" in agent_events
+        assert "ToolApprovalResolved" in agent_events
+        assert isinstance(final, ExecutionResult)
+        assert final.outputs["output"].value["response"] == "ok"
+
+        assert len(fake_agent.continue_calls) == 1
+        continue_call = fake_agent.continue_calls[0]
+        assert continue_call["run_id"] == "run-approval"
+        updated_tools = continue_call["updated_tools"]
+        assert len(updated_tools) == 1
+        assert updated_tools[0].confirmed is True
+        assert updated_tools[0].tool_args == {"query": "updated"}
+
+
+class TestToolMaterializers:
+    @pytest.mark.asyncio
+    async def test_toolset_materialize_resolves_toolset_prefix(self) -> None:
+        registry = MagicMock()
+        registry.resolve_tool_ids.return_value = ["tool-a", "tool-b"]
+        ctx = _flow_ctx(tool_registry=registry)
+
+        result = await ToolsetExecutor().materialize(
+            {"toolset": "web"},
+            "tools",
+            ctx,
+        )
+
+        assert result == ["tool-a", "tool-b"]
+        registry.resolve_tool_ids.assert_called_once_with(
+            ["toolset:web"],
+            chat_id=ctx.chat_id,
+        )
+
+    @pytest.mark.asyncio
+    async def test_toolset_materialize_returns_empty_when_not_configured(self) -> None:
+        ctx = _flow_ctx(tool_registry=MagicMock())
+
+        result = await ToolsetExecutor().materialize(
+            {},
+            "tools",
+            ctx,
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_toolset_materialize_rejects_unknown_handle(self) -> None:
+        with pytest.raises(ValueError, match="unknown output handle"):
+            await ToolsetExecutor().materialize(
+                {"toolset": "web"},
+                "output",
+                _flow_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_mcp_materialize_resolves_mcp_prefix(self) -> None:
+        registry = MagicMock()
+        registry.resolve_tool_ids.return_value = ["mcp-tool"]
+        ctx = _flow_ctx(tool_registry=registry)
+
+        result = await McpServerExecutor().materialize(
+            {"server": "github"},
+            "tools",
+            ctx,
+        )
+
+        assert result == ["mcp-tool"]
+        registry.resolve_tool_ids.assert_called_once_with(
+            ["mcp:github"],
+            chat_id=ctx.chat_id,
+        )
+
+    @pytest.mark.asyncio
+    async def test_mcp_materialize_returns_empty_when_not_configured(self) -> None:
+        ctx = _flow_ctx(tool_registry=MagicMock())
+
+        result = await McpServerExecutor().materialize(
+            {},
+            "tools",
+            ctx,
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_mcp_materialize_rejects_unknown_handle(self) -> None:
+        with pytest.raises(ValueError, match="unknown output handle"):
+            await McpServerExecutor().materialize(
+                {"server": "github"},
+                "output",
+                _flow_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_model_selector_materialize_returns_selected_model(self) -> None:
+        runtime = MagicMock()
+        runtime.incoming_edges.return_value = []
+        ctx = _flow_ctx(runtime=runtime)
+
+        result = await ModelSelectorExecutor().materialize(
+            {"model": "openai:gpt-4o"},
+            "output",
+            ctx,
+        )
+
+        assert result == "openai:gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_model_selector_materialize_supports_model_source_handle(
+        self,
+    ) -> None:
+        runtime = MagicMock()
+        runtime.incoming_edges.return_value = [
+            {"source": "model-0", "sourceHandle": "model"}
+        ]
+        runtime.materialize_output = AsyncMock(return_value="google:gemini-2.5-flash")
+        ctx = _flow_ctx(runtime=runtime)
+
+        result = await ModelSelectorExecutor().materialize(
+            {"model": "openai:gpt-4o"},
+            "output",
+            ctx,
+        )
+
+        assert result == "google:gemini-2.5-flash"
+
+    @pytest.mark.asyncio
+    async def test_model_selector_materialize_rejects_unknown_handle(self) -> None:
+        with pytest.raises(ValueError, match="unknown output handle"):
+            await ModelSelectorExecutor().materialize(
+                {"model": "openai:gpt-4o"},
+                "tools",
+                _flow_ctx(),
+            )
 
 
 # ====================================================================

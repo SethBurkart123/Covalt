@@ -267,7 +267,7 @@ class TestE2EFullPipeline:
         ctx = _flow_ctx("Hello world")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
@@ -288,7 +288,7 @@ class TestE2EFullPipeline:
         ctx = _flow_ctx("test input")
 
         all_results: list[ExecutionResult] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, ExecutionResult):
                 all_results.append(item)
 
@@ -308,7 +308,7 @@ class TestE2EFullPipeline:
         ctx = _flow_ctx("fan out test")
 
         llm_model_data = None
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if (
                 isinstance(item, NodeEvent)
                 and item.node_id == "llm"
@@ -329,7 +329,7 @@ class TestE2EFullPipeline:
 
         events: list[NodeEvent] = []
         results: list[ExecutionResult] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
             elif isinstance(item, ExecutionResult):
@@ -367,7 +367,7 @@ class TestE2EExpressions:
         ctx = _flow_ctx("quantum physics")
 
         results: list[ExecutionResult] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, ExecutionResult):
                 results.append(item)
 
@@ -399,7 +399,7 @@ class TestE2EExpressions:
         ctx = _flow_ctx("hello")
 
         results: list[ExecutionResult] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, ExecutionResult):
                 results.append(item)
 
@@ -448,11 +448,11 @@ class TestE2EEdgeFiltering:
         assert "mcp" not in flow_ids
 
 
-class TestE2EActiveSubgraph:
-    """Only flow nodes connected to Chat Start should execute."""
+class TestE2EDisconnectedComponents:
+    """All flow components execute; kernel is entrypoint-agnostic."""
 
     @pytest.mark.asyncio
-    async def test_disconnected_flow_component_is_skipped(self):
+    async def test_disconnected_flow_component_executes(self):
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -466,14 +466,14 @@ class TestE2EActiveSubgraph:
         ctx = _flow_ctx("hello")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
         started_nodes = {e.node_id for e in events if e.event_type == "started"}
         assert "cs" in started_nodes
         assert "pt" in started_nodes
-        assert "orphan" not in started_nodes
+        assert "orphan" in started_nodes
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -531,7 +531,7 @@ class TestE2EEventProtocol:
         ctx = _flow_ctx("stream test")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
@@ -553,7 +553,7 @@ class TestE2EEventProtocol:
         ctx = _flow_ctx("auto events")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
@@ -579,7 +579,7 @@ class TestE2EEventProtocol:
         ctx = _flow_ctx("order test")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=STUBS):
+        async for item in run_flow(graph, ctx, executors=STUBS):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
@@ -629,7 +629,7 @@ class TestE2EErrorHandling:
         ctx = _flow_ctx("error test")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=stubs):
+        async for item in run_flow(graph, ctx, executors=stubs):
             if isinstance(item, NodeEvent):
                 events.append(item)
 
@@ -658,7 +658,7 @@ class TestE2EErrorHandling:
         ctx = _flow_ctx("continue test")
 
         events: list[NodeEvent] = []
-        async for item in run_flow(graph, None, ctx, executors=stubs):
+        async for item in run_flow(graph, ctx, executors=stubs):
             if isinstance(item, NodeEvent):
                 events.append(item)
 

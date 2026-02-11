@@ -1,7 +1,7 @@
 """Flow execution engine (Phase 2).
 
 Executes flow nodes in topological order, routing DataValues through edges.
-Structural composition (agent/tools wiring) is handled in node build capabilities.
+Structural composition (agent/tools wiring) is resolved via runtime materialization.
 This engine handles runtime data flow — transforms, LLM calls, conditionals, agents in
 pipeline mode, etc.
 
@@ -14,9 +14,7 @@ The algorithm:
   6. Forward NodeEvents to the caller (which routes them to the chat UI)
 
 Node partitioning is based on executor capabilities, NOT socket types:
-  - Has build()    → structural (Phase 1)
   - Has execute()  → flow (Phase 2)
-  - Has both       → hybrid (both phases)
 
 Edge partitioning is channel-based (`edge.data.channel`):
   - `flow` carries runtime data
@@ -27,9 +25,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections import deque
 from typing import Any, AsyncIterator
 
+from backend.services.graph_runtime import GraphRuntime
 from nodes._coerce import coerce
 from nodes._expressions import resolve_expressions
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
@@ -116,60 +114,14 @@ def _flow_edges(edges: list[dict]) -> list[dict]:
     return flow_edges
 
 
-def _select_active_flow_subgraph(
-    flow_nodes: list[dict], flow_edges: list[dict]
-) -> tuple[list[dict], list[dict]]:
-    """Restrict execution to the flow component(s) reachable from Chat Start.
-
-    This prevents structurally-connected nodes (e.g., sub-agents attached as tools)
-    from executing as independent flow roots when they have no flow edges.
-
-    If no Chat Start node exists, keep the full flow subgraph unchanged.
-    """
-    node_ids = {n["id"] for n in flow_nodes}
-    chat_start_ids = {n["id"] for n in flow_nodes if n.get("type", "") == "chat-start"}
-
-    if not chat_start_ids:
-        return flow_nodes, flow_edges
-
-    adjacency: dict[str, set[str]] = {nid: set() for nid in node_ids}
-    for edge in flow_edges:
-        src = edge.get("source")
-        tgt = edge.get("target")
-        if src in node_ids and tgt in node_ids:
-            adjacency[src].add(tgt)
-            adjacency[tgt].add(src)
-
-    active_ids: set[str] = set()
-    queue: deque[str] = deque(chat_start_ids)
-    while queue:
-        nid = queue.popleft()
-        if nid in active_ids:
-            continue
-        active_ids.add(nid)
-        for neighbor in adjacency.get(nid, set()):
-            if neighbor not in active_ids:
-                queue.append(neighbor)
-
-    active_nodes = [n for n in flow_nodes if n["id"] in active_ids]
-    active_edges = [
-        e
-        for e in flow_edges
-        if e.get("source") in active_ids and e.get("target") in active_ids
-    ]
-    return active_nodes, active_edges
-
-
 def _gather_inputs(
     node_id: str,
-    edges: list[dict],
+    runtime: GraphRuntime,
     port_values: dict[str, dict[str, DataValue]],
 ) -> dict[str, DataValue]:
     """Pull DataValues from upstream output ports, applying type coercion."""
     inputs: dict[str, DataValue] = {}
-    for edge in edges:
-        if edge["target"] != node_id:
-            continue
+    for edge in runtime.incoming_edges(node_id, channel=FLOW_EDGE_CHANNEL):
         source_outputs = port_values.get(edge["source"], {})
         value = source_outputs.get(edge.get("sourceHandle", "output"))
         if value is None:
@@ -193,7 +145,7 @@ def _gather_inputs(
 
 
 def _has_incoming_edges(node_id: str, edges: list[dict]) -> bool:
-    return any(e["target"] == node_id for e in edges)
+    return len(edges) > 0
 
 
 # ── Main engine ─────────────────────────────────────────────────────
@@ -210,7 +162,6 @@ def _get_node_label(node: dict) -> str:
 
 async def run_flow(
     graph_data: dict[str, Any],
-    agent: Any | None,
     context: Any,
     executors: dict[str, Any] | None = None,
 ) -> AsyncIterator[NodeEvent | ExecutionResult]:
@@ -218,7 +169,6 @@ async def run_flow(
 
     Args:
         graph_data: The full graph JSON (nodes + edges).
-        agent: Agent/Team built in Phase 1 (available to hybrid nodes).
         context: Outer context with run_id, state (user_message), etc.
         executors: Optional executor map for testing (bypasses auto-discovery).
 
@@ -233,21 +183,28 @@ async def run_flow(
         return
 
     flow_edge_list = _flow_edges(edges)
-    active_flow_nodes, active_flow_edges = _select_active_flow_subgraph(
-        flow_nodes, flow_edge_list
-    )
-    if not active_flow_nodes:
-        return
-
-    order = topological_sort(active_flow_nodes, active_flow_edges)
+    order = topological_sort(flow_nodes, flow_edge_list)
 
     run_id = getattr(context, "run_id", str(uuid.uuid4()))
+    chat_id = getattr(context, "chat_id", None)
     state = getattr(context, "state", None)
+    tool_registry = getattr(context, "tool_registry", None)
+    services = getattr(context, "services", None)
+
+    runtime = GraphRuntime(
+        graph_data,
+        run_id=run_id,
+        chat_id=chat_id,
+        state=state,
+        tool_registry=tool_registry,
+        services=services,
+        executors=executors,
+    )
 
     port_values: dict[str, dict[str, DataValue]] = {}
     upstream_outputs: dict[str, Any] = {}
     label_sources: dict[str, str] = {}
-    nodes_by_id = {n["id"]: n for n in active_flow_nodes}
+    nodes_by_id = {n["id"]: n for n in flow_nodes}
 
     for node_id in order:
         node = nodes_by_id.get(node_id)
@@ -261,10 +218,11 @@ async def run_flow(
         if executor is None or not hasattr(executor, "execute"):
             continue
 
-        inputs = _gather_inputs(node_id, active_flow_edges, port_values)
+        incoming_flow_edges = runtime.incoming_edges(node_id, channel=FLOW_EDGE_CHANNEL)
+        inputs = _gather_inputs(node_id, runtime, port_values)
 
         # Dead branch detection: has incoming flow edges but none produced data
-        if _has_incoming_edges(node_id, active_flow_edges) and not inputs:
+        if _has_incoming_edges(node_id, incoming_flow_edges) and not inputs:
             continue
 
         direct_input = inputs.get("input")
@@ -272,11 +230,12 @@ async def run_flow(
 
         node_context = FlowContext(
             node_id=node_id,
-            chat_id=getattr(context, "chat_id", None),
+            chat_id=chat_id,
             run_id=run_id,
             state=state,
-            agent=agent,
-            tool_registry=getattr(context, "tool_registry", None),
+            tool_registry=tool_registry,
+            runtime=runtime,
+            services=services,
         )
 
         on_error = data.get("on_error", "stop")

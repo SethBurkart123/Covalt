@@ -8,6 +8,7 @@ from typing import Any, Iterator
 import pytest
 
 from backend.commands import streaming
+from backend.services.chat_graph_runner import FlowRunHandle
 from backend.services import run_control
 
 
@@ -96,3 +97,25 @@ async def test_cancel_run_without_run_id_marks_early_cancel(
 async def test_cancel_run_without_active_run_returns_false() -> None:
     result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="missing"))
     assert result == {"cancelled": False}
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_with_graph_flow_handle_cancels_bound_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent = _FakeAgent()
+    fake_db = _FakeDb()
+    monkeypatch.setattr(streaming, "db", fake_db)
+
+    flow_handle = FlowRunHandle()
+    flow_handle.bind_agent(fake_agent)
+    run_control.register_active_run("msg-flow", flow_handle)
+    run_control.set_active_run_id("msg-flow", "run-flow")
+
+    result = await streaming.cancel_run(
+        streaming.CancelRunRequest(messageId="msg-flow")
+    )
+
+    assert result == {"cancelled": True}
+    assert fake_agent.cancelled_run_ids == ["run-flow"]
+    assert run_control.get_active_run("msg-flow") is None

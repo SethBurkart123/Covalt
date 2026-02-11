@@ -101,23 +101,11 @@ class SequenceMockModel(Model):
 
 
 @dataclass
-class BuildContext:
-    """Minimal build context for graph construction tests."""
-
-    tool_registry: Any = field(default_factory=MagicMock)
-
-
-@dataclass
 class FlowContext:
     """Minimal flow context for runtime / streaming tests."""
 
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     state: Any = field(default_factory=MagicMock)
-
-
-@pytest.fixture
-def build_ctx() -> BuildContext:
-    return BuildContext()
 
 
 @pytest.fixture
