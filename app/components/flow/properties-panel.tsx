@@ -6,6 +6,7 @@ import * as Icons from 'lucide-react';
 import type { Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
+import { cn } from '@/lib/utils';
 
 function getIcon(name: string) {
   const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
@@ -16,34 +17,41 @@ function getIcon(name: string) {
  * Properties panel - shows editable properties for the selected node.
  * Consumes selection and node data from FlowContext.
  */
-export function PropertiesPanel() {
+interface PropertiesPanelProps {
+  nodeId?: string | null;
+  variant?: 'card' | 'flat';
+  className?: string;
+}
+
+export function PropertiesPanel({ nodeId, variant = 'card', className }: PropertiesPanelProps) {
   const { selectedNodeId } = useSelection();
   const { updateNodeData } = useFlowActions();
+  const effectiveNodeId = nodeId ?? selectedNodeId;
   
   // Memoize the array to prevent useNodesData from re-subscribing every render
-  const nodeIds = useMemo(() => selectedNodeId ? [selectedNodeId] : [], [selectedNodeId]);
+  const nodeIds = useMemo(() => effectiveNodeId ? [effectiveNodeId] : [], [effectiveNodeId]);
   const [selectedNodeData] = useNodesData(nodeIds);
 
   const handleDataChange = useCallback(
     (paramId: string, value: unknown) => {
-      if (selectedNodeId) {
-        updateNodeData(selectedNodeId, paramId, value);
+      if (effectiveNodeId) {
+        updateNodeData(effectiveNodeId, paramId, value);
       }
     },
-    [selectedNodeId, updateNodeData]
+    [effectiveNodeId, updateNodeData]
   );
 
   const connectedInputKey = useStore(
     useCallback((state) => {
-      if (!selectedNodeId) return '[]';
+      if (!effectiveNodeId) return '[]';
       const connected = new Set<string>();
       for (const edge of state.edges) {
-        if (edge.target === selectedNodeId && edge.targetHandle) {
+        if (edge.target === effectiveNodeId && edge.targetHandle) {
           connected.add(edge.targetHandle);
         }
       }
       return JSON.stringify(Array.from(connected).sort());
-    }, [selectedNodeId])
+    }, [effectiveNodeId])
   );
 
   const connectedInputs = useMemo(
@@ -51,7 +59,7 @@ export function PropertiesPanel() {
     [connectedInputKey]
   );
 
-  if (!selectedNodeId || !selectedNodeData?.type) {
+  if (!effectiveNodeId || !selectedNodeData?.type) {
     return null;
   }
 
@@ -73,10 +81,17 @@ export function PropertiesPanel() {
     return true;
   });
 
+  const showCard = variant === 'card';
+
   return (
-    <div className="flex flex-col bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-[calc(100vh-8rem)] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+    <div
+      className={cn(
+        'flex flex-col min-h-0',
+        showCard && 'bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-xl max-h-[calc(100vh-8rem)] overflow-hidden',
+        className
+      )}
+    >
+      <div className={cn('flex items-center gap-2 border-b border-border', showCard ? 'px-4 py-3' : 'px-0 pb-3')}>
         <Icon className="h-5 w-5 text-muted-foreground" />
         <div>
           <h3 className="font-medium text-sm text-foreground">{definition.name}</h3>
@@ -86,7 +101,7 @@ export function PropertiesPanel() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className={cn('flex-1 overflow-y-auto space-y-4', showCard ? 'p-4' : 'pt-4 pr-1')}>
         {panelParams.map(param => (
           <ParameterField
             key={param.id}

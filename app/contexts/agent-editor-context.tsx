@@ -23,17 +23,27 @@ const AUTOSAVE_MAX_WAIT_MS = 4000;
 
 type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
 
+interface NormalizedEdgeData {
+  sourceType?: string;
+  targetType?: string;
+  channel: 'flow' | 'link';
+}
+
 function normalizeEdgeData(
   data: unknown
-): Record<string, unknown> {
+): NormalizedEdgeData {
   if (!data || typeof data !== 'object') return { channel: 'flow' };
 
   const normalized = { ...(data as Record<string, unknown>) };
   const sourceType = typeof normalized.sourceType === 'string' ? normalized.sourceType : undefined;
   const targetType = typeof normalized.targetType === 'string' ? normalized.targetType : undefined;
   const inferredChannel = sourceType === 'tools' || targetType === 'tools' ? 'link' : 'flow';
-  normalized.channel = typeof normalized.channel === 'string' ? normalized.channel : inferredChannel;
-  return normalized;
+  const channel = typeof normalized.channel === 'string' ? normalized.channel : inferredChannel;
+  return {
+    sourceType,
+    targetType,
+    channel: channel === 'link' ? 'link' : 'flow',
+  };
 }
 
 interface AgentEditorContextValue {

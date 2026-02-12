@@ -352,6 +352,18 @@ async def run_flow(
             ):
                 yield item
                 if isinstance(item, ExecutionResult):
+                    yield NodeEvent(
+                        node_id=node_id,
+                        node_type=node_type,
+                        event_type="result",
+                        run_id=run_id,
+                        data={
+                            "outputs": {
+                                handle: {"type": value.type, "value": value.value}
+                                for handle, value in item.outputs.items()
+                            }
+                        },
+                    )
                     port_values[node_id] = item.outputs
                     # Populate upstream outputs for $() expressions
                     label = _get_node_label(node)

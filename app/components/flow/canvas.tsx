@@ -238,7 +238,11 @@ const defaultEdgeOptions = {
   type: 'gradient',
 } as const;
 
-function FlowCanvasInner() {
+interface FlowCanvasProps {
+  onNodeDoubleClick?: (nodeId: string) => void;
+}
+
+function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
   const { selectNode } = useSelection();
   const {
@@ -270,6 +274,15 @@ function FlowCanvasInner() {
       selectNode(selectedNodes.length > 0 ? selectedNodes[0].id : null);
     },
     [selectNode, placingNodeId]
+  );
+
+  const handleNodeDoubleClick = useCallback(
+    (_event: unknown, node: Node) => {
+      if (placingNodeId) return;
+      selectNode(node.id);
+      onNodeDoubleClick?.(node.id);
+    },
+    [onNodeDoubleClick, placingNodeId, selectNode]
   );
 
   const onNodeDragStop = useCallback(() => {
@@ -509,6 +522,7 @@ function FlowCanvasInner() {
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
         onSelectionChange={onSelectionChange}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStop={onNodeDragStop}
         onContextMenu={onContextMenu}
         connectionMode={ConnectionMode.Loose}
