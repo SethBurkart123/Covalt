@@ -15,6 +15,9 @@ from ..models.chat import (
     ChatAgentConfigResponse,
     ChatData,
     ChatId,
+    ExecutionEventItem,
+    MessageExecutionTraceResponse,
+    MessageId,
     CreateChatInput,
     MCPToolsetInfo,
     ToggleChatToolsInput,
@@ -144,6 +147,26 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
     with db.db_session() as sess:
         msgs = db.get_chat_messages(sess, chatId=body.id)
     return {"id": body.id, "messages": msgs}
+
+
+@command
+async def get_message_execution_trace(body: MessageId) -> MessageExecutionTraceResponse:
+    with db.db_session() as sess:
+        run = db.get_latest_execution_run_for_message(sess, message_id=body.id)
+        if run is None:
+            return MessageExecutionTraceResponse()
+
+        events = db.get_execution_events(sess, execution_id=run.id)
+
+    return MessageExecutionTraceResponse(
+        executionId=run.id,
+        kind=run.kind,
+        status=run.status,
+        rootRunId=run.root_run_id,
+        startedAt=run.started_at,
+        endedAt=run.ended_at,
+        events=[ExecutionEventItem(**event) for event in events],
+    )
 
 
 @command

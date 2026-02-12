@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from enum import Enum
 from typing import Any
 
-from agno.agent import Agent
+from agno.agent import Agent, Message
 from agno.db.in_memory import InMemoryDb
 from agno.run.agent import BaseAgentRunEvent
 from agno.team import Team
@@ -113,7 +114,7 @@ class AgentExecutor:
             fallback_final = ""
             seen_member_run_ids: set[str] = set()
             active_run_id = ""
-            run_input = _resolve_run_input(context, message)
+            run_input = _resolve_run_input(input_value, message)
 
             stream = agent.arun(
                 input=run_input,
@@ -568,23 +569,74 @@ def _get_run_handle(context: FlowContext) -> Any | None:
     return getattr(services, "run_handle", None)
 
 
-def _get_chat_input(context: FlowContext) -> Any | None:
+def _get_chat_scope(context: FlowContext) -> Any | None:
     services = context.services
     if services is None:
         return None
-    return getattr(services, "chat_input", None)
+    return getattr(services, "chat_scope", None)
 
 
-def _resolve_run_input(context: FlowContext, default_message: str) -> Any:
-    chat_input = _get_chat_input(context)
-    if chat_input is None:
-        return default_message
-
-    agno_messages = getattr(chat_input, "agno_messages", None)
-    if isinstance(agno_messages, list) and agno_messages:
-        return agno_messages
+def _resolve_run_input(
+    input_value: dict[str, Any],
+    default_message: str,
+) -> Any:
+    for key in ("agno_messages", "messages"):
+        parsed_messages = _coerce_messages(input_value.get(key))
+        if parsed_messages:
+            return parsed_messages
 
     return default_message
+
+
+def _coerce_messages(value: Any) -> list[Message]:
+    if value is None:
+        return []
+
+    if isinstance(value, Message):
+        return [value]
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return [Message(role="user", content=stripped)]
+        return _coerce_messages(parsed)
+
+    if isinstance(value, dict):
+        return _coerce_message_item(value)
+
+    if isinstance(value, list):
+        messages: list[Message] = []
+        for item in value:
+            messages.extend(_coerce_message_item(item))
+        return messages
+
+    return []
+
+
+def _coerce_message_item(item: Any) -> list[Message]:
+    if isinstance(item, Message):
+        return [item]
+
+    if isinstance(item, dict):
+        role = str(item.get("role") or "user")
+        content = _content_to_text(item.get("content"))
+        payload: dict[str, Any] = {"role": role, "content": content}
+
+        tool_call_id = item.get("tool_call_id") or item.get("toolCallId")
+        if role == "tool" and tool_call_id:
+            payload["tool_call_id"] = str(tool_call_id)
+
+        tool_calls = item.get("tool_calls") or item.get("toolCalls")
+        if role == "assistant" and isinstance(tool_calls, list):
+            payload["tool_calls"] = tool_calls
+
+        return [Message(**payload)]
+
+    return []
 
 
 def _get_tool_registry(context: FlowContext) -> Any | None:
@@ -734,6 +786,10 @@ def _flatten_link_artifacts(artifacts: list[Any]) -> list[Any]:
 
 
 def _should_include_extra_tools(context: FlowContext) -> bool:
+    chat_scope = _get_chat_scope(context)
+    if chat_scope is not None and hasattr(chat_scope, "include_user_tools"):
+        return bool(chat_scope.include_user_tools(context.node_id))
+
     runtime = context.runtime
     if runtime is None:
         return True

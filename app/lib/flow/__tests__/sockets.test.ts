@@ -3,7 +3,7 @@ import { canConnect, canCoerce, getSocketStyle, SOCKET_TYPES } from '../sockets'
 import type { SocketTypeId, Parameter } from '@nodes/_types'
 
 const ALL_SOCKET_TYPES: SocketTypeId[] = [
-  'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'messages', 'model',
+  'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'model',
 ]
 
 /** Helper to build a minimal Parameter for canConnect tests */
@@ -91,8 +91,6 @@ describe('canCoerce', () => {
     ['float', 'string'],
     ['boolean', 'string'],
     ['json', 'string'],
-    ['messages', 'string'],
-    ['string', 'messages'],
   ]
 
   it.each(validCoercions)(
@@ -108,7 +106,6 @@ describe('canCoerce', () => {
     ['tools', 'json'],
     ['model', 'int'],
     ['json', 'boolean'],
-    ['messages', 'float'],
   ]
 
   it.each(invalidCoercions)(
@@ -122,8 +119,6 @@ describe('canCoerce', () => {
 describe('canConnect with coercion', () => {
   const coerciblePairs: [SocketTypeId, SocketTypeId][] = [
     ['int', 'float'],
-    ['messages', 'string'],
-    ['string', 'messages'],
     ['json', 'string'],
   ]
 

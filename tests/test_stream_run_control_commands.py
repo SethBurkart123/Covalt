@@ -121,9 +121,17 @@ async def test_cancel_run_before_run_id_on_flow_handle_applies_after_late_bind(
 
 
 @pytest.mark.asyncio
-async def test_cancel_run_without_active_run_returns_false() -> None:
+async def test_cancel_run_without_active_run_marks_early_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_db = _FakeDb()
+    monkeypatch.setattr(streaming, "db", fake_db)
+
     result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="missing"))
-    assert result == {"cancelled": False}
+
+    assert result == {"cancelled": True}
+    assert run_control.consume_early_cancel("missing") is True
+    assert getattr(fake_db, "last_marked_id") == "missing"
 
 
 @pytest.mark.asyncio

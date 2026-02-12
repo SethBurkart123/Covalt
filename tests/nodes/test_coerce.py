@@ -3,7 +3,7 @@
 Covers every entry in COERCION_TABLE, identity passthrough,
 and error cases for invalid coercions.
 
-9-type system: agent, tools, float, int, string, boolean, json, messages, model
+8-type system: agent, tools, float, int, string, boolean, json, model
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class TestCanCoerce:
     """can_coerce checks the coercion table + identity."""
 
     def test_identity_always_true(self):
-        for t in ("int", "float", "string", "json", "messages", "boolean", "model"):
+        for t in ("int", "float", "string", "json", "boolean", "model"):
             assert can_coerce(t, t) is True
 
     @pytest.mark.parametrize(
@@ -40,7 +40,6 @@ class TestCanCoerce:
         assert can_coerce("tools", "json") is False
         assert can_coerce("model", "int") is False
         assert can_coerce("json", "boolean") is False
-        assert can_coerce("messages", "float") is False
 
     def test_any_is_not_a_supported_socket_type(self):
         assert can_coerce("any", "string") is False
@@ -91,34 +90,6 @@ class TestCoerce:
         assert json.loads(result.value) == {"a": 1}
         # Compact format (no spaces)
         assert " " not in result.value
-
-    # -- messages ↔ string --
-
-    def test_messages_to_string(self):
-        msgs = [
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "hi there"},
-        ]
-        result = coerce(DataValue(type="messages", value=msgs), "string")
-        assert result.type == "string"
-        assert "hello" in result.value
-        assert "hi there" in result.value
-
-    def test_messages_single_dict_to_string(self):
-        result = coerce(
-            DataValue(type="messages", value={"role": "user", "content": "yo"}),
-            "string",
-        )
-        assert result.type == "string"
-        assert "yo" in result.value
-
-    def test_string_to_messages(self):
-        result = coerce(DataValue(type="string", value="hello world"), "messages")
-        assert result.type == "messages"
-        assert isinstance(result.value, list)
-        assert len(result.value) == 1
-        assert result.value[0]["role"] == "user"
-        assert result.value[0]["content"] == "hello world"
 
     # -- errors --
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 
+from backend import db
+from backend.commands import chats as chats_commands
 from backend.models.chat import ChatMessage, ContentBlock
 from backend.services import run_control
 from backend.services.chat_graph_runner import (
@@ -245,6 +248,9 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         captured["agno_roles"] = [
             str(getattr(message, "role", "")) for message in chat_input.agno_messages
         ]
+        chat_scope = context.services.chat_scope
+        captured["entry_scope"] = list(context.services.execution.entry_node_ids)
+        captured["include_user_tools"] = chat_scope.include_user_tools("agent")
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
         )
@@ -272,6 +278,54 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     assert captured["history_len"] == 3
     assert captured["last_user_message"] == "final"
     assert captured["agno_roles"] == ["user", "assistant", "user"]
+    assert captured["entry_scope"] == ["cs"]
+    assert captured["include_user_tools"] is False
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_builds_topology_aware_chat_scope() -> None:
+    graph = make_graph(
+        nodes=[
+            {
+                "id": "cs",
+                "type": "chat-start",
+                "data": {"includeUserTools": False},
+            },
+            {"id": "fmt", "type": "prompt-template", "data": {}},
+            {"id": "agent_a", "type": "agent", "data": {}},
+            {"id": "agent_b", "type": "agent", "data": {}},
+        ],
+        edges=[
+            make_edge("cs", "fmt", "output", "input"),
+            make_edge("fmt", "agent_a", "output", "input"),
+            make_edge("agent_a", "agent_b", "output", "input"),
+        ],
+    )
+
+    captured: dict[str, Any] = {}
+
+    async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
+        chat_scope = context.services.chat_scope
+        captured["entry_node_ids"] = list(context.services.execution.entry_node_ids)
+        captured["tools_agent_a"] = chat_scope.include_user_tools("agent_a")
+        captured["tools_agent_b"] = chat_scope.include_user_tools("agent_b")
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ok"})}
+        )
+
+    await handle_flow_stream(
+        graph,
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=True,
+        run_flow_impl=fake_run_flow,
+    )
+
+    assert captured["entry_node_ids"] == ["cs"]
+    assert captured["tools_agent_a"] is False
+    assert captured["tools_agent_b"] is False
 
 
 @pytest.mark.asyncio
@@ -298,3 +352,223 @@ async def test_handle_flow_stream_honors_early_cancel_marker() -> None:
 
     assert called is False
     assert [event.get("event") for event in channel.events] == ["RunCancelled"]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_persists_ordered_execution_events() -> None:
+    assistant_id = "assistant-trace-1"
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="started",
+            run_id="runtime-1",
+            data={},
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="progress",
+            run_id="runtime-1",
+            data={"token": "hello "},
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="runtime-1",
+            data={"event": "CustomGraphEvent", "payload": {"x": 1}},
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="completed",
+            run_id="runtime-1",
+            data={},
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "done"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        assistant_id,
+        CapturingChannel(),
+        chat_id="chat-trace-1",
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=lambda _msg_id, _content: None,
+        load_initial_content_impl=lambda _msg_id: [],
+    )
+
+    with db.db_session() as sess:
+        run = db.get_latest_execution_run_for_message(sess, message_id=assistant_id)
+        assert run is not None
+        assert run.kind == "workflow"
+        assert run.status == "completed"
+
+        events = db.get_execution_events(sess, execution_id=run.id)
+
+    assert [event["seq"] for event in events] == [1, 2, 3, 4, 5]
+    assert [event["eventType"] for event in events] == [
+        "runtime.node.started",
+        "runtime.node.progress",
+        "runtime.node.agent_event",
+        "runtime.node.completed",
+        "runtime.execution_result",
+    ]
+    assert events[2]["payload"] == {"event": "CustomGraphEvent", "payload": {"x": 1}}
+
+
+@pytest.mark.asyncio
+async def test_get_message_execution_trace_returns_latest_run_events() -> None:
+    assistant_id = "assistant-trace-api-1"
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="started",
+            run_id="runtime-2",
+            data={},
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ok"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        assistant_id,
+        CapturingChannel(),
+        chat_id="chat-trace-api-1",
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=lambda _msg_id, _content: None,
+        load_initial_content_impl=lambda _msg_id: [],
+    )
+
+    trace = await chats_commands.get_message_execution_trace(
+        chats_commands.MessageId(id=assistant_id)
+    )
+
+    assert trace.executionId
+    assert trace.kind == "workflow"
+    assert trace.status == "completed"
+    assert [event.eventType for event in trace.events] == [
+        "runtime.node.started",
+        "runtime.execution_result",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_persists_member_run_blocks_in_saved_content() -> None:
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "MemberRunStarted",
+                "memberRunId": "member-1",
+                "memberName": "Joe",
+            },
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "RunContent",
+                "memberRunId": "member-1",
+                "memberName": "Joe",
+                "content": "hello from member",
+            },
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "ToolCallStarted",
+                "memberRunId": "member-1",
+                "memberName": "Joe",
+                "tool": {
+                    "id": "tool-1",
+                    "toolName": "search_docs",
+                    "toolArgs": {"query": "cats"},
+                },
+            },
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "ToolCallCompleted",
+                "memberRunId": "member-1",
+                "memberName": "Joe",
+                "tool": {
+                    "id": "tool-1",
+                    "toolName": "search_docs",
+                    "toolResult": "ok",
+                },
+            },
+        )
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "MemberRunCompleted",
+                "memberRunId": "member-1",
+                "memberName": "Joe",
+            },
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "done"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    member_block = next(
+        block for block in final_blocks if block.get("type") == "member_run"
+    )
+    assert member_block["runId"] == "member-1"
+    assert member_block["isCompleted"] is True
+    assert any(
+        block.get("type") == "text" and block.get("content") == "hello from member"
+        for block in member_block["content"]
+    )
+    assert any(
+        block.get("type") == "tool_call"
+        and block.get("id") == "tool-1"
+        and block.get("isCompleted") is True
+        for block in member_block["content"]
+    )

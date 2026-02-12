@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from agno.agent import Agent
+from agno.agent import Agent, Message
 from agno.db.in_memory import InMemoryDb
 from agno.team import Team
 from backend.services import run_control
@@ -337,6 +337,20 @@ class _FakeStreamingAgent:
         return _stream()
 
 
+class _RecordingInputAgent:
+    def __init__(self, final_content: str = "") -> None:
+        self.final_content = final_content
+        self.calls: list[dict[str, Any]] = []
+
+    def arun(self, **kwargs: Any):
+        self.calls.append(kwargs)
+
+        async def _stream():
+            yield SimpleNamespace(event="RunCompleted", content=self.final_content)
+
+        return _stream()
+
+
 class _SlowAgent:
     model: Any = None
     instructions: list[str] | None = None
@@ -417,6 +431,102 @@ class TestAgentExecutor:
         assert await_args.kwargs["model_str"] == "google:gemini-2.5-flash"
         assert await_args.kwargs["temperature"] == 0.3
         assert await_args.kwargs["instructions"] == ["be concise"]
+
+    @pytest.mark.asyncio
+    async def test_agent_uses_agno_messages_from_data_channel(self) -> None:
+        executor = AgentExecutor()
+        recording_agent = _RecordingInputAgent()
+        ctx = _flow_ctx()
+
+        agno_messages = [Message(role="user", content="chat message")]
+
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=AsyncMock(return_value=recording_agent),
+        ):
+            _, result = await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv(
+                            "data",
+                            {
+                                "message": "pipeline message",
+                                "agno_messages": agno_messages,
+                            },
+                        )
+                    },
+                    ctx,
+                )
+            )
+
+        assert isinstance(result, ExecutionResult)
+        assert len(recording_agent.calls) == 1
+        run_input = recording_agent.calls[0]["input"]
+        assert isinstance(run_input, list)
+        assert len(run_input) == 1
+        assert run_input[0].role == "user"
+        assert run_input[0].content == "chat message"
+
+    @pytest.mark.asyncio
+    async def test_agent_accepts_messages_key_from_data_channel(self) -> None:
+        executor = AgentExecutor()
+        recording_agent = _RecordingInputAgent()
+        ctx = _flow_ctx()
+
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=AsyncMock(return_value=recording_agent),
+        ):
+            _, result = await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv(
+                            "data",
+                            {
+                                "message": "from upstream",
+                                "messages": [
+                                    {"role": "user", "content": "first"},
+                                    {"role": "assistant", "content": "second"},
+                                ],
+                            },
+                        )
+                    },
+                    ctx,
+                )
+            )
+
+        assert isinstance(result, ExecutionResult)
+        assert len(recording_agent.calls) == 1
+        run_input = recording_agent.calls[0]["input"]
+        assert isinstance(run_input, list)
+        assert [message.role for message in run_input] == ["user", "assistant"]
+        assert [message.content for message in run_input] == ["first", "second"]
+
+    @pytest.mark.asyncio
+    async def test_agent_falls_back_to_upstream_message_when_no_messages_resolve(
+        self,
+    ) -> None:
+        executor = AgentExecutor()
+        recording_agent = _RecordingInputAgent()
+        ctx = _flow_ctx()
+
+        with patch(
+            "nodes.core.agent.executor._build_runtime_runnable",
+            new=AsyncMock(return_value=recording_agent),
+        ):
+            _, result = await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {"input": _dv("data", {"message": "from upstream"})},
+                    ctx,
+                )
+            )
+
+        assert isinstance(result, ExecutionResult)
+        assert len(recording_agent.calls) == 1
+        assert recording_agent.calls[0]["input"] == "from upstream"
 
     @pytest.mark.asyncio
     async def test_materialize_resolves_runtime_link_dependencies(self) -> None:
@@ -591,6 +701,35 @@ class TestAgentExecutor:
             runtime=runtime,
             tool_registry=tool_registry,
             services=SimpleNamespace(extra_tool_ids=["mcp:github"]),
+        )
+
+        with patch(
+            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
+        ):
+            runnable = await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "input",
+                ctx,
+            )
+
+        tool_registry.resolve_tool_ids.assert_not_called()
+        assert not runnable.tools
+
+    @pytest.mark.asyncio
+    async def test_materialize_uses_chat_scope_for_extra_tool_policy(self) -> None:
+        executor = AgentExecutor()
+        runtime = MagicMock()
+        runtime.resolve_links = AsyncMock(return_value=[])
+        runtime.incoming_edges.return_value = []
+
+        tool_registry = MagicMock()
+        ctx = _flow_ctx(
+            runtime=runtime,
+            tool_registry=tool_registry,
+            services=SimpleNamespace(
+                extra_tool_ids=["mcp:github"],
+                chat_scope=SimpleNamespace(include_user_tools=lambda _node_id: False),
+            ),
         )
 
         with patch(

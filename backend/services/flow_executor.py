@@ -149,6 +149,105 @@ def _has_incoming_edges(node_id: str, edges: list[dict]) -> bool:
     return len(edges) > 0
 
 
+def _execution_entry_node_ids(services: Any) -> set[str] | None:
+    execution = getattr(services, "execution", None)
+    if execution is None:
+        return None
+
+    raw_entry_node_ids = getattr(execution, "entry_node_ids", None)
+    if not isinstance(raw_entry_node_ids, (list, tuple, set)):
+        return None
+
+    entry_node_ids = {
+        str(node_id)
+        for node_id in raw_entry_node_ids
+        if isinstance(node_id, str) and node_id
+    }
+    return entry_node_ids or None
+
+
+def _reachable_nodes_from_entries(
+    edges: list[dict],
+    entry_node_ids: set[str],
+) -> set[str]:
+    if not entry_node_ids:
+        return set()
+
+    adjacency: dict[str, list[str]] = {}
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if not source or not target:
+            continue
+        adjacency.setdefault(source, []).append(target)
+
+    visited: set[str] = set()
+    queue: list[str] = sorted(entry_node_ids)
+
+    while queue:
+        node_id = queue.pop(0)
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+
+        for target_id in adjacency.get(node_id, []):
+            if target_id not in visited:
+                queue.append(target_id)
+
+    return visited
+
+
+def _upstream_closure(edges: list[dict], seed_node_ids: set[str]) -> set[str]:
+    if not seed_node_ids:
+        return set()
+
+    reverse_adjacency: dict[str, list[str]] = {}
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if not source or not target:
+            continue
+        reverse_adjacency.setdefault(target, []).append(source)
+
+    visited: set[str] = set()
+    queue: list[str] = sorted(seed_node_ids)
+
+    while queue:
+        node_id = queue.pop(0)
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+
+        for source_id in reverse_adjacency.get(node_id, []):
+            if source_id not in visited:
+                queue.append(source_id)
+
+    return visited
+
+
+def _filter_flow_subgraph(
+    flow_nodes: list[dict],
+    flow_edges: list[dict],
+    entry_node_ids: set[str],
+) -> tuple[list[dict], list[dict]]:
+    downstream_ids = _reachable_nodes_from_entries(flow_edges, entry_node_ids)
+    if not downstream_ids:
+        return [], []
+
+    scoped_node_ids = downstream_ids | _upstream_closure(flow_edges, downstream_ids)
+
+    scoped_nodes = [node for node in flow_nodes if node.get("id") in scoped_node_ids]
+    scoped_node_ids = {node["id"] for node in scoped_nodes if node.get("id")}
+
+    scoped_edges = [
+        edge
+        for edge in flow_edges
+        if edge.get("source") in scoped_node_ids
+        and edge.get("target") in scoped_node_ids
+    ]
+    return scoped_nodes, scoped_edges
+
+
 # ── Main engine ─────────────────────────────────────────────────────
 
 
@@ -179,17 +278,27 @@ async def run_flow(
     nodes_list = graph_data.get("nodes", [])
     edges = graph_data.get("edges", [])
 
+    run_id = getattr(context, "run_id", str(uuid.uuid4()))
+    chat_id = getattr(context, "chat_id", None)
+    state = getattr(context, "state", None)
+    services = getattr(context, "services", None) or types.SimpleNamespace()
+
     flow_nodes = find_flow_nodes(nodes_list, executors)
     if not flow_nodes:
         return
 
     flow_edge_list = _flow_edges(edges)
-    order = topological_sort(flow_nodes, flow_edge_list)
+    scoped_entry_node_ids = _execution_entry_node_ids(services)
+    if scoped_entry_node_ids is not None:
+        flow_nodes, flow_edge_list = _filter_flow_subgraph(
+            flow_nodes,
+            flow_edge_list,
+            scoped_entry_node_ids,
+        )
+        if not flow_nodes:
+            return
 
-    run_id = getattr(context, "run_id", str(uuid.uuid4()))
-    chat_id = getattr(context, "chat_id", None)
-    state = getattr(context, "state", None)
-    services = getattr(context, "services", None) or types.SimpleNamespace()
+    order = topological_sort(flow_nodes, flow_edge_list)
 
     runtime = GraphRuntime(
         graph_data,

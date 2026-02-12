@@ -25,6 +25,7 @@ from .agent_manager import get_agent_manager
 from . import run_control
 from . import stream_broadcaster as broadcaster
 from .flow_executor import run_flow
+from .execution_trace import ExecutionTraceRecorder
 from .tool_registry import get_tool_registry
 from .toolset_executor import get_toolset_executor
 from .workspace_manager import get_workspace_manager
@@ -56,6 +57,160 @@ AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/msword",
 ]
+
+FLOW_EDGE_CHANNEL = "flow"
+
+
+@dataclass(frozen=True)
+class ChatScope:
+    include_user_tools_by_node: dict[str, bool]
+
+    def include_user_tools(self, node_id: str) -> bool:
+        return self.include_user_tools_by_node.get(node_id, True)
+
+
+def _flow_topology(
+    graph_data: dict[str, Any],
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]], dict[str, list[str]]]:
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    for node in graph_data.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        if isinstance(node_id, str) and node_id:
+            nodes_by_id[node_id] = node
+
+    downstream_by_node: dict[str, list[str]] = {}
+    upstream_by_node: dict[str, list[str]] = {}
+
+    for edge in graph_data.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+
+        data = edge.get("data")
+        if not isinstance(data, dict) or data.get("channel") != FLOW_EDGE_CHANNEL:
+            continue
+
+        source_id = edge.get("source")
+        target_id = edge.get("target")
+        if not isinstance(source_id, str) or not isinstance(target_id, str):
+            continue
+
+        downstream_by_node.setdefault(source_id, []).append(target_id)
+        upstream_by_node.setdefault(target_id, []).append(source_id)
+
+    return nodes_by_id, downstream_by_node, upstream_by_node
+
+
+def _reachable_from_entries(
+    entry_node_ids: list[str],
+    downstream_by_node: dict[str, list[str]],
+) -> set[str]:
+    if not entry_node_ids:
+        return set()
+
+    visited: set[str] = set()
+    queue: list[str] = list(entry_node_ids)
+    while queue:
+        node_id = queue.pop(0)
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+
+        for target_id in downstream_by_node.get(node_id, []):
+            if target_id not in visited:
+                queue.append(target_id)
+
+    return visited
+
+
+def _collect_upstream_nodes(
+    node_id: str,
+    upstream_by_node: dict[str, list[str]],
+    *,
+    active_node_ids: set[str],
+) -> set[str]:
+    visited: set[str] = set()
+    queue: list[str] = list(upstream_by_node.get(node_id, []))
+
+    while queue:
+        upstream_id = queue.pop(0)
+        if upstream_id in visited:
+            continue
+        if active_node_ids and upstream_id not in active_node_ids:
+            continue
+
+        visited.add(upstream_id)
+        queue.extend(upstream_by_node.get(upstream_id, []))
+
+    return visited
+
+
+def _chat_entry_node_ids(
+    nodes_by_id: dict[str, dict[str, Any]],
+    upstream_by_node: dict[str, list[str]],
+) -> list[str]:
+    chat_start_ids = sorted(
+        node_id
+        for node_id, node in nodes_by_id.items()
+        if node.get("type") == "chat-start"
+    )
+    if chat_start_ids:
+        return chat_start_ids
+
+    root_ids = sorted(
+        node_id for node_id in nodes_by_id if not upstream_by_node.get(node_id)
+    )
+    if root_ids:
+        return root_ids
+
+    return sorted(nodes_by_id)
+
+
+def _chat_start_includes_user_tools(node: dict[str, Any]) -> bool:
+    data = node.get("data")
+    if not isinstance(data, dict):
+        return False
+    return bool(data.get("includeUserTools", False))
+
+
+def _build_chat_scope(graph_data: dict[str, Any]) -> tuple[ChatScope, list[str]]:
+    nodes_by_id, downstream_by_node, upstream_by_node = _flow_topology(graph_data)
+    entry_node_ids = _chat_entry_node_ids(nodes_by_id, upstream_by_node)
+    active_node_ids = _reachable_from_entries(entry_node_ids, downstream_by_node)
+
+    include_user_tools_by_node: dict[str, bool] = {}
+
+    for node_id in sorted(active_node_ids):
+        node = nodes_by_id.get(node_id)
+        if not isinstance(node, dict) or node.get("type") != "agent":
+            continue
+
+        upstream_ids = _collect_upstream_nodes(
+            node_id,
+            upstream_by_node,
+            active_node_ids=active_node_ids,
+        )
+
+        upstream_chat_starts = [
+            nodes_by_id[upstream_id]
+            for upstream_id in upstream_ids
+            if nodes_by_id.get(upstream_id, {}).get("type") == "chat-start"
+        ]
+        if not upstream_chat_starts:
+            include_user_tools_by_node[node_id] = True
+        else:
+            include_user_tools_by_node[node_id] = all(
+                _chat_start_includes_user_tools(chat_start)
+                for chat_start in upstream_chat_starts
+            )
+
+    return (
+        ChatScope(
+            include_user_tools_by_node=include_user_tools_by_node,
+        ),
+        entry_node_ids,
+    )
 
 
 def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
@@ -591,6 +746,7 @@ class BroadcastingChannel:
         self._channel = channel
         self._chat_id = chat_id
         self._pending_broadcasts: list[asyncio.Task[Any]] = []
+        self._broadcast_tail: asyncio.Task[Any] | None = None
 
     def send_model(self, event: ChatEvent) -> None:
         self._channel.send_model(event)
@@ -599,16 +755,22 @@ class BroadcastingChannel:
             event_dict = (
                 event.model_dump() if hasattr(event, "model_dump") else event.dict()
             )
-            self._pending_broadcasts.append(
-                asyncio.create_task(
-                    broadcaster.broadcast_event(self._chat_id, event_dict)
-                )
-            )
+            previous = self._broadcast_tail
+
+            async def _broadcast_in_order() -> None:
+                if previous is not None:
+                    await previous
+                await broadcaster.broadcast_event(self._chat_id, event_dict)
+
+            task = asyncio.create_task(_broadcast_in_order())
+            self._broadcast_tail = task
+            self._pending_broadcasts.append(task)
 
     async def flush_broadcasts(self) -> None:
         if self._pending_broadcasts:
             await asyncio.gather(*self._pending_broadcasts, return_exceptions=True)
             self._pending_broadcasts.clear()
+            self._broadcast_tail = None
 
 
 def save_msg_content(msg_id: str, content: str) -> None:
@@ -759,6 +921,16 @@ async def handle_flow_stream(
     load_initial_fn = load_initial_content_impl or load_initial_content
     save_content = save_content_fn if not ephemeral else _noop_save
 
+    trace_recorder = ExecutionTraceRecorder(
+        kind="workflow",
+        chat_id=chat_id or None,
+        message_id=assistant_msg_id,
+        enabled=not ephemeral,
+    )
+    trace_recorder.start()
+    trace_status = "streaming"
+    trace_error: str | None = None
+
     run_handle = FlowRunHandle()
     run_control.register_active_run(assistant_msg_id, run_handle)
 
@@ -767,6 +939,12 @@ async def handle_flow_stream(
 
     if run_control.consume_early_cancel(assistant_msg_id):
         run_control.remove_active_run(assistant_msg_id)
+        run_control.clear_early_cancel(assistant_msg_id)
+        trace_recorder.record(
+            event_type="runtime.run.cancelled", payload={"early": True}
+        )
+        trace_status = "cancelled"
+        trace_recorder.finish(status=trace_status)
         ch.send_model(ChatEvent(event="RunCancelled"))
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "completed")
@@ -785,6 +963,7 @@ async def handle_flow_stream(
 
     chat_history = build_chat_runtime_history(messages)
     agno_messages = build_agno_messages_for_chat(messages, chat_id or None)
+    chat_scope, entry_node_ids = _build_chat_scope(graph_data)
 
     state = types.SimpleNamespace(user_message=user_message)
     context = types.SimpleNamespace(
@@ -801,6 +980,8 @@ async def handle_flow_stream(
                 history=chat_history,
                 agno_messages=agno_messages,
             ),
+            chat_scope=chat_scope,
+            execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
         ),
     )
 
@@ -808,6 +989,8 @@ async def handle_flow_stream(
         [] if ephemeral else load_initial_fn(assistant_msg_id)
     )
     current_text = ""
+    current_reasoning = ""
+    member_runs: dict[str, MemberRunState] = {}
     final_output: DataValue | None = None
     runtime_run_flow = run_flow_impl or run_flow
     had_error = False
@@ -821,9 +1004,325 @@ async def handle_flow_stream(
         content_blocks.append({"type": "text", "content": current_text})
         current_text = ""
 
+    def _flush_current_reasoning() -> None:
+        nonlocal current_reasoning
+        if not current_reasoning:
+            return
+        content_blocks.append(
+            {
+                "type": "reasoning",
+                "content": current_reasoning,
+                "isCompleted": True,
+            }
+        )
+        current_reasoning = ""
+
+    def _find_tool_block(
+        blocks: list[dict[str, Any]], tool_id: str
+    ) -> dict[str, Any] | None:
+        for block in blocks:
+            if block.get("type") == "tool_call" and block.get("id") == tool_id:
+                return block
+        return None
+
+    def _get_or_create_member_state(data: dict[str, Any]) -> MemberRunState | None:
+        run_id = str(data.get("memberRunId") or "")
+        if not run_id:
+            return None
+
+        name = str(data.get("memberName") or "Member")
+        if run_id in member_runs:
+            member_state = member_runs[run_id]
+            if name and name != "Member":
+                member_state.name = name
+                content_blocks[member_state.block_index]["memberName"] = name
+            return member_state
+
+        block = {
+            "type": "member_run",
+            "runId": run_id,
+            "memberName": name,
+            "content": [],
+            "isCompleted": False,
+            "task": str(data.get("task") or ""),
+        }
+        content_blocks.append(block)
+        member_state = MemberRunState(
+            run_id=run_id,
+            name=name,
+            block_index=len(content_blocks) - 1,
+        )
+        member_runs[run_id] = member_state
+        return member_state
+
+    def _flush_member_text(member_state: MemberRunState) -> None:
+        if not member_state.current_text:
+            return
+        member_block = content_blocks[member_state.block_index]
+        member_block["content"].append(
+            {"type": "text", "content": member_state.current_text}
+        )
+        member_state.current_text = ""
+
+    def _flush_member_reasoning(member_state: MemberRunState) -> None:
+        if not member_state.current_reasoning:
+            return
+        member_block = content_blocks[member_state.block_index]
+        member_block["content"].append(
+            {
+                "type": "reasoning",
+                "content": member_state.current_reasoning,
+                "isCompleted": True,
+            }
+        )
+        member_state.current_reasoning = ""
+
+    def _flush_all_member_runs() -> None:
+        for member_state in list(member_runs.values()):
+            _flush_member_text(member_state)
+            _flush_member_reasoning(member_state)
+            content_blocks[member_state.block_index]["isCompleted"] = True
+        member_runs.clear()
+
+    def _serialize_content_state() -> str:
+        temp = copy.deepcopy(content_blocks)
+        if current_text:
+            temp.append({"type": "text", "content": current_text})
+        if current_reasoning:
+            temp.append(
+                {
+                    "type": "reasoning",
+                    "content": current_reasoning,
+                    "isCompleted": False,
+                }
+            )
+
+        for member_state in member_runs.values():
+            if member_state.block_index >= len(temp):
+                continue
+            member_block = temp[member_state.block_index]
+            if member_block.get("type") != "member_run":
+                continue
+            member_content = member_block.get("content", [])
+            if member_state.current_text:
+                member_content.append(
+                    {"type": "text", "content": member_state.current_text}
+                )
+            if member_state.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": member_state.current_reasoning,
+                        "isCompleted": False,
+                    }
+                )
+
+        return json.dumps(temp)
+
+    def _apply_agent_event_to_content(data: dict[str, Any]) -> bool:
+        nonlocal current_text, current_reasoning
+
+        event_name = str(data.get("event") or "")
+        if not event_name:
+            return False
+
+        member_state = _get_or_create_member_state(data)
+
+        if member_state is not None:
+            member_block = content_blocks[member_state.block_index]
+            member_content = member_block["content"]
+
+            if event_name == "RunContent":
+                text = str(data.get("content") or "")
+                if not text:
+                    return False
+                if member_state.current_reasoning and not member_state.current_text:
+                    _flush_member_reasoning(member_state)
+                member_state.current_text += text
+                return True
+
+            if event_name == "ReasoningStarted":
+                _flush_member_text(member_state)
+                return True
+
+            if event_name == "ReasoningStep":
+                text = str(data.get("reasoningContent") or "")
+                if not text:
+                    return False
+                if member_state.current_text and not member_state.current_reasoning:
+                    _flush_member_text(member_state)
+                member_state.current_reasoning += text
+                return True
+
+            if event_name == "ReasoningCompleted":
+                _flush_member_reasoning(member_state)
+                return True
+
+            if event_name == "ToolCallStarted":
+                tool = data.get("tool") or {}
+                tool_id = str(tool.get("id") or "")
+                if not tool_id:
+                    return False
+                _flush_member_text(member_state)
+                _flush_member_reasoning(member_state)
+                member_content.append(
+                    {
+                        "type": "tool_call",
+                        "id": tool_id,
+                        "toolName": tool.get("toolName"),
+                        "toolArgs": tool.get("toolArgs"),
+                        "isCompleted": False,
+                    }
+                )
+                return True
+
+            if event_name == "ToolCallCompleted":
+                tool = data.get("tool") or {}
+                tool_id = str(tool.get("id") or "")
+                if not tool_id:
+                    return False
+                tool_block = _find_tool_block(member_content, tool_id)
+                if tool_block is None:
+                    return False
+                tool_block["isCompleted"] = True
+                tool_block["toolResult"] = tool.get("toolResult")
+                return True
+
+            if event_name == "MemberRunCompleted":
+                _flush_member_text(member_state)
+                _flush_member_reasoning(member_state)
+                member_block["isCompleted"] = True
+                member_runs.pop(member_state.run_id, None)
+                return True
+
+            if event_name in {"MemberRunError", "RunError"}:
+                _flush_member_text(member_state)
+                _flush_member_reasoning(member_state)
+                error_content = str(
+                    data.get("content") or data.get("error") or "Member run failed"
+                )
+                member_content.append({"type": "error", "content": error_content})
+                member_block["isCompleted"] = True
+                member_block["hasError"] = True
+                member_runs.pop(member_state.run_id, None)
+                return True
+
+            return event_name == "MemberRunStarted"
+
+        if event_name == "RunContent":
+            token = str(data.get("content") or "")
+            if not token:
+                return False
+            if current_reasoning and not current_text:
+                _flush_current_reasoning()
+            current_text += token
+            return True
+
+        if event_name == "ReasoningStarted":
+            _flush_current_text()
+            return True
+
+        if event_name == "ReasoningStep":
+            text = str(data.get("reasoningContent") or "")
+            if not text:
+                return False
+            if current_text and not current_reasoning:
+                _flush_current_text()
+            current_reasoning += text
+            return True
+
+        if event_name == "ReasoningCompleted":
+            _flush_current_reasoning()
+            return True
+
+        if event_name == "ToolCallStarted":
+            tool = data.get("tool") or {}
+            tool_id = str(tool.get("id") or "")
+            if not tool_id:
+                return False
+            _flush_current_text()
+            _flush_current_reasoning()
+            tool_block = _find_tool_block(content_blocks, tool_id)
+            if tool_block is None:
+                content_blocks.append(
+                    {
+                        "type": "tool_call",
+                        "id": tool_id,
+                        "toolName": tool.get("toolName"),
+                        "toolArgs": tool.get("toolArgs"),
+                        "isCompleted": False,
+                    }
+                )
+            else:
+                tool_block["isCompleted"] = False
+            return True
+
+        if event_name == "ToolCallCompleted":
+            tool = data.get("tool") or {}
+            tool_id = str(tool.get("id") or "")
+            if not tool_id:
+                return False
+            tool_block = _find_tool_block(content_blocks, tool_id)
+            if tool_block is None:
+                return False
+            tool_block["isCompleted"] = True
+            tool_block["toolResult"] = tool.get("toolResult")
+            return True
+
+        if event_name == "ToolApprovalRequired":
+            tool_payload = data.get("tool") or {}
+            tools = tool_payload.get("tools")
+            if not isinstance(tools, list) or not tools:
+                return False
+            _flush_current_text()
+            _flush_current_reasoning()
+            for tool in tools:
+                if not isinstance(tool, dict):
+                    continue
+                content_blocks.append(
+                    {
+                        "type": "tool_call",
+                        "id": tool.get("id"),
+                        "toolName": tool.get("toolName"),
+                        "toolArgs": tool.get("toolArgs"),
+                        "isCompleted": False,
+                        "requiresApproval": True,
+                        "runId": tool_payload.get("runId"),
+                        "toolCallId": tool.get("id"),
+                        "approvalStatus": "pending",
+                        "editableArgs": tool.get("editableArgs"),
+                    }
+                )
+            return True
+
+        if event_name == "ToolApprovalResolved":
+            tool = data.get("tool") or {}
+            tool_id = str(tool.get("id") or "")
+            if not tool_id:
+                return False
+            tool_block = _find_tool_block(content_blocks, tool_id)
+            if tool_block is None:
+                return False
+            status = tool.get("approvalStatus")
+            tool_block["approvalStatus"] = status
+            if "toolArgs" in tool:
+                tool_block["toolArgs"] = tool.get("toolArgs")
+            if status in ("denied", "timeout"):
+                tool_block["isCompleted"] = True
+            return True
+
+        return False
+
     try:
         async for item in runtime_run_flow(graph_data, context):
             if isinstance(item, NodeEvent):
+                trace_recorder.record(
+                    event_type=f"runtime.node.{item.event_type}",
+                    payload=item.data or {},
+                    node_id=item.node_id,
+                    node_type=item.node_type,
+                    run_id=item.run_id,
+                )
                 if item.event_type == "started":
                     ch.send_model(
                         ChatEvent(
@@ -836,32 +1335,36 @@ async def handle_flow_stream(
                 elif item.event_type == "progress":
                     token = (item.data or {}).get("token", "")
                     if token:
+                        if current_reasoning and not current_text:
+                            _flush_current_reasoning()
                         current_text += token
                         ch.send_model(ChatEvent(event="RunContent", content=token))
                         await asyncio.to_thread(
                             save_content,
                             assistant_msg_id,
-                            json.dumps(
-                                content_blocks
-                                + (
-                                    [{"type": "text", "content": current_text}]
-                                    if current_text
-                                    else []
-                                )
-                            ),
+                            _serialize_content_state(),
                         )
                 elif item.event_type == "agent_run_id":
                     run_id = str((item.data or {}).get("run_id") or "")
                     if run_id:
+                        trace_recorder.set_root_run_id(run_id)
                         run_control.set_active_run_id(assistant_msg_id, run_id)
                         if chat_id:
                             await broadcaster.update_stream_run_id(chat_id, run_id)
                 elif item.event_type == "agent_event":
-                    chat_event = _chat_event_from_agent_runtime_event(item.data or {})
+                    event_data = item.data or {}
+                    chat_event = _chat_event_from_agent_runtime_event(event_data)
                     if chat_event is not None:
                         ch.send_model(chat_event)
 
-                    event_name = str((item.data or {}).get("event") or "")
+                    if _apply_agent_event_to_content(event_data):
+                        await asyncio.to_thread(
+                            save_content,
+                            assistant_msg_id,
+                            _serialize_content_state(),
+                        )
+
+                    event_name = str(event_data.get("event") or "")
                     if event_name == "ToolApprovalRequired" and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
                     elif event_name == "ToolApprovalResolved" and chat_id:
@@ -869,7 +1372,10 @@ async def handle_flow_stream(
                 elif item.event_type == "cancelled":
                     was_cancelled = True
                     terminal_event = "RunCancelled"
+                    trace_status = "cancelled"
                     _flush_current_text()
+                    _flush_current_reasoning()
+                    _flush_all_member_runs()
                     await asyncio.to_thread(
                         save_content,
                         assistant_msg_id,
@@ -892,6 +1398,8 @@ async def handle_flow_stream(
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
+                    trace_status = "error"
+                    trace_error = error_text
                     _flush_current_text()
                     content_blocks.append(
                         {
@@ -913,12 +1421,26 @@ async def handle_flow_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
             elif isinstance(item, ExecutionResult):
+                trace_recorder.record(
+                    event_type="runtime.execution_result",
+                    payload={
+                        "outputs": {
+                            key: {
+                                "type": value.type,
+                                "value": value.value,
+                            }
+                            for key, value in item.outputs.items()
+                        }
+                    },
+                )
                 final_output = _pick_text_output(item.outputs)
 
         if terminal_event is not None:
             return
 
         _flush_current_text()
+        _flush_current_reasoning()
+        _flush_all_member_runs()
 
         if final_output is not None and not any(
             block.get("type") == "text" for block in content_blocks
@@ -938,6 +1460,7 @@ async def handle_flow_stream(
                 db.mark_message_complete(sess, assistant_msg_id)
 
         terminal_event = "RunCompleted"
+        trace_status = "completed"
         ch.send_model(ChatEvent(event="RunCompleted"))
 
         if hasattr(ch, "flush_broadcasts"):
@@ -954,8 +1477,12 @@ async def handle_flow_stream(
             return
 
         _flush_current_text()
+        _flush_current_reasoning()
+        _flush_all_member_runs()
 
         error_msg = extract_error_message(str(e))
+        trace_status = "error"
+        trace_error = error_msg
         content_blocks.append(
             {
                 "type": "error",
@@ -976,6 +1503,8 @@ async def handle_flow_stream(
     finally:
         run_control.remove_active_run(assistant_msg_id)
         run_control.clear_early_cancel(assistant_msg_id)
+
+        trace_recorder.finish(status=trace_status, error_message=trace_error)
 
         if not had_error and not was_cancelled and not ephemeral:
             with db.db_session() as sess:
@@ -1008,6 +1537,16 @@ async def handle_content_stream(
     load_initial_fn = load_initial_content_impl or load_initial_content
     save_content = save_content_fn if not ephemeral else _noop_save
 
+    trace_recorder = ExecutionTraceRecorder(
+        kind="agent",
+        chat_id=chat_id or None,
+        message_id=assistant_msg_id,
+        enabled=not ephemeral,
+    )
+    trace_recorder.start()
+    trace_status = "streaming"
+    trace_error: str | None = None
+
     agno_messages: list[Any] = []
     for msg in messages:
         agno_messages.extend(convert_message(msg, chat_id))
@@ -1026,6 +1565,12 @@ async def handle_content_stream(
 
     if run_control.consume_early_cancel(assistant_msg_id):
         run_control.remove_active_run(assistant_msg_id)
+        run_control.clear_early_cancel(assistant_msg_id)
+        trace_recorder.record(
+            event_type="runtime.run.cancelled", payload={"early": True}
+        )
+        trace_status = "cancelled"
+        trace_recorder.finish(status=trace_status)
         ch.send_model(ChatEvent(event="RunCancelled"))
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "completed")
@@ -1310,11 +1855,42 @@ async def handle_content_stream(
     def save_final() -> str:
         return json.dumps(content_blocks)
 
+    def _chunk_trace_payload(chunk: Any) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+
+        content = getattr(chunk, "content", None)
+        if content is not None:
+            payload["content"] = str(content)
+
+        reasoning_content = getattr(chunk, "reasoning_content", None)
+        if reasoning_content is not None:
+            payload["reasoningContent"] = str(reasoning_content)
+
+        agent_name = getattr(chunk, "agent_name", None)
+        if agent_name:
+            payload["agentName"] = str(agent_name)
+
+        tool = getattr(chunk, "tool", None)
+        if tool is not None:
+            payload["tool"] = {
+                "id": getattr(tool, "tool_call_id", None),
+                "name": getattr(tool, "tool_name", None),
+                "args": getattr(tool, "tool_args", None),
+                "result": (
+                    None
+                    if getattr(tool, "result", None) is None
+                    else str(getattr(tool, "result", None))
+                ),
+            }
+
+        return payload
+
     try:
         while True:
             async for chunk in response_stream:
                 if not run_id and chunk.run_id:
                     run_id = chunk.run_id
+                    trace_recorder.set_root_run_id(run_id)
                     run_control.set_active_run_id(assistant_msg_id, run_id)
                     logger.info(f"[stream] Captured run_id {run_id}")
                     if chat_id:
@@ -1328,11 +1904,18 @@ async def handle_content_stream(
                 if evt is None:
                     continue
 
+                trace_recorder.record(
+                    event_type=f"runtime.event.{evt.value}",
+                    run_id=str(getattr(chunk, "run_id", "") or "") or None,
+                    payload=_chunk_trace_payload(chunk),
+                )
+
                 if active_delegation_tool_id and _is_member_event(chunk):
                     await _handle_member_event(evt, chunk)
                     continue
 
                 if evt == RunEvent.run_cancelled:
+                    trace_status = "cancelled"
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -1342,10 +1925,12 @@ async def handle_content_stream(
                         with db.db_session() as sess:
                             db.mark_message_complete(sess, assistant_msg_id)
                     run_control.remove_active_run(assistant_msg_id)
+                    run_control.clear_early_cancel(assistant_msg_id)
                     ch.send_model(ChatEvent(event="RunCancelled"))
                     if chat_id:
                         await broadcaster.update_stream_status(chat_id, "completed")
                         await broadcaster.unregister_stream(chat_id)
+                    trace_recorder.finish(status=trace_status)
                     return
 
                 if evt == RunEvent.run_content:
@@ -1506,6 +2091,7 @@ async def handle_content_stream(
                     ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
                 elif evt == RunEvent.run_completed:
+                    trace_status = "completed"
                     flush_text()
                     flush_reasoning()
                     await asyncio.to_thread(
@@ -1520,6 +2106,7 @@ async def handle_content_stream(
                     if chat_id:
                         await broadcaster.update_stream_status(chat_id, "completed")
                         await broadcaster.unregister_stream(chat_id)
+                    trace_recorder.finish(status=trace_status)
                     return
 
                 elif evt == RunEvent.run_error:
@@ -1528,6 +2115,8 @@ async def handle_content_stream(
                     error_msg = extract_error_message(
                         chunk.content if chunk.content else str(chunk)
                     )
+                    trace_status = "error"
+                    trace_error = error_msg
                     content_blocks.append(
                         {
                             "type": "error",
@@ -1547,6 +2136,11 @@ async def handle_content_stream(
                             chat_id, "error", error_msg
                         )
                         await broadcaster.unregister_stream(chat_id)
+                    run_control.remove_active_run(assistant_msg_id)
+                    run_control.clear_early_cancel(assistant_msg_id)
+                    trace_recorder.finish(
+                        status=trace_status, error_message=trace_error
+                    )
                     return
 
                 elif evt == RunEvent.run_paused:
@@ -1670,6 +2264,8 @@ async def handle_content_stream(
         flush_text()
         flush_reasoning()
         error_msg = extract_error_message(str(e))
+        trace_status = "error"
+        trace_error = error_msg
         content_blocks.append(
             {
                 "type": "error",
@@ -1686,6 +2282,8 @@ async def handle_content_stream(
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
+
+    trace_recorder.finish(status=trace_status, error_message=trace_error)
 
     run_control.remove_active_run(assistant_msg_id)
     run_control.clear_early_cancel(assistant_msg_id)

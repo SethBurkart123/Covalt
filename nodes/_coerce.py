@@ -34,23 +34,6 @@ def _json_to_string(v: DataValue) -> DataValue:
     return DataValue(type="string", value=json.dumps(v.value, separators=(",", ":")))
 
 
-def _messages_to_string(v: DataValue) -> DataValue:
-    if isinstance(v.value, list):
-        return DataValue(
-            type="string",
-            value="\n".join(
-                m.get("content", "") if isinstance(m, dict) else str(m) for m in v.value
-            ),
-        )
-    if isinstance(v.value, dict):
-        return DataValue(type="string", value=v.value.get("content", str(v.value)))
-    return DataValue(type="string", value=str(v.value))
-
-
-def _string_to_messages(v: DataValue) -> DataValue:
-    return DataValue(type="messages", value=[{"role": "user", "content": str(v.value)}])
-
-
 # ── Coercion table ──────────────────────────────────────────────────
 # (source_type, target_type) → converter function
 # Keep in sync with IMPLICIT_COERCIONS in sockets.ts.
@@ -64,9 +47,6 @@ COERCION_TABLE: dict[tuple[str, str], Callable[[DataValue], DataValue]] = {
     ("boolean", "string"): _bool_to_string,
     # Structured → string
     ("json", "string"): _json_to_string,
-    # messages ↔ string
-    ("messages", "string"): _messages_to_string,
-    ("string", "messages"): _string_to_messages,
 }
 
 

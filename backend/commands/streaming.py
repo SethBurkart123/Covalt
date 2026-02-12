@@ -275,8 +275,18 @@ async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
 async def cancel_run(body: CancelRunRequest) -> dict:
     active_run = run_control.get_active_run(body.messageId)
     if active_run is None:
-        logger.info(f"[cancel_run] No active run found for message {body.messageId}")
-        return {"cancelled": False}
+        logger.info(
+            f"[cancel_run] No active run found for message {body.messageId}; storing early intent"
+        )
+        run_control.mark_early_cancel(body.messageId)
+
+        try:
+            with db.db_session() as sess:
+                db.mark_message_complete(sess, body.messageId)
+        except Exception as e:
+            logger.info(f"[cancel_run] Warning marking message complete: {e}")
+
+        return {"cancelled": True}
 
     run_id, agent = active_run
     remove_active_run = False

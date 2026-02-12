@@ -5,6 +5,22 @@ import asyncio
 from backend.services import run_control
 
 
+class _RequestCancelableHandle:
+    def __init__(self) -> None:
+        self.requested = 0
+
+    def request_cancel(self) -> None:
+        self.requested += 1
+
+
+class _RunIdCancelableHandle:
+    def __init__(self) -> None:
+        self.cancelled_run_ids: list[str] = []
+
+    def cancel_run(self, run_id: str) -> None:
+        self.cancelled_run_ids.append(run_id)
+
+
 def test_active_run_lifecycle() -> None:
     run_control.reset_state()
 
@@ -25,6 +41,31 @@ def test_early_cancel_consumption() -> None:
     run_control.mark_early_cancel("msg-2")
     assert run_control.consume_early_cancel("msg-2") is True
     assert run_control.consume_early_cancel("msg-2") is False
+
+
+def test_register_active_run_applies_pending_cancel_intent_to_request_handle() -> None:
+    run_control.reset_state()
+
+    handle = _RequestCancelableHandle()
+    run_control.mark_early_cancel("msg-3")
+
+    run_control.register_active_run("msg-3", handle)
+
+    assert handle.requested == 1
+    assert run_control.consume_early_cancel("msg-3") is True
+
+
+def test_set_active_run_id_applies_pending_cancel_intent_to_run_id_handle() -> None:
+    run_control.reset_state()
+
+    handle = _RunIdCancelableHandle()
+    run_control.mark_early_cancel("msg-4")
+
+    run_control.register_active_run("msg-4", handle)
+    run_control.set_active_run_id("msg-4", "run-4")
+
+    assert handle.cancelled_run_ids == ["run-4"]
+    assert run_control.consume_early_cancel("msg-4") is True
 
 
 def test_approval_response_signals_waiter() -> None:

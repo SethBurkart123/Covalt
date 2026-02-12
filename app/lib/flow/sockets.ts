@@ -45,11 +45,6 @@ export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
     color: '#f97316',
     shape: 'circle',
   },
-  messages: {
-    id: 'messages',
-    color: '#a855f7',
-    shape: 'circle',
-  },
   model: {
     id: 'model',
     color: '#06b6d4',
@@ -73,9 +68,6 @@ const IMPLICIT_COERCIONS = new Set<`${SocketTypeId}:${SocketTypeId}`>([
   // Structured → string (serialize)
   'json:string',
 
-  // messages ↔ string
-  'messages:string',
-  'string:messages',
 ]);
 
 /** Check if sourceType can implicitly coerce to targetType. */
