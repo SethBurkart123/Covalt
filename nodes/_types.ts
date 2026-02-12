@@ -8,7 +8,7 @@ export type SocketTypeId =
   | 'data'
   | 'tools'
   | 'float' | 'int' | 'string' | 'boolean'
-  | 'json' | 'messages' | 'model';
+  | 'json' | 'model';
 
 export type SocketShape = 'circle' | 'square' | 'diamond';
 

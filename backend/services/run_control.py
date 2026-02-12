@@ -10,6 +10,29 @@ _approval_events: dict[str, asyncio.Event] = {}
 _approval_responses: dict[str, dict[str, Any]] = {}
 
 
+def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> None:
+    if message_id not in _cancelled_messages:
+        return
+
+    request_cancel = getattr(agent, "request_cancel", None)
+    if callable(request_cancel):
+        try:
+            request_cancel()
+        except Exception:
+            pass
+        return
+
+    if not run_id:
+        return
+
+    cancel_run = getattr(agent, "cancel_run", None)
+    if callable(cancel_run):
+        try:
+            cancel_run(run_id)
+        except Exception:
+            pass
+
+
 def reset_state() -> None:
     _active_runs.clear()
     _cancelled_messages.clear()
@@ -19,6 +42,7 @@ def reset_state() -> None:
 
 def register_active_run(message_id: str, agent: Any) -> None:
     _active_runs[message_id] = (None, agent)
+    _apply_cancel_intent(message_id, None, agent)
 
 
 def set_active_run_id(message_id: str, run_id: str) -> None:
@@ -27,6 +51,7 @@ def set_active_run_id(message_id: str, run_id: str) -> None:
         return
     _, agent = existing
     _active_runs[message_id] = (run_id, agent)
+    _apply_cancel_intent(message_id, run_id, agent)
 
 
 def get_active_run(message_id: str) -> tuple[str | None, Any] | None:

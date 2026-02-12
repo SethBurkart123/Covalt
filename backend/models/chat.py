@@ -85,6 +85,30 @@ class ChatId(BaseModel):
     id: str
 
 
+class MessageId(BaseModel):
+    id: str
+
+
+class ExecutionEventItem(BaseModel):
+    seq: int
+    ts: str
+    eventType: str
+    nodeId: Optional[str] = None
+    nodeType: Optional[str] = None
+    runId: Optional[str] = None
+    payload: Optional[Any] = None
+
+
+class MessageExecutionTraceResponse(BaseModel):
+    executionId: Optional[str] = None
+    kind: Optional[str] = None
+    status: Optional[str] = None
+    rootRunId: Optional[str] = None
+    startedAt: Optional[str] = None
+    endedAt: Optional[str] = None
+    events: List[ExecutionEventItem] = Field(default_factory=list)
+
+
 class ChatStreamRequest(BaseModel):
     messages: List[ChatMessage]
     modelId: str

@@ -4,7 +4,7 @@ import type { NodeDefinition, SocketTypeId, ParameterMode, NodeCategory, Executi
 
 const VALID_SOCKET_TYPES: SocketTypeId[] = [
   'data', 'tools', 'float', 'int', 'string', 'boolean',
-  'json', 'messages', 'model',
+  'json', 'model',
 ]
 const VALID_MODES: ParameterMode[] = ['constant', 'hybrid', 'input', 'output']
 const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility', 'ai', 'flow', 'integration', 'rag']

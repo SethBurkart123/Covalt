@@ -385,23 +385,25 @@ class MCPManager:
 
             async def read_stderr():
                 loop = asyncio.get_event_loop()
-                read_file = os.fdopen(read_fd, "r")
+                reader = asyncio.StreamReader()
+                read_pipe = os.fdopen(read_fd, "rb")
+                transport, _ = await loop.connect_read_pipe(
+                    lambda: asyncio.StreamReaderProtocol(reader),
+                    read_pipe,
+                )
                 try:
                     while True:
-                        line = await loop.run_in_executor(None, read_file.readline)
+                        line = await reader.readline()
                         if not line:
                             break
-                        line = line.rstrip("\n")
-                        if line:
-                            captured_stderr.append(line)
-                            logger.debug(f"MCP {server_id} stderr: {line}")
+                        text = line.decode(errors="replace").rstrip("\n")
+                        if text:
+                            captured_stderr.append(text)
+                            logger.debug(f"MCP {server_id} stderr: {text}")
                 except Exception:
                     pass
                 finally:
-                    try:
-                        read_file.close()
-                    except Exception:
-                        pass
+                    transport.close()
 
             stderr_task = asyncio.create_task(read_stderr())
 
@@ -435,17 +437,6 @@ class MCPManager:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                try:
-                    stderr_file.close()
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
-                stderr_task.cancel()
-                try:
-                    await stderr_task
-                except asyncio.CancelledError:
-                    pass
-
                 error_msg = (
                     "\n".join(captured_stderr[-20:])
                     if captured_stderr
@@ -456,14 +447,14 @@ class MCPManager:
                 state.session = None
                 state._connection_event.set()
             finally:
-                stderr_task.cancel()
-                try:
-                    await stderr_task
-                except asyncio.CancelledError:
-                    pass
                 try:
                     stderr_file.close()
                 except Exception:
+                    pass
+                stderr_task.cancel()
+                try:
+                    await stderr_task
+                except (asyncio.CancelledError, Exception):
                     pass
 
         state._cleanup_task = asyncio.create_task(run_connection())
@@ -904,3 +895,9 @@ async def ensure_mcp_initialized() -> MCPManager:
     if not mcp._initialized:
         await mcp.initialize()
     return mcp
+
+
+async def shutdown_mcp() -> None:
+    """Shut down the MCP manager if it was initialized."""
+    if _mcp_manager is not None:
+        await _mcp_manager.shutdown()

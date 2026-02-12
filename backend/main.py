@@ -3,6 +3,7 @@ from pathlib import Path
 from zynk import Bridge
 
 from .db import init_database
+from .services.mcp_manager import shutdown_mcp
 from . import commands  # noqa: F401
 
 
@@ -16,6 +17,7 @@ def main() -> int:
         debug=False,
         reload_includes=["backend"],
     )
+    app.on_shutdown(shutdown_mcp)
 
     app.run(dev=False)
     return 0

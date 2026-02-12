@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1103,3 +1104,95 @@ class TestFlowEdgeCases:
             assert "low" in executed
         else:
             assert "low" not in executed
+
+
+class TestFlowExecutionScope:
+    @pytest.mark.asyncio
+    async def test_entry_scope_skips_disconnected_flow_nodes(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("live", "passthrough"),
+                make_node("orphan", "passthrough"),
+            ],
+            edges=[make_edge("cs", "live", "output", "input")],
+        )
+        flow_ctx.state.user_message = "scoped"
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(entry_node_ids=["cs"])
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "cs" in started_nodes
+        assert "live" in started_nodes
+        assert "orphan" not in started_nodes
+
+    @pytest.mark.asyncio
+    async def test_entry_scope_ignores_unreachable_cycle(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("live", "passthrough"),
+                make_node("x", "passthrough"),
+                make_node("y", "passthrough"),
+            ],
+            edges=[
+                make_edge("cs", "live", "output", "input"),
+                make_edge("x", "y", "output", "input"),
+                make_edge("y", "x", "output", "input"),
+            ],
+        )
+        flow_ctx.state.user_message = "cycle"
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(entry_node_ids=["cs"])
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "cs" in started_nodes
+        assert "live" in started_nodes
+        assert "x" not in started_nodes
+        assert "y" not in started_nodes
+
+    @pytest.mark.asyncio
+    async def test_entry_scope_includes_upstream_dependencies(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("live", "passthrough"),
+                make_node("model", "passthrough"),
+            ],
+            edges=[
+                make_edge("cs", "live", "output", "input"),
+                make_edge("model", "live", "output", "aux"),
+            ],
+        )
+        flow_ctx.state.user_message = "scoped"
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(entry_node_ids=["cs"])
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "cs" in started_nodes
+        assert "live" in started_nodes
+        assert "model" in started_nodes
