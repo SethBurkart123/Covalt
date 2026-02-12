@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import type { Parameter } from '@/lib/flow';
 import { cn } from '@/lib/utils';
+import { applyExpressionDrop, shouldHandleExpressionDrop } from './expression-drop';
 
 interface TextAreaControlProps {
   param: Parameter;
@@ -13,15 +14,28 @@ interface TextAreaControlProps {
 
 export function TextAreaControl({ param, value, onChange, compact }: TextAreaControlProps) {
   const p = param as { default?: string; placeholder?: string; rows?: number };
+  const currentValue = value ?? p.default ?? '';
   
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   }, [onChange]);
 
+  const handleDrop = useCallback((e: React.DragEvent<HTMLTextAreaElement>) => {
+    applyExpressionDrop(e, currentValue, onChange);
+  }, [currentValue, onChange]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLTextAreaElement>) => {
+    if (shouldHandleExpressionDrop(e)) {
+      e.preventDefault();
+    }
+  }, []);
+
   return (
     <textarea
-      value={value ?? p.default ?? ''}
+      value={currentValue}
       onChange={handleChange}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
       placeholder={p.placeholder}
       rows={compact ? 2 : p.rows ?? 3}
       className={cn(

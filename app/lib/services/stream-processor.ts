@@ -27,6 +27,7 @@ export interface StreamCallbacks {
   onSessionId?: (sessionId: string) => void;
   onMessageId?: (messageId: string) => void;
   onThinkTagDetected?: () => void;
+  onEvent?: (eventType: string, payload: Record<string, unknown>) => void;
 }
 
 export interface StreamState {
@@ -403,7 +404,11 @@ export function processEvent(
   state: StreamState,
   callbacks: StreamCallbacks,
 ): void {
-  const d = data as Record<string, unknown>;
+  const d = (typeof data === "object" && data !== null
+    ? data
+    : { content: data }) as Record<string, unknown>;
+
+  callbacks.onEvent?.(eventType, d);
 
   if (d.memberRunId && eventType !== "MemberRunStarted" && eventType !== "MemberRunCompleted") {
     processMemberEvent(eventType, d, state);

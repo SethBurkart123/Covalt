@@ -1313,6 +1313,14 @@ async def handle_flow_stream(
 
         return False
 
+    def _send_flow_node_event(event_name: str, payload: dict[str, Any]) -> None:
+        ch.send_model(
+            ChatEvent(
+                event=event_name,
+                content=json.dumps(payload, default=str),
+            )
+        )
+
     try:
         async for item in runtime_run_flow(graph_data, context):
             if isinstance(item, NodeEvent):
@@ -1324,13 +1332,9 @@ async def handle_flow_stream(
                     run_id=item.run_id,
                 )
                 if item.event_type == "started":
-                    ch.send_model(
-                        ChatEvent(
-                            event="FlowNodeStarted",
-                            content=json.dumps(
-                                {"nodeId": item.node_id, "nodeType": item.node_type}
-                            ),
-                        )
+                    _send_flow_node_event(
+                        "FlowNodeStarted",
+                        {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "progress":
                     token = (item.data or {}).get("token", "")
@@ -1387,17 +1391,30 @@ async def handle_flow_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
                 elif item.event_type == "completed":
-                    ch.send_model(
-                        ChatEvent(
-                            event="FlowNodeCompleted",
-                            content=json.dumps(
-                                {"nodeId": item.node_id, "nodeType": item.node_type}
-                            ),
-                        )
+                    _send_flow_node_event(
+                        "FlowNodeCompleted",
+                        {"nodeId": item.node_id, "nodeType": item.node_type},
+                    )
+                elif item.event_type == "result":
+                    _send_flow_node_event(
+                        "FlowNodeResult",
+                        {
+                            "nodeId": item.node_id,
+                            "nodeType": item.node_type,
+                            "outputs": (item.data or {}).get("outputs", {}),
+                        },
                     )
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
+                    _send_flow_node_event(
+                        "FlowNodeError",
+                        {
+                            "nodeId": item.node_id,
+                            "nodeType": item.node_type,
+                            "error": str(error_msg),
+                        },
+                    )
                     trace_status = "error"
                     trace_error = error_text
                     _flush_current_text()

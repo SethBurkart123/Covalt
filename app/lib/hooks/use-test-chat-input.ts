@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useRef } from "react";
+import { useAgentTestChat } from "@/contexts/agent-test-chat-context";
 import { useMessageEditing } from "@/lib/hooks/use-message-editing";
 import { createUserMessage, createAssistantMessage } from "@/lib/utils/message";
 import { api } from "@/lib/services/api";
@@ -8,6 +9,7 @@ import { processMessageStream } from "@/lib/services/stream-processor";
 import type { Attachment, Message, MessageSibling } from "@/lib/types/chat";
 
 export function useTestChatInput(agentId: string) {
+  const { clearLastExecution, recordFlowEvent } = useAgentTestChat();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const editing = useMessageEditing();
@@ -20,7 +22,8 @@ export function useTestChatInput(agentId: string) {
   const clearMessages = useCallback(() => {
     setMessages([]);
     editing.clearEditing();
-  }, [editing]);
+    clearLastExecution();
+  }, [clearLastExecution, editing]);
 
   const runStream = useCallback(
     async (allMessages: Message[]) => {
@@ -49,6 +52,9 @@ export function useTestChatInput(agentId: string) {
             assistantMsgId = id;
             streamingMessageIdRef.current = id;
           },
+          onEvent: (eventType, payload) => {
+            recordFlowEvent(eventType, payload);
+          },
         });
 
         if (result.messageId && result.finalContent.length > 0) {
@@ -72,7 +78,7 @@ export function useTestChatInput(agentId: string) {
         streamAbortRef.current = null;
       }
     },
-    [agentId],
+    [agentId, recordFlowEvent],
   );
 
   const handleSubmit = useCallback(

@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { FlowProvider, useSelection } from '@/lib/flow';
-import { FlowCanvas, PropertiesPanel } from '@/components/flow';
+import { FlowProvider } from '@/lib/flow';
+import { FlowCanvas, NodeInspectorDialog } from '@/components/flow';
 import { AgentEditorProvider, useAgentEditor } from '@/contexts/agent-editor-context';
 import { AgentTestChatProvider, useAgentTestChat } from '@/contexts/agent-test-chat-context';
 import { usePageTitle } from '@/contexts/page-title-context';
@@ -18,11 +18,17 @@ function AgentEditorContent() {
   const router = useRouter();
   const { setLeftContent, setRightContent, setFloating } = usePageTitle();
   const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
-  const { selectedNodeId } = useSelection();
-  const { isOpen: isChatOpen, toggle: toggleChat } = useAgentTestChat();
+  const { isOpen: isChatOpen, toggle: toggleChat, lastExecutionByNode } = useAgentTestChat();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorNodeId, setInspectorNodeId] = useState<string | null>(null);
   const { captureAndUpload } = useCanvasPreview(agentId);
   const captureRef = useRef(captureAndUpload);
+
+  const handleNodeDoubleClick = (nodeId: string) => {
+    setInspectorNodeId(nodeId);
+    setInspectorOpen(true);
+  };
 
   useEffect(() => {
     setFloating(true);
@@ -99,12 +105,13 @@ function AgentEditorContent() {
     <div className="flex flex-row flex-1 min-h-0">
       <div className="flex flex-col flex-1 min-h-0 min-w-0">
         <div className="flex-1 relative min-h-0">
-          <FlowCanvas />
-          {selectedNodeId && (
-            <div className="absolute top-20 right-4 w-80 z-10">
-              <PropertiesPanel />
-            </div>
-          )}
+          <FlowCanvas onNodeDoubleClick={handleNodeDoubleClick} />
+          <NodeInspectorDialog
+            open={inspectorOpen}
+            onOpenChange={setInspectorOpen}
+            nodeId={inspectorNodeId}
+            lastExecutionByNode={lastExecutionByNode}
+          />
         </div>
         <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </div>
