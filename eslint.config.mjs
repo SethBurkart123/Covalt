@@ -17,7 +17,7 @@ const eslintConfig = [
       "react/display-name": "warn",
       "react-hooks/rules-of-hooks": "warn",
       "react/no-unescaped-entities": "warn",
-      "@next/next/no-img-element": "warn",
+      "@next/next/no-img-element": "off",
       "@typescript-eslint/no-explicit-any": "warn",
     },
   },
