@@ -107,6 +107,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
             key={param.id}
             param={param}
             value={selectedNodeData.data[param.id]}
+            isConnected={connectedInputs.has(param.id)}
             onParamChange={handleDataChange}
             nodeId={effectiveNodeId}
           />
@@ -125,12 +126,20 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
 interface ParameterFieldProps {
   param: Parameter;
   value: unknown;
+  isConnected?: boolean;
   onParamChange: (paramId: string, value: unknown) => void;
   nodeId?: string | null;
 }
 
-const ParameterField = memo(function ParameterField({ param, value, onParamChange, nodeId }: ParameterFieldProps) {
+const ParameterField = memo(function ParameterField({
+  param,
+  value,
+  isConnected,
+  onParamChange,
+  nodeId,
+}: ParameterFieldProps) {
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
+  const showControl = (param.mode === 'constant') || (param.mode === 'hybrid' && !isConnected);
   
   return (
     <div className="space-y-1.5">
@@ -139,12 +148,18 @@ const ParameterField = memo(function ParameterField({ param, value, onParamChang
           {param.label}
         </label>
       )}
-      <ParameterControl
-        param={param}
-        value={value}
-        onChange={handleChange}
-        nodeId={nodeId}
-      />
+      {showControl ? (
+        <ParameterControl
+          param={param}
+          value={value}
+          onChange={handleChange}
+          nodeId={nodeId}
+        />
+      ) : (
+        <div className="text-xs text-muted-foreground italic">
+          Connected via graph input.
+        </div>
+      )}
     </div>
   );
 });

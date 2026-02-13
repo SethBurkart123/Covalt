@@ -19,5 +19,5 @@ def main() -> int:
     )
     app.on_shutdown(shutdown_mcp)
 
-    app.run(dev=False)
+    app.run(dev=True)
     return 0

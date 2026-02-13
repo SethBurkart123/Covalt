@@ -19,6 +19,7 @@ import {
   generateChatTitle,
   respondToThinkingTagPrompt,
   toggleStarChat,
+  getAgentLastExecution,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 
@@ -213,6 +214,9 @@ export const api = {
 
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
+
+  getAgentLastExecution: (agentId: string) =>
+    getAgentLastExecution({ body: { id: agentId } }),
 
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
     cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,

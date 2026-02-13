@@ -130,6 +130,16 @@ class ExecutionEvent(Base):
     )
 
 
+class AgentExecutionSnapshot(Base):
+    """Latest flow execution snapshot per agent (for node inspector hydration)."""
+
+    __tablename__ = "agent_execution_snapshots"
+
+    agent_id: Mapped[str] = mapped_column(String, primary_key=True)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class ToolsetMcpServer(Base):
     """MCP server configuration belonging to a toolset."""
 

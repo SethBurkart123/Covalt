@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { api } from "@/lib/services/api";
 
 export interface FlowOutputPortSnapshot {
   type?: string;
@@ -57,9 +58,16 @@ interface AgentTestChatContextValue {
 
 const AgentTestChatContext = createContext<AgentTestChatContextValue | null>(null);
 
-export function AgentTestChatProvider({ children }: { children: ReactNode }) {
+export function AgentTestChatProvider({
+  children,
+  agentId,
+}: {
+  children: ReactNode;
+  agentId?: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [lastExecutionByNode, setLastExecutionByNode] = useState<Record<string, FlowNodeExecutionSnapshot>>({});
+  const hasLiveUpdatesRef = useRef(false);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -83,6 +91,8 @@ export function AgentTestChatProvider({ children }: { children: ReactNode }) {
     ) {
       return;
     }
+
+    hasLiveUpdatesRef.current = true;
 
     const eventData = parseEventContent(payload.content) ?? payload;
     const nodeId = typeof eventData.nodeId === "string" ? eventData.nodeId : null;
@@ -117,6 +127,28 @@ export function AgentTestChatProvider({ children }: { children: ReactNode }) {
       };
     });
   }, []);
+
+  useEffect(() => {
+    if (!agentId) return;
+    let cancelled = false;
+    api.getAgentLastExecution(agentId)
+      .then((response) => {
+        if (cancelled) return;
+        if (hasLiveUpdatesRef.current) return;
+        const snapshot = response?.lastExecutionByNode;
+        if (snapshot && typeof snapshot === "object") {
+          setLastExecutionByNode(snapshot as Record<string, FlowNodeExecutionSnapshot>);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Failed to load last agent execution:", error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
 
   return (
     <AgentTestChatContext.Provider
