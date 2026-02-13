@@ -22,6 +22,7 @@ from zynk import Channel
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall
 from .agent_manager import get_agent_manager
+from .agent_execution_snapshot import AgentExecutionSnapshotRecorder
 from . import run_control
 from . import stream_broadcaster as broadcaster
 from .flow_executor import run_flow
@@ -211,6 +212,23 @@ def _build_chat_scope(graph_data: dict[str, Any]) -> tuple[ChatScope, list[str]]
         ),
         entry_node_ids,
     )
+
+
+def _build_trigger_payload(
+    user_message: str,
+    chat_history: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
+    messages: list[Any],
+    include_user_tools: bool,
+) -> dict[str, Any]:
+    return {
+        "message": user_message,
+        "last_user_message": user_message,
+        "history": chat_history,
+        "messages": messages,
+        "attachments": attachments,
+        "include_user_tools": include_user_tools,
+    }
 
 
 def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
@@ -970,6 +988,7 @@ async def handle_flow_stream(
     raw_ch: Any,
     chat_id: str = "",
     ephemeral: bool = False,
+    agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
     run_flow_impl: Callable[..., Any] | None = None,
     save_content_impl: Callable[[str, str], None] | None = None,
@@ -994,6 +1013,18 @@ async def handle_flow_stream(
     trace_recorder.start()
     trace_status = "streaming"
     trace_error: str | None = None
+
+    snapshot_recorder = (
+        AgentExecutionSnapshotRecorder(agent_id=agent_id) if agent_id else None
+    )
+
+    def _persist_snapshot() -> None:
+        if snapshot_recorder is None:
+            return
+        try:
+            snapshot_recorder.persist()
+        except Exception as exc:
+            logger.warning("[execution_snapshot] Failed to persist: %s", exc)
 
     run_handle = FlowRunHandle()
     run_control.register_active_run(assistant_msg_id, run_handle)
@@ -1028,6 +1059,14 @@ async def handle_flow_stream(
     chat_history = build_chat_runtime_history(messages)
     openai_messages = build_openai_messages_for_chat(messages)
     chat_scope, entry_node_ids = _build_chat_scope(graph_data)
+    include_user_tools = _get_chat_start_include_user_tools(graph_data)
+    trigger_payload = _build_trigger_payload(
+        user_message,
+        chat_history,
+        last_user_attachments,
+        openai_messages,
+        include_user_tools,
+    )
 
     state = types.SimpleNamespace(user_message=user_message)
     context = types.SimpleNamespace(
@@ -1044,6 +1083,7 @@ async def handle_flow_stream(
                 history=chat_history,
                 messages=openai_messages,
             ),
+            expression_context={"trigger": trigger_payload},
             chat_scope=chat_scope,
             execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
         ),
@@ -1396,6 +1436,13 @@ async def handle_flow_stream(
                     run_id=item.run_id,
                 )
                 if item.event_type == "started":
+                    if snapshot_recorder is not None:
+                        snapshot_recorder.record_node_event(
+                            event_type="started",
+                            node_id=item.node_id,
+                            node_type=item.node_type,
+                            payload=item.data,
+                        )
                     _send_flow_node_event(
                         "FlowNodeStarted",
                         {"nodeId": item.node_id, "nodeType": item.node_type},
@@ -1455,11 +1502,25 @@ async def handle_flow_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
                 elif item.event_type == "completed":
+                    if snapshot_recorder is not None:
+                        snapshot_recorder.record_node_event(
+                            event_type="completed",
+                            node_id=item.node_id,
+                            node_type=item.node_type,
+                            payload=item.data,
+                        )
                     _send_flow_node_event(
                         "FlowNodeCompleted",
                         {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "result":
+                    if snapshot_recorder is not None:
+                        snapshot_recorder.record_node_event(
+                            event_type="result",
+                            node_id=item.node_id,
+                            node_type=item.node_type,
+                            payload=item.data,
+                        )
                     _send_flow_node_event(
                         "FlowNodeResult",
                         {
@@ -1471,6 +1532,13 @@ async def handle_flow_stream(
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
+                    if snapshot_recorder is not None:
+                        snapshot_recorder.record_node_event(
+                            event_type="error",
+                            node_id=item.node_id,
+                            node_type=item.node_type,
+                            payload={"error": error_msg},
+                        )
                     _send_flow_node_event(
                         "FlowNodeError",
                         {
@@ -1582,6 +1650,7 @@ async def handle_flow_stream(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
     finally:
+        _persist_snapshot()
         run_control.remove_active_run(assistant_msg_id)
         run_control.clear_early_cancel(assistant_msg_id)
 
@@ -2387,6 +2456,7 @@ async def run_graph_chat_runtime(
     *,
     chat_id: str,
     ephemeral: bool,
+    agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
     flow_stream_handler: FlowStreamHandler | None = None,
 ) -> None:
@@ -2402,5 +2472,6 @@ async def run_graph_chat_runtime(
         channel,
         chat_id=chat_id,
         ephemeral=ephemeral,
+        agent_id=agent_id,
         extra_tool_ids=extra_tool_ids,
     )

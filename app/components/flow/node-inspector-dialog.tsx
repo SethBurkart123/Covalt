@@ -318,6 +318,7 @@ function DataSection({
   view,
   jsonValue,
   expressionForPath,
+  status,
 }: {
   title: string;
   subtitle?: string;
@@ -325,11 +326,23 @@ function DataSection({
   view: InspectorView;
   jsonValue: unknown;
   expressionForPath: (path: string) => string;
+  status?: FlowNodeExecutionSnapshot['status'];
 }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <div className="min-w-0 flex gap-2">
+        <div className="min-w-0 flex items-center gap-2">
+          {status && (
+            <CircleDot
+              className={cn(
+                'size-3 shrink-0',
+                status === 'completed' && 'text-primary',
+                status === 'running' && 'text-accent-foreground',
+                status === 'error' && 'text-destructive',
+                status === 'idle' && 'text-muted-foreground'
+              )}
+            />
+          )}
           <p className="text-xs font-medium truncate text-foreground">{title}</p>
           {subtitle && <p className="text-[11px] text-muted-foreground truncate">({subtitle})</p>}
         </div>
@@ -536,11 +549,8 @@ export function NodeInspectorDialog({
                         view={leftView}
                         jsonValue={entry.value}
                         expressionForPath={path => buildNodeExpression(entry.nodeName, path)}
+                        status={entry.status}
                       />
-                      <div className="flex items-center gap-2 px-1 pt-1.5">
-                        <CircleDot className="size-3 text-muted-foreground" />
-                        <EventBadge status={entry.status} />
-                      </div>
                     </div>
                   ))
                 )}

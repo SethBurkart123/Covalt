@@ -145,7 +145,7 @@ export default function AgentEditorPage() {
   }
 
   return (
-    <AgentTestChatProvider>
+    <AgentTestChatProvider agentId={agentId}>
       <FlowProvider>
         <AgentEditorProvider agentId={agentId}>
           <AgentEditorContent />

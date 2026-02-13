@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from zynk import StaticFile, UploadFile, command, static, upload
 
+from .. import db
 from ..services.agent_manager import get_agent_manager
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,25 @@ class AgentDetailResponse(BaseModel):
     graph_data: GraphData
     created_at: str
     updated_at: str
+
+
+class FlowOutputPortSnapshot(BaseModel):
+    type: Optional[str] = None
+    value: Optional[Any] = None
+
+
+class FlowNodeExecutionSnapshot(BaseModel):
+    nodeId: str
+    nodeType: Optional[str] = None
+    status: Literal["idle", "running", "completed", "error"]
+    outputs: Optional[Dict[str, FlowOutputPortSnapshot]] = None
+    error: Optional[str] = None
+    updatedAt: int
+
+
+class AgentLastExecutionResponse(BaseModel):
+    lastExecutionByNode: Dict[str, FlowNodeExecutionSnapshot] = Field(default_factory=dict)
+    updatedAt: Optional[int] = None
 
 
 # Request models
@@ -163,6 +183,33 @@ async def get_agent(body: AgentIdRequest) -> AgentDetailResponse:
         ),
         created_at=agent["created_at"],
         updated_at=agent["updated_at"],
+    )
+
+
+@command
+async def get_agent_last_execution(body: AgentIdRequest) -> AgentLastExecutionResponse:
+    with db.db_session() as sess:
+        snapshot = db.get_agent_execution_snapshot(sess, agent_id=body.id)
+
+    if not snapshot or not isinstance(snapshot, dict):
+        return AgentLastExecutionResponse()
+
+    nodes = snapshot.get("nodes")
+    cleaned_nodes: Dict[str, FlowNodeExecutionSnapshot] = {}
+    if isinstance(nodes, dict):
+        for node_id, node_value in nodes.items():
+            try:
+                cleaned_nodes[str(node_id)] = FlowNodeExecutionSnapshot.model_validate(node_value)
+            except Exception:
+                continue
+
+    updated_at = snapshot.get("updatedAt")
+    if updated_at is not None and not isinstance(updated_at, int):
+        updated_at = None
+
+    return AgentLastExecutionResponse(
+        lastExecutionByNode=cleaned_nodes,
+        updatedAt=updated_at,
     )
 
 

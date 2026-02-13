@@ -851,29 +851,7 @@ def _should_include_extra_tools(
             if isinstance(input_value.get(key), bool):
                 return bool(input_value.get(key))
 
-    chat_scope = _get_chat_scope(context)
-    if chat_scope is not None and hasattr(chat_scope, "include_user_tools"):
-        return bool(chat_scope.include_user_tools(context.node_id))
-
-    runtime = context.runtime
-    if runtime is None:
-        return True
-
-    incoming = runtime.incoming_edges(
-        context.node_id,
-        channel="flow",
-        target_handle="input",
-    )
-    for edge in incoming:
-        source_id = edge.get("source")
-        if not source_id:
-            continue
-        source_node = runtime.get_node(source_id)
-        if source_node.get("type") != "chat-start":
-            continue
-        return bool(source_node.get("data", {}).get("includeUserTools", False))
-
-    return True
+    return False
 
 
 executor = AgentExecutor()

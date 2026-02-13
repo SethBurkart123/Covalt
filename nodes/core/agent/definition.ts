@@ -14,7 +14,6 @@ export const agent = {
   executionMode: 'hybrid',
 
   parameters: [
-    // Structural: tool composition
     {
       id: 'tools',
       type: 'tools',
@@ -24,23 +23,12 @@ export const agent = {
       socket: { type: 'tools', side: 'right', channel: 'link' },
       acceptsTypes: ['tools', 'data'],
     },
-    // Flow: data spine
     {
       id: 'input',
       type: 'data',
       label: 'Data',
       mode: 'input',
       socket: { type: 'data', bidirectional: true },
-    },
-    {
-      id: 'messages',
-      type: 'messages',
-      label: 'Messages',
-      mode: 'constant',
-      default: {
-        mode: 'expression',
-        expression: '{{ input.messages }}',
-      },
     },
     {
       id: 'output',
@@ -56,6 +44,16 @@ export const agent = {
       label: 'Model',
       mode: 'hybrid',
       socket: { type: 'model', side: 'left' },
+    },
+    {
+      id: 'messages',
+      type: 'messages',
+      label: 'Messages',
+      mode: 'constant',
+      default: {
+        mode: 'expression',
+        expression: '{{ input.messages }}',
+      },
     },
     {
       id: 'instructions',

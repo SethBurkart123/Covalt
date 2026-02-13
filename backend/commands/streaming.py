@@ -475,6 +475,7 @@ async def stream_agent_chat(
             channel,
             chat_id=chat_id,
             ephemeral=ephemeral,
+            agent_id=body.agentId,
         )
     except Exception as e:
         logger.error(f"[stream_agent] Error: {e}")

@@ -334,7 +334,16 @@ async def run_flow(
             continue
 
         direct_input = inputs.get("input")
-        data = resolve_expressions(data, direct_input, upstream_outputs)
+        expression_context = getattr(services, "expression_context", None)
+        if not isinstance(expression_context, dict):
+            expression_context = None
+
+        data = resolve_expressions(
+            data,
+            direct_input,
+            upstream_outputs,
+            expression_context=expression_context,
+        )
 
         node_context = FlowContext(
             node_id=node_id,

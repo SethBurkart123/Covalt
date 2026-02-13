@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import type { Parameter } from '@/lib/flow';
-import { Input } from '@/components/ui/input';
+import { DraggableNumberInput } from '@/components/ui/draggable-number-input';
 import { cn } from '@/lib/utils';
 
 interface FloatControlProps {
@@ -16,28 +16,24 @@ export function FloatControl({ param, value, onChange, compact }: FloatControlPr
   const p = param as { default?: number; min?: number; max?: number; step?: number };
   const currentValue = value ?? p.default ?? 0;
   
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    if (!isNaN(val)) {
-      const clamped = Math.min(
-        p.max ?? Infinity,
-        Math.max(p.min ?? -Infinity, val)
-      );
-      onChange(clamped);
-    }
+  const handleChange = useCallback((nextValue: number) => {
+    const clamped = Math.min(
+      p.max ?? Infinity,
+      Math.max(p.min ?? -Infinity, nextValue)
+    );
+    onChange(clamped);
   }, [onChange, p.min, p.max]);
 
   return (
-    <Input
-      type="number"
+    <DraggableNumberInput
       value={currentValue}
       onChange={handleChange}
       min={p.min}
       max={p.max}
-      step={p.step ?? 0.1}
+      step={p.step}
+      compact={compact}
       className={cn(
-        'nodrag text-right',
-        compact ? 'h-7 w-16 text-xs' : 'h-8 w-20'
+        'w-full'
       )}
     />
   );
