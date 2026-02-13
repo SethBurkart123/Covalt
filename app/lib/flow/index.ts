@@ -19,6 +19,7 @@ export type {
   BooleanParameter,
   EnumParameter,
   TextAreaParameter,
+  MessagesParameter,
   ModelParameter,
   McpServerParameter,
   ToolsetParameter,

@@ -409,6 +409,17 @@ def _get_executor(node_type: str, executors: dict[str, Any] | None) -> Any | Non
 
     return get_executor(node_type)
 
+def _ensure_run_id(event: NodeEvent, run_id: str) -> NodeEvent:
+    if event.run_id:
+        return event
+    return NodeEvent(
+        node_id=event.node_id,
+        node_type=event.node_type,
+        event_type=event.event_type,
+        run_id=run_id,
+        data=event.data,
+    )
+
 
 async def _run_executor(
     executor: Any,
@@ -421,8 +432,58 @@ async def _run_executor(
     result = executor.execute(data, inputs, context)
 
     if hasattr(result, "__aiter__"):
-        async for item in result:
-            yield item
+        started_event: NodeEvent | None = None
+        completed_event: NodeEvent | None = None
+        started_emitted = False
+
+        try:
+            async for item in result:
+                if isinstance(item, NodeEvent):
+                    if item.event_type == "started":
+                        if started_event is None:
+                            started_event = item
+                        if not started_emitted:
+                            yield _ensure_run_id(started_event, run_id)
+                            started_emitted = True
+                        continue
+                    if item.event_type == "completed":
+                        if completed_event is None:
+                            completed_event = item
+                        continue
+
+                if not started_emitted:
+                    if started_event is not None:
+                        yield _ensure_run_id(started_event, run_id)
+                    else:
+                        yield NodeEvent(
+                            node_id=context.node_id,
+                            node_type=executor.node_type,
+                            event_type="started",
+                            run_id=run_id,
+                        )
+                    started_emitted = True
+
+                yield item
+        except Exception:
+            raise
+        else:
+            if not started_emitted:
+                yield NodeEvent(
+                    node_id=context.node_id,
+                    node_type=executor.node_type,
+                    event_type="started",
+                    run_id=run_id,
+                )
+
+            if completed_event is not None:
+                yield _ensure_run_id(completed_event, run_id)
+            else:
+                yield NodeEvent(
+                    node_id=context.node_id,
+                    node_type=executor.node_type,
+                    event_type="completed",
+                    run_id=run_id,
+                )
     else:
         execution_result = await result
         if isinstance(execution_result, ExecutionResult):

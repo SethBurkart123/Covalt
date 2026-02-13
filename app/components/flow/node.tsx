@@ -96,6 +96,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
                 value={data[param.id]}
                 isConnected={connectedInputs.has(param.id)}
                 onParamChange={handleParameterChange}
+                nodeId={id}
               />
             ))}
         </div>

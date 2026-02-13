@@ -33,6 +33,16 @@ export const agent = {
       socket: { type: 'data', bidirectional: true },
     },
     {
+      id: 'messages',
+      type: 'messages',
+      label: 'Messages',
+      mode: 'constant',
+      default: {
+        mode: 'expression',
+        expression: '{{ input.messages }}',
+      },
+    },
+    {
       id: 'output',
       type: 'data',
       label: 'Data',

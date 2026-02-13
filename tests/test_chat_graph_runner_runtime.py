@@ -245,8 +245,8 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         chat_input = context.services.chat_input
         captured["history_len"] = len(chat_input.history)
         captured["last_user_message"] = chat_input.last_user_message
-        captured["agno_roles"] = [
-            str(getattr(message, "role", "")) for message in chat_input.agno_messages
+        captured["message_roles"] = [
+            str(message.get("role", "")) for message in chat_input.messages
         ]
         chat_scope = context.services.chat_scope
         captured["entry_scope"] = list(context.services.execution.entry_node_ids)
@@ -277,7 +277,7 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     assert captured["extra_tool_ids"] == ["mcp:github"]
     assert captured["history_len"] == 3
     assert captured["last_user_message"] == "final"
-    assert captured["agno_roles"] == ["user", "assistant", "user"]
+    assert captured["message_roles"] == ["user", "assistant", "user"]
     assert captured["entry_scope"] == ["cs"]
     assert captured["include_user_tools"] is False
 

@@ -58,6 +58,7 @@ class AgentExecutor:
             model_str=model_str,
             temperature=temperature,
             instructions=instructions,
+            input_value=None,
         )
 
     async def execute(
@@ -95,6 +96,7 @@ class AgentExecutor:
             model_str=model_str,
             temperature=temperature,
             instructions=instructions,
+            input_value=input_value,
         )
 
         run_handle = _get_run_handle(context)
@@ -114,7 +116,8 @@ class AgentExecutor:
             fallback_final = ""
             seen_member_run_ids: set[str] = set()
             active_run_id = ""
-            run_input = _resolve_run_input(input_value, message)
+            messages_override = _resolve_messages_override(data)
+            run_input = _resolve_run_input(input_value, message, messages_override)
 
             stream = agent.arun(
                 input=run_input,
@@ -579,13 +582,39 @@ def _get_chat_scope(context: FlowContext) -> Any | None:
 def _resolve_run_input(
     input_value: dict[str, Any],
     default_message: str,
+    messages_override: Any | None = None,
 ) -> Any:
-    for key in ("agno_messages", "messages"):
+    if messages_override is not None:
+        parsed_override = _coerce_messages(messages_override)
+        if parsed_override:
+            return parsed_override
+
+    for key in ("messages", "agno_messages"):
         parsed_messages = _coerce_messages(input_value.get(key))
         if parsed_messages:
             return parsed_messages
 
     return default_message
+
+
+def _resolve_messages_override(data: dict[str, Any]) -> Any | None:
+    raw = data.get("messages")
+    if raw is None:
+        return None
+
+    if isinstance(raw, dict):
+        mode = raw.get("mode")
+        if mode == "expression":
+            return raw.get("expression")
+        if mode == "manual":
+            return raw.get("messages")
+
+        if "messages" in raw:
+            return raw.get("messages")
+        if "expression" in raw:
+            return raw.get("expression")
+
+    return raw
 
 
 def _coerce_messages(value: Any) -> list[Message]:
@@ -632,11 +661,34 @@ def _coerce_message_item(item: Any) -> list[Message]:
 
         tool_calls = item.get("tool_calls") or item.get("toolCalls")
         if role == "assistant" and isinstance(tool_calls, list):
-            payload["tool_calls"] = tool_calls
+            payload["tool_calls"] = _normalize_tool_calls(tool_calls)
 
         return [Message(**payload)]
 
     return []
+
+
+def _normalize_tool_calls(tool_calls: list[Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            continue
+        payload = dict(call)
+        if "type" not in payload:
+            payload["type"] = "function"
+
+        func = payload.get("function")
+        if isinstance(func, dict):
+            func_payload = dict(func)
+            args = func_payload.get("arguments")
+            if args is not None and not isinstance(args, str):
+                try:
+                    func_payload["arguments"] = json.dumps(args)
+                except TypeError:
+                    func_payload["arguments"] = str(args)
+            payload["function"] = func_payload
+        normalized.append(payload)
+    return normalized
 
 
 def _get_tool_registry(context: FlowContext) -> Any | None:
@@ -699,9 +751,10 @@ async def _build_runtime_runnable(
     model_str: str,
     temperature: float | None,
     instructions: list[str] | None,
+    input_value: dict[str, Any] | None,
 ) -> Agent | Team:
     model = _resolve_model(model_str, temperature)
-    tools, sub_agents = await _resolve_link_dependencies(context)
+    tools, sub_agents = await _resolve_link_dependencies(context, input_value)
 
     if not sub_agents:
         return Agent(
@@ -731,13 +784,14 @@ async def _build_runtime_runnable(
 
 async def _resolve_link_dependencies(
     context: FlowContext,
+    input_value: dict[str, Any] | None,
 ) -> tuple[list[Any], list[Any]]:
     artifacts: list[Any] = []
     runtime = context.runtime
     if runtime is not None:
         artifacts.extend(await runtime.resolve_links(context.node_id, "tools"))
 
-    extra_tools = _resolve_extra_tools(context)
+    extra_tools = _resolve_extra_tools(context, input_value)
     if extra_tools:
         artifacts.extend(extra_tools)
 
@@ -753,7 +807,10 @@ async def _resolve_link_dependencies(
     return tools, sub_agents
 
 
-def _resolve_extra_tools(context: FlowContext) -> list[Any]:
+def _resolve_extra_tools(
+    context: FlowContext,
+    input_value: dict[str, Any] | None,
+) -> list[Any]:
     services = context.services
     if services is None:
         return []
@@ -762,7 +819,7 @@ def _resolve_extra_tools(context: FlowContext) -> list[Any]:
     if not extra_tool_ids:
         return []
 
-    if not _should_include_extra_tools(context):
+    if not _should_include_extra_tools(context, input_value):
         return []
 
     tool_registry = _get_tool_registry(context)
@@ -785,7 +842,15 @@ def _flatten_link_artifacts(artifacts: list[Any]) -> list[Any]:
     return flattened
 
 
-def _should_include_extra_tools(context: FlowContext) -> bool:
+def _should_include_extra_tools(
+    context: FlowContext,
+    input_value: dict[str, Any] | None,
+) -> bool:
+    if isinstance(input_value, dict):
+        for key in ("include_user_tools", "includeUserTools"):
+            if isinstance(input_value.get(key), bool):
+                return bool(input_value.get(key))
+
     chat_scope = _get_chat_scope(context)
     if chat_scope is not None and hasattr(chat_scope, "include_user_tools"):
         return bool(chat_scope.include_user_tools(context.node_id))

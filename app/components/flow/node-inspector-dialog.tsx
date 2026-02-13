@@ -12,14 +12,26 @@ import { Braces, CircleDot, Database, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { getNodeDefinition, useFlowState } from '@/lib/flow';
+import { useFlowState } from '@/lib/flow';
 import { PropertiesPanel } from './properties-panel';
 import type {
   FlowNodeExecutionSnapshot,
-  FlowOutputPortSnapshot,
 } from '@/contexts/agent-test-chat-context';
+import {
+  buildInputExpression,
+  buildNodeExpression,
+  collectObjectRows,
+  formatPreview,
+  formatSchemaPreview,
+  getNodeName,
+  isRecord,
+  pickPrimaryOutput,
+  sampleArrayValue,
+  valueType,
+} from './flow-data-utils';
+import { TEMPLATE_DRAG_ACTIVE_CLASS } from './template-editor/template-editor-constants';
 
-type InspectorView = 'schema' | 'table' | 'json';
+type InspectorView = 'schema' | 'json';
 
 interface PathRow {
   path: string;
@@ -27,12 +39,21 @@ interface PathRow {
   type: string;
 }
 
+interface SchemaNode {
+  id: string;
+  name: string;
+  path: string;
+  type: string;
+  value: unknown;
+  children: SchemaNode[];
+}
+
 interface UpstreamEntry {
   nodeId: string;
   nodeName: string;
   status: FlowNodeExecutionSnapshot['status'];
   value: unknown;
-  rows: PathRow[];
+  schemaNodes: SchemaNode[];
   outputType: string | null;
 }
 
@@ -43,58 +64,6 @@ interface NodeInspectorDialogProps {
   lastExecutionByNode: Record<string, FlowNodeExecutionSnapshot>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function valueType(value: unknown): string {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
-  return typeof value;
-}
-
-function collectObjectRows(value: unknown, prefix = ''): PathRow[] {
-  if (!isRecord(value)) {
-    return [{ path: prefix, value, type: valueType(value) }];
-  }
-
-  const entries = Object.entries(value);
-  if (entries.length === 0) {
-    return [{ path: prefix, value, type: 'object' }];
-  }
-
-  return entries.flatMap(([key, nestedValue]) => {
-    const nextPath = prefix ? `${prefix}.${key}` : key;
-    if (isRecord(nestedValue)) {
-      return collectObjectRows(nestedValue, nextPath);
-    }
-    return [{ path: nextPath, value: nestedValue, type: valueType(nestedValue) }];
-  });
-}
-
-function formatPreview(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value === null || value === undefined) return String(value);
-  if (Array.isArray(value)) return `[${value.length} items]`;
-  return '{...}';
-}
-
-function escapeLabel(label: string): string {
-  return label.replace(/'/g, "\\'");
-}
-
-function buildNodeExpression(nodeName: string, path: string): string {
-  const escaped = escapeLabel(nodeName);
-  if (!path) return `{{ $('${escaped}').item.json }}`;
-  return `{{ $('${escaped}').item.json.${path} }}`;
-}
-
-function buildInputExpression(path: string): string {
-  if (!path) return '{{ input }}';
-  return `{{ input.${path} }}`;
-}
-
 function toJsonText(value: unknown): string {
   if (value === undefined) return '';
   try {
@@ -102,27 +71,6 @@ function toJsonText(value: unknown): string {
   } catch {
     return String(value);
   }
-}
-
-function pickPrimaryOutput(snapshot?: FlowNodeExecutionSnapshot): { type: string | null; value: unknown } {
-  if (!snapshot?.outputs) return { type: null, value: undefined };
-
-  const output = snapshot.outputs.output ?? snapshot.outputs.true ?? snapshot.outputs.false;
-  if (output) return { type: output.type ?? null, value: output.value };
-
-  const first = Object.values(snapshot.outputs)[0] as FlowOutputPortSnapshot | undefined;
-  if (!first) return { type: null, value: undefined };
-  return { type: first.type ?? null, value: first.value };
-}
-
-function getNodeName(node: { type?: string; data?: Record<string, unknown> }): string {
-  const label = node.data?._label;
-  if (typeof label === 'string' && label.trim()) return label;
-
-  const definition = getNodeDefinition(node.type || '');
-  if (definition) return definition.name;
-
-  return node.type || 'Node';
 }
 
 function EventBadge({ status }: { status: FlowNodeExecutionSnapshot['status'] }) {
@@ -141,39 +89,6 @@ function EventBadge({ status }: { status: FlowNodeExecutionSnapshot['status'] })
   );
 }
 
-function ExpressionRow({
-  label,
-  expression,
-  preview,
-  type,
-}: {
-  label: string;
-  expression: string;
-  preview: string;
-  type: string;
-}) {
-  const onDragStart = useCallback((event: DragEvent<HTMLDivElement>) => {
-    event.dataTransfer.effectAllowed = 'copy';
-    event.dataTransfer.setData('text/plain', expression);
-  }, [expression]);
-
-  return (
-    <div
-      draggable
-      onDragStart={onDragStart}
-      className="group rounded-xl border border-border/80 bg-background/80 p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors"
-      title={expression}
-    >
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-xs text-foreground truncate">{label || '(root)'}</span>
-        <span className="text-[10px] uppercase text-muted-foreground">{type}</span>
-      </div>
-      <p className="text-[11px] text-muted-foreground truncate">{preview || '(empty)'}</p>
-      <p className="mt-1 text-[10px] text-primary truncate opacity-75 group-hover:opacity-100">{expression}</p>
-    </div>
-  );
-}
-
 function ViewTabs({
   value,
   onChange,
@@ -181,7 +96,7 @@ function ViewTabs({
   value: InspectorView;
   onChange: (value: InspectorView) => void;
 }) {
-  const tabs: InspectorView[] = ['schema', 'table', 'json'];
+  const tabs: InspectorView[] = ['schema', 'json'];
   return (
     <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/60">
       {tabs.map(tab => (
@@ -201,52 +116,239 @@ function ViewTabs({
   );
 }
 
+function buildSchemaNodes(value: unknown): SchemaNode[] {
+  if (value === undefined) return [];
+
+  if (Array.isArray(value)) {
+    return [createSchemaNode('(root)', '', value, buildArrayChildren(value, ''))];
+  }
+
+  if (!isRecord(value)) {
+    return [createSchemaNode('(root)', '', value, [])];
+  }
+
+  return buildSchemaTree(value, '');
+}
+
+function buildSchemaTree(value: Record<string, unknown>, prefix: string): SchemaNode[] {
+  return Object.entries(value).map(([key, child]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    const children = Array.isArray(child)
+      ? buildArrayChildren(child, path)
+      : isRecord(child)
+        ? buildSchemaTree(child, path)
+        : [];
+    return createSchemaNode(key, path, child, children);
+  });
+}
+
+function buildArrayChildren(value: unknown[], path: string): SchemaNode[] {
+  const sample = sampleArrayValue(value);
+  if (sample === undefined) return [];
+
+  const indexLabel = '[0]';
+  const indexPath = path ? `${path}[0]` : '[0]';
+  const children = Array.isArray(sample)
+    ? buildArrayChildren(sample, indexPath)
+    : isRecord(sample)
+      ? buildSchemaTree(sample, indexPath)
+      : [];
+  return [createSchemaNode(indexLabel, indexPath, sample, children)];
+}
+
+function createSchemaNode(
+  name: string,
+  path: string,
+  value: unknown,
+  children: SchemaNode[]
+): SchemaNode {
+  return {
+    id: path || name || '(root)',
+    name: name || '(root)',
+    path,
+    type: valueType(value),
+    value,
+    children,
+  };
+}
+
+function filterSchemaNodes(nodes: SchemaNode[], query: string): SchemaNode[] {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return nodes;
+
+  return nodes.flatMap(node => {
+    const childMatches = filterSchemaNodes(node.children, query);
+    const matches = schemaNodeMatches(node, trimmed);
+    if (!matches && childMatches.length === 0) return [];
+    return [{ ...node, children: childMatches }];
+  });
+}
+
+function schemaNodeMatches(node: SchemaNode, query: string): boolean {
+  const preview = formatPreview(node.value);
+  return [node.name, node.path, node.type, preview].some(value =>
+    value.toLowerCase().includes(query)
+  );
+}
+
+function SchemaTree({
+  nodes,
+  expressionForPath,
+}: {
+  nodes: SchemaNode[];
+  expressionForPath: (path: string) => string;
+}) {
+  return (
+    <div className="space-y-1">
+      {nodes.map(node => (
+        <SchemaTreeRow
+          key={node.id}
+          node={node}
+          depth={0}
+          expressionForPath={expressionForPath}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SchemaTreeRow({
+  node,
+  depth,
+  expressionForPath,
+}: {
+  node: SchemaNode;
+  depth: number;
+  expressionForPath: (path: string) => string;
+}) {
+  const expression = expressionForPath(node.path);
+  const preview =
+    node.type === 'array' || node.children.length === 0 ? formatSchemaPreview(node.value) : '';
+  const onDragStart = useCallback((event: DragEvent<HTMLSpanElement>) => {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', expression);
+    event.dataTransfer.setDragImage(createDragImage(expression, event.currentTarget), 8, 8);
+    document.body.classList.add(TEMPLATE_DRAG_ACTIVE_CLASS);
+  }, [expression]);
+
+  return (
+    <div>
+      <div
+        title={expression}
+        className="group flex items-center gap-2 rounded-md px-2 py-1 cursor-grab active:cursor-grabbing hover:bg-muted/40"
+        style={{ paddingLeft: depth * 7 + 8 }}
+      >
+        <span
+          draggable
+          onDragStart={onDragStart}
+          onDragEnd={cleanupDragImage}
+          onMouseDown={(event) => event.stopPropagation()}
+          className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-foreground cursor-grab active:cursor-grabbing"
+        >
+          {node.name || '(root)'}
+        </span>
+        <span className="text-[10px] uppercase text-muted-foreground">{node.type}</span>
+        {preview ? (
+          <span className="text-[11px] text-muted-foreground preview-clamp whitespace-pre-wrap">
+            {preview}
+          </span>
+        ) : null}
+      </div>
+      {node.children.length > 0 && (
+        <div className="ml-2 pl-3 border-l border-border">
+          {node.children.map(child => (
+            <SchemaTreeRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expressionForPath={expressionForPath}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+let dragImageElement: HTMLDivElement | null = null;
+
+function createDragImage(text: string, source?: HTMLElement | null) {
+  if (dragImageElement) return dragImageElement;
+  const element = document.createElement('div');
+  element.style.position = 'fixed';
+  element.style.top = '-9999px';
+  element.style.left = '-9999px';
+  element.style.padding = '2px 8px';
+  element.style.borderRadius = '9999px';
+  if (source) {
+    const styles = getComputedStyle(source);
+    element.style.borderColor = styles.borderColor;
+    element.style.borderStyle = styles.borderStyle;
+    element.style.borderWidth = styles.borderWidth;
+    element.style.backgroundColor = styles.backgroundColor;
+    element.style.color = styles.color;
+  } else {
+    element.style.border = '1px solid hsl(var(--primary) / 0.3)';
+    element.style.background = 'hsl(var(--primary) / 0.1)';
+    element.style.color = 'hsl(var(--primary) / 1)';
+  }
+  element.style.opacity = '1';
+  element.style.boxShadow = '0 6px 18px hsl(var(--primary) / 0.2)';
+  element.style.fontSize = '11px';
+  element.style.fontWeight = '600';
+  element.style.whiteSpace = 'nowrap';
+  element.style.pointerEvents = 'none';
+  element.textContent = text;
+  document.body.appendChild(element);
+  dragImageElement = element;
+  return element;
+}
+
+function cleanupDragImage() {
+  if (!dragImageElement) return;
+  dragImageElement.remove();
+  dragImageElement = null;
+  document.body.classList.remove(TEMPLATE_DRAG_ACTIVE_CLASS);
+}
+
 function DataSection({
   title,
   subtitle,
-  rows,
+  schemaNodes,
   view,
   jsonValue,
   expressionForPath,
 }: {
   title: string;
   subtitle?: string;
-  rows: PathRow[];
+  schemaNodes: SchemaNode[];
   view: InspectorView;
   jsonValue: unknown;
   expressionForPath: (path: string) => string;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card/65 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
-        <div className="min-w-0">
+    <div>
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <div className="min-w-0 flex gap-2">
           <p className="text-xs font-medium truncate text-foreground">{title}</p>
-          {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
+          {subtitle && <p className="text-[11px] text-muted-foreground truncate">({subtitle})</p>}
         </div>
       </div>
 
       {view === 'json' ? (
-        <pre className="text-[11px] text-foreground/85 p-3 overflow-auto max-h-60 whitespace-pre-wrap break-all">
+        <pre className="text-[11px] text-foreground/85 p-3 whitespace-pre-wrap break-all">
           {toJsonText(jsonValue) || 'No data'}
         </pre>
       ) : (
-        <div className="max-h-60 overflow-y-auto p-2 space-y-2">
-          {rows.length === 0 ? (
+        <div className="p-2">
+          {schemaNodes.length === 0 ? (
             <p className="text-xs text-muted-foreground px-1 py-2">No fields available</p>
           ) : (
-            rows.map(row => (
-              <ExpressionRow
-                key={`${title}:${row.path || '(root)'}`}
-                label={row.path}
-                expression={expressionForPath(row.path)}
-                preview={view === 'schema' ? row.type : formatPreview(row.value)}
-                type={row.type}
-              />
-            ))
+            <SchemaTree nodes={schemaNodes} expressionForPath={expressionForPath} />
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -257,8 +359,8 @@ export function NodeInspectorDialog({
   lastExecutionByNode,
 }: NodeInspectorDialogProps) {
   const { nodes, edges } = useFlowState();
-  const [leftView, setLeftView] = useState<InspectorView>('table');
-  const [rightView, setRightView] = useState<InspectorView>('table');
+  const [leftView, setLeftView] = useState<InspectorView>('schema');
+  const [rightView, setRightView] = useState<InspectorView>('schema');
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
 
@@ -349,19 +451,14 @@ export function NodeInspectorDialog({
 
         const snapshot = lastExecutionByNode[id];
         const output = pickPrimaryOutput(snapshot);
-        const allRows = output.value === undefined ? [] : collectObjectRows(output.value);
-        const filteredRows = allRows.filter(row => {
-          if (!search.trim()) return true;
-          const q = search.toLowerCase();
-          return row.path.toLowerCase().includes(q) || formatPreview(row.value).toLowerCase().includes(q);
-        });
+        const schemaNodes = filterSchemaNodes(buildSchemaNodes(output.value), search);
 
         return {
           nodeId: id,
           nodeName: getNodeName(node),
           status: snapshot?.status ?? 'idle',
           value: output.value,
-          rows: filteredRows,
+          schemaNodes,
           outputType: output.type,
         };
       })
@@ -417,15 +514,11 @@ export function NodeInspectorDialog({
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 divide-y divide-border">
                 <DataSection
                   title="Direct input"
                   subtitle={directInputSource ? `From ${getNodeName(directInputSource)}` : 'No connected input node'}
-                  rows={(directInputOutput.value === undefined ? [] : collectObjectRows(directInputOutput.value)).filter(row => {
-                    if (!search.trim()) return true;
-                    const q = search.toLowerCase();
-                    return row.path.toLowerCase().includes(q) || formatPreview(row.value).toLowerCase().includes(q);
-                  })}
+                  schemaNodes={filterSchemaNodes(buildSchemaNodes(directInputOutput.value), search)}
                   view={leftView}
                   jsonValue={directInputOutput.value}
                   expressionForPath={buildInputExpression}
@@ -439,7 +532,7 @@ export function NodeInspectorDialog({
                       <DataSection
                         title={entry.nodeName}
                         subtitle={entry.outputType ? `${entry.outputType} output` : 'No output'}
-                        rows={entry.rows}
+                        schemaNodes={entry.schemaNodes}
                         view={leftView}
                         jsonValue={entry.value}
                         expressionForPath={path => buildNodeExpression(entry.nodeName, path)}
@@ -513,7 +606,7 @@ export function NodeInspectorDialog({
                         <div key={row.path || '(root)'} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 border-b last:border-b-0 border-border text-xs">
                           <span className="truncate text-foreground">{row.path || '(root)'}</span>
                           <span className="text-muted-foreground max-w-[180px] truncate text-right">
-                            {rightView === 'schema' ? row.type : formatPreview(row.value)}
+                            {row.type}
                           </span>
                         </div>
                       ))}

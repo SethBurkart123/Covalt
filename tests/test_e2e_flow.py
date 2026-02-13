@@ -192,6 +192,20 @@ class PassthroughStub:
         )
 
 
+class DataEchoStub:
+    """Echoes resolved node data payload."""
+
+    node_type = "data-echo"
+
+    async def execute(
+        self, data: dict, inputs: dict[str, DataValue], context: FlowContext
+    ) -> ExecutionResult:
+        del inputs, context
+        return ExecutionResult(
+            outputs={"output": DataValue("data", {"payload": data.get("payload")})}
+        )
+
+
 STUBS = {
     cls.node_type: cls()
     for cls in [
@@ -202,6 +216,7 @@ STUBS = {
         ConditionalStub,
         UpperCaseStub,
         PassthroughStub,
+        DataEchoStub,
     ]
 }
 
@@ -404,6 +419,51 @@ class TestE2EExpressions:
                 results.append(item)
 
         assert results[-1].outputs["output"].value["text"] == "From first: Echo hello"
+
+    @pytest.mark.asyncio
+    async def test_full_expression_returns_object(self):
+        """Expression-only values return raw objects for structured payloads."""
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("echo", "data-echo", payload="{{ input }}"),
+            ],
+            edges=[
+                make_edge("cs", "echo", "output", "input"),
+            ],
+        )
+        ctx = _flow_ctx("hello")
+
+        results: list[ExecutionResult] = []
+        async for item in run_flow(graph, ctx, executors=STUBS):
+            if isinstance(item, ExecutionResult):
+                results.append(item)
+
+        payload = results[-1].outputs["output"].value["payload"]
+        assert isinstance(payload, dict)
+        assert payload.get("message") == "hello"
+
+    @pytest.mark.asyncio
+    async def test_js_expression_supports_methods(self):
+        """JS expressions can call string methods like split()."""
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat-start"),
+                make_node("echo", "data-echo", payload="{{ input.message.split(' ')[0] }}"),
+            ],
+            edges=[
+                make_edge("cs", "echo", "output", "input"),
+            ],
+        )
+        ctx = _flow_ctx("hello world")
+
+        results: list[ExecutionResult] = []
+        async for item in run_flow(graph, ctx, executors=STUBS):
+            if isinstance(item, ExecutionResult):
+                results.append(item)
+
+        payload = results[-1].outputs["output"].value["payload"]
+        assert payload == "hello"
 
 
 # ═══════════════════════════════════════════════════════════════════════
