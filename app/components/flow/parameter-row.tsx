@@ -11,6 +11,7 @@ interface ParameterRowProps {
   value: unknown;
   isConnected?: boolean;
   onParamChange: (paramId: string, value: unknown) => void;
+  nodeId?: string | null;
 }
 
 /**
@@ -21,7 +22,7 @@ interface ParameterRowProps {
  * - Explicit: socket.side overrides default
  * - Default: input/hybrid → left, output → right
  */
-export const ParameterRow = memo(function ParameterRow({ param, value, isConnected, onParamChange }: ParameterRowProps) {
+export const ParameterRow = memo(function ParameterRow({ param, value, isConnected, onParamChange, nodeId }: ParameterRowProps) {
   const { mode, socket } = param;
   
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
@@ -29,6 +30,7 @@ export const ParameterRow = memo(function ParameterRow({ param, value, isConnect
   const showControl = (mode === 'constant') || (mode === 'hybrid' && !isConnected);
   const hasSocket = socket && (mode === 'input' || mode === 'output' || mode === 'hybrid');
   const socketSide = socket?.side ?? (mode === 'output' ? 'right' : 'left');
+  const hideLabel = param.type === 'messages';
   
   if (mode === 'input' || mode === 'output') {
     return (
@@ -74,12 +76,15 @@ export const ParameterRow = memo(function ParameterRow({ param, value, isConnect
         />
       )}
 
-      <span className="text-xs text-muted-foreground">{param.label}</span>
+      {!hideLabel && (
+        <span className="text-xs text-muted-foreground">{param.label}</span>
+      )}
       {showControl && (
         <ParameterControl
           param={param}
           value={value}
           onChange={handleChange}
+          nodeId={nodeId}
         />
       )}
       

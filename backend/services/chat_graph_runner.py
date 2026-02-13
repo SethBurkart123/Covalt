@@ -20,7 +20,7 @@ from nodes._types import DataValue, ExecutionResult, NodeEvent
 from zynk import Channel
 
 from .. import db
-from ..models.chat import Attachment, ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall
 from .agent_manager import get_agent_manager
 from . import run_control
 from . import stream_broadcaster as broadcaster
@@ -528,6 +528,70 @@ def build_chat_runtime_history(messages: list[ChatMessage]) -> list[dict[str, An
     return history
 
 
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "text":
+                continue
+            part = block.get("content")
+            if part is not None:
+                parts.append(str(part))
+        return "".join(parts)
+    return str(content) if content is not None else ""
+
+
+def _tool_call_to_openai(tool_call: ToolCall) -> dict[str, Any]:
+    args = tool_call.toolArgs if tool_call.toolArgs is not None else {}
+    try:
+        arguments = json.dumps(args)
+    except TypeError:
+        arguments = json.dumps({})
+    return {
+        "id": tool_call.id,
+        "type": "function",
+        "function": {
+            "name": tool_call.toolName,
+            "arguments": arguments,
+        },
+    }
+
+
+def build_openai_messages_for_chat(
+    messages: list[ChatMessage],
+) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for message in messages:
+        content = _content_to_text(message.content)
+        payload: dict[str, Any] = {"role": message.role, "content": content}
+
+        tool_calls = message.toolCalls or []
+        if message.role == "assistant" and tool_calls:
+            payload["tool_calls"] = [
+                _tool_call_to_openai(tool_call) for tool_call in tool_calls
+            ]
+
+        formatted.append(payload)
+
+        if message.role == "assistant":
+            for tool_call in tool_calls:
+                if tool_call.toolResult is None:
+                    continue
+                formatted.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(tool_call.toolResult),
+                    }
+                )
+
+    return formatted
+
+
 def is_allowed_attachment_mime(mime_type: str) -> bool:
     if not mime_type:
         return False
@@ -962,7 +1026,7 @@ async def handle_flow_stream(
         )
 
     chat_history = build_chat_runtime_history(messages)
-    agno_messages = build_agno_messages_for_chat(messages, chat_id or None)
+    openai_messages = build_openai_messages_for_chat(messages)
     chat_scope, entry_node_ids = _build_chat_scope(graph_data)
 
     state = types.SimpleNamespace(user_message=user_message)
@@ -978,7 +1042,7 @@ async def handle_flow_stream(
                 last_user_message=user_message,
                 last_user_attachments=last_user_attachments,
                 history=chat_history,
-                agno_messages=agno_messages,
+                messages=openai_messages,
             ),
             chat_scope=chat_scope,
             execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),

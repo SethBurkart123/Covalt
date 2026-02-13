@@ -353,6 +353,54 @@ button {
   100% { background-position: -100% 0; }
 }
 
+.template-editor .ProseMirror {
+  outline: none;
+}
+
+.template-editor-content {
+  min-height: 1.25rem;
+}
+
+.template-editor-content p {
+  margin: 0;
+}
+
+.template-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.template-var-content:empty::before {
+  content: attr(data-placeholder);
+  color: currentColor;
+}
+
+.template-var-content {
+  display: inline-block;
+  min-width: 0.5ch;
+}
+
+.preview-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+body.template-drag-active .template-editor-dropzone {
+  outline: 1px dashed hsl(var(--primary) / 0.35);
+  outline-offset: 2px;
+}
+
+.template-editor-dropzone-active {
+  outline: 2px solid hsl(var(--primary) / 0.5);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
+}
+
 body {
   scroll-behavior: smooth;
   

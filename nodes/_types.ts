@@ -23,6 +23,7 @@ export type ParameterType =
   | 'boolean'
   | 'enum'
   | 'text-area'
+  | 'messages'
   | 'model'
   | 'mcp-server'
   | 'toolset'
@@ -123,6 +124,12 @@ export interface TextAreaParameter extends ParameterBase {
   rows?: number;
 }
 
+/** Messages parameter */
+export interface MessagesParameter extends ParameterBase {
+  type: 'messages';
+  default?: unknown;
+}
+
 /** Model picker parameter */
 export interface ModelParameter extends ParameterBase {
   type: 'model';
@@ -163,6 +170,7 @@ export type Parameter =
   | BooleanParameter
   | EnumParameter
   | TextAreaParameter
+  | MessagesParameter
   | ModelParameter
   | McpServerParameter
   | ToolsetParameter

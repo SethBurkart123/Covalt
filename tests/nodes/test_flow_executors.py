@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from agno.agent import Agent, Message
+from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.team import Team
 from backend.services import run_control
@@ -433,12 +433,10 @@ class TestAgentExecutor:
         assert await_args.kwargs["instructions"] == ["be concise"]
 
     @pytest.mark.asyncio
-    async def test_agent_uses_agno_messages_from_data_channel(self) -> None:
+    async def test_agent_accepts_openai_tool_calls_from_messages(self) -> None:
         executor = AgentExecutor()
         recording_agent = _RecordingInputAgent()
         ctx = _flow_ctx()
-
-        agno_messages = [Message(role="user", content="chat message")]
 
         with patch(
             "nodes.core.agent.executor._build_runtime_runnable",
@@ -452,7 +450,27 @@ class TestAgentExecutor:
                             "data",
                             {
                                 "message": "pipeline message",
-                                "agno_messages": agno_messages,
+                                "messages": [
+                                    {
+                                        "role": "assistant",
+                                        "content": "",
+                                        "tool_calls": [
+                                            {
+                                                "id": "call_1",
+                                                "type": "function",
+                                                "function": {
+                                                    "name": "get_weather",
+                                                    "arguments": "{\"city\":\"LA\"}",
+                                                },
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": "call_1",
+                                        "content": "{\"temp\":72}",
+                                    },
+                                ],
                             },
                         )
                     },
@@ -464,9 +482,11 @@ class TestAgentExecutor:
         assert len(recording_agent.calls) == 1
         run_input = recording_agent.calls[0]["input"]
         assert isinstance(run_input, list)
-        assert len(run_input) == 1
-        assert run_input[0].role == "user"
-        assert run_input[0].content == "chat message"
+        assert len(run_input) == 2
+        assert run_input[0].role == "assistant"
+        assert run_input[1].role == "tool"
+        assert getattr(run_input[0], "tool_calls", None)
+        assert getattr(run_input[1], "tool_call_id", "") == "call_1"
 
     @pytest.mark.asyncio
     async def test_agent_accepts_messages_key_from_data_channel(self) -> None:

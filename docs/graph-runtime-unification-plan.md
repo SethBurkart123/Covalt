@@ -2,7 +2,7 @@
 
 Status: active implementation
 
-Last updated: 2026-02-12
+Last updated: 2026-02-13
 
 ---
 
@@ -105,7 +105,9 @@ Domain dependencies (tool registry, run control bridge, chat input scope) must b
 
 ## Chat Execution Semantics (Required)
 
-This is the critical policy for multi-agent correctness.
+This section is about *dataflow*, not hidden policy. The runtime does not decide
+what counts as "entry" or "downstream"; nodes consume exactly what the graph
+routes into them.
 
 ### A) Pipeline vs composition
 
@@ -114,15 +116,21 @@ This is the critical policy for multi-agent correctness.
 
 Both must coexist in one graph.
 
-### B) Entry agent vs downstream agent input
+### B) Message inputs are explicit and user-controlled
 
-- Entry agents (first agent stage for user chat path) may consume full chat history/messages.
-- Downstream pipeline agents must consume upstream flow payload, not full chat history.
+- Agent nodes consume whatever message payload is present in their **input** value.
+- Default behavior should be implemented as a **node data expression** that reads
+  the chat-start output (e.g. `{{ input.agno_messages }}` or `{{ input.history }}`).
+- Users can override this expression to pull from any upstream node or to supply
+  a manually authored message list.
+- The agent node should accept both the agno message format (chat-start output)
+  and OpenAI-compatible message arrays.
 
-### C) includeUserTools policy
+### C) includeUserTools is dataflow, not topology
 
-- `includeUserTools` from chat-start must be respected for entry agents, even if there are intermediate flow nodes.
-- This policy must not depend on a direct `chat-start -> agent` edge.
+- `includeUserTools` should be carried as input data (from chat-start or any
+  upstream node) and interpreted by the agent node.
+- No topology heuristics ("is entry agent") and no runtime lookups.
 
 ### D) Cancel semantics
 
@@ -141,6 +149,7 @@ These are in good direction and should be kept:
 - Structural nodes now implement `materialize(...)`.
 - Agent node builds at runtime (execute/materialize).
 - `FlowContext.services` exists for dependency injection.
+- Flow execution can be scoped to an active subgraph via `services.execution.entry_node_ids`.
 
 ---
 
@@ -148,19 +157,15 @@ These are in good direction and should be kept:
 
 ## P0 - correctness
 
-1. **Pipeline input semantics are incorrect**
-   - Current agent execution can still prefer global chat messages for downstream agents.
-   - Downstream agents must run on upstream flow payload.
+1. **Message inputs are not fully explicit or user-editable**
+   - Agent nodes should accept a message-list input configured by expressions or manual UI.
+   - Default should point at chat-start output but must be editable by the user.
 
-2. **`includeUserTools` can be misapplied**
-   - Current check depends on direct upstream `chat-start` edge.
-   - Fails when chat-start feeds intermediate nodes first.
+2. **`includeUserTools` should be driven by input data**
+   - Move tool inclusion policy into the agent node input data path.
+   - Remove topology-based heuristics and service lookups.
 
-3. **Disconnected flow nodes can execute**
-   - Runtime currently schedules all flow-capable nodes.
-   - Chat runs should only execute reachable subgraph from explicit entry nodes.
-
-4. **Cancel race before active run registration**
+3. **Cancel race before active run registration**
    - Cancel can return false if run not registered yet.
    - Must persist early intent and apply once registered.
 
@@ -182,7 +187,7 @@ These are in good direction and should be kept:
 
 ## Implementation Plan
 
-### Phase 1: Fix multi-agent chat semantics
+### Phase 1: Make message inputs user-controlled
 
 Files:
 
@@ -191,25 +196,27 @@ Files:
 
 Work:
 
-1. Add a chat-scope service object in `context.services` (e.g. `chat_scope`) that provides:
-   - `is_entry_agent(node_id) -> bool`
-   - `include_user_tools(node_id) -> bool`
+1. Add a message-list input shape to the agent node schema (and default data expression).
+   - Default expression pulls from chat-start output (e.g. `{{ input.agno_messages }}`).
+   - Allow users to override with any expression or manual message list.
 
-2. Build chat scope in `chat_graph_runner` from graph flow topology:
-   - Identify entry agents (no upstream agent in flow ancestry on active chat path)
-   - Compute include-user-tools policy from upstream chat-start nodes
+2. Extend expression evaluation to work for nested structures, not just strings,
+   so message arrays can contain embedded expressions.
 
-3. Update agent executor input resolution:
-   - If `chat_scope.is_entry_agent(node_id)` and `chat_input.agno_messages` exists: run with chat history
-   - Otherwise: run with upstream flow payload only
+3. Update agent executor to accept:
+   - agno-style messages (chat-start output)
+   - OpenAI-compatible message arrays
+   - a single message string fallback
 
-4. Update extra tool inclusion:
-   - Replace direct upstream `chat-start` check with `chat_scope.include_user_tools(node_id)`
+4. Drive `includeUserTools` from input data, not topology.
+   - This can be a boolean field in the same input payload or an expression
+     authored by the user.
 
 Acceptance:
 
-- `chat-start -> agent A -> agent B` uses full chat history only for A, pipeline payload for B.
-- `includeUserTools=false` is respected even with intermediate flow nodes.
+- Agent node uses only its input payload for messages.
+- Default graph behavior still uses chat-start output without any runtime heuristics.
+- User overrides work for both expression and manual message list modes.
 
 ### Phase 2: Restrict chat runs to active subgraph
 
@@ -304,8 +311,9 @@ Run before merge:
 
 Must include assertions for:
 
-- entry vs downstream agent input behavior
-- includeUserTools through intermediate nodes
+- expression-driven message inputs (default + overridden)
+- manual message list mode (with embedded expressions)
+- includeUserTools driven by input data
 - active-subgraph execution only
 - cancel before/after registration
 - link dependency cycle diagnostics

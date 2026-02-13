@@ -108,6 +108,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
             param={param}
             value={selectedNodeData.data[param.id]}
             onParamChange={handleDataChange}
+            nodeId={effectiveNodeId}
           />
         ))}
 
@@ -125,20 +126,24 @@ interface ParameterFieldProps {
   param: Parameter;
   value: unknown;
   onParamChange: (paramId: string, value: unknown) => void;
+  nodeId?: string | null;
 }
 
-const ParameterField = memo(function ParameterField({ param, value, onParamChange }: ParameterFieldProps) {
+const ParameterField = memo(function ParameterField({ param, value, onParamChange, nodeId }: ParameterFieldProps) {
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
   
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-muted-foreground">
-        {param.label}
-      </label>
+      {param.type !== 'messages' && (
+        <label className="text-xs font-medium text-muted-foreground">
+          {param.label}
+        </label>
+      )}
       <ParameterControl
         param={param}
         value={value}
         onChange={handleChange}
+        nodeId={nodeId}
       />
     </div>
   );

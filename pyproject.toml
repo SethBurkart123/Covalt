@@ -21,6 +21,7 @@ dependencies = [
     "zynk",
     "agno-toolset",
     "cryptography>=46.0.3",
+    "quickjs>=1.19.4",
 ]
 
 [dependency-groups]
