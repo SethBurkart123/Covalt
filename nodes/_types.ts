@@ -37,6 +37,9 @@ export type ParameterMode =
   | 'input'     // Pure input socket (left side)
   | 'output';   // Pure output socket (right side)
 
+/** Where this parameter is rendered */
+export type ParameterRenderScope = 'node' | 'inspector' | 'both';
+
 /** Socket visual configuration */
 export interface SocketConfig {
   type: SocketTypeId;
@@ -50,7 +53,15 @@ export interface SocketConfig {
 /** Conditional visibility — show this parameter only when a condition is met */
 export interface ShowWhen {
   /** Show only when this parameter's socket has a connection */
-  connected: string;
+  connected?: string;
+  /** Show only when this node has an outgoing connection from this handle */
+  connectedOut?: string;
+  /** Show only when this node has an incoming connection from a handle */
+  connectedFrom?: string;
+  /** Show only when this node has an outgoing connection to a target handle */
+  connectedTo?: string;
+  /** Optional channel filter for the connection checks */
+  channel?: EdgeChannel;
 }
 
 /** Base parameter definition */
@@ -59,6 +70,9 @@ export interface ParameterBase {
   type: ParameterType;
   label: string;
   mode: ParameterMode;
+
+  /** Control where this parameter is rendered */
+  renderScope?: ParameterRenderScope;
   
   /** For input/hybrid/output modes - socket configuration */
   socket?: SocketConfig;

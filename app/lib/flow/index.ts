@@ -9,6 +9,7 @@ export type {
   SocketTypeId,
   ParameterType,
   ParameterMode,
+  ParameterRenderScope,
   SocketConfig,
   ShowWhen,
   Parameter,

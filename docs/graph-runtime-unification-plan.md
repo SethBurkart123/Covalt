@@ -120,7 +120,7 @@ Both must coexist in one graph.
 
 - Agent nodes consume whatever message payload is present in their **input** value.
 - Default behavior should be implemented as a **node data expression** that reads
-  the chat-start output (e.g. `{{ input.agno_messages }}` or `{{ input.history }}`).
+  the chat-start output (e.g. `{{ $input.agno_messages }}` or `{{ $input.history }}`).
 - Users can override this expression to pull from any upstream node or to supply
   a manually authored message list.
 - The agent node should accept both the agno message format (chat-start output)
@@ -197,7 +197,7 @@ Files:
 Work:
 
 1. Add a message-list input shape to the agent node schema (and default data expression).
-   - Default expression pulls from chat-start output (e.g. `{{ input.agno_messages }}`).
+   - Default expression pulls from chat-start output (e.g. `{{ $input.agno_messages }}`).
    - Allow users to override with any expression or manual message list.
 
 2. Extend expression evaluation to work for nested structures, not just strings,

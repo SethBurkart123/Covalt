@@ -2,11 +2,13 @@
 
 import { memo, useCallback, useMemo, type ComponentType } from 'react';
 import { useStore, type NodeProps } from '@xyflow/react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Check, X, Loader2 } from 'lucide-react';
 import * as Icons from 'lucide-react';
-import type { NodeDefinition } from '@/lib/flow';
+import type { NodeDefinition, FlowEdge } from '@/lib/flow';
+import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { getNodeDefinition, useFlowActions } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
+import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 
 interface FlowNodeData {
@@ -29,6 +31,11 @@ function getIcon(name: string) {
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const { updateNodeData } = useFlowActions();
+  const rawStatus = typeof data._executionStatus === 'string' ? data._executionStatus : 'idle';
+  const status = (['idle', 'running', 'completed', 'error'] as const).includes(rawStatus as FlowNodeExecutionSnapshot['status'])
+    ? (rawStatus as FlowNodeExecutionSnapshot['status'])
+    : 'idle';
+  const executionError = typeof data._executionError === 'string' ? data._executionError : undefined;
 
   const handleParameterChange = useCallback(
     (paramId: string, value: unknown) => {
@@ -39,22 +46,25 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 
   const definition = getNodeDefinition(type);
 
-  const connectedInputKey = useStore(
-    useCallback((state) => {
-      const connected = new Set<string>();
-      for (const edge of state.edges) {
-        if (edge.target === id && edge.targetHandle) {
-          connected.add(edge.targetHandle);
-        }
-      }
-      return JSON.stringify(Array.from(connected).sort());
-    }, [id])
+  const edges = useStore(
+    useCallback((state) => state.edges as FlowEdge[], [])
   );
 
-  const connectedInputs = useMemo(
-    () => new Set(connectedInputKey ? JSON.parse(connectedInputKey) as string[] : []),
-    [connectedInputKey]
+  const edgeIndex = useMemo(
+    () => buildNodeEdgeIndex(edges, id),
+    [edges, id]
   );
+
+  const connectedHandles = useMemo(() => {
+    const connected = new Set<string>();
+    for (const edge of edgeIndex.incoming) {
+      if (edge.targetHandle) connected.add(edge.targetHandle);
+    }
+    for (const edge of edgeIndex.outgoing) {
+      if (edge.sourceHandle) connected.add(edge.sourceHandle);
+    }
+    return connected;
+  }, [edgeIndex]);
 
   if (!definition) {
     return (
@@ -65,12 +75,40 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   }
 
   const Icon = getIcon(definition.icon);
+  const statusRing = status === 'running'
+    ? 'flow-node-glow ring-yellow-500/60'
+    : status === 'completed'
+      ? 'flow-node-glow ring-emerald-500/50'
+      : status === 'error'
+        ? 'flow-node-glow ring-red-500/60'
+        : '';
+
+  const statusBadge = status === 'running'
+    ? (
+      <span className="ml-auto text-yellow-500" title={executionError}>
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </span>
+    )
+    : status === 'completed'
+      ? (
+        <span className="ml-auto text-emerald-500" title={executionError}>
+          <Check className="h-4 w-4" />
+        </span>
+      )
+      : status === 'error'
+        ? (
+          <span className="ml-auto text-red-500" title={executionError}>
+            <X className="h-4 w-4" />
+          </span>
+        )
+        : null;
 
   return (
     <div
       className={cn(
         'border rounded-lg bg-card min-w-[180px] max-w-[280px] shadow-lg',
-        selected ? 'border-primary' : getCategoryBorderColor(definition.category)
+        selected ? 'border-primary' : getCategoryBorderColor(definition.category),
+        statusRing
       )}
     >
       <div className={cn(
@@ -81,20 +119,18 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
           <Icon className="h-4 w-4" />
           <span className="text-sm font-medium truncate">{definition.name}</span>
+          {status !== 'idle' && statusBadge}
         </div>
 
         <div className="py-1 bg-card rounded-lg border-t border-border">
           {definition.parameters
-            .filter(param => {
-              if (!param.showWhen) return true;
-              return connectedInputs.has(param.showWhen.connected);
-            })
+            .filter(param => shouldRenderParam(param, 'node', edgeIndex))
             .map(param => (
               <ParameterRow
                 key={param.id}
                 param={param}
                 value={data[param.id]}
-                isConnected={connectedInputs.has(param.id)}
+                isConnected={connectedHandles.has(param.id)}
                 onParamChange={handleParameterChange}
                 nodeId={id}
               />

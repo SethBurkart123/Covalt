@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { NODE_DEFINITIONS, SOCKET_TYPES, useFlowState, useFlowActions, useSelection, getNodeDefinition, type SocketTypeId } from '@/lib/flow';
+import { useAgentTestChat } from '@/contexts/agent-test-chat-context';
 import { FlowNode as FlowNodeComponent } from './node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
@@ -244,6 +245,7 @@ interface FlowCanvasProps {
 
 function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
+  const { lastExecutionByNode } = useAgentTestChat();
   const { selectNode } = useSelection();
   const {
     onConnect,
@@ -267,6 +269,23 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pendingConnectionRef = useRef<PendingConnection | null>(null);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter | null>(null);
+
+  const displayNodes = useMemo(() => {
+    if (!nodes.length) return nodes;
+    return nodes.map((node) => {
+      const snapshot = lastExecutionByNode[node.id];
+      if (!snapshot) return node;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          _executionStatus: snapshot.status,
+          _executionError: snapshot.error,
+          _executionNodeType: snapshot.nodeType,
+        },
+      };
+    });
+  }, [nodes, lastExecutionByNode]);
 
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
@@ -514,7 +533,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       onMouseLeave={() => { isHoveringCanvasRef.current = false; }}
     >
       <ReactFlow
-        nodes={nodes}
+        nodes={displayNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

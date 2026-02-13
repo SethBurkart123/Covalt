@@ -308,7 +308,7 @@ export function MessagesControl({ param, value, onChange, compact, nodeId }: Mes
         <TemplateEditor
           value={currentValue.expression}
           onChange={updateExpression}
-          placeholder="{{ input.messages }}"
+          placeholder="{{ $input.messages }}"
           multiline
           compact={compact}
           rows={compact ? 2 : 3}

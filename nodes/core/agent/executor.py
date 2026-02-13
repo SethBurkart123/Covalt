@@ -52,7 +52,7 @@ class AgentExecutor:
             instructions_text = _extract_text(linked_instructions)
         instructions = [instructions_text] if instructions_text else None
 
-        return await _build_runtime_runnable(
+        runnable = await _build_runtime_runnable(
             data,
             context,
             model_str=model_str,
@@ -60,6 +60,8 @@ class AgentExecutor:
             instructions=instructions,
             input_value=None,
         )
+        _tag_node_artifact(runnable, context.node_id, self.node_type)
+        return runnable
 
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
@@ -90,14 +92,17 @@ class AgentExecutor:
         )
         instructions = [instructions_text] if instructions_text else None
 
-        agent = await _build_runtime_runnable(
+        model = _resolve_model(model_str, temperature)
+        tools, sub_agents = await _resolve_link_dependencies(context, input_value)
+        tool_node_lookup = _build_tool_node_lookup(tools)
+        agent = _build_agent_or_team(
             data,
-            context,
-            model_str=model_str,
-            temperature=temperature,
+            model=model,
+            tools=tools,
+            sub_agents=sub_agents,
             instructions=instructions,
-            input_value=input_value,
         )
+        member_node_lookup = _build_member_node_lookup(sub_agents)
 
         run_handle = _get_run_handle(context)
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
@@ -155,6 +160,8 @@ class AgentExecutor:
                     )
 
                 member_fields = _member_event_fields(chunk)
+                if member_fields:
+                    _attach_member_node_metadata(member_fields, member_node_lookup)
                 member_run_id = str(member_fields.get("memberRunId", "") or "")
                 if member_run_id and member_run_id not in seen_member_run_ids:
                     seen_member_run_ids.add(member_run_id)
@@ -256,6 +263,7 @@ class AgentExecutor:
                 if event_name in {"ToolCallStarted", "TeamToolCallStarted"}:
                     tool = _tool_started_payload(chunk)
                     if tool is not None:
+                        _attach_tool_node_metadata(tool, tool_node_lookup)
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
@@ -272,6 +280,7 @@ class AgentExecutor:
                 if event_name in {"ToolCallCompleted", "TeamToolCallCompleted"}:
                     tool = _tool_completed_payload(chunk)
                     if tool is not None:
+                        _attach_tool_node_metadata(tool, tool_node_lookup)
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
@@ -311,6 +320,7 @@ class AgentExecutor:
                         )
                         if editable_args:
                             tool_info["editableArgs"] = editable_args
+                        _attach_tool_node_metadata(tool_info, tool_node_lookup)
                         tools_info.append(tool_info)
 
                     yield NodeEvent(
@@ -352,6 +362,7 @@ class AgentExecutor:
 
                     for tool in tools:
                         tool_id = getattr(tool, "tool_call_id", "")
+                        tool_name = getattr(tool, "tool_name", "")
                         status = (
                             "timeout"
                             if timed_out
@@ -361,6 +372,13 @@ class AgentExecutor:
                                 else "denied"
                             )
                         )
+                        tool_info: dict[str, Any] = {
+                            "id": tool_id,
+                            "toolName": tool_name,
+                            "approvalStatus": status,
+                            "toolArgs": getattr(tool, "tool_args", None),
+                        }
+                        _attach_tool_node_metadata(tool_info, tool_node_lookup)
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
@@ -369,9 +387,7 @@ class AgentExecutor:
                             data={
                                 "event": "ToolApprovalResolved",
                                 "tool": {
-                                    "id": tool_id,
-                                    "approvalStatus": status,
-                                    "toolArgs": getattr(tool, "tool_args", None),
+                                    **tool_info,
                                 },
                             },
                         )
@@ -698,6 +714,118 @@ def _get_tool_registry(context: FlowContext) -> Any | None:
     return getattr(services, "tool_registry", None)
 
 
+def _tag_node_artifact(artifact: Any, node_id: str, node_type: str) -> None:
+    if artifact is None:
+        return
+    try:
+        setattr(artifact, "__agno_node_id", node_id)
+        setattr(artifact, "__agno_node_type", node_type)
+    except Exception:
+        pass
+
+
+def _get_tool_name(tool: Any) -> str | None:
+    name = getattr(tool, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    name = getattr(tool, "tool_name", None)
+    if isinstance(name, str) and name:
+        return name
+    name = getattr(tool, "__name__", None)
+    if isinstance(name, str) and name:
+        return name
+    return None
+
+
+def _get_tool_node_meta(tool: Any) -> dict[str, str] | None:
+    node_id = getattr(tool, "__agno_node_id", None)
+    if not node_id:
+        return None
+    meta: dict[str, str] = {"nodeId": str(node_id)}
+    node_type = getattr(tool, "__agno_node_type", None)
+    if isinstance(node_type, str) and node_type:
+        meta["nodeType"] = node_type
+    return meta
+
+
+def _build_tool_node_lookup(tools: list[Any]) -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for tool in tools:
+        name = _get_tool_name(tool)
+        meta = _get_tool_node_meta(tool)
+        if name and meta:
+            if name not in lookup:
+                lookup[name] = meta
+            if ":" in name:
+                short_name = name.split(":")[-1]
+                if short_name and short_name not in lookup:
+                    lookup[short_name] = meta
+    return lookup
+
+
+def _attach_tool_node_metadata(
+    tool_payload: dict[str, Any],
+    tool_node_lookup: dict[str, dict[str, str]],
+) -> None:
+    tool_name = tool_payload.get("toolName")
+    if not tool_name:
+        return
+    meta = tool_node_lookup.get(str(tool_name))
+    if not meta:
+        return
+    tool_payload.setdefault("nodeId", meta.get("nodeId"))
+    node_type = meta.get("nodeType")
+    if node_type:
+        tool_payload.setdefault("nodeType", node_type)
+
+
+def _get_agent_name(agent: Any) -> str | None:
+    name = getattr(agent, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    name = getattr(agent, "agent_name", None)
+    if isinstance(name, str) and name:
+        return name
+    return None
+
+
+def _get_agent_node_meta(agent: Any) -> dict[str, str] | None:
+    node_id = getattr(agent, "__agno_node_id", None)
+    if not node_id:
+        return None
+    meta: dict[str, str] = {"nodeId": str(node_id)}
+    node_type = getattr(agent, "__agno_node_type", None)
+    if isinstance(node_type, str) and node_type:
+        meta["nodeType"] = node_type
+    return meta
+
+
+def _build_member_node_lookup(sub_agents: list[Any]) -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for agent in sub_agents:
+        name = _get_agent_name(agent)
+        meta = _get_agent_node_meta(agent)
+        if name and meta and name not in lookup:
+            lookup[name] = meta
+    return lookup
+
+
+def _attach_member_node_metadata(
+    member_fields: dict[str, Any],
+    member_node_lookup: dict[str, dict[str, str]],
+) -> None:
+    member_name = member_fields.get("memberName")
+    if not member_name:
+        return
+    meta = member_node_lookup.get(str(member_name))
+    if not meta:
+        return
+    member_fields.setdefault("nodeId", meta.get("nodeId"))
+    node_type = meta.get("nodeType")
+    if node_type:
+        member_fields.setdefault("nodeType", node_type)
+
+
 def _member_event_fields(chunk: Any) -> dict[str, Any]:
     if not isinstance(chunk, BaseAgentRunEvent):
         return {}
@@ -726,11 +854,15 @@ def _tool_completed_payload(chunk: Any) -> dict[str, Any] | None:
     if tool is None:
         return None
     result = getattr(tool, "result", None)
-    return {
+    payload = {
         "id": getattr(tool, "tool_call_id", None),
         "toolName": getattr(tool, "tool_name", None),
         "toolResult": str(result) if result is not None else None,
     }
+    error_value = getattr(tool, "error", None)
+    if error_value is not None:
+        payload["error"] = str(error_value)
+    return payload
 
 
 def _approval_tools(chunk: Any) -> list[Any]:
@@ -755,7 +887,22 @@ async def _build_runtime_runnable(
 ) -> Agent | Team:
     model = _resolve_model(model_str, temperature)
     tools, sub_agents = await _resolve_link_dependencies(context, input_value)
+    return _build_agent_or_team(
+        data,
+        model=model,
+        tools=tools,
+        sub_agents=sub_agents,
+        instructions=instructions,
+    )
 
+def _build_agent_or_team(
+    data: dict[str, Any],
+    *,
+    model: Any,
+    tools: list[Any],
+    sub_agents: list[Any],
+    instructions: list[str] | None,
+) -> Agent | Team:
     if not sub_agents:
         return Agent(
             name=data.get("name", "Agent"),
@@ -850,6 +997,16 @@ def _should_include_extra_tools(
         for key in ("include_user_tools", "includeUserTools"):
             if isinstance(input_value.get(key), bool):
                 return bool(input_value.get(key))
+
+    services = context.services
+    if services is not None:
+        expression_context = getattr(services, "expression_context", None)
+        if isinstance(expression_context, dict):
+            trigger = expression_context.get("trigger")
+            if isinstance(trigger, dict):
+                for key in ("include_user_tools", "includeUserTools"):
+                    if isinstance(trigger.get(key), bool):
+                        return bool(trigger.get(key))
 
     return False
 

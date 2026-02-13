@@ -20,6 +20,7 @@ import type {
 import {
   buildInputExpression,
   buildNodeExpression,
+  buildTriggerExpression,
   collectObjectRows,
   formatPreview,
   formatSchemaPreview,
@@ -442,6 +443,19 @@ export function NodeInspectorDialog({
       .map(node => node.id);
   }, [flowEdges, nodeId, nodes]);
 
+  const triggerSource = useMemo(() => {
+    for (const id of upstreamIds) {
+      const node = nodesById.get(id);
+      if (node?.type === 'chat-start') return node;
+    }
+
+    for (const node of nodes) {
+      if (node.type === 'chat-start') return node;
+    }
+
+    return null;
+  }, [nodes, nodesById, upstreamIds]);
+
   const directInputSource = useMemo(() => {
     if (!nodeId) return null;
     const inputEdge = flowEdges.find(edge => edge.target === nodeId && (edge.targetHandle ?? 'input') === 'input');
@@ -455,6 +469,13 @@ export function NodeInspectorDialog({
   }, [directInputSource, lastExecutionByNode]);
 
   const directInputOutput = useMemo(() => pickPrimaryOutput(directInputSnapshot ?? undefined), [directInputSnapshot]);
+
+  const triggerSnapshot = useMemo(() => {
+    if (!triggerSource) return null;
+    return lastExecutionByNode[triggerSource.id] ?? null;
+  }, [lastExecutionByNode, triggerSource]);
+
+  const triggerOutput = useMemo(() => pickPrimaryOutput(triggerSnapshot ?? undefined), [triggerSnapshot]);
 
   const upstreamEntries = useMemo<UpstreamEntry[]>(() => {
     return upstreamIds
@@ -528,6 +549,15 @@ export function NodeInspectorDialog({
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 divide-y divide-border">
+                <DataSection
+                  title="Trigger"
+                  subtitle={triggerSource ? `From ${getNodeName(triggerSource)}` : 'No chat-start data'}
+                  schemaNodes={filterSchemaNodes(buildSchemaNodes(triggerOutput.value), search)}
+                  view={leftView}
+                  jsonValue={triggerOutput.value}
+                  expressionForPath={buildTriggerExpression}
+                />
+
                 <DataSection
                   title="Direct input"
                   subtitle={directInputSource ? `From ${getNodeName(directInputSource)}` : 'No connected input node'}

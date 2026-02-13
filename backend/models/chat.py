@@ -128,6 +128,8 @@ class ChatEvent(BaseModel):
     memberName: Optional[str] = None
     memberRunId: Optional[str] = None
     task: Optional[str] = None
+    nodeId: Optional[str] = None
+    nodeType: Optional[str] = None
 
 
 class ToolApprovalResponse(BaseModel):

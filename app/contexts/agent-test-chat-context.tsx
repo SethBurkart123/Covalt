@@ -46,6 +46,29 @@ function parseOutputs(value: unknown): Record<string, FlowOutputPortSnapshot> | 
   return Object.keys(outputs).length > 0 ? outputs : undefined;
 }
 
+interface ToolNodeRef {
+  nodeId: string;
+  nodeType?: string;
+}
+
+function toToolNodeRef(value: unknown): ToolNodeRef | null {
+  if (!isRecord(value)) return null;
+  const nodeId = typeof value.nodeId === "string" ? value.nodeId : null;
+  if (!nodeId) return null;
+  const nodeType = typeof value.nodeType === "string" ? value.nodeType : undefined;
+  return { nodeId, nodeType };
+}
+
+function collectToolNodeRefs(payload: unknown): ToolNodeRef[] {
+  if (!isRecord(payload)) return [];
+  const direct = toToolNodeRef(payload);
+  if (direct) return [direct];
+
+  const tools = payload.tools;
+  if (!Array.isArray(tools)) return [];
+  return tools.map(toToolNodeRef).filter((tool): tool is ToolNodeRef => tool !== null);
+}
+
 interface AgentTestChatContextValue {
   isOpen: boolean;
   open: () => void;
@@ -80,6 +103,119 @@ export function AgentTestChatProvider({
       event === "RunStarted" && typeof sessionId === "string" && sessionId.length > 0;
     if (isFlowRunStarted) {
       setLastExecutionByNode({});
+      return;
+    }
+
+    if (
+      event === "ToolCallStarted" ||
+      event === "ToolCallCompleted" ||
+      event === "ToolCallFailed" ||
+      event === "ToolCallError" ||
+      event === "ToolApprovalRequired" ||
+      event === "ToolApprovalResolved"
+    ) {
+      const toolPayload = payload.tool;
+      const refs = collectToolNodeRefs(toolPayload);
+      if (refs.length === 0) return;
+
+      hasLiveUpdatesRef.current = true;
+
+      let status: FlowNodeExecutionSnapshot["status"] | null = null;
+      let error: string | undefined;
+
+      if (event === "ToolCallStarted" || event === "ToolApprovalRequired") {
+        status = "running";
+      } else if (event === "ToolCallCompleted") {
+        status = "completed";
+        if (isRecord(toolPayload) && typeof toolPayload.error === "string" && toolPayload.error) {
+          status = "error";
+          error = toolPayload.error;
+        }
+      } else if (event === "ToolCallFailed" || event === "ToolCallError") {
+        status = "error";
+        if (isRecord(toolPayload) && typeof toolPayload.error === "string") {
+          error = toolPayload.error;
+        }
+      } else if (event === "ToolApprovalResolved") {
+        if (isRecord(toolPayload)) {
+          const approvalStatus = toolPayload.approvalStatus;
+          if (approvalStatus === "denied" || approvalStatus === "timeout") {
+            status = "error";
+            error = typeof approvalStatus === "string" ? `Approval ${approvalStatus}` : undefined;
+          }
+        }
+      }
+
+      if (!status) return;
+
+      setLastExecutionByNode((current) => {
+        let next = current;
+        const now = Date.now();
+        for (const ref of refs) {
+          const previous = next[ref.nodeId];
+          const snapshot: FlowNodeExecutionSnapshot = {
+            nodeId: ref.nodeId,
+            nodeType: ref.nodeType ?? previous?.nodeType,
+            status,
+            outputs: previous?.outputs,
+            error: error ?? previous?.error,
+            updatedAt: now,
+          };
+          next = {
+            ...next,
+            [ref.nodeId]: snapshot,
+          };
+        }
+        return next;
+      });
+      return;
+    }
+
+    if (
+      event === "MemberRunStarted" ||
+      event === "MemberRunCompleted" ||
+      event === "MemberRunError"
+    ) {
+      const nodeId = typeof payload.nodeId === "string" ? payload.nodeId : null;
+      if (!nodeId) return;
+      const nodeType = typeof payload.nodeType === "string" ? payload.nodeType : undefined;
+
+      hasLiveUpdatesRef.current = true;
+
+      let status: FlowNodeExecutionSnapshot["status"] | null = null;
+      let error: string | undefined;
+
+      if (event === "MemberRunStarted") {
+        status = "running";
+      } else if (event === "MemberRunCompleted") {
+        status = "completed";
+      } else if (event === "MemberRunError") {
+        status = "error";
+        const content = payload.content;
+        if (typeof content === "string") {
+          error = content;
+        }
+      }
+
+      if (!status) return;
+
+      setLastExecutionByNode((current) => {
+        const now = Date.now();
+        const previous = current[nodeId];
+        const next: FlowNodeExecutionSnapshot = {
+          nodeId,
+          nodeType: nodeType ?? previous?.nodeType,
+          status,
+          outputs: previous?.outputs,
+          error: error ?? previous?.error,
+          updatedAt: now,
+        };
+
+        return {
+          ...current,
+          [nodeId]: next,
+        };
+      });
       return;
     }
 
