@@ -8,6 +8,9 @@ import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
 import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { getBaseUrl } from '@/python/_internal';
 
 function getIcon(name: string) {
   const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
@@ -83,6 +86,58 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     return shouldRenderParam(p, 'inspector', edgeIndex);
   });
 
+  const hookId = selectedNodeData.data?.hookId;
+  const routeId = selectedNodeData.data?.routeId;
+  const webhookUrl = useMemo(() => {
+    if (definition.id !== 'webhook-trigger') return null;
+    if (typeof hookId !== 'string' || !hookId.trim()) return null;
+    try {
+      return `${getBaseUrl()}/webhooks/${hookId}`;
+    } catch {
+      return `http://127.0.0.1:8000/webhooks/${hookId}`;
+    }
+  }, [definition.id, hookId]);
+
+  const handleCopyWebhook = useCallback(() => {
+    if (!webhookUrl) return;
+    navigator.clipboard?.writeText(webhookUrl).catch(() => {});
+  }, [webhookUrl]);
+
+  const handleGenerateHookId = useCallback(() => {
+    if (definition.id !== 'webhook-trigger' || !effectiveNodeId) return;
+    const nextId = `hook_${Math.random().toString(36).slice(2, 10)}`;
+    updateNodeData(effectiveNodeId, 'hookId', nextId);
+  }, [definition.id, effectiveNodeId, updateNodeData]);
+
+  const showRouteId = useMemo(() => {
+    if (!definition) return false;
+    const hasParam = definition.parameters.some(param => param.id === 'routeId');
+    return hasParam || typeof routeId === 'string';
+  }, [definition, routeId]);
+
+  const nodeRouteUrl = useMemo(() => {
+    if (!showRouteId) return null;
+    if (typeof routeId !== 'string' || !routeId.trim()) return null;
+    const nodeType = definition?.id ?? selectedNodeData.type;
+    if (!nodeType) return null;
+    try {
+      return `${getBaseUrl()}/nodes/${nodeType}/${routeId}`;
+    } catch {
+      return `http://127.0.0.1:8000/nodes/${nodeType}/${routeId}`;
+    }
+  }, [definition?.id, routeId, selectedNodeData.type, showRouteId]);
+
+  const handleCopyNodeRoute = useCallback(() => {
+    if (!nodeRouteUrl) return;
+    navigator.clipboard?.writeText(nodeRouteUrl).catch(() => {});
+  }, [nodeRouteUrl]);
+
+  const handleGenerateRouteId = useCallback(() => {
+    if (!showRouteId || !effectiveNodeId) return;
+    const nextId = `route_${Math.random().toString(36).slice(2, 10)}`;
+    updateNodeData(effectiveNodeId, 'routeId', nextId);
+  }, [effectiveNodeId, showRouteId, updateNodeData]);
+
   const showCard = variant === 'card';
 
   return (
@@ -115,7 +170,41 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
           />
         ))}
 
-        {panelParams.length === 0 && (
+        {definition.id === 'webhook-trigger' && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Webhook URL</label>
+            <div className="flex items-center gap-2">
+              <Input value={webhookUrl ?? ''} readOnly placeholder="Generate a hook id first" />
+              <Button type="button" variant="secondary" size="sm" onClick={handleCopyWebhook} disabled={!webhookUrl}>
+                Copy
+              </Button>
+            </div>
+            {(!hookId || (typeof hookId === 'string' && !hookId.trim())) && (
+              <Button type="button" variant="secondary" size="sm" onClick={handleGenerateHookId}>
+                Generate Hook ID
+              </Button>
+            )}
+          </div>
+        )}
+
+        {showRouteId && definition.id !== 'webhook-trigger' && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Node Route URL</label>
+            <div className="flex items-center gap-2">
+              <Input value={nodeRouteUrl ?? ''} readOnly placeholder="Generate a route id first" />
+              <Button type="button" variant="secondary" size="sm" onClick={handleCopyNodeRoute} disabled={!nodeRouteUrl}>
+                Copy
+              </Button>
+            </div>
+            {(!routeId || (typeof routeId === 'string' && !routeId.trim())) && (
+              <Button type="button" variant="secondary" size="sm" onClick={handleGenerateRouteId}>
+                Generate Route ID
+              </Button>
+            )}
+          </div>
+        )}
+
+        {panelParams.length === 0 && !webhookUrl && !nodeRouteUrl && definition.id !== 'webhook-trigger' && (
           <p className="text-sm text-muted-foreground italic">
             No configurable properties
           </p>

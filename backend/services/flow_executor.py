@@ -312,6 +312,10 @@ async def run_flow(
     nodes_by_id = {n["id"]: n for n in flow_nodes}
 
     for node_id in order:
+        execution_ctx = getattr(services, "execution", None)
+        if execution_ctx is not None and getattr(execution_ctx, "stop_run", False):
+            break
+
         node = nodes_by_id.get(node_id)
         if node is None:
             continue

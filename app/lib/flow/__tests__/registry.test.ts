@@ -6,7 +6,18 @@ import {
   createFlowNode,
 } from '@nodes/_registry'
 
-const EXPECTED_NODE_IDS = ['chat-start', 'agent', 'mcp-server', 'toolset', 'llm-completion', 'prompt-template', 'conditional', 'model-selector']
+const EXPECTED_NODE_IDS = [
+  'chat-start',
+  'webhook-trigger',
+  'webhook-end',
+  'agent',
+  'mcp-server',
+  'toolset',
+  'llm-completion',
+  'prompt-template',
+  'conditional',
+  'model-selector',
+]
 
 describe('registry', () => {
   it.each(EXPECTED_NODE_IDS)('has %s registered', (id) => {

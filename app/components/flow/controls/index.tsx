@@ -11,6 +11,7 @@ import { MessagesControl } from './messages';
 import { ModelPicker } from './model-picker';
 import { McpServerPicker } from './mcp-server-picker';
 import { ToolsetPicker } from './toolset-picker';
+import { JsonSchemaControl } from './json-schema';
 
 /** Props that all control components receive */
 export interface ControlProps {
@@ -35,6 +36,7 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   model: ModelPicker as AnyControl,
   'mcp-server': McpServerPicker as AnyControl,
   toolset: ToolsetPicker as AnyControl,
+  json: JsonSchemaControl as AnyControl,
 };
 
 /** Get the control component for a parameter type */
@@ -70,3 +72,4 @@ export { MessagesControl } from './messages';
 export { ModelPicker } from './model-picker';
 export { McpServerPicker } from './mcp-server-picker';
 export { ToolsetPicker } from './toolset-picker';
+export { JsonSchemaControl } from './json-schema';

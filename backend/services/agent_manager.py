@@ -12,6 +12,7 @@ from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import Agent
 from .graph_normalizer import normalize_graph_data
+from .node_route_index import update_agent_routes, remove_agent_routes
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ class AgentManager:
             sess.commit()
 
         logger.info(f"Created agent '{name}' with id '{agent_id}'")
+        update_agent_routes(agent_id, default_graph)
         return agent_id
 
     def update_agent(
@@ -192,6 +194,7 @@ class AgentManager:
             sess.commit()
 
         logger.debug(f"Saved graph for agent '{agent_id}'")
+        update_agent_routes(agent_id, normalized_graph)
         return True
 
     def update_preview(self, agent_id: str, image_data: bytes, filename: str) -> bool:
@@ -255,6 +258,7 @@ class AgentManager:
             shutil.rmtree(agent_dir)
 
         logger.info(f"Deleted agent '{agent_id}'")
+        remove_agent_routes(agent_id)
         return True
 
     def get_agent_file_path(self, agent_id: str, filename: str) -> Path | None:

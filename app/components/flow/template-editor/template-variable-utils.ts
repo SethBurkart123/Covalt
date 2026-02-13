@@ -84,17 +84,23 @@ export function templateStringToDoc(value: string): JSONContent {
 
 function buildParagraphContent(paragraph: string): JSONContent[] {
   const tokens = parseTemplateTokens(paragraph);
-  return tokens.flatMap(token => {
+  const content: JSONContent[] = [];
+
+  for (const token of tokens) {
     if (token.type === 'text') {
-      return token.text ? [{ type: 'text', text: token.text }] : [];
+      if (!token.text) continue;
+      content.push({ type: 'text', text: token.text });
+      continue;
     }
 
-    return [{
+    content.push({
       type: 'templateVar',
       attrs: { expr: token.expr },
       content: [{ type: 'text', text: token.expr }],
-    }];
-  });
+    });
+  }
+
+  return content;
 }
 
 function parseTemplateTokens(text: string): TemplateToken[] {

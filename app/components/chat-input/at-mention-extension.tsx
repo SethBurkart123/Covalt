@@ -2,6 +2,7 @@
 
 import { Node, mergeAttributes } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";
+import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
 import { ReactRenderer } from "@tiptap/react";
 import {
@@ -15,7 +16,6 @@ import {
 import {
   MentionSuggestionList,
   type MentionSuggestionListHandle,
-  type MentionSuggestionListProps,
 } from "./at-mention-suggestion";
 
 export type MentionType = "tool" | "toolset" | "mcp";
@@ -39,10 +39,7 @@ interface MentionExtensionOptions {
   getSuggestions: (query: string) => MentionItem[];
 }
 
-type SuggestionRendererProps = MentionSuggestionListProps & {
-  editor: unknown;
-  clientRect?: () => DOMRect | null;
-};
+type SuggestionRendererProps = SuggestionProps<MentionItem, MentionItem>;
 
 export const AtMention = Node.create<MentionExtensionOptions>({
   name: "atMention",
@@ -146,7 +143,7 @@ function createSuggestionRenderer() {
   let container: HTMLDivElement | null = null;
   let cleanup: (() => void) | null = null;
 
-  const updatePosition = async (props: { clientRect?: () => DOMRect | null }) => {
+  const updatePosition = async (props: { clientRect?: (() => DOMRect | null) | null }) => {
     if (!container) return;
     const rect = props.clientRect?.();
     if (!rect) return;
@@ -174,7 +171,11 @@ function createSuggestionRenderer() {
       document.body.appendChild(container);
 
       component = new ReactRenderer(MentionSuggestionList, {
-        props,
+        props: {
+          items: props.items,
+          command: props.command,
+          query: props.query,
+        },
         editor: props.editor,
       });
 
@@ -191,7 +192,11 @@ function createSuggestionRenderer() {
     },
 
     onUpdate: (props: SuggestionRendererProps) => {
-      component?.updateProps(props);
+      component?.updateProps({
+        items: props.items,
+        command: props.command,
+        query: props.query,
+      });
       updatePosition(props);
       cleanup?.();
       cleanup = null;
@@ -204,7 +209,7 @@ function createSuggestionRenderer() {
       }
     },
 
-    onKeyDown: (props: { event: KeyboardEvent }) => {
+    onKeyDown: (props: SuggestionKeyDownProps) => {
       if (props.event.key === "Escape") return false;
       return component?.ref?.onKeyDown(props) ?? false;
     },

@@ -203,7 +203,9 @@ export function TemplateEditor({
     };
 
     editor.on('update', handleUpdate);
-    return () => editor.off('update', handleUpdate);
+    return () => {
+      editor.off('update', handleUpdate);
+    };
   }, [editor, multiline, onChange]);
 
   useEffect(() => {
@@ -217,7 +219,7 @@ export function TemplateEditor({
       return;
     }
 
-    editor.commands.setContent(templateStringToDoc(value ?? ''), false);
+    editor.commands.setContent(templateStringToDoc(value ?? ''), { emitUpdate: false });
     lastValueRef.current = value;
   }, [editor, multiline, value]);
 
@@ -352,6 +354,7 @@ function buildEditorProps({
     handleDragOver: (view: EditorView, event: DragEvent) => {
       const text = event.dataTransfer?.getData('text/plain');
       if (!text) return false;
+      if (!event.dataTransfer) return false;
 
       const expr = extractExpressionFromText(text.trim());
       if (!expr) return false;
