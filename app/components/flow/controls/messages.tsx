@@ -55,25 +55,28 @@ function isMessageRole(value: unknown): value is MessageRole {
 
 function normalizeMessages(value: unknown): MessageItem[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null;
-      const raw = item as Record<string, unknown>;
-      const role = isMessageRole((item as { role?: unknown }).role)
-        ? (item as { role: MessageRole }).role
-        : 'user';
-      const contentValue = (item as { content?: unknown }).content;
-      const content = typeof contentValue === 'string' ? contentValue : '';
-      const tool_calls = normalizeToolCalls(raw.tool_calls ?? raw.toolCalls);
-      const tool_call_id = normalizeToolCallId(raw.tool_call_id ?? raw.toolCallId);
-      return {
-        role,
-        content,
-        tool_calls: tool_calls.length ? tool_calls : undefined,
-        tool_call_id,
-      } satisfies MessageItem;
-    })
-    .filter((item): item is MessageItem => item !== null);
+  const normalized: MessageItem[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const raw = item as Record<string, unknown>;
+    const role = isMessageRole((item as { role?: unknown }).role)
+      ? (item as { role: MessageRole }).role
+      : 'user';
+    const contentValue = (item as { content?: unknown }).content;
+    const content = typeof contentValue === 'string' ? contentValue : '';
+    const tool_calls = normalizeToolCalls(raw.tool_calls ?? raw.toolCalls);
+    const tool_call_id = normalizeToolCallId(raw.tool_call_id ?? raw.toolCallId);
+
+    normalized.push({
+      role,
+      content,
+      tool_calls: tool_calls.length ? tool_calls : undefined,
+      tool_call_id,
+    });
+  });
+
+  return normalized;
 }
 
 function normalizeToolCallId(value: unknown): string | undefined {
@@ -271,7 +274,10 @@ export function MessagesControl({ param, value, onChange, compact, nodeId }: Mes
 
   const addMessage = useCallback(() => {
     if (currentValue.mode !== 'manual') return;
-    const nextMessages = [...currentValue.messages, { role: 'user', content: '' }];
+    const nextMessages: MessageItem[] = [
+      ...currentValue.messages,
+      { role: 'user', content: '' },
+    ];
     onChange({ mode: 'manual', messages: nextMessages });
   }, [currentValue, onChange]);
 
@@ -313,7 +319,6 @@ export function MessagesControl({ param, value, onChange, compact, nodeId }: Mes
           compact={compact}
           rows={compact ? 2 : 3}
           nodeId={nodeId}
-          verticalAlign="bottom"
         />
       ) : (
         <div className="space-y-2">

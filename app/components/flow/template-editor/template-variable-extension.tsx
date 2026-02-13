@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { InputRule, Node, PasteRule, mergeAttributes } from '@tiptap/core';
-import Suggestion from '@tiptap/suggestion';
+import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { autoUpdate, computePosition, flip, offset, shift, type VirtualElement } from '@floating-ui/dom';
 import {
@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils';
 import {
   TemplateVariableCompletionList,
   type TemplateVariableCompletionListHandle,
-  type TemplateVariableCompletionListProps,
 } from './template-variable-completion';
 import { TemplateVariablePicker } from './template-variable-picker';
 import { formatPreviewDisplay } from './template-variable-utils';
@@ -26,7 +25,6 @@ import type { TemplateVariableCompletion, TemplateVariableOption } from './types
 import {
   TemplateVariableSuggestionList,
   type TemplateVariableSuggestionListHandle,
-  type TemplateVariableSuggestionListProps,
 } from './template-variable-suggestion';
 
 export interface TemplateVariableAttrs {
@@ -41,10 +39,11 @@ interface TemplateVariableExtensionOptions {
   getCompletions: (args: { prefix: string; query: string; trigger: '.' | '[' }) => TemplateVariableCompletion[];
 }
 
-type SuggestionRendererProps = TemplateVariableSuggestionListProps & {
-  editor: unknown;
-  clientRect?: () => DOMRect | null;
-};
+type SuggestionRendererProps = SuggestionProps<TemplateVariableOption, TemplateVariableOption>;
+type CompletionSuggestionRendererProps = SuggestionProps<
+  TemplateVariableCompletion,
+  TemplateVariableCompletion
+>;
 
 const TEMPLATE_INPUT_REGEX = /{{\s*([^}]+?)\s*}}$/;
 const TEMPLATE_PASTE_REGEX = /{{\s*([^}]+?)\s*}}/g;
@@ -112,13 +111,12 @@ export const TemplateVariable = Node.create<TemplateVariableExtensionOptions>({
     return [
       new InputRule({
         find: TEMPLATE_INPUT_REGEX,
-        handler: ({ state, range, match }) => {
+        handler: ({ state, range, match, commands }) => {
           const expr = match[1]?.trim();
           if (!expr) return null;
           const attrs = createTemplateVariableAttrs({ expr });
           const textNode = state.schema.text(expr);
-          state.tr.replaceWith(range.from, range.to, this.type.create(attrs, textNode));
-          return state.tr;
+          commands.insertContentAt(range, this.type.create(attrs, textNode));
         },
       }),
     ];
@@ -128,13 +126,12 @@ export const TemplateVariable = Node.create<TemplateVariableExtensionOptions>({
     return [
       new PasteRule({
         find: TEMPLATE_PASTE_REGEX,
-        handler: ({ state, range, match }) => {
+        handler: ({ state, range, match, commands }) => {
           const expr = match[1]?.trim();
           if (!expr) return null;
           const attrs = createTemplateVariableAttrs({ expr });
           const textNode = state.schema.text(expr);
-          state.tr.replaceWith(range.from, range.to, this.type.create(attrs, textNode));
-          return state.tr;
+          commands.insertContentAt(range, this.type.create(attrs, textNode));
         },
       }),
     ];
@@ -171,7 +168,7 @@ export const TemplateVariable = Node.create<TemplateVariableExtensionOptions>({
         allowSpaces: false,
         allow: ({ state, range }) =>
           isInsideTemplateVar(state, range, this.name) && Boolean(getCompletionContext(state, '.', '')),
-        items: ({ query, editor, range }) => {
+        items: ({ query, editor }) => {
           const context = getCompletionContext(editor.state, '.', query);
           if (!context) return [];
           return this.options.getCompletions({
@@ -199,7 +196,7 @@ export const TemplateVariable = Node.create<TemplateVariableExtensionOptions>({
         allowSpaces: false,
         allow: ({ state, range }) =>
           isInsideTemplateVar(state, range, this.name) && Boolean(getCompletionContext(state, '[', '')),
-        items: ({ query, editor, range }) => {
+        items: ({ query, editor }) => {
           const context = getCompletionContext(editor.state, '[', query);
           if (!context) return [];
           return this.options.getCompletions({
@@ -292,10 +289,11 @@ export const TemplateVariable = Node.create<TemplateVariableExtensionOptions>({
 function createSuggestionRenderer() {
   let component: ReactRenderer<TemplateVariableSuggestionListHandle> | null = null;
   let container: HTMLDivElement | null = null;
+  let currentProps: SuggestionRendererProps | null = null;
 
-  const updatePosition = (props: { clientRect?: () => DOMRect | null }) => {
+  const updatePosition = () => {
     if (!container) return;
-    const rect = props.clientRect?.();
+    const rect = currentProps?.clientRect?.();
     if (!rect) return;
 
     container.style.left = `${rect.left}px`;
@@ -304,26 +302,34 @@ function createSuggestionRenderer() {
 
   return {
     onStart: (props: SuggestionRendererProps) => {
+      currentProps = props;
       container = document.createElement('div');
       container.style.position = 'fixed';
       container.style.zIndex = '9999';
       document.body.appendChild(container);
 
       component = new ReactRenderer(TemplateVariableSuggestionList, {
-        props,
+        props: {
+          items: props.items,
+          command: props.command,
+        },
         editor: props.editor,
       });
 
       container.appendChild(component.element);
-      updatePosition(props);
+      updatePosition();
     },
 
     onUpdate: (props: SuggestionRendererProps) => {
-      component?.updateProps(props);
-      updatePosition(props);
+      currentProps = props;
+      component?.updateProps({
+        items: props.items,
+        command: props.command,
+      });
+      updatePosition();
     },
 
-    onKeyDown: (props: { event: KeyboardEvent }) => {
+    onKeyDown: (props: SuggestionKeyDownProps) => {
       if (props.event.key === 'Escape') {
         return false;
       }
@@ -331,6 +337,7 @@ function createSuggestionRenderer() {
     },
 
     onExit: () => {
+      currentProps = null;
       component?.destroy();
       container?.remove();
       component = null;
@@ -428,7 +435,6 @@ function TemplateVariableNodeView({
                 )}
               >
                 <NodeViewContent
-                  as="span"
                   data-placeholder={placeholderExpr}
                   className="template-var-content outline-none"
                   onFocus={() => setOpen(true)}
@@ -512,7 +518,6 @@ function getCompletionContext(
 function createCompletionRenderer() {
   let component: ReactRenderer<TemplateVariableCompletionListHandle> | null = null;
   let container: HTMLDivElement | null = null;
-  let lastProps: { clientRect?: () => DOMRect | null } | null = null;
   let editorInstance: {
     view?: { coordsAtPos: (pos: number) => { left: number; right: number; top: number; bottom: number } };
     state?: { selection?: { from: number } };
@@ -524,7 +529,7 @@ function createCompletionRenderer() {
   let cleanupAutoUpdate: (() => void) | null = null;
   let getReferenceRect: (() => DOMRect | null) | null = null;
 
-  const updatePosition = (props: { clientRect?: () => DOMRect | null }) => {
+  const updatePosition = () => {
     if (!container) return;
     if (!getReferenceRect) return;
     const reference: VirtualElement = {
@@ -552,7 +557,7 @@ function createCompletionRenderer() {
         handleBlur();
         return;
       }
-      if (lastProps) updatePosition(lastProps);
+      updatePosition();
     }, { animationFrame: true });
   };
 
@@ -577,19 +582,21 @@ function createCompletionRenderer() {
   };
 
   return {
-    onStart: (props: TemplateVariableCompletionListProps & { editor: unknown; clientRect?: () => DOMRect | null; range?: { from: number } }) => {
+    onStart: (props: CompletionSuggestionRendererProps) => {
       container = document.createElement('div');
       container.style.position = 'fixed';
       container.style.zIndex = '9999';
       document.body.appendChild(container);
 
       component = new ReactRenderer(TemplateVariableCompletionList, {
-        props,
-        editor: (props as { editor: unknown }).editor,
+        props: {
+          items: props.items,
+          command: props.command,
+        },
+        editor: props.editor,
       });
 
       container.appendChild(component.element);
-      lastProps = props;
       lastRange = props.range ?? null;
       editorInstance = props.editor as typeof editorInstance;
       getReferenceRect = () => {
@@ -604,16 +611,18 @@ function createCompletionRenderer() {
         }
         return null;
       };
-      updatePosition(props);
+      updatePosition();
       startAutoUpdate();
 
       window.addEventListener('blur', handleBlur);
       editorInstance?.on?.('blur', handleBlur);
     },
 
-    onUpdate: (props: TemplateVariableCompletionListProps & { clientRect?: () => DOMRect | null; range?: { from: number } }) => {
-      component?.updateProps(props);
-      lastProps = props;
+    onUpdate: (props: CompletionSuggestionRendererProps) => {
+      component?.updateProps({
+        items: props.items,
+        command: props.command,
+      });
       lastRange = props.range ?? lastRange;
       getReferenceRect = () => {
         const rect = props.clientRect?.();
@@ -627,10 +636,10 @@ function createCompletionRenderer() {
         }
         return null;
       };
-      updatePosition(props);
+      updatePosition();
     },
 
-    onKeyDown: (props: { event: KeyboardEvent }) => {
+    onKeyDown: (props: SuggestionKeyDownProps) => {
       if (props.event.key === 'Escape') {
         return false;
       }
@@ -645,7 +654,6 @@ function createCompletionRenderer() {
       container?.remove();
       component = null;
       container = null;
-      lastProps = null;
       editorInstance = null;
       lastRange = null;
       getReferenceRect = null;

@@ -1,4 +1,5 @@
-import type { EdgeChannel, FlowEdge, Parameter, ShowWhen } from '@/lib/flow';
+import type { FlowEdge, Parameter, ShowWhen } from '@/lib/flow';
+import type { EdgeChannel } from '@nodes/_types';
 
 export type ParamRenderContext = 'node' | 'inspector';
 
@@ -62,13 +63,6 @@ function matchesShowWhen(showWhen: ShowWhen | undefined, index: NodeEdgeIndex): 
 
   if (conditions.length === 0) return true;
   return conditions.every(Boolean);
-}
-
-function hasIncoming(index: NodeEdgeIndex, handleId: string, channel?: EdgeChannel): boolean {
-  return index.incoming.some(edge => {
-    if (edge.targetHandle !== handleId) return false;
-    return matchesChannel(edge, channel);
-  });
 }
 
 function hasOutgoing(index: NodeEdgeIndex, handleId: string, channel?: EdgeChannel): boolean {

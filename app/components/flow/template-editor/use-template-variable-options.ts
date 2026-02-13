@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import type { FlowEdge, FlowNode } from '@/lib/flow';
-import { useFlowState } from '@/lib/flow';
+import { useFlowState, getNodeDefinition } from '@/lib/flow';
 import { useAgentTestChat } from '@/contexts/agent-test-chat-context';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import {
@@ -95,14 +95,19 @@ function getTriggerSource(
 ): FlowNode | null {
   for (const nodeId of upstreamIds) {
     const node = nodesById.get(nodeId);
-    if (node?.type === 'chat-start') return node;
+    if (node && isTriggerNode(node)) return node;
   }
 
   for (const node of nodesById.values()) {
-    if (node.type === 'chat-start') return node;
+    if (isTriggerNode(node)) return node;
   }
 
   return null;
+}
+
+function isTriggerNode(node: FlowNode): boolean {
+  const definition = getNodeDefinition(node.type || '');
+  return definition?.category === 'trigger';
 }
 
 function buildTriggerFallback(): Record<string, unknown> {
@@ -112,6 +117,9 @@ function buildTriggerFallback(): Record<string, unknown> {
     history: [],
     messages: [],
     attachments: [],
+    body: {},
+    headers: {},
+    query: {},
   };
 }
 

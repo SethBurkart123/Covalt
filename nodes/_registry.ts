@@ -2,6 +2,8 @@ import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from './_types
 import { canConnect, canCoerce } from '@/lib/flow/sockets';
 
 import { chatStart } from './core/chat_start/definition';
+import { webhookTrigger } from './core/webhook_trigger/definition';
+import { webhookEnd } from './core/webhook_end/definition';
 import { agent } from './core/agent/definition';
 import { mcpServer } from './tools/mcp_server/definition';
 import { toolset } from './tools/toolset/definition';
@@ -10,7 +12,18 @@ import { promptTemplate } from './ai/prompt_template/definition';
 import { conditional } from './flow/conditional/definition';
 import { modelSelector } from './utility/model_selector/definition';
 
-const NODE_LIST = [chatStart, agent, mcpServer, toolset, llmCompletion, promptTemplate, conditional, modelSelector] as const;
+const NODE_LIST = [
+  chatStart,
+  webhookTrigger,
+  webhookEnd,
+  agent,
+  mcpServer,
+  toolset,
+  llmCompletion,
+  promptTemplate,
+  conditional,
+  modelSelector,
+] as const;
 
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = Object.fromEntries(
   NODE_LIST.map(node => [node.id, node])
@@ -42,6 +55,13 @@ export function createFlowNode(
   for (const param of definition.parameters) {
     if ('default' in param && param.default !== undefined) {
       data[param.id] = param.default;
+    }
+  }
+
+  if (type === 'webhook-trigger') {
+    const hookId = typeof data.hookId === 'string' ? data.hookId.trim() : '';
+    if (!hookId) {
+      data.hookId = `hook_${Math.random().toString(36).slice(2, 10)}`;
     }
   }
   
@@ -102,4 +122,4 @@ export function getCompatibleNodeSockets(
   return results;
 }
 
-export { chatStart, agent, mcpServer, toolset };
+export { chatStart, webhookTrigger, webhookEnd, agent, mcpServer, toolset };

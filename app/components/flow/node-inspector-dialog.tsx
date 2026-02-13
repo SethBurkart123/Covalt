@@ -34,12 +34,6 @@ import { TEMPLATE_DRAG_ACTIVE_CLASS } from './template-editor/template-editor-co
 
 type InspectorView = 'schema' | 'json';
 
-interface PathRow {
-  path: string;
-  value: unknown;
-  type: string;
-}
-
 interface SchemaNode {
   id: string;
   name: string;

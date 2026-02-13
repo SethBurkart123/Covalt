@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FlowProvider } from '@/lib/flow';
@@ -117,7 +117,7 @@ function AgentEditorContent() {
   );
 }
 
-export default function AgentEditorPage() {
+function AgentEditorPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const agentId = searchParams.get('id');
@@ -149,5 +149,13 @@ export default function AgentEditorPage() {
         </AgentEditorProvider>
       </FlowProvider>
     </AgentTestChatProvider>
+  );
+}
+
+export default function AgentEditorPage() {
+  return (
+    <Suspense fallback={null}>
+      <AgentEditorPageContent />
+    </Suspense>
   );
 }
