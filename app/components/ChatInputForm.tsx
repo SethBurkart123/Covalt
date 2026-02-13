@@ -244,6 +244,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
         if (isComposing || e.isComposing || e.defaultPrevented) return;
 
+        const nodeInspectorOpen = document.querySelector('[data-node-inspector="true"]');
+        if (nodeInspectorOpen) return;
+
         const activeElement = document.activeElement;
         const isInputFocused =
           activeElement?.tagName === "INPUT" ||
