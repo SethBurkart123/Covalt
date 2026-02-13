@@ -41,7 +41,7 @@ class GraphEdgeData(BaseModel):
 
     sourceType: Optional[str] = None
     targetType: Optional[str] = None
-    channel: str
+    channel: Literal["flow", "link"]
 
 
 class GraphEdge(BaseModel):

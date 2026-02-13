@@ -4,12 +4,13 @@ import { memo, useCallback, useMemo, type ComponentType } from 'react';
 import { useStore, type NodeProps } from '@xyflow/react';
 import { ChevronDown, Check, X, Loader2 } from 'lucide-react';
 import * as Icons from 'lucide-react';
-import type { NodeDefinition, FlowEdge } from '@/lib/flow';
+import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { getNodeDefinition, useFlowActions } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
 import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
+import { Socket } from './socket';
 
 interface FlowNodeData {
   [key: string]: unknown;
@@ -20,10 +21,87 @@ interface FlowNodeProps extends NodeProps {
   type: string;
 }
 
+interface SocketParamItem {
+  param: Parameter;
+  side: 'left' | 'right';
+}
+
+type ParamBlock =
+  | { kind: 'compact'; items: SocketParamItem[] }
+  | { kind: 'normal'; param: Parameter };
+
 function getIcon(name: string) {
   const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
   return IconComponent ?? Icons.Circle;
 }
+
+function getSocketSide(param: Parameter): 'left' | 'right' {
+  return param.socket?.side ?? (param.mode === 'output' ? 'right' : 'left');
+}
+
+function isSocketOnlyParam(param: Parameter, isConnected: boolean): boolean {
+  if (!param.socket) return false;
+  if (param.mode === 'input' || param.mode === 'output') return true;
+  return param.mode === 'hybrid' && isConnected;
+}
+
+const CompactSocketRow = memo(function CompactSocketRow({ left, right }: { left?: SocketParamItem; right?: SocketParamItem }) {
+  return (
+    <div className="relative flex items-center h-7 px-3">
+      {left && (
+        <div className="flex items-center gap-1.5">
+          <Socket
+            id={left.param.id}
+            type={left.param.socket?.type ?? 'data'}
+            side="left"
+            mode={left.param.mode}
+            bidirectional={left.param.socket?.bidirectional}
+            config={left.param.socket}
+          />
+          <span className="text-xs text-muted-foreground">{left.param.label}</span>
+        </div>
+      )}
+
+      {right && (
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground text-right">{right.param.label}</span>
+          <Socket
+            id={right.param.id}
+            type={right.param.socket?.type ?? 'data'}
+            side="right"
+            mode={right.param.mode}
+            bidirectional={right.param.socket?.bidirectional}
+            config={right.param.socket}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
+
+const CompactSocketGroup = memo(function CompactSocketGroup({ items }: { items: SocketParamItem[] }) {
+  const { leftItems, rightItems, rowCount } = useMemo(() => {
+    const left = items.filter(item => item.side === 'left');
+    const right = items.filter(item => item.side === 'right');
+    return {
+      leftItems: left,
+      rightItems: right,
+      rowCount: Math.max(left.length, right.length),
+    };
+  }, [items]);
+
+  return (
+    <div className="flex flex-col">
+      {Array.from({ length: rowCount }).map((_, index) => (
+        <CompactSocketRow
+          key={`${leftItems[index]?.param.id ?? 'left'}-${rightItems[index]?.param.id ?? 'right'}-${index}`}
+          left={leftItems[index]}
+          right={rightItems[index]}
+        />
+      ))}
+    </div>
+  );
+});
 
 /**
  * Generic flow node component.
@@ -65,6 +143,38 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
     }
     return connected;
   }, [edgeIndex]);
+
+  const visibleParams = useMemo(
+    () => (definition ? definition.parameters.filter(param => shouldRenderParam(param, 'node', edgeIndex)) : []),
+    [definition, edgeIndex]
+  );
+
+  const paramBlocks = useMemo<ParamBlock[]>(() => {
+    if (!definition) return [];
+    const blocks: ParamBlock[] = [];
+    let compactBuffer: SocketParamItem[] = [];
+
+    for (const param of visibleParams) {
+      const isConnected = connectedHandles.has(param.id);
+      if (isSocketOnlyParam(param, isConnected)) {
+        compactBuffer.push({ param, side: getSocketSide(param) });
+        continue;
+      }
+
+      if (compactBuffer.length > 0) {
+        blocks.push({ kind: 'compact', items: compactBuffer });
+        compactBuffer = [];
+      }
+
+      blocks.push({ kind: 'normal', param });
+    }
+
+    if (compactBuffer.length > 0) {
+      blocks.push({ kind: 'compact', items: compactBuffer });
+    }
+
+    return blocks;
+  }, [definition, visibleParams, connectedHandles]);
 
   if (!definition) {
     return (
@@ -123,18 +233,27 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
         </div>
 
         <div className="py-1 bg-card rounded-lg border-t border-border">
-          {definition.parameters
-            .filter(param => shouldRenderParam(param, 'node', edgeIndex))
-            .map(param => (
+          {paramBlocks.map((block, index) => {
+            if (block.kind === 'compact') {
+              return (
+                <CompactSocketGroup
+                  key={`compact-${index}`}
+                  items={block.items}
+                />
+              );
+            }
+
+            return (
               <ParameterRow
-                key={param.id}
-                param={param}
-                value={data[param.id]}
-                isConnected={connectedHandles.has(param.id)}
+                key={block.param.id}
+                param={block.param}
+                value={data[block.param.id]}
+                isConnected={connectedHandles.has(block.param.id)}
                 onParamChange={handleParameterChange}
                 nodeId={id}
               />
-            ))}
+            );
+          })}
         </div>
       </div>
     </div>

@@ -23,7 +23,7 @@ function AgentEditorContent() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorNodeId, setInspectorNodeId] = useState<string | null>(null);
   const { captureAndUpload } = useCanvasPreview(agentId);
-  const captureRef = useRef(captureAndUpload);
+  const hasEditedGraphRef = useRef(false);
 
   const handleNodeDoubleClick = (nodeId: string) => {
     setInspectorNodeId(nodeId);
@@ -56,20 +56,17 @@ function AgentEditorContent() {
   }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent, toggleChat, isChatOpen]);
 
   useEffect(() => {
-    captureRef.current = captureAndUpload;
-  }, [captureAndUpload]);
+    if (saveStatus === 'dirty') {
+      hasEditedGraphRef.current = true;
+    }
+  }, [saveStatus]);
 
   useEffect(() => {
-    if (!agent || isLoading) return;
+    if (isLoading || saveStatus !== 'saved' || !hasEditedGraphRef.current) return;
+    hasEditedGraphRef.current = false;
     const timer = setTimeout(() => captureAndUpload(), 800);
     return () => clearTimeout(timer);
-  }, [agent, isLoading, captureAndUpload]);
-
-  useEffect(() => {
-    return () => {
-      captureRef.current();
-    };
-  }, []);
+  }, [isLoading, saveStatus, captureAndUpload]);
 
   if (isLoading) {
     return (

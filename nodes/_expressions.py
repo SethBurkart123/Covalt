@@ -4,7 +4,7 @@ Expressions are written in JavaScript, wrapped in {{ ... }}.
 Examples:
   {{ $('Node Name').item.json.fieldPath }}
   {{ $input.messages[0].content.split('/')[0] }}
-  {{ $trigger.include_user_tools }}
+  {{ $trigger.message }}
 
 Priority chain: Wire > Expression > Inline value.
 Wires are already resolved by _gather_inputs. This module handles the

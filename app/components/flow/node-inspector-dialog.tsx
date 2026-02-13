@@ -417,7 +417,7 @@ export function NodeInspectorDialog({
   );
 
   const flowEdges = useMemo(
-    () => edges.filter(edge => (edge.data?.channel ?? 'flow') === 'flow'),
+    () => edges.filter(edge => edge.data.channel === 'flow'),
     [edges]
   );
 

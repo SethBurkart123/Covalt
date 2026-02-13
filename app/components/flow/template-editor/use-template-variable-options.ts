@@ -43,7 +43,7 @@ function buildTemplateVariableOptions({
   if (!nodeId) return [];
 
   const nodesById = new Map(nodes.map(node => [node.id, node]));
-  const flowEdges = edges.filter(edge => (edge.data?.channel ?? 'flow') === 'flow');
+  const flowEdges = edges.filter(edge => edge.data.channel === 'flow');
 
   const upstreamIds = getUpstreamNodeIds(nodeId, flowEdges);
 
@@ -112,7 +112,6 @@ function buildTriggerFallback(): Record<string, unknown> {
     history: [],
     messages: [],
     attachments: [],
-    include_user_tools: false,
   };
 }
 

@@ -22,7 +22,7 @@ import { addRecentModel } from "@/lib/utils";
 
 export function useChatInput(onThinkTagDetected?: () => void) {
   const { chatId, selectedModel, refreshChats } = useChat();
-  const { activeToolIds } = useTools();
+  const { activeToolIds, setChatToolIds } = useTools();
   const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
 
   const editing = useMessageEditing();
@@ -148,8 +148,17 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [baseMessages]);
 
   const handleSubmit = useCallback(
-    async (inputText: string, attachments: Attachment[]) => {
+    async (inputText: string, attachments: Attachment[], extraToolIds?: string[]) => {
       if ((!inputText.trim() && attachments.length === 0) || isLoading || !canSendMessage) return;
+
+      const mergedToolIds = extraToolIds?.length
+        ? Array.from(new Set([...activeToolIds, ...extraToolIds]))
+        : activeToolIds;
+      const hasNewToolIds = extraToolIds?.some((id) => !activeToolIds.includes(id)) ?? false;
+
+      if (hasNewToolIds) {
+        void setChatToolIds(mergedToolIds, { persistDefaults: false });
+      }
 
       const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
@@ -163,7 +172,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           newBaseMessages,
           selectedModel,
           chatId || undefined,
-          activeToolIds,
+          mergedToolIds,
           attachments.length > 0 ? attachments : undefined
         );
         streamAbortRef.current = abort;
@@ -221,7 +230,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         activeSubmissionChatIdRef.current = null;
       }
     },
-    [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, updateStreamContent, preserveStreamingMessage],
+    [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, setChatToolIds, registerStream, unregisterStream, updateStreamContent, preserveStreamingMessage],
   );
 
   const handleContinue = useCallback(

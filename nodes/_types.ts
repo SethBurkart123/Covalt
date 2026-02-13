@@ -60,6 +60,14 @@ export interface ShowWhen {
   connectedFrom?: string;
   /** Show only when this node has an outgoing connection to a target handle */
   connectedTo?: string;
+  /** Show only when this parameter's socket has no connection */
+  notConnected?: string;
+  /** Show only when this node has no outgoing connection from this handle */
+  notConnectedOut?: string;
+  /** Show only when this node has no incoming connection from a handle */
+  notConnectedFrom?: string;
+  /** Show only when this node has no outgoing connection to a target handle */
+  notConnectedTo?: string;
   /** Optional channel filter for the connection checks */
   channel?: EdgeChannel;
 }
@@ -241,10 +249,10 @@ export interface FlowEdge {
   target: string;
   targetHandle: string;
   type?: string;
-  data?: {
+  data: {
     sourceType?: string;
     targetType?: string;
-    channel?: EdgeChannel;
+    channel: EdgeChannel;
   };
 }
 

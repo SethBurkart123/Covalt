@@ -133,9 +133,10 @@ function countEdgesFrom(
 function enrichEdgeWithSocketTypes(edge: FlowEdge, nodes: Node[]): FlowEdge {
   const sourceType = getSocketTypeForHandle(nodes, edge.source, edge.sourceHandle, true);
   const targetType = getSocketTypeForHandle(nodes, edge.target, edge.targetHandle, false);
-  const sourceParam = getParameterForHandle(nodes, edge.source, edge.sourceHandle);
-  const targetParam = getParameterForHandle(nodes, edge.target, edge.targetHandle);
-  const channel = edge.data?.channel ?? getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
+  const channel = edge.data?.channel;
+  if (channel !== 'flow' && channel !== 'link') {
+    throw new Error(`Edge '${edge.id}' is missing a valid channel`);
+  }
 
   return {
     ...edge,

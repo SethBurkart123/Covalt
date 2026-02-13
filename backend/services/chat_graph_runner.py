@@ -63,14 +63,6 @@ AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
 FLOW_EDGE_CHANNEL = "flow"
 
 
-@dataclass(frozen=True)
-class ChatScope:
-    include_user_tools_by_node: dict[str, bool]
-
-    def include_user_tools(self, node_id: str) -> bool:
-        return self.include_user_tools_by_node.get(node_id, True)
-
-
 def _flow_topology(
     graph_data: dict[str, Any],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]], dict[str, list[str]]]:
@@ -104,50 +96,6 @@ def _flow_topology(
     return nodes_by_id, downstream_by_node, upstream_by_node
 
 
-def _reachable_from_entries(
-    entry_node_ids: list[str],
-    downstream_by_node: dict[str, list[str]],
-) -> set[str]:
-    if not entry_node_ids:
-        return set()
-
-    visited: set[str] = set()
-    queue: list[str] = list(entry_node_ids)
-    while queue:
-        node_id = queue.pop(0)
-        if node_id in visited:
-            continue
-        visited.add(node_id)
-
-        for target_id in downstream_by_node.get(node_id, []):
-            if target_id not in visited:
-                queue.append(target_id)
-
-    return visited
-
-
-def _collect_upstream_nodes(
-    node_id: str,
-    upstream_by_node: dict[str, list[str]],
-    *,
-    active_node_ids: set[str],
-) -> set[str]:
-    visited: set[str] = set()
-    queue: list[str] = list(upstream_by_node.get(node_id, []))
-
-    while queue:
-        upstream_id = queue.pop(0)
-        if upstream_id in visited:
-            continue
-        if active_node_ids and upstream_id not in active_node_ids:
-            continue
-
-        visited.add(upstream_id)
-        queue.extend(upstream_by_node.get(upstream_id, []))
-
-    return visited
-
-
 def _chat_entry_node_ids(
     nodes_by_id: dict[str, dict[str, Any]],
     upstream_by_node: dict[str, list[str]],
@@ -169,50 +117,9 @@ def _chat_entry_node_ids(
     return sorted(nodes_by_id)
 
 
-def _chat_start_includes_user_tools(node: dict[str, Any]) -> bool:
-    data = node.get("data")
-    if not isinstance(data, dict):
-        return False
-    return bool(data.get("includeUserTools", False))
-
-
-def _build_chat_scope(graph_data: dict[str, Any]) -> tuple[ChatScope, list[str]]:
-    nodes_by_id, downstream_by_node, upstream_by_node = _flow_topology(graph_data)
-    entry_node_ids = _chat_entry_node_ids(nodes_by_id, upstream_by_node)
-    active_node_ids = _reachable_from_entries(entry_node_ids, downstream_by_node)
-
-    include_user_tools_by_node: dict[str, bool] = {}
-
-    for node_id in sorted(active_node_ids):
-        node = nodes_by_id.get(node_id)
-        if not isinstance(node, dict) or node.get("type") != "agent":
-            continue
-
-        upstream_ids = _collect_upstream_nodes(
-            node_id,
-            upstream_by_node,
-            active_node_ids=active_node_ids,
-        )
-
-        upstream_chat_starts = [
-            nodes_by_id[upstream_id]
-            for upstream_id in upstream_ids
-            if nodes_by_id.get(upstream_id, {}).get("type") == "chat-start"
-        ]
-        if not upstream_chat_starts:
-            include_user_tools_by_node[node_id] = True
-        else:
-            include_user_tools_by_node[node_id] = all(
-                _chat_start_includes_user_tools(chat_start)
-                for chat_start in upstream_chat_starts
-            )
-
-    return (
-        ChatScope(
-            include_user_tools_by_node=include_user_tools_by_node,
-        ),
-        entry_node_ids,
-    )
+def _build_entry_node_ids(graph_data: dict[str, Any]) -> list[str]:
+    nodes_by_id, _downstream_by_node, upstream_by_node = _flow_topology(graph_data)
+    return _chat_entry_node_ids(nodes_by_id, upstream_by_node)
 
 
 def _build_trigger_payload(
@@ -220,7 +127,6 @@ def _build_trigger_payload(
     chat_history: list[dict[str, Any]],
     attachments: list[dict[str, Any]],
     messages: list[Any],
-    include_user_tools: bool,
 ) -> dict[str, Any]:
     return {
         "message": user_message,
@@ -228,18 +134,7 @@ def _build_trigger_payload(
         "history": chat_history,
         "messages": messages,
         "attachments": attachments,
-        "include_user_tools": include_user_tools,
     }
-
-
-def _get_chat_start_include_user_tools(graph_data: dict[str, Any]) -> bool:
-    for node in graph_data.get("nodes", []):
-        if not isinstance(node, dict):
-            continue
-        if node.get("type") != "chat-start":
-            continue
-        return _chat_start_includes_user_tools(node)
-    return False
 
 
 def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
@@ -1104,14 +999,12 @@ async def handle_flow_stream(
 
     chat_history = build_chat_runtime_history(messages)
     openai_messages = build_openai_messages_for_chat(messages)
-    chat_scope, entry_node_ids = _build_chat_scope(graph_data)
-    include_user_tools = _get_chat_start_include_user_tools(graph_data)
+    entry_node_ids = _build_entry_node_ids(graph_data)
     trigger_payload = _build_trigger_payload(
         user_message,
         chat_history,
         last_user_attachments,
         openai_messages,
-        include_user_tools,
     )
 
     state = types.SimpleNamespace(user_message=user_message)
@@ -1130,7 +1023,6 @@ async def handle_flow_stream(
                 messages=openai_messages,
             ),
             expression_context={"trigger": trigger_payload},
-            chat_scope=chat_scope,
             execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
         ),
     )

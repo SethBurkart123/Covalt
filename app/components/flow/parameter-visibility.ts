@@ -47,6 +47,18 @@ function matchesShowWhen(showWhen: ShowWhen | undefined, index: NodeEdgeIndex): 
   if (showWhen.connectedTo !== undefined) {
     conditions.push(hasOutgoingTo(index, showWhen.connectedTo, showWhen.channel));
   }
+  if (showWhen.notConnected !== undefined) {
+    conditions.push(!hasAnyConnection(index, showWhen.notConnected, showWhen.channel));
+  }
+  if (showWhen.notConnectedOut !== undefined) {
+    conditions.push(!hasOutgoing(index, showWhen.notConnectedOut, showWhen.channel));
+  }
+  if (showWhen.notConnectedFrom !== undefined) {
+    conditions.push(!hasIncomingFrom(index, showWhen.notConnectedFrom, showWhen.channel));
+  }
+  if (showWhen.notConnectedTo !== undefined) {
+    conditions.push(!hasOutgoingTo(index, showWhen.notConnectedTo, showWhen.channel));
+  }
 
   if (conditions.length === 0) return true;
   return conditions.every(Boolean);
@@ -89,19 +101,5 @@ function hasOutgoingTo(index: NodeEdgeIndex, handleId: string, channel?: EdgeCha
 
 function matchesChannel(edge: FlowEdge, channel?: EdgeChannel): boolean {
   if (!channel) return true;
-  const edgeChannel = edge.data?.channel;
-  if (edgeChannel) return edgeChannel === channel;
-
-  const sourceType = edge.data?.sourceType;
-  const targetType = edge.data?.targetType;
-
-  if (channel === 'link') {
-    return sourceType === 'tools' || targetType === 'tools';
-  }
-
-  if (channel === 'flow') {
-    return sourceType !== 'tools' && targetType !== 'tools';
-  }
-
-  return false;
+  return edge.data.channel === channel;
 }

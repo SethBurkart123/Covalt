@@ -82,7 +82,7 @@ export function useTestChatInput(agentId: string) {
   );
 
   const handleSubmit = useCallback(
-    async (inputText: string, attachments: Attachment[]) => {
+    async (inputText: string, attachments: Attachment[], _toolIds?: string[]) => {
       if (!inputText.trim() && attachments.length === 0) return;
       if (isLoading) return;
 
