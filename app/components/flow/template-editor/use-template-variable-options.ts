@@ -8,6 +8,7 @@ import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-conte
 import {
   buildInputExpression,
   buildNodeExpression,
+  buildTriggerExpression,
   collectObjectRows,
   formatPreview,
   getNodeName,
@@ -48,6 +49,17 @@ function buildTemplateVariableOptions({
 
   const options: TemplateVariableOption[] = [];
 
+  const triggerSource = getTriggerSource(nodesById, upstreamIds);
+  const triggerSnapshot = triggerSource ? lastExecutionByNode[triggerSource.id] : undefined;
+  const triggerOutput = pickPrimaryOutput(triggerSnapshot);
+  const triggerValue = triggerOutput.value ?? buildTriggerFallback();
+  options.push(...buildOptionsForValue({
+    group: 'Trigger',
+    labelPrefix: 'trigger',
+    exprForPath: buildTriggerExpression,
+    value: triggerValue,
+  }));
+
   const directInputSource = getDirectInputSource(nodeId, nodesById, flowEdges);
   const inputSnapshot = directInputSource ? lastExecutionByNode[directInputSource.id] : undefined;
   const inputOutput = pickPrimaryOutput(inputSnapshot);
@@ -75,6 +87,33 @@ function buildTemplateVariableOptions({
   }
 
   return dedupeOptions(options);
+}
+
+function getTriggerSource(
+  nodesById: Map<string, FlowNode>,
+  upstreamIds: string[]
+): FlowNode | null {
+  for (const nodeId of upstreamIds) {
+    const node = nodesById.get(nodeId);
+    if (node?.type === 'chat-start') return node;
+  }
+
+  for (const node of nodesById.values()) {
+    if (node.type === 'chat-start') return node;
+  }
+
+  return null;
+}
+
+function buildTriggerFallback(): Record<string, unknown> {
+  return {
+    message: '',
+    last_user_message: '',
+    history: [],
+    messages: [],
+    attachments: [],
+    include_user_tools: false,
+  };
 }
 
 function getUpstreamNodeIds(nodeId: string, edges: FlowEdge[]): string[] {

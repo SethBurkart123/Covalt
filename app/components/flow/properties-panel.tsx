@@ -3,9 +3,10 @@
 import { useCallback, useMemo, memo, type ComponentType } from 'react';
 import { useNodesData, useStore } from '@xyflow/react';
 import * as Icons from 'lucide-react';
-import type { Parameter } from '@/lib/flow';
+import type { FlowEdge, Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
+import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 
 function getIcon(name: string) {
@@ -41,23 +42,25 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     [effectiveNodeId, updateNodeData]
   );
 
-  const connectedInputKey = useStore(
-    useCallback((state) => {
-      if (!effectiveNodeId) return '[]';
-      const connected = new Set<string>();
-      for (const edge of state.edges) {
-        if (edge.target === effectiveNodeId && edge.targetHandle) {
-          connected.add(edge.targetHandle);
-        }
-      }
-      return JSON.stringify(Array.from(connected).sort());
-    }, [effectiveNodeId])
+  const edges = useStore(
+    useCallback((state) => state.edges as FlowEdge[], [])
   );
 
-  const connectedInputs = useMemo(
-    () => new Set(connectedInputKey ? JSON.parse(connectedInputKey) as string[] : []),
-    [connectedInputKey]
+  const edgeIndex = useMemo(
+    () => effectiveNodeId ? buildNodeEdgeIndex(edges, effectiveNodeId) : { incoming: [], outgoing: [] },
+    [edges, effectiveNodeId]
   );
+
+  const connectedHandles = useMemo(() => {
+    const connected = new Set<string>();
+    for (const edge of edgeIndex.incoming) {
+      if (edge.targetHandle) connected.add(edge.targetHandle);
+    }
+    for (const edge of edgeIndex.outgoing) {
+      if (edge.sourceHandle) connected.add(edge.sourceHandle);
+    }
+    return connected;
+  }, [edgeIndex]);
 
   if (!effectiveNodeId || !selectedNodeData?.type) {
     return null;
@@ -77,8 +80,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
 
   const panelParams = definition.parameters.filter(p => {
     if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
-    if (p.showWhen) return connectedInputs.has(p.showWhen.connected);
-    return true;
+    return shouldRenderParam(p, 'inspector', edgeIndex);
   });
 
   const showCard = variant === 'card';
@@ -107,7 +109,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
             key={param.id}
             param={param}
             value={selectedNodeData.data[param.id]}
-            isConnected={connectedInputs.has(param.id)}
+            isConnected={connectedHandles.has(param.id)}
             onParamChange={handleDataChange}
             nodeId={effectiveNodeId}
           />

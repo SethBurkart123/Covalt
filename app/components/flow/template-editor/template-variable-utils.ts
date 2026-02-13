@@ -44,11 +44,25 @@ export function formatPreviewDisplay(preview: string | undefined | null): string
 export function getExpressionGroup(expr: string): string | null {
   const trimmed = expr.trim();
   if (
-    trimmed === 'input'
+    trimmed === '$input'
+    || trimmed.startsWith('$input.')
+    || trimmed.startsWith('$input[')
+    || trimmed === 'input'
     || trimmed.startsWith('input.')
     || trimmed.startsWith('input[')
   ) {
     return 'Input';
+  }
+
+  if (
+    trimmed === '$trigger'
+    || trimmed.startsWith('$trigger.')
+    || trimmed.startsWith('$trigger[')
+    || trimmed === 'trigger'
+    || trimmed.startsWith('trigger.')
+    || trimmed.startsWith('trigger[')
+  ) {
+    return 'Trigger';
   }
 
   const nodeMatch = trimmed.match(/^\$\(['"](.+?)['"]\)\.item\.json(?:\.|\[|$)/);

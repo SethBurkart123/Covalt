@@ -127,8 +127,13 @@ export function buildNodeExpression(nodeName: string, path: string): string {
 }
 
 export function buildInputExpression(path: string): string {
-  if (!path) return '{{ input }}';
-  return `{{ input.${path} }}`;
+  if (!path) return '{{ $input }}';
+  return `{{ $input.${path} }}`;
+}
+
+export function buildTriggerExpression(path: string): string {
+  if (!path) return '{{ $trigger }}';
+  return `{{ $trigger.${path} }}`;
 }
 
 export function getNodeName(node: { type?: string; data?: Record<string, unknown> }): string {

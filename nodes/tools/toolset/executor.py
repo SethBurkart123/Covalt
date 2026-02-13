@@ -9,6 +9,19 @@ from nodes._types import FlowContext
 class ToolsetExecutor:
     node_type = "toolset"
 
+    def _tag_tools(self, tools: list[Any], context: FlowContext) -> list[Any]:
+        tagged: list[Any] = []
+        for tool in tools:
+            if tool is None:
+                continue
+            try:
+                setattr(tool, "__agno_node_id", context.node_id)
+                setattr(tool, "__agno_node_type", self.node_type)
+            except Exception:
+                pass
+            tagged.append(tool)
+        return tagged
+
     def _get_tool_registry(self, context: FlowContext) -> Any | None:
         services = context.services
         if services is None:
@@ -34,10 +47,11 @@ class ToolsetExecutor:
         if tool_registry is None:
             raise ValueError("toolset node requires tool_registry in context.services")
 
-        return tool_registry.resolve_tool_ids(
+        tools = tool_registry.resolve_tool_ids(
             [f"toolset:{toolset_id}"],
             chat_id=context.chat_id,
         )
+        return self._tag_tools(tools, context)
 
 
 executor = ToolsetExecutor()

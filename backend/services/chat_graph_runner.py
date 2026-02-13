@@ -231,6 +231,16 @@ def _build_trigger_payload(
     }
 
 
+def _get_chat_start_include_user_tools(graph_data: dict[str, Any]) -> bool:
+    for node in graph_data.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        if node.get("type") != "chat-start":
+            continue
+        return _chat_start_includes_user_tools(node)
+    return False
+
+
 def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
     if isinstance(event, RunEvent):
         return event
@@ -956,6 +966,37 @@ def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
 
     return DataValue(type="string", value="" if raw_value is None else str(raw_value))
 
+def _normalize_tool_node_ref(payload: dict[str, Any]) -> tuple[str, str | None, str | None] | None:
+    node_id = payload.get("nodeId")
+    if not node_id:
+        return None
+    node_type = payload.get("nodeType")
+    error_value = payload.get("error")
+    node_type_text = str(node_type) if isinstance(node_type, str) and node_type else None
+    error_text = str(error_value) if error_value is not None else None
+    return (str(node_id), node_type_text, error_text)
+
+def _tool_node_refs(tool_payload: Any) -> list[tuple[str, str | None, str | None]]:
+    if not isinstance(tool_payload, dict):
+        return []
+
+    direct = _normalize_tool_node_ref(tool_payload)
+    if direct is not None:
+        return [direct]
+
+    tools = tool_payload.get("tools")
+    if not isinstance(tools, list):
+        return []
+
+    refs: list[tuple[str, str | None, str | None]] = []
+    for item in tools:
+        if not isinstance(item, dict):
+            continue
+        ref = _normalize_tool_node_ref(item)
+        if ref is not None:
+            refs.append(ref)
+    return refs
+
 
 def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | None:
     event_name = str(data.get("event") or "")
@@ -976,6 +1017,10 @@ def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | No
         payload["memberName"] = data.get("memberName")
     if "task" in data:
         payload["task"] = data.get("task")
+    if "nodeId" in data:
+        payload["nodeId"] = data.get("nodeId")
+    if "nodeType" in data:
+        payload["nodeType"] = data.get("nodeType")
 
     return ChatEvent(**payload)
 
@@ -1480,6 +1525,95 @@ async def handle_flow_stream(
                         )
 
                     event_name = str(event_data.get("event") or "")
+                    tool_payload = event_data.get("tool")
+                    if snapshot_recorder is not None and event_name in {
+                        "ToolCallStarted",
+                        "ToolCallCompleted",
+                        "ToolCallFailed",
+                        "ToolCallError",
+                        "ToolApprovalRequired",
+                        "ToolApprovalResolved",
+                    }:
+                        refs = _tool_node_refs(tool_payload)
+                        if refs:
+                            for node_id, node_type, tool_error in refs:
+                                if event_name in {"ToolCallStarted", "ToolApprovalRequired"}:
+                                    snapshot_recorder.record_node_event(
+                                        event_type="started",
+                                        node_id=node_id,
+                                        node_type=node_type,
+                                        payload=None,
+                                    )
+                                elif event_name == "ToolCallCompleted":
+                                    if tool_error:
+                                        snapshot_recorder.record_node_event(
+                                            event_type="error",
+                                            node_id=node_id,
+                                            node_type=node_type,
+                                            payload={"error": tool_error},
+                                        )
+                                    else:
+                                        snapshot_recorder.record_node_event(
+                                            event_type="completed",
+                                            node_id=node_id,
+                                            node_type=node_type,
+                                            payload=None,
+                                        )
+                                elif event_name in {"ToolCallFailed", "ToolCallError"}:
+                                    snapshot_recorder.record_node_event(
+                                        event_type="error",
+                                        node_id=node_id,
+                                        node_type=node_type,
+                                        payload={"error": tool_error or "Tool call failed"},
+                                    )
+                                elif event_name == "ToolApprovalResolved":
+                                    if isinstance(tool_payload, dict):
+                                        approval_status = tool_payload.get("approvalStatus")
+                                        if approval_status in {"denied", "timeout"}:
+                                            snapshot_recorder.record_node_event(
+                                                event_type="error",
+                                                node_id=node_id,
+                                                node_type=node_type,
+                                                payload={
+                                                    "error": f"Approval {approval_status}",
+                                                },
+                                            )
+                    if snapshot_recorder is not None and event_name in {
+                        "MemberRunStarted",
+                        "MemberRunCompleted",
+                        "MemberRunError",
+                    }:
+                        member_node_id = event_data.get("nodeId")
+                        if member_node_id:
+                            member_node_type = event_data.get("nodeType")
+                            if event_name == "MemberRunStarted":
+                                snapshot_recorder.record_node_event(
+                                    event_type="started",
+                                    node_id=str(member_node_id),
+                                    node_type=str(member_node_type)
+                                    if isinstance(member_node_type, str)
+                                    else None,
+                                    payload=None,
+                                )
+                            elif event_name == "MemberRunCompleted":
+                                snapshot_recorder.record_node_event(
+                                    event_type="completed",
+                                    node_id=str(member_node_id),
+                                    node_type=str(member_node_type)
+                                    if isinstance(member_node_type, str)
+                                    else None,
+                                    payload=None,
+                                )
+                            elif event_name == "MemberRunError":
+                                error_text = event_data.get("content") or "Member run failed"
+                                snapshot_recorder.record_node_event(
+                                    event_type="error",
+                                    node_id=str(member_node_id),
+                                    node_type=str(member_node_type)
+                                    if isinstance(member_node_type, str)
+                                    else None,
+                                    payload={"error": str(error_text)},
+                                )
                     if event_name == "ToolApprovalRequired" and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
                     elif event_name == "ToolApprovalResolved" and chat_id:

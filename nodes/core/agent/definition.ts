@@ -52,7 +52,7 @@ export const agent = {
       mode: 'constant',
       default: {
         mode: 'expression',
-        expression: '{{ input.messages }}',
+        expression: '{{ $input.messages }}',
       },
     },
     {
@@ -84,6 +84,10 @@ export const agent = {
       mode: 'constant',
       default: '',
       placeholder: 'Agent name',
+      showWhen: {
+        connectedTo: 'tools',
+        channel: 'link',
+      },
     },
     {
       id: 'description',
@@ -93,6 +97,10 @@ export const agent = {
       default: '',
       placeholder: 'What does this agent do?',
       rows: 2,
+      showWhen: {
+        connectedTo: 'tools',
+        channel: 'link',
+      },
     },
   ],
 } as const satisfies NodeDefinition;
