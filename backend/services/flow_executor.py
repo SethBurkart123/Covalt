@@ -136,10 +136,7 @@ def _gather_inputs(
             and value.type != "data"
             and value.type != target_type
         ):
-            try:
-                value = coerce(value, target_type)
-            except TypeError:
-                pass
+            value = coerce(value, target_type)
 
         inputs[edge.get("targetHandle", "input")] = value
     return inputs
@@ -326,39 +323,45 @@ async def run_flow(
         if executor is None or not hasattr(executor, "execute"):
             continue
 
-        incoming_flow_edges = runtime.incoming_edges(node_id, channel=FLOW_EDGE_CHANNEL)
-        inputs = _gather_inputs(node_id, runtime, port_values)
-
-        # Dead branch detection: has incoming flow edges but none produced data
-        if _has_incoming_edges(node_id, incoming_flow_edges) and not inputs:
-            continue
-
-        direct_input = inputs.get("input")
-        expression_context = getattr(services, "expression_context", None)
-        if not isinstance(expression_context, dict):
-            expression_context = None
-
-        data = resolve_expressions(
-            data,
-            direct_input,
-            upstream_outputs,
-            expression_context=expression_context,
-        )
-
-        node_context = FlowContext(
-            node_id=node_id,
-            chat_id=chat_id,
-            run_id=run_id,
-            state=state,
-            runtime=runtime,
-            services=services,
-        )
-
         on_error = data.get("on_error", "stop")
+        started_emitted = False
         try:
+            incoming_flow_edges = runtime.incoming_edges(
+                node_id, channel=FLOW_EDGE_CHANNEL
+            )
+            inputs = _gather_inputs(node_id, runtime, port_values)
+
+            # Dead branch detection: has incoming flow edges but none produced data
+            if _has_incoming_edges(node_id, incoming_flow_edges) and not inputs:
+                continue
+
+            direct_input = inputs.get("input")
+            expression_context = getattr(services, "expression_context", None)
+            if not isinstance(expression_context, dict):
+                expression_context = None
+
+            data = resolve_expressions(
+                data,
+                direct_input,
+                upstream_outputs,
+                expression_context=expression_context,
+            )
+            on_error = data.get("on_error", on_error)
+
+            node_context = FlowContext(
+                node_id=node_id,
+                chat_id=chat_id,
+                run_id=run_id,
+                state=state,
+                runtime=runtime,
+                services=services,
+            )
+
             async for item in _run_executor(
                 executor, data, inputs, node_context, run_id
             ):
+                if isinstance(item, NodeEvent) and item.event_type == "started":
+                    started_emitted = True
                 yield item
                 if isinstance(item, ExecutionResult):
                     yield NodeEvent(
@@ -395,6 +398,13 @@ async def run_flow(
                         label_sources[label] = node_id
                         upstream_outputs[label] = data_output.value
         except Exception as e:
+            if not started_emitted:
+                yield NodeEvent(
+                    node_id=node_id,
+                    node_type=node_type,
+                    event_type="started",
+                    run_id=run_id,
+                )
             yield NodeEvent(
                 node_id=node_id,
                 node_type=node_type,
@@ -439,10 +449,10 @@ async def _run_executor(
 ) -> AsyncIterator[NodeEvent | ExecutionResult]:
     """Call executor.execute(), handling both sync (coroutine) and streaming (async gen)."""
     result = executor.execute(data, inputs, context)
+    terminal_event: str | None = None
 
     if hasattr(result, "__aiter__"):
         started_event: NodeEvent | None = None
-        completed_event: NodeEvent | None = None
         started_emitted = False
 
         try:
@@ -451,13 +461,23 @@ async def _run_executor(
                     if item.event_type == "started":
                         if started_event is None:
                             started_event = item
-                        if not started_emitted:
-                            yield _ensure_run_id(started_event, run_id)
-                            started_emitted = True
                         continue
                     if item.event_type == "completed":
-                        if completed_event is None:
-                            completed_event = item
+                        continue
+                    if item.event_type in {"error", "cancelled"}:
+                        terminal_event = item.event_type
+                        if not started_emitted:
+                            if started_event is not None:
+                                yield _ensure_run_id(started_event, run_id)
+                            else:
+                                yield NodeEvent(
+                                    node_id=context.node_id,
+                                    node_type=executor.node_type,
+                                    event_type="started",
+                                    run_id=run_id,
+                                )
+                            started_emitted = True
+                        yield item
                         continue
 
                 if not started_emitted:
@@ -484,9 +504,7 @@ async def _run_executor(
                     run_id=run_id,
                 )
 
-            if completed_event is not None:
-                yield _ensure_run_id(completed_event, run_id)
-            else:
+            if terminal_event is None:
                 yield NodeEvent(
                     node_id=context.node_id,
                     node_type=executor.node_type,

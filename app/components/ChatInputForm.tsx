@@ -3,15 +3,23 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { createLowlight, common } from "lowlight";
 import { Button } from "@/components/ui/button";
 import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
 import { LayoutGroup } from "framer-motion";
 import type { ModelInfo, AttachmentType, UploadingAttachment, Attachment } from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
+import { useTools } from "@/contexts/tools-context";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import {
@@ -19,6 +27,17 @@ import {
   FileDropZoneTrigger,
 } from "@/components/ui/file-drop-zone";
 import { uploadAttachment, deletePendingUpload } from "@/python/api";
+import {
+  AtMention,
+  type MentionAttrs,
+  type MentionItem,
+} from "@/components/chat-input/at-mention-extension";
+import {
+  hasMentionNodes,
+  serializeChatInputMarkdown,
+} from "@/components/chat-input/chat-input-markdown";
+
+const lowlight = createLowlight(common);
 
 interface LeftToolbarProps {
   isLoading: boolean;
@@ -116,7 +135,7 @@ const SubmitButton = memo(function SubmitButton({
 });
 
 interface ChatInputFormProps {
-  onSubmit: (input: string, attachments: Attachment[]) => void;
+  onSubmit: (input: string, attachments: Attachment[], toolIds?: string[]) => void;
   isLoading: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
@@ -126,8 +145,6 @@ interface ChatInputFormProps {
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
 }
-
-const MAX_HEIGHT = 200;
 
 function getMediaType(mimeType: string): AttachmentType {
   if (mimeType.startsWith("image/")) return "image";
@@ -148,11 +165,13 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     hideModelSelector,
     hideToolSelector,
   }) => {
-    const [input, setInput] = useState("");
+    const { availableTools, groupedTools, mcpServers } = useTools();
+    const [hasTextContent, setHasTextContent] = useState(false);
     const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
     
     const formRef = useRef<HTMLFormElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const editorRef = useRef<Editor | null>(null);
+    const mentionItemsRef = useRef<MentionItem[]>([]);
 
     const hasUploadingFiles = pendingAttachments.some(
       att => att.uploadStatus === "uploading" || att.uploadStatus === "pending"
@@ -176,57 +195,216 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         .map(({ id, type, name, mimeType, size }) => ({ id, type, name, mimeType, size }));
     }, [pendingAttachments]);
 
+    const mentionItems = useMemo<MentionItem[]>(() => {
+      const mcpServerIds = new Set(mcpServers.map((server) => server.id));
+      const toolItems = availableTools.map((tool) => {
+        if (tool.id.startsWith("mcp:")) {
+          const parts = tool.id.split(":");
+          const serverLabel = parts[1] ?? "";
+          const label = parts.slice(2).join(":") || tool.id;
+          return {
+            id: tool.id,
+            label,
+            type: "tool" as const,
+            serverLabel,
+          };
+        }
+
+        return {
+          id: tool.id,
+          label: tool.id,
+          type: "tool" as const,
+        };
+      });
+
+      const toolsetItems = Object.entries(groupedTools.byCategory)
+        .filter(([category]) => !mcpServerIds.has(category))
+        .map(([category]) => ({
+          id: category,
+          label: category,
+          type: "toolset" as const,
+        }));
+
+      const mcpItems = mcpServers.map((server) => ({
+        id: server.id,
+        label: server.id,
+        type: "mcp" as const,
+      }));
+
+      return [...toolItems, ...toolsetItems, ...mcpItems];
+    }, [availableTools, groupedTools.byCategory, mcpServers]);
+
+    useEffect(() => {
+      mentionItemsRef.current = mentionItems;
+    }, [mentionItems]);
+
+    const getMentionSuggestions = useCallback((query: string) => {
+      const normalized = query.trim().toLowerCase();
+      const items = mentionItemsRef.current;
+      if (!normalized) return items;
+
+      const ranked = items
+        .map((item) => {
+          const label = item.label.toLowerCase();
+          const serverLabel = item.serverLabel?.toLowerCase() ?? "";
+
+          const labelStarts = label.startsWith(normalized);
+          const labelIncludes = label.includes(normalized);
+          const serverStarts = serverLabel ? serverLabel.startsWith(normalized) : false;
+          const serverIncludes = serverLabel ? serverLabel.includes(normalized) : false;
+
+          const matchScore = labelStarts ? 3 : labelIncludes ? 2 : serverStarts || serverIncludes ? 1 : 0;
+          if (matchScore === 0) return null;
+
+          const toolSpecific =
+            item.type === "tool" &&
+            item.serverLabel &&
+            normalized.startsWith(serverLabel) &&
+            normalized.length > serverLabel.length;
+
+          const group = toolSpecific ? 0 : item.type === "mcp" ? 0 : 1;
+
+          return {
+            item,
+            group,
+            matchScore,
+            labelLength: label.length,
+          };
+        })
+        .filter((entry): entry is { item: MentionItem; group: number; matchScore: number; labelLength: number } => !!entry)
+        .sort((a, b) => {
+          if (a.group !== b.group) return a.group - b.group;
+          if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore;
+          if (a.labelLength !== b.labelLength) return a.labelLength - b.labelLength;
+          return a.item.label.localeCompare(b.item.label);
+        });
+
+      return ranked.map((entry) => entry.item);
+    }, []);
+
+    const editor = useEditor({
+      immediatelyRender: false,
+      extensions: [
+        StarterKit.configure({
+          heading: { levels: [1, 2, 3, 4] },
+          codeBlock: false,
+        }),
+        CodeBlockLowlight.configure({
+          lowlight,
+          defaultLanguage: "plaintext",
+        }),
+        Placeholder.configure({
+          placeholder: "Ask anything",
+        }),
+        AtMention.configure({
+          getSuggestions: getMentionSuggestions,
+        }),
+      ],
+      editorProps: {
+        attributes: {
+          class: clsx(
+            "chat-input-editor-content",
+            "query-input",
+            "prose prose-neutral dark:prose-invert !max-w-none",
+            "prose-pre:rounded-lg",
+            "w-full flex-1 border-none bg-transparent px-1 pt-2 text-base text-foreground",
+            "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+            "min-h-[40px] max-h-[200px] overflow-y-auto"
+          ),
+        },
+      },
+    });
+
+    useEffect(() => {
+      editorRef.current = editor ?? null;
+    }, [editor]);
+
+    useEffect(() => {
+      if (!editor) return;
+
+      const update = () => {
+        const text = editor.getText({ blockSeparator: "\n" }).trim();
+        const hasMentions = hasMentionNodes(editor.state.doc);
+        setHasTextContent(text.length > 0 || hasMentions);
+      };
+
+      update();
+      editor.on("update", update);
+      return () => {
+        editor.off("update", update);
+      };
+    }, [editor]);
+
+    const extractMentionedToolIds = useCallback(() => {
+      if (!editor) return [];
+
+      const toolIds = new Set<string>();
+      const availableToolIds = new Set(availableTools.map((tool) => tool.id));
+
+      editor.state.doc.descendants((node) => {
+        if (node.type.name !== "atMention") return true;
+        const attrs = node.attrs as MentionAttrs;
+        if (!attrs?.id) return true;
+
+        if (attrs.type === "tool") {
+          if (availableToolIds.has(attrs.id)) {
+            toolIds.add(attrs.id);
+          }
+          return false;
+        }
+
+        const tools = groupedTools.byCategory[attrs.id] || [];
+        tools.forEach((tool) => toolIds.add(tool.id));
+        return false;
+      });
+
+      return Array.from(toolIds);
+    }, [editor, availableTools, groupedTools.byCategory]);
+
+    const submitMessage = useCallback(() => {
+      if (!editor) return;
+
+      const uploadedAttachments = getUploadedAttachments();
+      const markdown = serializeChatInputMarkdown(editor).trim();
+      const hasContent = markdown.length > 0 || uploadedAttachments.length > 0;
+
+      if (!hasContent || isLoading || !canSendMessage || hasUploadingFiles || hasUploadErrors) {
+        return;
+      }
+
+      const mentionedToolIds = extractMentionedToolIds();
+      onSubmit(markdown, uploadedAttachments, mentionedToolIds.length > 0 ? mentionedToolIds : undefined);
+      editor.commands.clearContent();
+      clearAttachments();
+    }, [
+      editor,
+      getUploadedAttachments,
+      isLoading,
+      canSendMessage,
+      hasUploadingFiles,
+      hasUploadErrors,
+      extractMentionedToolIds,
+      onSubmit,
+      clearAttachments,
+    ]);
+
     const handleKeyDown = useCallback(
-      (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      (e: KeyboardEvent<HTMLDivElement>) => {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
-          const uploadedAttachments = getUploadedAttachments();
-          const hasContent = input.trim() || uploadedAttachments.length > 0;
-          
-          if (hasContent && canSendMessage && !isLoading && !hasUploadingFiles && !hasUploadErrors) {
-            onSubmit(input.trim(), uploadedAttachments);
-            setInput("");
-            clearAttachments();
-          }
+          submitMessage();
         }
       },
-      [input, canSendMessage, isLoading, hasUploadingFiles, hasUploadErrors, onSubmit, clearAttachments, getUploadedAttachments]
+      [submitMessage]
     );
 
     const handleFormSubmit = useCallback(
       (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const uploadedAttachments = getUploadedAttachments();
-        const hasContent = input.trim() || uploadedAttachments.length > 0;
-        
-        if (!hasContent || isLoading || !canSendMessage || hasUploadingFiles || hasUploadErrors) return;
-
-        onSubmit(input.trim(), uploadedAttachments);
-        setInput("");
-        clearAttachments();
+        submitMessage();
       },
-      [input, isLoading, canSendMessage, hasUploadingFiles, hasUploadErrors, onSubmit, clearAttachments, getUploadedAttachments]
+      [submitMessage]
     );
-
-    useEffect(() => {
-      const textarea = inputRef.current;
-      if (!textarea) return;
-
-      const adjustHeight = () => {
-        textarea.style.height = "auto";
-        const newHeight = Math.min(textarea.scrollHeight, MAX_HEIGHT);
-        textarea.style.height = `${newHeight}px`;
-      };
-
-      adjustHeight();
-
-      const resizeObserver = new ResizeObserver(adjustHeight);
-      resizeObserver.observe(textarea);
-
-      return () => {
-        resizeObserver.disconnect();
-      };
-    }, [input]);
 
     useEffect(() => {
       if (!canSendMessage) return;
@@ -296,29 +474,14 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           hasSelection ||
           hasModifiers ||
           !isPrintableKey ||
-          activeElement === inputRef.current
+          !editorRef.current
         ) {
           return;
         }
 
-        const textarea = inputRef.current;
-        if (!textarea) return;
-
         e.preventDefault();
         e.stopPropagation();
-        textarea.focus();
-
-        setInput((currentInput) => {
-          const start = textarea.selectionStart ?? currentInput.length;
-          const end = textarea.selectionEnd ?? currentInput.length;
-          const newValue = currentInput.slice(0, start) + e.key + currentInput.slice(end);
-
-          requestAnimationFrame(() => {
-            textarea.setSelectionRange(start + 1, start + 1);
-          });
-
-          return newValue;
-        });
+        editorRef.current?.chain().focus().insertContent(e.key).run();
       };
 
       window.addEventListener("keydown", handleGlobalKeyDown);
@@ -409,16 +572,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       handleRemoveAttachment(id);
     }, [pendingAttachments, handleRemoveAttachment]);
 
-    const handleInputChange = useCallback(
-      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-      },
-      []
-    );
-
     const canSubmit =
       canSendMessage && 
-      (input.trim().length > 0 || pendingAttachments.some(att => att.uploadStatus === "uploaded")) &&
+      (hasTextContent || pendingAttachments.some(att => att.uploadStatus === "uploaded")) &&
       !hasUploadingFiles &&
       !hasUploadErrors;
 
@@ -447,19 +603,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           )}
 
           <div className="w-full min-h-[40px] max-h-[200px]">
-            <textarea
-              ref={inputRef}
-              className={clsx(
-                "w-full flex-1 border-none bg-transparent pt-2 px-1 text-lg shadow-none focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-                "placeholder:text-muted-foreground resize-none h-full",
-                "min-h-[40px] max-h-[200px] overflow-y-auto",
-                "query-input"
-              )}
-              placeholder="Ask anything"
-              value={input}
-              onChange={handleInputChange}
+            <EditorContent
+              editor={editor}
+              className="chat-input-editor"
               onKeyDown={handleKeyDown}
-              rows={1}
             />
           </div>
 

@@ -54,6 +54,10 @@ export const agent = {
         mode: 'expression',
         expression: '{{ $input.messages }}',
       },
+      showWhen: {
+        notConnectedTo: 'tools',
+        channel: 'link',
+      },
     },
     {
       id: 'instructions',

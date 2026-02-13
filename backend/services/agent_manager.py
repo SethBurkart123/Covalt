@@ -180,12 +180,13 @@ class AgentManager:
         edges: list[dict[str, Any]],
     ) -> bool:
         """Save the graph data (autosave endpoint)."""
+        normalized_graph = normalize_graph_data(nodes, edges)
+
         with db_session() as sess:
             agent = sess.query(Agent).filter(Agent.id == agent_id).first()
             if not agent:
                 return False
 
-            normalized_graph = normalize_graph_data(nodes, edges)
             agent.graph_data = json.dumps(normalized_graph)
             agent.updated_at = datetime.now().isoformat()
             sess.commit()

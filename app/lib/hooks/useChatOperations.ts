@@ -23,8 +23,8 @@ export function useChatOperations({
     router.push("/");
 
     setTimeout(() => {
-      const input = document.querySelector(".query-input") as HTMLTextAreaElement;
-      input?.focus();
+      const input = document.querySelector(".query-input") as HTMLElement | null;
+      input?.focus?.();
     }, 0);
   }, [setCurrentChatId, router]);
 

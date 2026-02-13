@@ -33,6 +33,10 @@ interface ToolsContextType {
   groupedTools: GroupedTools;
   toggleTool: (toolId: string) => void;
   toggleToolset: (category: string) => void;
+  setChatToolIds: (
+    toolIds: string[],
+    options?: { persistDefaults?: boolean }
+  ) => Promise<void>;
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
   isLoadingTools: boolean;
@@ -53,6 +57,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [isLoadingTools, setIsLoadingTools] = useState(true);
   const [isLoadingActiveTools, setIsLoadingActiveTools] = useState(true);
   const hasLoadedToolsOnce = useRef(false);
+  const pendingChatToolIdsRef = useRef<string[] | null>(null);
 
   const connectedServerIds = useMemo(
     () =>
@@ -95,8 +100,15 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setIsLoadingActiveTools(true);
       try {
         if (chatId) {
-          const config = await getChatAgentConfig({ body: { id: chatId } });
-          setActiveToolIds(config.toolIds || []);
+          if (pendingChatToolIdsRef.current) {
+            const pending = pendingChatToolIdsRef.current;
+            pendingChatToolIdsRef.current = null;
+            setActiveToolIds(pending);
+            await toggleChatTools({ body: { chatId, toolIds: pending } });
+          } else {
+            const config = await getChatAgentConfig({ body: { id: chatId } });
+            setActiveToolIds(config.toolIds || []);
+          }
         } else {
           const response = await getDefaultTools();
           setActiveToolIds(response.toolIds || []);
@@ -132,20 +144,40 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, [availableTools]);
 
   const persistTools = useCallback(
-    async (newToolIds: string[]) => {
+    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+      const persistDefaults = options?.persistDefaults ?? true;
       try {
         if (chatId) {
           await toggleChatTools({
             body: { chatId, toolIds: newToolIds },
           });
+        } else if (!persistDefaults) {
+          pendingChatToolIdsRef.current = newToolIds;
         }
-        await setDefaultTools({ body: { toolIds: newToolIds } });
+
+        if (persistDefaults) {
+          await setDefaultTools({ body: { toolIds: newToolIds } });
+        }
       } catch (error) {
         console.error("Failed to persist tools:", error);
         throw error;
       }
     },
     [chatId]
+  );
+
+  const setChatToolIds = useCallback(
+    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+      const prevToolIds = activeToolIds;
+      setActiveToolIds(newToolIds);
+
+      try {
+        await persistTools(newToolIds, options);
+      } catch {
+        setActiveToolIds(prevToolIds);
+      }
+    },
+    [activeToolIds, persistTools]
   );
 
   const toggleTool = useCallback(
@@ -217,6 +249,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       groupedTools,
       toggleTool,
       toggleToolset,
+      setChatToolIds,
       isToolsetActive,
       isToolsetPartiallyActive,
       isLoadingTools,
@@ -231,6 +264,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       groupedTools,
       toggleTool,
       toggleToolset,
+      setChatToolIds,
       isToolsetActive,
       isToolsetPartiallyActive,
       isLoadingTools,

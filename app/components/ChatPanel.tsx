@@ -128,8 +128,11 @@ export default function ChatPanel() {
   useEffect(() => { setSelectedModelRef.current = setSelectedModel; }, [setSelectedModel]);
   useEffect(() => { handleStopRef.current = handleStop; }, [handleStop]);
 
-  const stableHandleSubmit = useCallback((input: string, attachments: Attachment[]) => 
-    submitRef.current(input, attachments), []);
+  const stableHandleSubmit = useCallback(
+    (input: string, attachments: Attachment[], toolIds?: string[]) =>
+      submitRef.current(input, attachments, toolIds),
+    []
+  );
 
   const stableSetSelectedModel = useCallback((model: string) => 
     setSelectedModelRef.current(model), []);

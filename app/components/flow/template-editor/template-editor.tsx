@@ -29,6 +29,7 @@ interface TemplateEditorProps {
   compact?: boolean;
   nodeId?: string | null;
   rows?: number;
+  verticalAlign?: 'top' | 'bottom';
 }
 
 export function TemplateEditor({
@@ -39,6 +40,7 @@ export function TemplateEditor({
   compact = false,
   nodeId = null,
   rows,
+  verticalAlign = 'top',
 }: TemplateEditorProps) {
   const options = useTemplateVariableOptions(nodeId);
   const optionsRef = useRef<TemplateVariableOption[]>(options);
@@ -260,6 +262,8 @@ export function TemplateEditor({
     }
   }, [isTemplateDrag]);
 
+  const alignBottom = multiline && verticalAlign === 'bottom';
+
   const wrapperClassName = cn(
     'nodrag w-full rounded-md border border-input bg-transparent shadow-xs transition-[color,box-shadow] cursor-text',
     'focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]',
@@ -270,6 +274,7 @@ export function TemplateEditor({
     !multiline && 'overflow-x-auto',
     !multiline && 'flex items-center',
     multiline && (compact ? 'min-h-[44px]' : 'min-h-[60px]'),
+    alignBottom && 'flex flex-col justify-end',
     'template-editor-dropzone',
     isDragOver && 'template-editor-dropzone-active'
   );
@@ -309,7 +314,10 @@ export function TemplateEditor({
         dragDepthRef.current = 0;
       }}
     >
-      <EditorContent editor={editor} className="template-editor flex-1" />
+      <EditorContent
+        editor={editor}
+        className={cn('template-editor', alignBottom ? 'w-full' : 'flex-1')}
+      />
     </div>
   );
 }

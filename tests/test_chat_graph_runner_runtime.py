@@ -248,9 +248,7 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         captured["message_roles"] = [
             str(message.get("role", "")) for message in chat_input.messages
         ]
-        chat_scope = context.services.chat_scope
         captured["entry_scope"] = list(context.services.execution.entry_node_ids)
-        captured["include_user_tools"] = chat_scope.include_user_tools("agent")
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
         )
@@ -279,11 +277,10 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     assert captured["last_user_message"] == "final"
     assert captured["message_roles"] == ["user", "assistant", "user"]
     assert captured["entry_scope"] == ["cs"]
-    assert captured["include_user_tools"] is False
 
 
 @pytest.mark.asyncio
-async def test_handle_flow_stream_builds_topology_aware_chat_scope() -> None:
+async def test_handle_flow_stream_sets_entry_node_ids() -> None:
     graph = make_graph(
         nodes=[
             {
@@ -305,10 +302,7 @@ async def test_handle_flow_stream_builds_topology_aware_chat_scope() -> None:
     captured: dict[str, Any] = {}
 
     async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
-        chat_scope = context.services.chat_scope
         captured["entry_node_ids"] = list(context.services.execution.entry_node_ids)
-        captured["tools_agent_a"] = chat_scope.include_user_tools("agent_a")
-        captured["tools_agent_b"] = chat_scope.include_user_tools("agent_b")
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
         )
@@ -324,8 +318,6 @@ async def test_handle_flow_stream_builds_topology_aware_chat_scope() -> None:
     )
 
     assert captured["entry_node_ids"] == ["cs"]
-    assert captured["tools_agent_a"] is False
-    assert captured["tools_agent_b"] is False
 
 
 @pytest.mark.asyncio

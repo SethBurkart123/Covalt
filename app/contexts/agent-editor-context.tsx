@@ -32,17 +32,21 @@ interface NormalizedEdgeData {
 function normalizeEdgeData(
   data: unknown
 ): NormalizedEdgeData {
-  if (!data || typeof data !== 'object') return { channel: 'flow' };
+  if (!data || typeof data !== 'object') {
+    throw new Error('Edge data is missing a channel');
+  }
 
   const normalized = { ...(data as Record<string, unknown>) };
   const sourceType = typeof normalized.sourceType === 'string' ? normalized.sourceType : undefined;
   const targetType = typeof normalized.targetType === 'string' ? normalized.targetType : undefined;
-  const inferredChannel = sourceType === 'tools' || targetType === 'tools' ? 'link' : 'flow';
-  const channel = typeof normalized.channel === 'string' ? normalized.channel : inferredChannel;
+  const channel = normalized.channel;
+  if (channel !== 'flow' && channel !== 'link') {
+    throw new Error('Edge data is missing a valid channel');
+  }
   return {
     sourceType,
     targetType,
-    channel: channel === 'link' ? 'link' : 'flow',
+    channel,
   };
 }
 

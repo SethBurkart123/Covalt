@@ -624,13 +624,6 @@ def _get_run_handle(context: FlowContext) -> Any | None:
     return getattr(services, "run_handle", None)
 
 
-def _get_chat_scope(context: FlowContext) -> Any | None:
-    services = context.services
-    if services is None:
-        return None
-    return getattr(services, "chat_scope", None)
-
-
 def _resolve_run_input(
     input_value: dict[str, Any],
     default_message: str,
@@ -1033,16 +1026,6 @@ def _should_include_extra_tools(
         for key in ("include_user_tools", "includeUserTools"):
             if isinstance(input_value.get(key), bool):
                 return bool(input_value.get(key))
-
-    services = context.services
-    if services is not None:
-        expression_context = getattr(services, "expression_context", None)
-        if isinstance(expression_context, dict):
-            trigger = expression_context.get("trigger")
-            if isinstance(trigger, dict):
-                for key in ("include_user_tools", "includeUserTools"):
-                    if isinstance(trigger.get(key), bool):
-                        return bool(trigger.get(key))
 
     return False
 

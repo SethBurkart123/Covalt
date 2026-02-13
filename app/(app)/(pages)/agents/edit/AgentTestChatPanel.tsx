@@ -43,8 +43,12 @@ function TestChatInner() {
   }, [isOpen, effectiveWidth, setRightOffset]);
 
   const stableHandleSubmit = useCallback(
-    (input: string, attachments: Parameters<typeof chat.handleSubmit>[1]) => {
-      chat.handleSubmit(input, attachments);
+    (
+      input: string,
+      attachments: Parameters<typeof chat.handleSubmit>[1],
+      toolIds?: Parameters<typeof chat.handleSubmit>[2]
+    ) => {
+      chat.handleSubmit(input, attachments, toolIds);
     },
     [chat.handleSubmit]
   );

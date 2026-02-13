@@ -534,6 +534,14 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     [openAddMenu, placingNodeId, recordDragEnd, updateNodePosition]
   );
 
+  const handleMoveStart = useCallback(() => {
+    if (isAddMenuOpen) closeAddMenu();
+  }, [closeAddMenu, isAddMenuOpen]);
+
+  const handleNodeDragStart = useCallback(() => {
+    if (isAddMenuOpen) closeAddMenu();
+  }, [closeAddMenu, isAddMenuOpen]);
+
   return (
     <div
       className={cn('w-full h-full bg-background', placingNodeId && 'cursor-grabbing')}
@@ -551,8 +559,10 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onConnectEnd={handleConnectEnd}
         onSelectionChange={onSelectionChange}
         onNodeDoubleClick={handleNodeDoubleClick}
+        onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={onNodeDragStop}
         onContextMenu={onContextMenu}
+        onMoveStart={handleMoveStart}
         connectionMode={ConnectionMode.Loose}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}

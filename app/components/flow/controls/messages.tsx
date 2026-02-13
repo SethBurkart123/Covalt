@@ -284,7 +284,7 @@ export function MessagesControl({ param, value, onChange, compact, nodeId }: Mes
   return (
     <div className={cn('space-y-2', compact && 'space-y-1.5')}>
       <div className="flex items-center justify-between gap-2">
-        <span className={cn(compact ? 'text-[10px]' : 'text-[11px]', 'font-medium text-muted-foreground')}>
+        <span className={cn(compact ? 'text-[10px]' : 'text-[11px]', 'font-medium text-muted-foreground mt-auto')}>
           {label}
         </span>
         <Select value={currentValue.mode} onValueChange={(val) => setMode(val as MessagesValue['mode'])}>
@@ -313,6 +313,7 @@ export function MessagesControl({ param, value, onChange, compact, nodeId }: Mes
           compact={compact}
           rows={compact ? 2 : 3}
           nodeId={nodeId}
+          verticalAlign="bottom"
         />
       ) : (
         <div className="space-y-2">
