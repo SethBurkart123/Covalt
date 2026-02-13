@@ -27,10 +27,10 @@ interface HoveredItem {
 }
 
 const CATEGORIES: { id: NodeDefinition['category']; label: string }[] = [
-  { id: 'core', label: 'Core' },
-  { id: 'ai', label: 'AI' },
-  { id: 'flow', label: 'Flow' },
+  { id: 'trigger', label: 'Trigger' },
+  { id: 'llm', label: 'LLM' },
   { id: 'tools', label: 'Tools' },
+  { id: 'flow', label: 'Flow' },
   { id: 'data', label: 'Data' },
   { id: 'integration', label: 'Integration' },
   { id: 'rag', label: 'RAG' },

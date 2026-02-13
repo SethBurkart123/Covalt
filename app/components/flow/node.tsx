@@ -144,9 +144,9 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 /** Get header color based on node category */
 function getCategoryColor(category: NodeDefinition['category']): string {
   switch (category) {
-    case 'core':
-      return 'bg-primary/20 text-primary-foreground';
-    case 'ai':
+    case 'trigger':
+      return 'bg-emerald-500/20 text-emerald-950 dark:text-emerald-100';
+    case 'llm':
       return 'bg-violet-500/20 text-violet-950 dark:text-violet-100';
     case 'flow':
       return 'bg-rose-500/20 text-rose-950 dark:text-rose-100';
@@ -168,9 +168,9 @@ function getCategoryColor(category: NodeDefinition['category']): string {
 /** Get border color based on node category */
 function getCategoryBorderColor(category: NodeDefinition['category']): string {
   switch (category) {
-    case 'core':
-      return 'border-primary/20';
-    case 'ai':
+    case 'trigger':
+      return 'border-emerald-500/20';
+    case 'llm':
       return 'border-violet-500/20';
     case 'flow':
       return 'border-rose-500/20';

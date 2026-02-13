@@ -9,7 +9,7 @@ export const chatStart = {
   id: 'chat-start',
   name: 'Chat Start',
   description: 'Entry point where user messages enter the graph',
-  category: 'core',
+  category: 'trigger',
   icon: 'MessageSquare',
   executionMode: 'hybrid',
 

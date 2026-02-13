@@ -28,6 +28,7 @@ from . import stream_broadcaster as broadcaster
 from .flow_executor import run_flow
 from .execution_trace import ExecutionTraceRecorder
 from .tool_registry import get_tool_registry
+from .mcp_manager import ensure_mcp_initialized
 from .toolset_executor import get_toolset_executor
 from .workspace_manager import get_workspace_manager
 
@@ -2595,6 +2596,7 @@ async def run_graph_chat_runtime(
     flow_stream_handler: FlowStreamHandler | None = None,
 ) -> None:
     _require_user_message(messages)
+    await ensure_mcp_initialized()
 
     handler = flow_stream_handler or handle_flow_stream
 
