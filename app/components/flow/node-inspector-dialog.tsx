@@ -513,7 +513,7 @@ export function NodeInspectorDialog({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100]">
+    <div className="fixed inset-0 z-[100]" data-node-inspector="true">
       <div
         className="absolute inset-0 bg-background/70 backdrop-blur-[2px]"
         onClick={close}
