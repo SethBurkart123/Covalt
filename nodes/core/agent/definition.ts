@@ -9,7 +9,7 @@ export const agent = {
   id: 'agent',
   name: 'Agent',
   description: 'An LLM-powered agent that can use tools',
-  category: 'core',
+  category: 'llm',
   icon: 'Bot',
   executionMode: 'hybrid',
 

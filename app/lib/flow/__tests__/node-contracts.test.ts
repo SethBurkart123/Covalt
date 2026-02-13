@@ -7,7 +7,16 @@ const VALID_SOCKET_TYPES: SocketTypeId[] = [
   'json', 'model',
 ]
 const VALID_MODES: ParameterMode[] = ['constant', 'hybrid', 'input', 'output']
-const VALID_CATEGORIES: NodeCategory[] = ['core', 'tools', 'data', 'utility', 'ai', 'flow', 'integration', 'rag']
+const VALID_CATEGORIES: NodeCategory[] = [
+  'trigger',
+  'llm',
+  'tools',
+  'flow',
+  'data',
+  'integration',
+  'rag',
+  'utility',
+]
 const VALID_EXECUTION_MODES: ExecutionMode[] = ['structural', 'flow', 'hybrid']
 
 const nodeEntries = Object.entries(NODE_DEFINITIONS)

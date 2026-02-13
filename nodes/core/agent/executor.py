@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from enum import Enum
 from typing import Any
 
@@ -17,7 +18,9 @@ from backend.services.model_factory import get_model
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 _agent_db = InMemoryDb()
-AGENT_STREAM_IDLE_TIMEOUT_SECONDS = 20.0
+AGENT_STREAM_IDLE_TIMEOUT_SECONDS = float(
+    os.getenv("AGENT_STREAM_IDLE_TIMEOUT_SECONDS", "900")
+)
 
 
 class AgentExecutor:
@@ -103,6 +106,7 @@ class AgentExecutor:
             instructions=instructions,
         )
         member_node_lookup = _build_member_node_lookup(sub_agents)
+        emit_member_events = isinstance(agent, Team)
 
         run_handle = _get_run_handle(context)
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
@@ -159,7 +163,7 @@ class AgentExecutor:
                         data={"run_id": active_run_id},
                     )
 
-                member_fields = _member_event_fields(chunk)
+                member_fields = _member_event_fields(chunk) if emit_member_events else {}
                 if member_fields:
                     _attach_member_node_metadata(member_fields, member_node_lookup)
                 member_run_id = str(member_fields.get("memberRunId", "") or "")
@@ -300,6 +304,38 @@ class AgentExecutor:
 
                     tools = _approval_tools(chunk)
                     if not tools:
+                        continue
+
+                    if isinstance(agent, Team):
+                        for tool in tools:
+                            setattr(tool, "confirmed", True)
+                        for tool in tools:
+                            tool_id = getattr(tool, "tool_call_id", "")
+                            tool_name = getattr(tool, "tool_name", "")
+                            tool_info: dict[str, Any] = {
+                                "id": tool_id,
+                                "toolName": tool_name,
+                                "approvalStatus": "approved",
+                                "toolArgs": getattr(tool, "tool_args", None),
+                            }
+                            _attach_tool_node_metadata(tool_info, tool_node_lookup)
+                            yield NodeEvent(
+                                node_id=context.node_id,
+                                node_type=self.node_type,
+                                event_type="agent_event",
+                                run_id=context.run_id,
+                                data={
+                                    "event": "ToolApprovalResolved",
+                                    "tool": {**tool_info},
+                                },
+                            )
+
+                        stream = agent.acontinue_run(
+                            run_id=active_run_id,
+                            updated_tools=tools,
+                            stream=True,
+                            stream_events=True,
+                        ).__aiter__()
                         continue
 
                     tools_info: list[dict[str, Any]] = []

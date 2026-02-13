@@ -31,11 +31,18 @@ describe('registry', () => {
   })
 
   describe('getNodesByCategory', () => {
-    it('returns core nodes', () => {
-      const coreNodes = getNodesByCategory('core')
-      const coreIds = coreNodes.map(n => n.id)
-      expect(coreIds).toContain('chat-start')
-      expect(coreIds).toContain('agent')
+    it('returns trigger nodes', () => {
+      const triggerNodes = getNodesByCategory('trigger')
+      const triggerIds = triggerNodes.map(n => n.id)
+      expect(triggerIds).toContain('chat-start')
+    })
+
+    it('returns llm nodes', () => {
+      const llmNodes = getNodesByCategory('llm')
+      const llmIds = llmNodes.map(n => n.id)
+      expect(llmIds).toContain('agent')
+      expect(llmIds).toContain('llm-completion')
+      expect(llmIds).toContain('prompt-template')
     })
 
     it('returns tools nodes', () => {

@@ -9,7 +9,7 @@ export const llmCompletion = {
   id: 'llm-completion',
   name: 'LLM Completion',
   description: 'Single LLM call with streaming output',
-  category: 'ai',
+  category: 'llm',
   icon: 'Sparkles',
   executionMode: 'flow',
 

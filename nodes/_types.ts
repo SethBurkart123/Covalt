@@ -193,7 +193,15 @@ export type Parameter =
   | DataParameter;
 
 /** Node category for palette organization */
-export type NodeCategory = 'core' | 'tools' | 'ai' | 'flow' | 'data' | 'integration' | 'rag' | 'utility';
+export type NodeCategory =
+  | 'trigger'
+  | 'llm'
+  | 'tools'
+  | 'flow'
+  | 'data'
+  | 'integration'
+  | 'rag'
+  | 'utility';
 
 /**
  * How a node participates in graph execution.

@@ -9,7 +9,7 @@ export const promptTemplate = {
   id: 'prompt-template',
   name: 'Prompt Template',
   description: 'Interpolate variables into a template string',
-  category: 'ai',
+  category: 'llm',
   icon: 'FileText',
   executionMode: 'flow',
 
