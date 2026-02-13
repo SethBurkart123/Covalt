@@ -60,7 +60,8 @@ function getControlPoints(
   targetX: number,
   targetY: number,
   sourcePosition: Position,
-  targetPosition: Position
+  targetPosition: Position,
+  insetAmount: number = EDGE_INSET
 ): {
   p0: { x: number; y: number };
   p1: { x: number; y: number };
@@ -70,8 +71,8 @@ function getControlPoints(
   const horizontalDist = Math.abs(targetX - sourceX);
   const offset = Math.max(25, Math.min(horizontalDist * 0.5, 150));
 
-  const p0 = insetPoint(sourceX, sourceY, sourcePosition, EDGE_INSET);
-  const p3 = insetPoint(targetX, targetY, targetPosition, EDGE_INSET);
+  const p0 = insetPoint(sourceX, sourceY, sourcePosition, insetAmount);
+  const p3 = insetPoint(targetX, targetY, targetPosition, insetAmount);
 
   let p1: { x: number; y: number };
   let p2: { x: number; y: number };
@@ -216,7 +217,15 @@ function CustomConnectionLine({
   const definition = getNodeDefinition(fromNode.type || '');
   const param = definition?.parameters.find(p => p.id === fromHandle.id);
   const socketType = (param?.socket?.type ?? 'tools') as SocketTypeId;
-  const { p0, p1, p2, p3 } = getControlPoints(fromX, fromY, toX, toY, fromPosition, toPosition);
+  const { p0, p1, p2, p3 } = getControlPoints(
+    fromX,
+    fromY,
+    toX,
+    toY,
+    fromPosition,
+    toPosition,
+    0
+  );
 
   return (
     <g>
