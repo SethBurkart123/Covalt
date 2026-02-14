@@ -7,8 +7,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
-from agno.agent import Agent, Message
-from agno.team import Team
 from pydantic import BaseModel
 from rich.logging import RichHandler
 
@@ -20,16 +18,11 @@ from ..services.agent_manager import get_agent_manager
 from ..services.chat_attachments import prepare_stream_attachments
 from ..services.chat_graph_runner import (
     append_error_block_to_message,
-    convert_chat_message_to_agno_messages,
-    handle_content_stream as _service_handle_content_stream,
     get_graph_data_for_chat,
-    handle_flow_stream as _service_handle_flow_stream,
-    load_initial_content as _service_load_initial_content,
     parse_model_id,
     run_graph_chat_runtime,
     update_chat_model_selection,
 )
-from ..services.flow_executor import run_flow
 from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
 from ..services.workspace_manager import get_workspace_manager
@@ -189,64 +182,6 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
 def save_msg_content(msg_id: str, content: str):
     with db.db_session() as sess:
         db.update_message_content(sess, messageId=msg_id, content=content)
-
-
-def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
-    return _service_load_initial_content(msg_id)
-
-
-def convert_to_agno_messages(
-    chat_msg: ChatMessage,
-    chat_id: Optional[str] = None,
-) -> List[Message]:
-    return convert_chat_message_to_agno_messages(chat_msg, chat_id)
-
-
-async def handle_flow_stream(
-    graph_data: dict[str, Any],
-    agent: Any,
-    messages: List[ChatMessage],
-    assistant_msg_id: str,
-    raw_ch: Any,
-    chat_id: str = "",
-    ephemeral: bool = False,
-    extra_tool_ids: List[str] | None = None,
-) -> None:
-    """Compatibility wrapper delegating flow streaming to chat_graph_runner."""
-    await _service_handle_flow_stream(
-        graph_data,
-        agent,
-        messages,
-        assistant_msg_id,
-        raw_ch,
-        chat_id=chat_id,
-        ephemeral=ephemeral,
-        extra_tool_ids=extra_tool_ids,
-        run_flow_impl=run_flow,
-        save_content_impl=save_msg_content,
-        load_initial_content_impl=load_initial_content,
-    )
-
-
-async def handle_content_stream(
-    agent: Agent | Team,
-    messages: List[ChatMessage],
-    assistant_msg_id: str,
-    raw_ch: Any,
-    chat_id: str = "",
-    ephemeral: bool = False,
-):
-    await _service_handle_content_stream(
-        agent,
-        messages,
-        assistant_msg_id,
-        raw_ch,
-        chat_id=chat_id,
-        ephemeral=ephemeral,
-        convert_message=convert_to_agno_messages,
-        save_content_impl=save_msg_content,
-        load_initial_content_impl=load_initial_content,
-    )
 
 
 class CancelRunRequest(BaseModel):
