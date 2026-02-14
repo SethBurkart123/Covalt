@@ -29,6 +29,7 @@ export const webhookEnd = {
       default: 200,
       min: 100,
       max: 599,
+      step: 1,
       renderScope: 'inspector',
     },
     {
@@ -45,6 +46,7 @@ export const webhookEnd = {
       label: 'Response',
       mode: 'output',
       socket: { type: 'data' },
+      renderScope: 'inspector',
     },
   ],
 } as const satisfies NodeDefinition;
