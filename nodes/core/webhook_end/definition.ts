@@ -29,7 +29,6 @@ export const webhookEnd = {
       default: 200,
       min: 100,
       max: 599,
-      step: 1,
       renderScope: 'inspector',
     },
     {

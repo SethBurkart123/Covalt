@@ -116,6 +116,7 @@ export interface IntParameter extends ParameterBase {
   default?: number;
   min?: number;
   max?: number;
+  step?: number;
 }
 
 /** String parameter */

@@ -15,6 +15,7 @@ interface FloatControlProps {
 export function FloatControl({ param, value, onChange, compact }: FloatControlProps) {
   const p = param as { default?: number; min?: number; max?: number; step?: number };
   const currentValue = value ?? p.default ?? 0;
+  const step = p.step ?? (param.type === 'int' ? 1 : undefined);
   
   const handleChange = useCallback((nextValue: number) => {
     const clamped = Math.min(
@@ -30,7 +31,7 @@ export function FloatControl({ param, value, onChange, compact }: FloatControlPr
       onChange={handleChange}
       min={p.min}
       max={p.max}
-      step={p.step}
+      step={step}
       compact={compact}
       className={cn(
         'w-full'
