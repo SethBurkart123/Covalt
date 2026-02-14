@@ -313,7 +313,8 @@ async def run_flow(
 
     for node_id in order:
         execution_ctx = getattr(services, "execution", None)
-        if execution_ctx is not None and getattr(execution_ctx, "stop_run", False):
+        stop_run = getattr(execution_ctx, "stop_run", False)
+        if isinstance(stop_run, bool) and stop_run:
             break
 
         node = nodes_by_id.get(node_id)
