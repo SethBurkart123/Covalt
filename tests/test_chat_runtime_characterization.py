@@ -16,7 +16,10 @@ from agno.models.response import ToolExecution
 from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 
-from backend.commands import streaming
+from backend.services.chat_graph_runner import (
+    convert_chat_message_to_agno_messages,
+    handle_content_stream,
+)
 from backend.services import run_control
 from backend.models.chat import ChatMessage
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
@@ -119,13 +122,14 @@ async def test_simple_chat_stream_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    await streaming.handle_content_stream(
+    await handle_content_stream(
         cast(Any, agent),
         [_user_message("say hello")],
         "assistant-1",
         channel,
         chat_id="",
         ephemeral=True,
+        convert_message=convert_chat_message_to_agno_messages,
     )
 
     assert extract_event_names(channel) == ["RunContent", "RunContent", "RunCompleted"]
@@ -166,13 +170,14 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    await streaming.handle_content_stream(
+    await handle_content_stream(
         cast(Any, agent),
         [_user_message("find docs")],
         "assistant-2",
         channel,
         chat_id="",
         ephemeral=True,
+        convert_message=convert_chat_message_to_agno_messages,
     )
 
     assert extract_event_names(channel) == [
@@ -231,13 +236,14 @@ async def test_approval_pause_resume_event_sequence() -> None:
 
     await asyncio.wait_for(
         asyncio.gather(
-            streaming.handle_content_stream(
+            handle_content_stream(
                 cast(Any, agent),
                 [_user_message("run dangerous tool")],
                 "assistant-3",
                 channel,
                 chat_id="",
                 ephemeral=True,
+                convert_message=convert_chat_message_to_agno_messages,
             ),
             _auto_approve(),
         ),
@@ -304,13 +310,14 @@ async def test_member_run_delegation_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    await streaming.handle_content_stream(
+    await handle_content_stream(
         cast(Any, agent),
         [_user_message("delegate this")],
         "assistant-4",
         channel,
         chat_id="",
         ephemeral=True,
+        convert_message=convert_chat_message_to_agno_messages,
     )
 
     assert extract_event_names(channel) == [
