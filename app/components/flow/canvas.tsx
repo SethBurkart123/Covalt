@@ -18,6 +18,7 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Square } from 'lucide-react';
 
 import {
   NODE_DEFINITIONS,
@@ -30,10 +31,12 @@ import {
   type SocketTypeId,
 } from '@/lib/flow';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
+import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import { FlowRunPrompt } from './flow-run-prompt';
 import { FlowNode as FlowNodeComponent } from './node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface PendingConnection {
   nodeId: string;
@@ -265,6 +268,7 @@ interface FlowCanvasProps {
 function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
   const { executionByNode } = useFlowExecution();
+  const { isRunning, stopRun } = useFlowRunner();
   const { selectNode } = useSelection();
   const {
     onConnect,
@@ -617,6 +621,21 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onSelectWithSocket={handleAddNodeWithSocket}
       />
       <FlowRunPrompt />
+      {isRunning && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+          <div className="pointer-events-auto">
+            <Button
+              variant="destructive"
+              size="lg"
+              className="rounded-full px-6 shadow-lg"
+              onClick={stopRun}
+            >
+              <Square className="size-4" />
+              Stop Run
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
