@@ -28,6 +28,7 @@ function TestChatInner() {
   const { setRightOffset } = usePageTitle();
   const chat = useTestChatInput(agentId);
   const { isOpen: artifactOpen } = useArtifactPanel();
+  const { handleSubmit } = chat;
 
   const { containerRef, width, isResizing, handleResizeStart } = useResizePanel({
     defaultWidth: 420,
@@ -45,12 +46,12 @@ function TestChatInner() {
   const stableHandleSubmit = useCallback(
     (
       input: string,
-      attachments: Parameters<typeof chat.handleSubmit>[1],
-      toolIds?: Parameters<typeof chat.handleSubmit>[2]
+      attachments: Parameters<typeof handleSubmit>[1],
+      toolIds?: Parameters<typeof handleSubmit>[2]
     ) => {
-      chat.handleSubmit(input, attachments, toolIds);
+      handleSubmit(input, attachments, toolIds);
     },
-    [chat.handleSubmit]
+    [handleSubmit]
   );
 
   return (

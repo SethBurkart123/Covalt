@@ -17,6 +17,7 @@ import { PropertiesPanel } from './properties-panel';
 import type {
   FlowNodeExecutionSnapshot,
 } from '@/contexts/agent-test-chat-context';
+import { useFlowExecution } from '@/contexts/flow-execution-context';
 import {
   buildInputExpression,
   buildNodeExpression,
@@ -56,7 +57,6 @@ interface NodeInspectorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   nodeId: string | null;
-  lastExecutionByNode: Record<string, FlowNodeExecutionSnapshot>;
 }
 
 function toJsonText(value: unknown): string {
@@ -184,6 +184,13 @@ function schemaNodeMatches(node: SchemaNode, query: string): boolean {
   return [node.name, node.path, node.type, preview].some(value =>
     value.toLowerCase().includes(query)
   );
+}
+
+function getRowPreview(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null) return 'null';
+  return '';
 }
 
 function SchemaTree({
@@ -364,12 +371,13 @@ export function NodeInspectorDialog({
   open,
   onOpenChange,
   nodeId,
-  lastExecutionByNode,
 }: NodeInspectorDialogProps) {
   const { nodes, edges } = useFlowState();
+  const { executionByNode, pinnedByNodeId } = useFlowExecution();
   const [leftView, setLeftView] = useState<InspectorView>('schema');
   const [rightView, setRightView] = useState<InspectorView>('schema');
   const [search, setSearch] = useState('');
+  const [collapsedPreviews, setCollapsedPreviews] = useState<Set<string>>(() => new Set());
   const [mounted, setMounted] = useState(false);
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
@@ -396,6 +404,22 @@ export function NodeInspectorDialog({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [close, open]);
+
+  useEffect(() => {
+    setCollapsedPreviews(new Set());
+  }, [nodeId]);
+
+  const togglePreview = useCallback((key: string) => {
+    setCollapsedPreviews(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   const nodesById = useMemo(() => {
     const map = new Map<string, typeof nodes[number]>();
@@ -459,15 +483,15 @@ export function NodeInspectorDialog({
 
   const directInputSnapshot = useMemo(() => {
     if (!directInputSource) return null;
-    return lastExecutionByNode[directInputSource.id] ?? null;
-  }, [directInputSource, lastExecutionByNode]);
+    return executionByNode[directInputSource.id] ?? null;
+  }, [directInputSource, executionByNode]);
 
   const directInputOutput = useMemo(() => pickPrimaryOutput(directInputSnapshot ?? undefined), [directInputSnapshot]);
 
   const triggerSnapshot = useMemo(() => {
     if (!triggerSource) return null;
-    return lastExecutionByNode[triggerSource.id] ?? null;
-  }, [lastExecutionByNode, triggerSource]);
+    return executionByNode[triggerSource.id] ?? null;
+  }, [executionByNode, triggerSource]);
 
   const triggerOutput = useMemo(() => pickPrimaryOutput(triggerSnapshot ?? undefined), [triggerSnapshot]);
 
@@ -477,7 +501,7 @@ export function NodeInspectorDialog({
         const node = nodesById.get(id);
         if (!node) return null;
 
-        const snapshot = lastExecutionByNode[id];
+        const snapshot = executionByNode[id];
         const output = pickPrimaryOutput(snapshot);
         const schemaNodes = filterSchemaNodes(buildSchemaNodes(output.value), search);
 
@@ -491,9 +515,9 @@ export function NodeInspectorDialog({
         };
       })
       .filter((entry): entry is UpstreamEntry => entry !== null);
-  }, [lastExecutionByNode, nodesById, search, upstreamIds]);
+  }, [executionByNode, nodesById, search, upstreamIds]);
 
-  const currentSnapshot = nodeId ? lastExecutionByNode[nodeId] : undefined;
+  const currentSnapshot = nodeId ? executionByNode[nodeId] : undefined;
   const currentOutput = useMemo(() => pickPrimaryOutput(currentSnapshot), [currentSnapshot]);
   const currentRows = useMemo(
     () => (currentOutput.value === undefined ? [] : collectObjectRows(currentOutput.value)),
@@ -501,6 +525,7 @@ export function NodeInspectorDialog({
   );
 
   const currentNodeName = selectedNode ? getNodeName(selectedNode) : 'Node';
+  const isPinned = nodeId ? Boolean(pinnedByNodeId[nodeId]) : false;
 
   if (!mounted || !open || !nodeId || !selectedNode) {
     return null;
@@ -591,6 +616,11 @@ export function NodeInspectorDialog({
                     <p className="text-xs text-muted-foreground truncate">{selectedNode.type} · Double-click node editor</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {isPinned && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 text-amber-500">
+                        Pinned
+                      </span>
+                    )}
                     <EventBadge status={currentSnapshot?.status ?? 'idle'} />
                     <Button variant="ghost" size="icon" onClick={close} title="Close">
                       <X className="size-4" />
@@ -636,14 +666,35 @@ export function NodeInspectorDialog({
                       <span>{rightView === 'schema' ? 'Type' : 'Value'}</span>
                     </div>
                     <div className="max-h-[70vh] overflow-y-auto">
-                      {currentRows.map(row => (
-                        <div key={row.path || '(root)'} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 border-b last:border-b-0 border-border text-xs">
-                          <span className="truncate text-foreground">{row.path || '(root)'}</span>
-                          <span className="text-muted-foreground max-w-[180px] truncate text-right">
-                            {row.type}
-                          </span>
-                        </div>
-                      ))}
+                      {currentRows.map(row => {
+                        const preview = getRowPreview(row.value);
+                        const key = row.path || '(root)';
+                        const isCollapsed = collapsedPreviews.has(key);
+                        return (
+                          <div key={key} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 border-b last:border-b-0 border-border text-xs">
+                            <div className="min-w-0 flex flex-col">
+                              <span className="truncate text-foreground">{key}</span>
+                              {preview ? (
+                                <button
+                                  type="button"
+                                  onClick={() => togglePreview(key)}
+                                  title={isCollapsed ? 'Show full preview' : 'Collapse preview'}
+                                  className={cn(
+                                    'mt-1 text-left text-[11px] text-muted-foreground/80 whitespace-pre-wrap bg-transparent border-0 p-0',
+                                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
+                                    isCollapsed && 'preview-ellipsis'
+                                  )}
+                                >
+                                  {preview}
+                                </button>
+                              ) : null}
+                            </div>
+                            <span className="text-muted-foreground max-w-[180px] truncate text-right">
+                              {row.type}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -661,6 +712,11 @@ export function NodeInspectorDialog({
               </div>
 
               <div className="flex items-center gap-2">
+                {isPinned && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 text-amber-500">
+                    Pinned
+                  </span>
+                )}
                 <EventBadge status={currentSnapshot?.status ?? 'idle'} />
                 <Button variant="ghost" size="icon" onClick={close} title="Close">
                   <X className="size-4" />

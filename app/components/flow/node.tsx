@@ -1,8 +1,8 @@
 'use client';
 
-import { memo, useCallback, useMemo, type ComponentType } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ComponentType, type MouseEvent } from 'react';
 import { useStore, type NodeProps } from '@xyflow/react';
-import { ChevronDown, Check, X, Loader2 } from 'lucide-react';
+import { ChevronDown, Check, X, Loader2, Play, FastForward, Pin } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
@@ -11,6 +11,9 @@ import { ParameterRow } from './parameter-row';
 import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Socket } from './socket';
+import { useFlowExecution } from '@/contexts/flow-execution-context';
+import { useFlowRunner } from '@/lib/flow/use-flow-runner';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface FlowNodeData {
   [key: string]: unknown;
@@ -109,11 +112,53 @@ const CompactSocketGroup = memo(function CompactSocketGroup({ items }: { items: 
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const { updateNodeData } = useFlowActions();
+  const { executionByNode, pinnedByNodeId, togglePinned } = useFlowExecution();
+  const { requestRun, isRunning } = useFlowRunner();
   const rawStatus = typeof data._executionStatus === 'string' ? data._executionStatus : 'idle';
   const status = (['idle', 'running', 'completed', 'error'] as const).includes(rawStatus as FlowNodeExecutionSnapshot['status'])
     ? (rawStatus as FlowNodeExecutionSnapshot['status'])
     : 'idle';
   const executionError = typeof data._executionError === 'string' ? data._executionError : undefined;
+  const isPinned = Boolean(pinnedByNodeId[id]);
+  const hasOutputs = Boolean(executionByNode[id]?.outputs);
+  const [isRunMenuOpen, setIsRunMenuOpen] = useState(false);
+  const [showPinControl, setShowPinControl] = useState(false);
+
+  const handleExecute = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      setIsRunMenuOpen(false);
+      requestRun(id, 'execute');
+    },
+    [id, requestRun]
+  );
+
+  const handleRunFrom = useCallback(
+    (event?: MouseEvent) => {
+      event?.stopPropagation();
+      setIsRunMenuOpen(false);
+      requestRun(id, 'runFrom');
+    },
+    [id, requestRun]
+  );
+
+  const handleRunContextMenu = useCallback(
+    (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsRunMenuOpen(true);
+    },
+    []
+  );
+
+  const handleTogglePin = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      if (!hasOutputs) return;
+      togglePinned(id);
+    },
+    [hasOutputs, id, togglePinned]
+  );
 
   const handleParameterChange = useCallback(
     (paramId: string, value: unknown) => {
@@ -121,6 +166,30 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
     },
     [id, updateNodeData]
   );
+
+  useEffect(() => {
+    if (!selected) {
+      setShowPinControl(false);
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'p') return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setShowPinControl((prev) => !prev);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selected]);
 
   const definition = getNodeDefinition(type);
 
@@ -195,19 +264,19 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 
   const statusBadge = status === 'running'
     ? (
-      <span className="ml-auto text-yellow-500" title={executionError}>
+      <span className="text-yellow-500" title={executionError}>
         <Loader2 className="h-4 w-4 animate-spin" />
       </span>
     )
     : status === 'completed'
       ? (
-        <span className="ml-auto text-emerald-500" title={executionError}>
+        <span className="text-emerald-500" title={executionError}>
           <Check className="h-4 w-4" />
         </span>
       )
       : status === 'error'
         ? (
-          <span className="ml-auto text-red-500" title={executionError}>
+          <span className="text-red-500" title={executionError}>
             <X className="h-4 w-4" />
           </span>
         )
@@ -229,7 +298,55 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
           <Icon className="h-4 w-4" />
           <span className="text-sm font-medium truncate">{definition.name}</span>
-          {status !== 'idle' && statusBadge}
+          <div className="ml-auto flex items-center gap-1.5">
+            <DropdownMenu
+              open={isRunMenuOpen}
+              onOpenChange={(open) => {
+                if (!open) setIsRunMenuOpen(false);
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'h-6 w-6 rounded-md border border-transparent text-muted-foreground hover:text-foreground hover:border-border transition-colors',
+                    isRunning && 'opacity-50 pointer-events-none'
+                  )}
+                  title="Execute node"
+                  onClick={handleExecute}
+                  onContextMenu={handleRunContextMenu}
+                >
+                  <Play className="h-3.5 w-3.5 mx-auto" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[150px]">
+                <DropdownMenuItem onClick={handleExecute} disabled={isRunning}>
+                  <Play className="mr-2 h-3.5 w-3.5" />
+                  Execute node
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleRunFrom} disabled={isRunning}>
+                  <FastForward className="mr-2 h-3.5 w-3.5" />
+                  Run from node
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {showPinControl && (
+              <button
+                type="button"
+                className={cn(
+                  'h-6 w-6 rounded-md border border-transparent transition-colors',
+                  hasOutputs ? 'text-muted-foreground hover:text-foreground hover:border-border' : 'text-muted-foreground/40 cursor-not-allowed',
+                  isPinned && 'text-amber-500 hover:text-amber-500'
+                )}
+                title={hasOutputs ? (isPinned ? 'Unpin data' : 'Pin data') : 'Run the node to pin data'}
+                onClick={handleTogglePin}
+                disabled={!hasOutputs}
+              >
+                <Pin className="h-3.5 w-3.5 mx-auto" />
+              </button>
+            )}
+            {status !== 'idle' && statusBadge}
+          </div>
         </div>
 
         <div className="py-1 bg-card rounded-lg border-t border-border">

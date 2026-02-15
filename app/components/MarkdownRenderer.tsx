@@ -26,7 +26,13 @@ const MemoizedComponents: Partial<Components> = {
   td: ({ ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,
   a: ({ ...props }: MdProps<'a'>) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />,
   pre: ({ ...props }: MdProps<'pre'>) => <pre {...props} />,
-  img: ({ ...props }: MdProps<'img'>) => <img className="w-full h-auto rounded-lg max-h-[500px] object-contain" {...props} />,
+  img: ({ alt = "", ...props }: MdProps<'img'>) => (
+    <img
+      alt={alt}
+      className="w-full h-auto rounded-lg max-h-[500px] object-contain"
+      {...props}
+    />
+  ),
   hr: ({ ...props }: MdProps<'hr'>) => <hr className="!my-8" {...props} />,
   input: ({ type, checked, className, ...props }: MdProps<'input'>) => {
     if (type === 'checkbox') {

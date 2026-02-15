@@ -115,6 +115,38 @@ def _flow_edges(edges: list[dict]) -> list[dict]:
     return flow_edges
 
 
+def _normalize_cached_value(value: Any) -> DataValue:
+    if isinstance(value, DataValue):
+        return value
+    if isinstance(value, dict):
+        raw_type = value.get("type")
+        if isinstance(raw_type, str):
+            return DataValue(type=raw_type, value=value.get("value"))
+        if "value" in value:
+            return DataValue(type="data", value=value.get("value"))
+    return DataValue(type="data", value=value)
+
+
+def _normalize_cached_outputs(raw: Any) -> dict[str, dict[str, DataValue]]:
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized: dict[str, dict[str, DataValue]] = {}
+    for node_id, outputs in raw.items():
+        if not isinstance(node_id, str) or not node_id:
+            continue
+        if not isinstance(outputs, dict):
+            continue
+        coerced_outputs: dict[str, DataValue] = {}
+        for handle, value in outputs.items():
+            if not isinstance(handle, str) or not handle:
+                continue
+            coerced_outputs[handle] = _normalize_cached_value(value)
+        if coerced_outputs:
+            normalized[node_id] = coerced_outputs
+    return normalized
+
+
 def _gather_inputs(
     node_id: str,
     runtime: GraphRuntime,
@@ -245,6 +277,102 @@ def _filter_flow_subgraph(
     return scoped_nodes, scoped_edges
 
 
+def _execution_scope(services: Any) -> tuple[str | None, set[str], set[str] | None]:
+    execution = getattr(services, "execution", None)
+    if execution is None:
+        return None, set(), None
+
+    scope = getattr(execution, "scope", None)
+    if scope is None:
+        return None, set(), None
+
+    mode: str | None = None
+    targets: list[str] = []
+    explicit_nodes: list[str] = []
+    explicit_nodes_present = False
+
+    if isinstance(scope, dict):
+        raw_mode = scope.get("mode")
+        if isinstance(raw_mode, str):
+            mode = raw_mode
+
+        raw_targets = scope.get("target_node_ids") or scope.get("targetNodeIds")
+        if raw_targets is None:
+            raw_targets = scope.get("target_node_id") or scope.get("targetNodeId")
+
+        if isinstance(raw_targets, str):
+            targets = [raw_targets]
+        elif isinstance(raw_targets, (list, tuple, set)):
+            targets = [str(t) for t in raw_targets if isinstance(t, str) and t]
+
+        raw_nodes = scope.get("node_ids") or scope.get("nodeIds")
+        if isinstance(raw_nodes, str):
+            explicit_nodes_present = True
+            explicit_nodes = [raw_nodes]
+        elif isinstance(raw_nodes, (list, tuple, set)):
+            explicit_nodes_present = True
+            explicit_nodes = [str(t) for t in raw_nodes if isinstance(t, str) and t]
+
+    explicit_set = set(explicit_nodes) if explicit_nodes_present else None
+    return mode, set(targets), explicit_set
+
+
+def _apply_execution_scope(
+    flow_nodes: list[dict],
+    flow_edges: list[dict],
+    mode: str,
+    target_node_ids: set[str],
+) -> tuple[list[dict], list[dict]]:
+    if not target_node_ids:
+        return [], []
+
+    node_ids = {node.get("id") for node in flow_nodes if node.get("id")}
+    scoped_targets = {nid for nid in target_node_ids if nid in node_ids}
+    if not scoped_targets:
+        return [], []
+
+    if mode == "execute":
+        scoped_node_ids = _upstream_closure(flow_edges, scoped_targets)
+    elif mode == "runFrom":
+        scoped_node_ids = _reachable_nodes_from_entries(flow_edges, scoped_targets)
+    else:
+        return flow_nodes, flow_edges
+
+    scoped_nodes = [node for node in flow_nodes if node.get("id") in scoped_node_ids]
+    scoped_node_ids = {node.get("id") for node in scoped_nodes if node.get("id")}
+    scoped_edges = [
+        edge
+        for edge in flow_edges
+        if edge.get("source") in scoped_node_ids
+        and edge.get("target") in scoped_node_ids
+    ]
+    return scoped_nodes, scoped_edges
+
+
+def _apply_explicit_scope(
+    flow_nodes: list[dict],
+    flow_edges: list[dict],
+    explicit_node_ids: set[str],
+) -> tuple[list[dict], list[dict]]:
+    if not explicit_node_ids:
+        return [], []
+
+    node_ids = {node.get("id") for node in flow_nodes if node.get("id")}
+    scoped_node_ids = {nid for nid in explicit_node_ids if nid in node_ids}
+    if not scoped_node_ids:
+        return [], []
+
+    scoped_nodes = [node for node in flow_nodes if node.get("id") in scoped_node_ids]
+    scoped_node_ids = {node.get("id") for node in scoped_nodes if node.get("id")}
+    scoped_edges = [
+        edge
+        for edge in flow_edges
+        if edge.get("source") in scoped_node_ids
+        and edge.get("target") in scoped_node_ids
+    ]
+    return scoped_nodes, scoped_edges
+
+
 # ── Main engine ─────────────────────────────────────────────────────
 
 
@@ -295,6 +423,33 @@ async def run_flow(
         if not flow_nodes:
             return
 
+    scope_mode, scope_targets, explicit_scope_nodes = _execution_scope(services)
+    if explicit_scope_nodes is not None:
+        flow_nodes, flow_edge_list = _apply_explicit_scope(
+            flow_nodes,
+            flow_edge_list,
+            explicit_scope_nodes,
+        )
+        if not flow_nodes:
+            return
+    elif scope_mode is not None:
+        flow_nodes, flow_edge_list = _apply_execution_scope(
+            flow_nodes,
+            flow_edge_list,
+            scope_mode,
+            scope_targets,
+        )
+        if not flow_nodes:
+            return
+
+    execution_ctx = getattr(services, "execution", None)
+    cached_raw = None
+    if execution_ctx is not None:
+        cached_raw = getattr(execution_ctx, "cached_outputs", None)
+        if cached_raw is None:
+            cached_raw = getattr(execution_ctx, "cachedOutputs", None)
+    cached_outputs = _normalize_cached_outputs(cached_raw)
+
     order = topological_sort(flow_nodes, flow_edge_list)
 
     runtime = GraphRuntime(
@@ -310,6 +465,33 @@ async def run_flow(
     upstream_outputs: dict[str, Any] = {}
     label_sources: dict[str, str] = {}
     nodes_by_id = {n["id"]: n for n in flow_nodes}
+    nodes_by_id_all = {n.get("id"): n for n in nodes_list if isinstance(n, dict)}
+
+    if cached_outputs:
+        for cached_node_id, outputs in cached_outputs.items():
+            port_values[cached_node_id] = outputs
+            node = nodes_by_id_all.get(cached_node_id)
+            if node is None:
+                continue
+            label = _get_node_label(node)
+            data_output = (
+                outputs.get("output")
+                or outputs.get("true")
+                or outputs.get("false")
+            )
+            if data_output is not None:
+                upstream_outputs[cached_node_id] = data_output.value
+                prior_node_id = label_sources.get(label)
+                if prior_node_id and prior_node_id != cached_node_id:
+                    logger.warning(
+                        "Duplicate node label '%s' seen on %s and %s; "
+                        "label-based expressions may be ambiguous",
+                        label,
+                        prior_node_id,
+                        cached_node_id,
+                    )
+                label_sources[label] = cached_node_id
+                upstream_outputs[label] = data_output.value
 
     for node_id in order:
         execution_ctx = getattr(services, "execution", None)
@@ -326,6 +508,9 @@ async def run_flow(
 
         executor = _get_executor(node_type, executors)
         if executor is None or not hasattr(executor, "execute"):
+            continue
+
+        if node_id in cached_outputs:
             continue
 
         on_error = data.get("on_error", "stop")

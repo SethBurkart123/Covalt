@@ -75,7 +75,7 @@ export function AgentSettingsDialog({
         <DialogHeader>
           <DialogTitle>Agent Settings</DialogTitle>
           <DialogDescription>
-            Update your agent's name, description, and icon.
+            Update your agent&apos;s name, description, and icon.
           </DialogDescription>
         </DialogHeader>
         

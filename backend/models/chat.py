@@ -130,6 +130,7 @@ class ChatEvent(BaseModel):
     task: Optional[str] = None
     nodeId: Optional[str] = None
     nodeType: Optional[str] = None
+    outputs: Optional[Dict[str, Any]] = None
 
 
 class ToolApprovalResponse(BaseModel):

@@ -22,7 +22,6 @@ from zynk import Channel
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall
 from .agent_manager import get_agent_manager
-from .agent_execution_snapshot import AgentExecutionSnapshotRecorder
 from . import run_control
 from . import stream_broadcaster as broadcaster
 from .flow_executor import run_flow
@@ -955,18 +954,6 @@ async def handle_flow_stream(
     trace_status = "streaming"
     trace_error: str | None = None
 
-    snapshot_recorder = (
-        AgentExecutionSnapshotRecorder(agent_id=agent_id) if agent_id else None
-    )
-
-    def _persist_snapshot() -> None:
-        if snapshot_recorder is None:
-            return
-        try:
-            snapshot_recorder.persist()
-        except Exception as exc:
-            logger.warning("[execution_snapshot] Failed to persist: %s", exc)
-
     run_handle = FlowRunHandle()
     run_control.register_active_run(assistant_msg_id, run_handle)
 
@@ -1374,13 +1361,6 @@ async def handle_flow_stream(
                     run_id=item.run_id,
                 )
                 if item.event_type == "started":
-                    if snapshot_recorder is not None:
-                        snapshot_recorder.record_node_event(
-                            event_type="started",
-                            node_id=item.node_id,
-                            node_type=item.node_type,
-                            payload=item.data,
-                        )
                     _send_flow_node_event(
                         "FlowNodeStarted",
                         {"nodeId": item.node_id, "nodeType": item.node_type},
@@ -1419,94 +1399,6 @@ async def handle_flow_stream(
 
                     event_name = str(event_data.get("event") or "")
                     tool_payload = event_data.get("tool")
-                    if snapshot_recorder is not None and event_name in {
-                        "ToolCallStarted",
-                        "ToolCallCompleted",
-                        "ToolCallFailed",
-                        "ToolCallError",
-                        "ToolApprovalRequired",
-                        "ToolApprovalResolved",
-                    }:
-                        refs = _tool_node_refs(tool_payload)
-                        if refs:
-                            for node_id, node_type, tool_error in refs:
-                                if event_name in {"ToolCallStarted", "ToolApprovalRequired"}:
-                                    snapshot_recorder.record_node_event(
-                                        event_type="started",
-                                        node_id=node_id,
-                                        node_type=node_type,
-                                        payload=None,
-                                    )
-                                elif event_name == "ToolCallCompleted":
-                                    if tool_error:
-                                        snapshot_recorder.record_node_event(
-                                            event_type="error",
-                                            node_id=node_id,
-                                            node_type=node_type,
-                                            payload={"error": tool_error},
-                                        )
-                                    else:
-                                        snapshot_recorder.record_node_event(
-                                            event_type="completed",
-                                            node_id=node_id,
-                                            node_type=node_type,
-                                            payload=None,
-                                        )
-                                elif event_name in {"ToolCallFailed", "ToolCallError"}:
-                                    snapshot_recorder.record_node_event(
-                                        event_type="error",
-                                        node_id=node_id,
-                                        node_type=node_type,
-                                        payload={"error": tool_error or "Tool call failed"},
-                                    )
-                                elif event_name == "ToolApprovalResolved":
-                                    if isinstance(tool_payload, dict):
-                                        approval_status = tool_payload.get("approvalStatus")
-                                        if approval_status in {"denied", "timeout"}:
-                                            snapshot_recorder.record_node_event(
-                                                event_type="error",
-                                                node_id=node_id,
-                                                node_type=node_type,
-                                                payload={
-                                                    "error": f"Approval {approval_status}",
-                                                },
-                                            )
-                    if snapshot_recorder is not None and event_name in {
-                        "MemberRunStarted",
-                        "MemberRunCompleted",
-                        "MemberRunError",
-                    }:
-                        member_node_id = event_data.get("nodeId")
-                        if member_node_id:
-                            member_node_type = event_data.get("nodeType")
-                            if event_name == "MemberRunStarted":
-                                snapshot_recorder.record_node_event(
-                                    event_type="started",
-                                    node_id=str(member_node_id),
-                                    node_type=str(member_node_type)
-                                    if isinstance(member_node_type, str)
-                                    else None,
-                                    payload=None,
-                                )
-                            elif event_name == "MemberRunCompleted":
-                                snapshot_recorder.record_node_event(
-                                    event_type="completed",
-                                    node_id=str(member_node_id),
-                                    node_type=str(member_node_type)
-                                    if isinstance(member_node_type, str)
-                                    else None,
-                                    payload=None,
-                                )
-                            elif event_name == "MemberRunError":
-                                error_text = event_data.get("content") or "Member run failed"
-                                snapshot_recorder.record_node_event(
-                                    event_type="error",
-                                    node_id=str(member_node_id),
-                                    node_type=str(member_node_type)
-                                    if isinstance(member_node_type, str)
-                                    else None,
-                                    payload={"error": str(error_text)},
-                                )
                     if event_name == "ToolApprovalRequired" and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
                     elif event_name == "ToolApprovalResolved" and chat_id:
@@ -1529,25 +1421,11 @@ async def handle_flow_stream(
                         await broadcaster.unregister_stream(chat_id)
                     return
                 elif item.event_type == "completed":
-                    if snapshot_recorder is not None:
-                        snapshot_recorder.record_node_event(
-                            event_type="completed",
-                            node_id=item.node_id,
-                            node_type=item.node_type,
-                            payload=item.data,
-                        )
                     _send_flow_node_event(
                         "FlowNodeCompleted",
                         {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "result":
-                    if snapshot_recorder is not None:
-                        snapshot_recorder.record_node_event(
-                            event_type="result",
-                            node_id=item.node_id,
-                            node_type=item.node_type,
-                            payload=item.data,
-                        )
                     _send_flow_node_event(
                         "FlowNodeResult",
                         {
@@ -1559,13 +1437,6 @@ async def handle_flow_stream(
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
-                    if snapshot_recorder is not None:
-                        snapshot_recorder.record_node_event(
-                            event_type="error",
-                            node_id=item.node_id,
-                            node_type=item.node_type,
-                            payload={"error": error_msg},
-                        )
                     _send_flow_node_event(
                         "FlowNodeError",
                         {
@@ -1677,7 +1548,6 @@ async def handle_flow_stream(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
     finally:
-        _persist_snapshot()
         run_control.remove_active_run(assistant_msg_id)
         run_control.clear_early_cancel(assistant_msg_id)
 

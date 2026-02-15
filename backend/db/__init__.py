@@ -36,10 +36,6 @@ from .executions import (
     get_latest_execution_run_for_message,
     update_execution_run,
 )
-from .agent_execution_snapshots import (
-    get_agent_execution_snapshot,
-    save_agent_execution_snapshot,
-)
 from .model_ops import (
     get_all_model_settings,
     get_model_settings,
@@ -50,7 +46,6 @@ from .model_ops import (
 from .models import (
     Base,
     Chat,
-    AgentExecutionSnapshot,
     ExecutionEvent,
     ExecutionRun,
     Message,
@@ -90,7 +85,6 @@ __all__ = [
     "Message",
     "ExecutionRun",
     "ExecutionEvent",
-    "AgentExecutionSnapshot",
     "Model",
     "ProviderSettings",
     "ToolOverride",
@@ -140,6 +134,4 @@ __all__ = [
     "append_execution_events",
     "get_latest_execution_run_for_message",
     "get_execution_events",
-    "save_agent_execution_snapshot",
-    "get_agent_execution_snapshot",
 ]

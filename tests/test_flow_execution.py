@@ -1196,3 +1196,103 @@ class TestFlowExecutionScope:
         assert "cs" in started_nodes
         assert "live" in started_nodes
         assert "model" in started_nodes
+
+    @pytest.mark.asyncio
+    async def test_cached_outputs_feed_downstream(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("a", "passthrough"),
+                make_node("b", "uppercase"),
+            ],
+            edges=[make_edge("a", "b", "output", "input")],
+        )
+
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(
+                cached_outputs={
+                    "a": {
+                        "output": {"type": "string", "value": "hello"},
+                    }
+                }
+            )
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "a" not in started_nodes
+        assert "b" in started_nodes
+
+    @pytest.mark.asyncio
+    async def test_execute_scope_runs_upstream_only(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("a", "passthrough"),
+                make_node("b", "uppercase"),
+                make_node("c", "passthrough"),
+            ],
+            edges=[
+                make_edge("a", "b", "output", "input"),
+                make_edge("b", "c", "output", "input"),
+            ],
+        )
+
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(
+                scope={"mode": "execute", "target_node_ids": ["b"]}
+            )
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "a" in started_nodes
+        assert "b" in started_nodes
+        assert "c" not in started_nodes
+
+    @pytest.mark.asyncio
+    async def test_run_from_scope_runs_downstream(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("a", "passthrough"),
+                make_node("b", "uppercase"),
+                make_node("c", "passthrough"),
+            ],
+            edges=[
+                make_edge("a", "b", "output", "input"),
+                make_edge("b", "c", "output", "input"),
+            ],
+        )
+
+        flow_ctx.services = SimpleNamespace(
+            execution=SimpleNamespace(
+                scope={"mode": "runFrom", "target_node_ids": ["b"]},
+                cached_outputs={
+                    "a": {
+                        "output": {"type": "string", "value": "hello"},
+                    }
+                },
+            )
+        )
+
+        events: list[NodeEvent] = []
+        async for item in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            if isinstance(item, NodeEvent):
+                events.append(item)
+
+        started_nodes = {
+            event.node_id for event in events if event.event_type == "started"
+        }
+        assert "a" not in started_nodes
+        assert "b" in started_nodes
+        assert "c" in started_nodes
