@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.commands import streaming
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from tests.conftest import make_node, make_edge, make_graph
 
@@ -345,3 +346,87 @@ class TestFlowStreamingEmpty:
             )
 
         assert "RunCompleted" in _event_names(channel)
+
+
+class TestStreamFlowRunCommand:
+    @pytest.mark.asyncio
+    async def test_stream_flow_run_emits_node_events(self):
+        channel = _make_channel()
+        body = streaming.StreamFlowRunRequest(
+            agentId="agent-1",
+            mode="execute",
+            targetNodeId="b",
+            cachedOutputs=None,
+            promptInput=streaming.FlowRunPromptInput(message="hello"),
+            nodeIds=["a", "b"],
+        )
+
+        agent_manager = MagicMock()
+        agent_manager.get_agent.return_value = {
+            "graph_data": make_graph(
+                nodes=[make_node("a", "chat-start"), make_node("b", "echo")],
+                edges=[make_edge("a", "b", "output", "input")],
+            )
+        }
+
+        async def stub_run_flow(_graph_data, _context):
+            yield NodeEvent(
+                node_id="b",
+                node_type="echo",
+                event_type="started",
+                run_id="run-1",
+            )
+            yield NodeEvent(
+                node_id="b",
+                node_type="echo",
+                event_type="completed",
+                run_id="run-1",
+            )
+
+        with (
+            patch.object(streaming, "get_agent_manager", return_value=agent_manager),
+            patch.object(streaming, "get_tool_registry", return_value=MagicMock()),
+            patch.object(streaming, "run_flow", side_effect=stub_run_flow),
+        ):
+            await streaming.stream_flow_run(channel, body)
+
+        events = _event_names(channel)
+        assert "FlowNodeStarted" in events
+        assert "FlowNodeCompleted" in events
+        assert "RunCompleted" in events
+
+    @pytest.mark.asyncio
+    async def test_stream_flow_run_passes_cached_outputs(self):
+        channel = _make_channel()
+        cached_outputs = {"a": {"output": {"type": "string", "value": "hello"}}}
+        body = streaming.StreamFlowRunRequest(
+            agentId="agent-1",
+            mode="execute",
+            targetNodeId="b",
+            cachedOutputs=cached_outputs,
+            promptInput=streaming.FlowRunPromptInput(message="hello"),
+        )
+
+        agent_manager = MagicMock()
+        agent_manager.get_agent.return_value = {
+            "graph_data": make_graph(
+                nodes=[make_node("a", "chat-start"), make_node("b", "echo")],
+                edges=[make_edge("a", "b", "output", "input")],
+            )
+        }
+
+        captured: dict[str, Any] = {}
+
+        async def stub_run_flow(_graph_data, context):
+            captured["cached"] = context.services.execution.cached_outputs
+            if False:  # pragma: no cover - ensures async generator
+                yield None
+
+        with (
+            patch.object(streaming, "get_agent_manager", return_value=agent_manager),
+            patch.object(streaming, "get_tool_registry", return_value=MagicMock()),
+            patch.object(streaming, "run_flow", side_effect=stub_run_flow),
+        ):
+            await streaming.stream_flow_run(channel, body)
+
+        assert captured["cached"] == cached_outputs

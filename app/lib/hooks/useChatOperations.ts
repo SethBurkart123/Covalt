@@ -42,7 +42,8 @@ export function useChatOperations({
     async (id: string) => {
       await api.deleteChat(id);
 
-      const { [id]: _deletedChat, ...remainingChats } = allChatsData.chats;
+      const remainingChats = { ...allChatsData.chats };
+      delete remainingChats[id];
       setAllChatsData({
         ...allChatsData,
         chats: remainingChats,

@@ -19,7 +19,6 @@ import {
   generateChatTitle,
   respondToThinkingTagPrompt,
   toggleStarChat,
-  getAgentLastExecution,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 
@@ -145,6 +144,18 @@ export const api = {
       ephemeral: ephemeral ?? false,
     }),
 
+  streamFlowRun: (
+    body: {
+      agentId: string;
+      mode: "execute" | "runFrom";
+      targetNodeId: string;
+      cachedOutputs?: Record<string, Record<string, unknown>>;
+      promptInput?: Record<string, unknown>;
+      nodeIds?: string[];
+    }
+  ): StreamHandle =>
+    createStreamingResponse("stream_flow_run", body),
+
   continueMessage: (
     messageId: string,
     chatId: string,
@@ -215,8 +226,6 @@ export const api = {
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
 
-  getAgentLastExecution: (agentId: string) =>
-    getAgentLastExecution({ body: { id: agentId } }),
 
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
     cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,

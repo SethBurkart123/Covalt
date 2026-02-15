@@ -45,7 +45,8 @@ export function createUserMessage(
     sequence: 1,
     attachments: attachments?.map((att) => {
       if (isPendingAttachment(att)) {
-        const { data, previewUrl: _previewUrl, ...rest } = att;
+        const { data, previewUrl, ...rest } = att;
+        void previewUrl;
         return {
           ...rest,
           ...(data ? { data } : {}),

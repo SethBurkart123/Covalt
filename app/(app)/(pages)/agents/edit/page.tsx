@@ -7,6 +7,8 @@ import { FlowProvider } from '@/lib/flow';
 import { FlowCanvas, NodeInspectorDialog } from '@/components/flow';
 import { AgentEditorProvider, useAgentEditor } from '@/contexts/agent-editor-context';
 import { AgentTestChatProvider, useAgentTestChat } from '@/contexts/agent-test-chat-context';
+import { FlowExecutionProvider } from '@/contexts/flow-execution-context';
+import { FlowRunnerProvider } from '@/lib/flow/use-flow-runner';
 import { usePageTitle } from '@/contexts/page-title-context';
 import { AgentEditorHeaderLeft, AgentEditorHeaderRight } from './AgentEditorHeader';
 import { AgentTestChatPanel } from './AgentTestChatPanel';
@@ -18,7 +20,7 @@ function AgentEditorContent() {
   const router = useRouter();
   const { setLeftContent, setRightContent, setFloating } = usePageTitle();
   const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
-  const { isOpen: isChatOpen, toggle: toggleChat, lastExecutionByNode } = useAgentTestChat();
+  const { isOpen: isChatOpen, toggle: toggleChat } = useAgentTestChat();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorNodeId, setInspectorNodeId] = useState<string | null>(null);
@@ -107,7 +109,6 @@ function AgentEditorContent() {
             open={inspectorOpen}
             onOpenChange={setInspectorOpen}
             nodeId={inspectorNodeId}
-            lastExecutionByNode={lastExecutionByNode}
           />
         </div>
         <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
@@ -142,13 +143,17 @@ function AgentEditorPageContent() {
   }
 
   return (
-    <AgentTestChatProvider agentId={agentId}>
-      <FlowProvider>
-        <AgentEditorProvider agentId={agentId}>
-          <AgentEditorContent />
-        </AgentEditorProvider>
-      </FlowProvider>
-    </AgentTestChatProvider>
+    <FlowProvider>
+      <FlowExecutionProvider agentId={agentId}>
+        <FlowRunnerProvider agentId={agentId}>
+          <AgentTestChatProvider agentId={agentId}>
+            <AgentEditorProvider agentId={agentId}>
+              <AgentEditorContent />
+            </AgentEditorProvider>
+          </AgentTestChatProvider>
+        </FlowRunnerProvider>
+      </FlowExecutionProvider>
+    </FlowProvider>
   );
 }
 

@@ -65,38 +65,19 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     return connected;
   }, [edgeIndex]);
 
-  if (!effectiveNodeId || !selectedNodeData?.type) {
-    return null;
-  }
-
-  const definition = getNodeDefinition(selectedNodeData.type);
-
-  if (!definition) {
-    return (
-      <div className="p-4 text-destructive text-sm">
-        Unknown node type: {selectedNodeData.type}
-      </div>
-    );
-  }
-
-  const Icon = getIcon(definition.icon);
-
-  const panelParams = definition.parameters.filter(p => {
-    if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
-    return shouldRenderParam(p, 'inspector', edgeIndex);
-  });
-
-  const hookId = selectedNodeData.data?.hookId;
-  const routeId = selectedNodeData.data?.routeId;
+  const nodeType = selectedNodeData?.type ?? null;
+  const definition = nodeType ? getNodeDefinition(nodeType) : null;
+  const hookId = selectedNodeData?.data?.hookId;
+  const routeId = selectedNodeData?.data?.routeId;
   const webhookUrl = useMemo(() => {
-    if (definition.id !== 'webhook-trigger') return null;
+    if (definition?.id !== 'webhook-trigger') return null;
     if (typeof hookId !== 'string' || !hookId.trim()) return null;
     try {
       return `${getBaseUrl()}/webhooks/${hookId}`;
     } catch {
       return `http://127.0.0.1:8000/webhooks/${hookId}`;
     }
-  }, [definition.id, hookId]);
+  }, [definition?.id, hookId]);
 
   const handleCopyWebhook = useCallback(() => {
     if (!webhookUrl) return;
@@ -104,10 +85,10 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   }, [webhookUrl]);
 
   const handleGenerateHookId = useCallback(() => {
-    if (definition.id !== 'webhook-trigger' || !effectiveNodeId) return;
+    if (definition?.id !== 'webhook-trigger' || !effectiveNodeId) return;
     const nextId = `hook_${Math.random().toString(36).slice(2, 10)}`;
     updateNodeData(effectiveNodeId, 'hookId', nextId);
-  }, [definition.id, effectiveNodeId, updateNodeData]);
+  }, [definition?.id, effectiveNodeId, updateNodeData]);
 
   const showRouteId = useMemo(() => {
     if (!definition) return false;
@@ -118,14 +99,14 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   const nodeRouteUrl = useMemo(() => {
     if (!showRouteId) return null;
     if (typeof routeId !== 'string' || !routeId.trim()) return null;
-    const nodeType = definition?.id ?? selectedNodeData.type;
-    if (!nodeType) return null;
+    const resolvedNodeType = definition?.id ?? nodeType;
+    if (!resolvedNodeType) return null;
     try {
-      return `${getBaseUrl()}/nodes/${nodeType}/${routeId}`;
+      return `${getBaseUrl()}/nodes/${resolvedNodeType}/${routeId}`;
     } catch {
-      return `http://127.0.0.1:8000/nodes/${nodeType}/${routeId}`;
+      return `http://127.0.0.1:8000/nodes/${resolvedNodeType}/${routeId}`;
     }
-  }, [definition?.id, routeId, selectedNodeData.type, showRouteId]);
+  }, [definition?.id, nodeType, routeId, showRouteId]);
 
   const handleCopyNodeRoute = useCallback(() => {
     if (!nodeRouteUrl) return;
@@ -137,6 +118,25 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     const nextId = `route_${Math.random().toString(36).slice(2, 10)}`;
     updateNodeData(effectiveNodeId, 'routeId', nextId);
   }, [effectiveNodeId, showRouteId, updateNodeData]);
+
+  if (!effectiveNodeId || !nodeType) {
+    return null;
+  }
+
+  if (!definition) {
+    return (
+      <div className="p-4 text-destructive text-sm">
+        Unknown node type: {nodeType}
+      </div>
+    );
+  }
+
+  const Icon = getIcon(definition.icon);
+
+  const panelParams = definition.parameters.filter(p => {
+    if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
+    return shouldRenderParam(p, 'inspector', edgeIndex);
+  });
 
   const showCard = variant === 'card';
 

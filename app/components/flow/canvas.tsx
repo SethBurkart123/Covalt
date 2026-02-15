@@ -19,8 +19,18 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { NODE_DEFINITIONS, SOCKET_TYPES, useFlowState, useFlowActions, useSelection, getNodeDefinition, type SocketTypeId } from '@/lib/flow';
-import { useAgentTestChat } from '@/contexts/agent-test-chat-context';
+import {
+  NODE_DEFINITIONS,
+  SOCKET_TYPES,
+  useFlowState,
+  useFlowActions,
+  useSelection,
+  getNodeDefinition,
+  getCompatibleNodeSockets,
+  type SocketTypeId,
+} from '@/lib/flow';
+import { useFlowExecution } from '@/contexts/flow-execution-context';
+import { FlowRunPrompt } from './flow-run-prompt';
 import { FlowNode as FlowNodeComponent } from './node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
@@ -254,7 +264,7 @@ interface FlowCanvasProps {
 
 function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
-  const { lastExecutionByNode } = useAgentTestChat();
+  const { executionByNode } = useFlowExecution();
   const { selectNode } = useSelection();
   const {
     onConnect,
@@ -282,7 +292,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const displayNodes = useMemo(() => {
     if (!nodes.length) return nodes;
     return nodes.map((node) => {
-      const snapshot = lastExecutionByNode[node.id];
+      const snapshot = executionByNode[node.id];
       if (!snapshot) return node;
       return {
         ...node,
@@ -294,7 +304,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         },
       };
     });
-  }, [nodes, lastExecutionByNode]);
+  }, [nodes, executionByNode]);
 
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
@@ -382,51 +392,6 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     [getSocketTypeFromHandle]
   );
 
-  const handleConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
-      const pending = pendingConnectionRef.current;
-      
-      if (connectionState.toHandle) {
-        pendingConnectionRef.current = null;
-        return;
-      }
-      
-      if (pending) {
-        const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
-        const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
-
-        const target = document.elementFromPoint(clientX, clientY);
-        const isInsideCanvas = target?.closest('.react-flow');
-        const isOverUI = target?.closest('.react-flow__controls, .react-flow__minimap, .react-flow__panel')
-          || !isInsideCanvas;
-
-        const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
-        const isOverNode = getNodes().some((n) => {
-          const w = n.measured?.width ?? n.width ?? 0;
-          const h = n.measured?.height ?? n.height ?? 0;
-          return (
-            flowPos.x >= n.position.x &&
-            flowPos.x <= n.position.x + w &&
-            flowPos.y >= n.position.y &&
-            flowPos.y <= n.position.y + h
-          );
-        });
-
-        if (isOverUI || isOverNode) {
-          pendingConnectionRef.current = null;
-          return;
-        }
-
-        mousePositionRef.current = { x: clientX, y: clientY };
-        openAddMenu({ socketType: pending.socketType, needsInput: pending.handleType === 'source' });
-        return;
-      }
-      
-      pendingConnectionRef.current = null;
-    },
-    [openAddMenu]
-  );
-
   const handleAddNode = useCallback(
     (nodeType: string) => {
       const flowPosition = screenToFlowPosition(mousePositionRef.current);
@@ -466,6 +431,58 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       setConnectionFilter(null);
     },
     [addNode, selectNode, onConnect, screenToFlowPosition]
+  );
+
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      const pending = pendingConnectionRef.current;
+      
+      if (connectionState.toHandle) {
+        pendingConnectionRef.current = null;
+        return;
+      }
+      
+      if (pending) {
+        const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
+        const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
+
+        const target = document.elementFromPoint(clientX, clientY);
+        const isInsideCanvas = target?.closest('.react-flow');
+        const isOverUI = target?.closest('.react-flow__controls, .react-flow__minimap, .react-flow__panel')
+          || !isInsideCanvas;
+
+        const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
+        const isOverNode = getNodes().some((n) => {
+          const w = n.measured?.width ?? n.width ?? 0;
+          const h = n.measured?.height ?? n.height ?? 0;
+          return (
+            flowPos.x >= n.position.x &&
+            flowPos.x <= n.position.x + w &&
+            flowPos.y >= n.position.y &&
+            flowPos.y <= n.position.y + h
+          );
+        });
+
+        if (isOverUI || isOverNode) {
+          pendingConnectionRef.current = null;
+          return;
+        }
+
+        mousePositionRef.current = { x: clientX, y: clientY };
+        const filter = { socketType: pending.socketType, needsInput: pending.handleType === 'source' };
+        const compatible = getCompatibleNodeSockets(filter.socketType, filter.needsInput);
+        if (compatible.length === 1) {
+          const only = compatible[0];
+          handleAddNodeWithSocket(only.nodeId, only.socketId);
+          return;
+        }
+        openAddMenu(filter);
+        return;
+      }
+      
+      pendingConnectionRef.current = null;
+    },
+    [openAddMenu, getNodes, screenToFlowPosition, handleAddNodeWithSocket]
   );
 
   useEffect(() => {
@@ -599,6 +616,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         connectionFilter={connectionFilter ?? undefined}
         onSelectWithSocket={handleAddNodeWithSocket}
       />
+      <FlowRunPrompt />
     </div>
   );
 }

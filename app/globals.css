@@ -572,6 +572,13 @@ button {
   overflow: hidden;
 }
 
+.preview-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 body.template-drag-active .template-editor-dropzone {
   outline: 1px dashed hsl(var(--primary) / 0.35);
   outline-offset: 2px;

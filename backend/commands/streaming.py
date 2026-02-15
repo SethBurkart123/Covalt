@@ -4,8 +4,9 @@ import asyncio
 import json
 import traceback
 import uuid
+import types
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel
 from rich.logging import RichHandler
@@ -22,10 +23,14 @@ from ..services.chat_graph_runner import (
     parse_model_id,
     run_graph_chat_runtime,
     update_chat_model_selection,
+    _build_trigger_payload,
 )
+from ..services.flow_executor import run_flow
+from ..services.tool_registry import get_tool_registry
 from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
 from ..services.workspace_manager import get_workspace_manager
+from nodes._types import NodeEvent
 
 import logging
 
@@ -358,6 +363,22 @@ class StreamAgentChatRequest(BaseModel):
     ephemeral: bool = False
 
 
+class FlowRunPromptInput(BaseModel):
+    message: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    messages: Optional[List[Any]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+
+
+class StreamFlowRunRequest(BaseModel):
+    agentId: str
+    mode: Literal["execute", "runFrom"]
+    targetNodeId: str
+    cachedOutputs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
+    promptInput: Optional[FlowRunPromptInput] = None
+    nodeIds: Optional[List[str]] = None
+
+
 @command
 async def stream_agent_chat(
     channel: Channel,
@@ -442,6 +463,133 @@ async def stream_agent_chat(
                         ]
                     ),
                 )
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+
+
+@command
+async def stream_flow_run(
+    channel: Channel,
+    body: StreamFlowRunRequest,
+) -> None:
+    agent_manager = get_agent_manager()
+    agent_data = agent_manager.get_agent(body.agentId)
+    if not agent_data:
+        channel.send_model(
+            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        )
+        return
+
+    prompt = body.promptInput or FlowRunPromptInput()
+    message = prompt.message or ""
+    history = prompt.history or []
+    messages = prompt.messages or []
+    attachments = prompt.attachments or []
+
+    trigger_payload = _build_trigger_payload(
+        message,
+        history,
+        attachments,
+        messages,
+    )
+
+    run_id = str(uuid.uuid4())
+    scope_payload: dict[str, Any] = {
+        "mode": body.mode,
+        "target_node_ids": [body.targetNodeId],
+    }
+    if body.nodeIds is not None:
+        scope_payload["node_ids"] = body.nodeIds
+
+    services = types.SimpleNamespace(
+        run_handle=None,
+        extra_tool_ids=[],
+        tool_registry=get_tool_registry(),
+        chat_input=types.SimpleNamespace(
+            last_user_message=message,
+            history=history,
+            messages=messages,
+            last_user_attachments=attachments,
+        ),
+        expression_context={"trigger": trigger_payload},
+        execution=types.SimpleNamespace(
+            scope=scope_payload,
+            cached_outputs=body.cachedOutputs or {},
+            stop_run=False,
+        ),
+    )
+    context = types.SimpleNamespace(
+        run_id=run_id,
+        chat_id=None,
+        state=types.SimpleNamespace(user_message=message),
+        services=services,
+    )
+
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=run_id))
+
+    try:
+        async for item in run_flow(agent_data["graph_data"], context):
+            if isinstance(item, NodeEvent):
+                if item.event_type == "agent_event":
+                    payload = dict(item.data or {})
+                    event_name = str(payload.pop("event", "agent_event"))
+                    channel.send_model(ChatEvent(event=event_name, **payload))
+                    continue
+
+                if item.event_type == "progress":
+                    token = (item.data or {}).get("token", "")
+                    if token:
+                        channel.send_model(ChatEvent(event="RunContent", content=token))
+                    continue
+
+                if item.event_type == "cancelled":
+                    channel.send_model(ChatEvent(event="RunCancelled"))
+                    return
+
+                if item.event_type == "started":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeStarted",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                        )
+                    )
+                    continue
+
+                if item.event_type == "completed":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeCompleted",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                        )
+                    )
+                    continue
+
+                if item.event_type == "result":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeResult",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                            outputs=(item.data or {}).get("outputs", {}),
+                        )
+                    )
+                    continue
+
+                if item.event_type == "error":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeError",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                            error=(item.data or {}).get("error", "Unknown node error"),
+                        )
+                    )
+                    channel.send_model(ChatEvent(event="RunError", content="Node error"))
+                    return
+        channel.send_model(ChatEvent(event="RunCompleted"))
+    except Exception as e:
+        logger.error(f"[stream_flow_run] Error: {e}")
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 

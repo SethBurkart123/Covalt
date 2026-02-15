@@ -82,7 +82,8 @@ export function useTestChatInput(agentId: string) {
   );
 
   const handleSubmit = useCallback(
-    async (inputText: string, attachments: Attachment[], _toolIds?: string[]) => {
+    async (inputText: string, attachments: Attachment[], toolIds?: string[]) => {
+      void toolIds;
       if (!inputText.trim() && attachments.length === 0) return;
       if (isLoading) return;
 
@@ -113,7 +114,9 @@ export function useTestChatInput(agentId: string) {
     streamingMessageIdRef.current = null;
   }, []);
 
-  const handleContinue = useCallback(async (_messageId: string) => {}, []);
+  const handleContinue = useCallback(async (messageId: string) => {
+    void messageId;
+  }, []);
 
   const handleRetry = useCallback(
     async (messageId: string) => {
@@ -158,7 +161,10 @@ export function useTestChatInput(agentId: string) {
     await runStream(allMessages);
   }, [editing, messages, runStream]);
 
-  const handleNavigate = useCallback(async (_messageId: string, _siblingId: string) => {}, []);
+  const handleNavigate = useCallback(async (messageId: string, siblingId: string) => {
+    void messageId;
+    void siblingId;
+  }, []);
 
   return {
     messages,

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import type { FlowEdge, FlowNode } from '@/lib/flow';
 import { useFlowState, getNodeDefinition } from '@/lib/flow';
-import { useAgentTestChat } from '@/contexts/agent-test-chat-context';
+import { useFlowExecution } from '@/contexts/flow-execution-context';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import {
   buildInputExpression,
@@ -26,11 +26,11 @@ interface BuildTemplateVariableOptionsArgs {
 
 export function useTemplateVariableOptions(nodeId: string | null): TemplateVariableOption[] {
   const { nodes, edges } = useFlowState();
-  const { lastExecutionByNode } = useAgentTestChat();
+  const { executionByNode } = useFlowExecution();
 
   return useMemo(
-    () => buildTemplateVariableOptions({ nodeId, nodes, edges, lastExecutionByNode }),
-    [nodeId, nodes, edges, lastExecutionByNode]
+    () => buildTemplateVariableOptions({ nodeId, nodes, edges, lastExecutionByNode: executionByNode }),
+    [nodeId, nodes, edges, executionByNode]
   );
 }
 
