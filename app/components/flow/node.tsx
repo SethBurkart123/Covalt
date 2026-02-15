@@ -122,7 +122,6 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const isPinned = Boolean(pinnedByNodeId[id]);
   const hasOutputs = Boolean(executionByNode[id]?.outputs);
   const [isRunMenuOpen, setIsRunMenuOpen] = useState(false);
-  const [showPinControl, setShowPinControl] = useState(false);
 
   const handleExecute = useCallback(
     (event: MouseEvent) => {
@@ -154,24 +153,14 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const handleTogglePin = useCallback(
     (event: MouseEvent) => {
       event.stopPropagation();
-      if (!hasOutputs) return;
+      if (!isPinned && !hasOutputs) return;
       togglePinned(id);
     },
-    [hasOutputs, id, togglePinned]
-  );
-
-  const handleParameterChange = useCallback(
-    (paramId: string, value: unknown) => {
-      updateNodeData(id, paramId, value);
-    },
-    [id, updateNodeData]
+    [hasOutputs, id, isPinned, togglePinned]
   );
 
   useEffect(() => {
-    if (!selected) {
-      setShowPinControl(false);
-      return;
-    }
+    if (!selected) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'p') return;
@@ -183,13 +172,22 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
       ) {
         return;
       }
+      if (!isPinned && !hasOutputs) return;
       event.preventDefault();
-      setShowPinControl((prev) => !prev);
+      togglePinned(id);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selected]);
+  }, [hasOutputs, id, isPinned, selected, togglePinned]);
+
+  const handleParameterChange = useCallback(
+    (paramId: string, value: unknown) => {
+      updateNodeData(id, paramId, value);
+    },
+    [id, updateNodeData]
+  );
+
 
   const definition = getNodeDefinition(type);
 
@@ -330,17 +328,15 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {showPinControl && (
+            {isPinned && (
               <button
                 type="button"
                 className={cn(
-                  'h-6 w-6 rounded-md border border-transparent transition-colors',
-                  hasOutputs ? 'text-muted-foreground hover:text-foreground hover:border-border' : 'text-muted-foreground/40 cursor-not-allowed',
+                  'h-6 w-6 rounded-md border border-transparent transition-colors text-muted-foreground hover:text-foreground hover:border-border',
                   isPinned && 'text-amber-500 hover:text-amber-500'
                 )}
-                title={hasOutputs ? (isPinned ? 'Unpin data' : 'Pin data') : 'Run the node to pin data'}
+                title="Unpin data"
                 onClick={handleTogglePin}
-                disabled={!hasOutputs}
               >
                 <Pin className="h-3.5 w-3.5 mx-auto" />
               </button>

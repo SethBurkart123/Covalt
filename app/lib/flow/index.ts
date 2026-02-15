@@ -20,6 +20,7 @@ export type {
   BooleanParameter,
   EnumParameter,
   TextAreaParameter,
+  CodeParameter,
   MessagesParameter,
   ModelParameter,
   McpServerParameter,

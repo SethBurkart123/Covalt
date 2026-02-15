@@ -1361,6 +1361,9 @@ async def handle_flow_stream(
                     run_id=item.run_id,
                 )
                 if item.event_type == "started":
+                    if current_text or current_reasoning:
+                        _flush_current_text()
+                        _flush_current_reasoning()
                     _send_flow_node_event(
                         "FlowNodeStarted",
                         {"nodeId": item.node_id, "nodeType": item.node_type},

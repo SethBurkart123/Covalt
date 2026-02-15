@@ -23,6 +23,7 @@ interface AgentTestChatContextValue {
   close: () => void;
   toggle: () => void;
   clearLastExecution: () => void;
+  clearRunningExecution: () => void;
   recordFlowEvent: (event: string, payload: Record<string, unknown>) => void;
 }
 
@@ -35,12 +36,20 @@ export function AgentTestChatProvider({
   agentId?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const { clearExecution, recordFlowEvent: recordExecutionEvent } = useFlowExecution();
+  const {
+    clearExecution,
+    clearRunningExecution,
+    recordFlowEvent: recordExecutionEvent,
+  } = useFlowExecution();
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
   const clearLastExecution = useCallback(() => clearExecution(), [clearExecution]);
+  const clearRunningExecutionSafe = useCallback(
+    () => clearRunningExecution(),
+    [clearRunningExecution]
+  );
 
   const recordFlowEvent = useCallback(
     (event: string, payload: Record<string, unknown>) => {
@@ -57,6 +66,7 @@ export function AgentTestChatProvider({
         close,
         toggle,
         clearLastExecution,
+        clearRunningExecution: clearRunningExecutionSafe,
         recordFlowEvent,
       }}
     >

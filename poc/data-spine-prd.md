@@ -272,53 +272,9 @@ Everything else stays: `agent` (structural), `tools` (structural), `model` (hybr
 
 Everything else stays: `model` (hybrid), `prompt` (hybrid), `temperature` (hybrid), `max_tokens` (constant).
 
-### 2.4 Prompt Template (`nodes/ai/prompt_template/definition.ts`)
+### 2.4 Prompt Template (Removed)
 
-**Replace `data` input parameter** (line 26-32):
-
-```typescript
-// BEFORE:
-{
-  id: 'data',
-  type: 'json',
-  label: 'Data',
-  mode: 'input',
-  socket: { type: 'json', side: 'left' },
-},
-
-// AFTER:
-{
-  id: 'input',
-  type: 'data',
-  label: 'Input',
-  mode: 'input',
-  socket: { type: 'data' },
-},
-```
-
-**Replace `text` output parameter** (line 33-39):
-
-```typescript
-// BEFORE:
-{
-  id: 'text',
-  type: 'text-area',
-  label: 'Output',
-  mode: 'output',
-  socket: { type: 'string' },
-},
-
-// AFTER:
-{
-  id: 'output',
-  type: 'data',
-  label: 'Output',
-  mode: 'output',
-  socket: { type: 'data' },
-},
-```
-
-`template` (constant) stays unchanged.
+The Prompt Template node is redundant now that `{{ ... }}` expressions are supported on any node parameter. Use expressions on the LLM Completion prompt (or other node params) instead of a dedicated template node.
 
 ### 2.5 Conditional (`nodes/flow/conditional/definition.ts`)
 
@@ -497,33 +453,9 @@ yield ExecutionResult(
 
 **Output schema**: `{ "text": string }`
 
-### 3.4 Prompt Template (`nodes/ai/prompt_template/executor.py`)
+### 3.4 Prompt Template (Removed)
 
-**Change input reading** (line 22):
-
-```python
-# BEFORE:
-variables = inputs.get("data", DataValue("json", {})).value or {}
-
-# AFTER:
-variables = inputs.get("input", DataValue("data", {})).value or {}
-```
-
-**Change output** (line 38-39):
-
-```python
-# BEFORE:
-return ExecutionResult(
-    outputs={"text": DataValue(type="string", value=rendered)}
-)
-
-# AFTER:
-return ExecutionResult(
-    outputs={"output": DataValue(type="data", value={"text": rendered})}
-)
-```
-
-**Output schema**: `{ "text": string }`
+No executor changes required — the Prompt Template node has been removed. Use `{{ ... }}` expressions in node parameters for templating.
 
 ### 3.5 Conditional (`nodes/flow/conditional/executor.py`)
 
@@ -659,17 +591,9 @@ data = resolve_expressions(data, direct_input, upstream_outputs)
 
 Note: call `resolve_expressions` unconditionally — even without a direct input, `$()` references should still resolve from the upstream map.
 
-### 4.4 Prompt Template Interaction
+### 4.4 Prompt Template (Removed)
 
-The Prompt Template node has its own `{{variable}}` syntax (regex: `\{\{\s*(\w+)\s*\}\}`) for template interpolation. This runs INSIDE the executor, AFTER the expression system has already resolved `$()` and `input.x` references.
-
-The new `$('Node Name')` syntax does NOT conflict — `$`, `(`, `'`, `)`, and spaces don't match `\w`. The `input.x` shorthand could conflict with `{{name}}` (both match `\w+`), but the expression system runs first (in `flow_executor.py` before calling `execute()`), and `name` without the `input.` prefix would fail to resolve (no `$()` wrapper, no `input.` prefix), leaving it for the Prompt Template executor.
-
-**However**, for safety, the expression system should only match:
-- `$('...')` syntax (always unambiguous)
-- `input.x` syntax (requires the `input.` prefix)
-
-Bare `{{name}}` should NOT be resolved by the expression system. The current `_EXPR_PATTERN` (matching `[\w.]+`) would catch bare words. The new `_INPUT_PATTERN` regex `\{\{\s*input(?:\.([\w.]+))?\s*\}\}` requires the `input` prefix, which avoids this conflict.
+Prompt templating now happens through the shared `{{ ... }}` expression system in node parameters. There is no separate Prompt Template executor or syntax to reconcile.
 
 ---
 
@@ -844,7 +768,6 @@ The existing `canConnect()` already handles this — `canConnect('data', dataPar
 - Non-existent field resolves to empty string
 - `{{ input.x }}` backward compat shorthand
 - `{{ $('Node').item.json }}` without field path returns stringified object
-- `$()` does not match Prompt Template's `{{variable}}` syntax
 - Duplicate node labels: second node's output overwrites first's
 
 **Data spine routing tests** (add to `test_flow_execution.py`):
@@ -870,8 +793,6 @@ The existing `canConnect()` already handles this — `canConnect('data', dataPar
 | `nodes/core/agent/executor.py` | Medium | Input extraction, output wrapping |
 | `nodes/ai/llm_completion/definition.ts` | Small | data(json) input → input(data), text(string) output → output(data) |
 | `nodes/ai/llm_completion/executor.py` | Small | Output key + DataValue type change |
-| `nodes/ai/prompt_template/definition.ts` | Small | data(json) input → input(data), text(string) output → output(data) |
-| `nodes/ai/prompt_template/executor.py` | Small | Input key change, output key + DataValue type change |
 | `nodes/flow/conditional/definition.ts` | Small | Remove redundant input socket, change types to data |
 | `nodes/flow/conditional/executor.py` | Small | Input key change, DataValue type change |
 | `nodes/utility/model_selector/definition.ts` | Tiny | Change executionMode to structural |
@@ -922,7 +843,7 @@ After all changes:
 - [ ] All existing tests pass with updates
 - [ ] New expression tests pass
 - [ ] Manual test: Create graph Chat Start → Agent. Chat works. Response appears.
-- [ ] Manual test: Create graph Chat Start → Prompt Template → LLM Completion. Data flows through.
+- [ ] Manual test: Create graph Chat Start → Passthrough → LLM Completion. Data flows through.
 - [ ] Manual test: Wire a Model node to two Agent nodes via typed side sockets. Both agents use the model.
 - [ ] Manual test: Use `{{ $('Chat Start').item.json.message }}` in an Agent's instructions field. It resolves.
 - [ ] Manual test: Conditional node routes to correct branch. Dead branch is skipped.

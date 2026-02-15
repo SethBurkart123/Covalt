@@ -75,6 +75,6 @@ Abstract the trigger concept. Chat Start becomes one type of trigger (receives c
 
 ## What This Enables
 
-Chain agents in sequence — each receives the previous one's output, processes it, passes it on. Put a Prompt Template before an Agent to preprocess the input. Put an LLM Completion after to summarize the response. Fork with a Conditional and run different agents on different branches.
+Chain agents in sequence — each receives the previous one's output, processes it, passes it on. Use `{{ ... }}` expressions in node parameters to preprocess the input. Put an LLM Completion after to summarize the response. Fork with a Conditional and run different agents on different branches.
 
 The graph becomes genuinely flexible. The "root agent" constraint disappears. You can build whatever flow makes sense for your use case.

@@ -36,6 +36,7 @@ export interface StreamState {
   currentReasoningBlock: string;
   thinkTagDetected: boolean;
   memberStates: Map<string, MemberBuffers>;
+  textBlockBoundary: boolean;
 }
 
 export function createInitialState(): StreamState {
@@ -45,6 +46,7 @@ export function createInitialState(): StreamState {
     currentReasoningBlock: "",
     thinkTagDetected: false,
     memberStates: new Map(),
+    textBlockBoundary: false,
   };
 }
 
@@ -156,7 +158,7 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
     flushReasoningBlock(state);
   }
 
-  if (state.currentTextBlock === "" && state.contentBlocks.length > 0) {
+  if (!state.textBlockBoundary && state.currentTextBlock === "" && state.contentBlocks.length > 0) {
     const last = state.contentBlocks[state.contentBlocks.length - 1];
     if (last?.type === "text") {
       state.contentBlocks.pop();
@@ -165,6 +167,9 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
   }
 
   state.currentTextBlock += content;
+  if (state.textBlockBoundary) {
+    state.textBlockBoundary = false;
+  }
 
   if (!state.thinkTagDetected && state.currentTextBlock.includes("<think>")) {
     state.thinkTagDetected = true;
@@ -426,6 +431,7 @@ export function processEvent(
         state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
         state.currentTextBlock = "";
         state.currentReasoningBlock = "";
+        state.textBlockBoundary = false;
       }
       callbacks.onMessageId?.(d.content as string);
       break;
@@ -439,6 +445,7 @@ export function processEvent(
         state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
         state.currentTextBlock = "";
         state.currentReasoningBlock = "";
+        state.textBlockBoundary = false;
       }
       break;
 
@@ -471,6 +478,12 @@ export function processEvent(
 
     case "ToolApprovalResolved":
       handleToolApprovalResolved(state, d.tool);
+      break;
+
+    case "FlowNodeStarted":
+      flushTextBlock(state);
+      flushReasoningBlock(state);
+      state.textBlockBoundary = true;
       break;
 
     case "MemberRunStarted":

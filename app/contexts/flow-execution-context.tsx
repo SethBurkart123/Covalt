@@ -32,6 +32,7 @@ interface FlowExecutionContextValue {
   recordFlowEvent: (event: string, payload: Record<string, unknown>) => void;
   clearExecution: () => void;
   clearExecutionForNodes: (nodeIds: Iterable<string>) => void;
+  clearRunningExecution: () => void;
   setPinned: (nodeId: string, pinned: boolean) => void;
   togglePinned: (nodeId: string) => void;
   setLastPromptInput: (input: FlowRunPromptInput) => void;
@@ -469,6 +470,13 @@ export function FlowExecutionProvider({
     [pinnedByNodeId]
   );
 
+  const clearRunningExecution = useCallback(() => {
+    const runningIds = Object.entries(executionByNode)
+      .filter(([, snapshot]) => snapshot.status === "running")
+      .map(([id]) => id);
+    clearExecutionForNodes(runningIds);
+  }, [clearExecutionForNodes, executionByNode]);
+
   const setPinned = useCallback((nodeId: string, pinned: boolean) => {
     setPinnedByNodeId((current) => {
       const next = { ...current };
@@ -510,6 +518,7 @@ export function FlowExecutionProvider({
       recordFlowEvent,
       clearExecution,
       clearExecutionForNodes,
+      clearRunningExecution,
       setPinned,
       togglePinned,
       setLastPromptInput,
@@ -522,6 +531,7 @@ export function FlowExecutionProvider({
       recordFlowEvent,
       clearExecution,
       clearExecutionForNodes,
+      clearRunningExecution,
       setPinned,
       togglePinned,
       setLastPromptInput,

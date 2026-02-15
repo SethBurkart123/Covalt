@@ -8,8 +8,8 @@ import { agent } from './core/agent/definition';
 import { mcpServer } from './tools/mcp_server/definition';
 import { toolset } from './tools/toolset/definition';
 import { llmCompletion } from './ai/llm_completion/definition';
-import { promptTemplate } from './ai/prompt_template/definition';
 import { conditional } from './flow/conditional/definition';
+import { code } from './data/code/definition';
 import { modelSelector } from './utility/model_selector/definition';
 
 const NODE_LIST = [
@@ -20,8 +20,8 @@ const NODE_LIST = [
   mcpServer,
   toolset,
   llmCompletion,
-  promptTemplate,
   conditional,
+  code,
   modelSelector,
 ] as const;
 

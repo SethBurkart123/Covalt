@@ -14,8 +14,8 @@ const EXPECTED_NODE_IDS = [
   'mcp-server',
   'toolset',
   'llm-completion',
-  'prompt-template',
   'conditional',
+  'code',
   'model-selector',
 ]
 
@@ -53,7 +53,6 @@ describe('registry', () => {
       const llmIds = llmNodes.map(n => n.id)
       expect(llmIds).toContain('agent')
       expect(llmIds).toContain('llm-completion')
-      expect(llmIds).toContain('prompt-template')
     })
 
     it('returns tools nodes', () => {
@@ -61,6 +60,12 @@ describe('registry', () => {
       const toolIds = toolNodes.map(n => n.id)
       expect(toolIds).toContain('mcp-server')
       expect(toolIds).toContain('toolset')
+    })
+
+    it('returns data nodes', () => {
+      const dataNodes = getNodesByCategory('data')
+      const dataIds = dataNodes.map(n => n.id)
+      expect(dataIds).toContain('code')
     })
 
     it('returns utility nodes', () => {

@@ -466,6 +466,11 @@ async def run_flow(
     label_sources: dict[str, str] = {}
     nodes_by_id = {n["id"]: n for n in flow_nodes}
     nodes_by_id_all = {n.get("id"): n for n in nodes_list if isinstance(n, dict)}
+    if services is not None:
+        try:
+            setattr(services, "upstream_outputs", upstream_outputs)
+        except Exception:
+            pass
 
     if cached_outputs:
         for cached_node_id, outputs in cached_outputs.items():

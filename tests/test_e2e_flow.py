@@ -9,14 +9,13 @@ The test graph:
 
   Model Selector ──[model]──┐
                              │
-  Chat Start ──[string]──→ Prompt Template ──[string]──→ LLM Completion ──[string]──→ Conditional
+  Chat Start ──[string]──→ Passthrough ──[string]──→ LLM Completion ──[string]──→ Conditional
                                                           ↑ model                       ├─ true → UpperCase
                                                                                         └─ false → (dead)
 """
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -61,29 +60,6 @@ class ModelSelectorStub:
             "model", ""
         )
         return ExecutionResult(outputs={"output": DataValue("model", model)})
-
-
-class PromptTemplateStub:
-    """Interpolates {{variables}} from data input into template."""
-
-    node_type = "prompt-template"
-
-    async def execute(
-        self, data: dict, inputs: dict[str, DataValue], context: FlowContext
-    ) -> ExecutionResult:
-        template = data.get("template", "")
-        variables = inputs.get("input", DataValue("data", {})).value or {}
-        if isinstance(variables, str):
-            variables = {}
-
-        rendered = re.sub(
-            r"\{\{\s*(\w+)\s*\}\}",
-            lambda m: str(variables.get(m.group(1), "")),
-            template,
-        )
-        return ExecutionResult(
-            outputs={"output": DataValue("data", {"text": rendered})}
-        )
 
 
 class LLMCompletionStub:
@@ -211,7 +187,6 @@ STUBS = {
     for cls in [
         ChatStartStub,
         ModelSelectorStub,
-        PromptTemplateStub,
         LLMCompletionStub,
         ConditionalStub,
         UpperCaseStub,
@@ -234,7 +209,7 @@ def _flow_ctx(user_message: str = "hello") -> Any:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Test: Full pipeline with model selector, prompt template, LLM, branching
+# Test: Full pipeline with model selector, passthrough, LLM, branching
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -243,7 +218,7 @@ class TestE2EFullPipeline:
     Graph:
       Model Selector (mock:gpt-test) ──[model]──────────────┐
                                                               │
-      Chat Start ──[string]──→ Prompt Template ──[string]──→ LLM Completion ──[string]──→ Conditional
+      Chat Start ──[string]──→ Passthrough ──[string]──→ LLM Completion ──[string]──→ Conditional
                                                               ↑ model                       ├─ true → UpperCase
                                                                                             └─ false → Passthrough (dead)
     """
@@ -253,7 +228,7 @@ class TestE2EFullPipeline:
             nodes=[
                 make_node("model", "model-selector", model="mock:gpt-test"),
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Summarize: {{input}}"),
+                make_node("pipe", "passthrough"),
                 make_node("llm", "llm-completion"),
                 make_node(
                     "cond",
@@ -267,8 +242,8 @@ class TestE2EFullPipeline:
             ],
             edges=[
                 make_edge("model", "llm", "output", "model"),
-                make_edge("cs", "pt", "output", "input"),
-                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("cs", "pipe", "output", "input"),
+                make_edge("pipe", "llm", "output", "prompt"),
                 make_edge("llm", "cond", "output", "input"),
                 make_edge("cond", "upper", "true", "input"),
                 make_edge("cond", "dead", "false", "input"),
@@ -298,7 +273,7 @@ class TestE2EFullPipeline:
 
     @pytest.mark.asyncio
     async def test_pipeline_data_flows_correctly(self):
-        """Data flows through the pipeline: Chat Start → Template → LLM → Conditional → UpperCase."""
+        """Data flows through the pipeline: Chat Start → Passthrough → LLM → Conditional → UpperCase."""
         graph = self._build_graph()
         ctx = _flow_ctx("test input")
 
@@ -365,18 +340,22 @@ class TestE2EFullPipeline:
 
 
 class TestE2EExpressions:
-    """Test {{input.field}} expression resolution in the flow executor."""
+    """Test {{ }} expression resolution in the flow executor."""
 
     @pytest.mark.asyncio
     async def test_expression_resolves_from_general_input(self):
-        """Prompt Template uses {{input.topic}} from upstream data input."""
+        """Expressions can reference upstream input data in node params."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Write about {{topic}}"),
+                make_node(
+                    "echo",
+                    "data-echo",
+                    payload="Write about {{ input.message }}",
+                ),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
+                make_edge("cs", "echo", "output", "input"),
             ],
         )
         ctx = _flow_ctx("quantum physics")
@@ -386,7 +365,8 @@ class TestE2EExpressions:
             if isinstance(item, ExecutionResult):
                 results.append(item)
 
-        assert len(results) >= 2
+        payload = results[-1].outputs["output"].value["payload"]
+        assert payload == "Write about quantum physics"
 
     @pytest.mark.asyncio
     async def test_node_id_expression_reference_is_supported(self):
@@ -395,20 +375,20 @@ class TestE2EExpressions:
             nodes=[
                 make_node("cs", "chat-start"),
                 make_node(
-                    "pt1",
-                    "prompt-template",
-                    template="Echo {{message}}",
-                    _label="Friendly Prompt",
+                    "echo1",
+                    "data-echo",
+                    payload="Echo {{ input.message }}",
+                    _label="Friendly Echo",
                 ),
                 make_node(
-                    "pt2",
-                    "prompt-template",
-                    template="From first: {{ $('pt1').item.json.text }}",
+                    "echo2",
+                    "data-echo",
+                    payload="From first: {{ $('echo1').item.json.payload }}",
                 ),
             ],
             edges=[
-                make_edge("cs", "pt1", "output", "input"),
-                make_edge("pt1", "pt2", "output", "input"),
+                make_edge("cs", "echo1", "output", "input"),
+                make_edge("echo1", "echo2", "output", "input"),
             ],
         )
         ctx = _flow_ctx("hello")
@@ -418,7 +398,9 @@ class TestE2EExpressions:
             if isinstance(item, ExecutionResult):
                 results.append(item)
 
-        assert results[-1].outputs["output"].value["text"] == "From first: Echo hello"
+        assert (
+            results[-1].outputs["output"].value["payload"] == "From first: Echo hello"
+        )
 
     @pytest.mark.asyncio
     async def test_full_expression_returns_object(self):
@@ -478,8 +460,8 @@ class TestE2EEdgeFiltering:
         edges = [
             make_edge("agent1", "agent2", "output", "tools"),
             make_edge("mcp", "agent", "tools", "tools"),
-            make_edge("cs", "pt", "output", "input"),
-            make_edge("pt", "llm", "output", "prompt"),
+            make_edge("cs", "pipe", "output", "input"),
+            make_edge("pipe", "llm", "output", "prompt"),
         ]
         flow = _flow_edges(edges)
         assert len(flow) == 2
@@ -516,11 +498,11 @@ class TestE2EDisconnectedComponents:
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Echo: {{input}}"),
+                make_node("pipe", "passthrough"),
                 make_node("orphan", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
+                make_edge("cs", "pipe", "output", "input"),
             ],
         )
         ctx = _flow_ctx("hello")
@@ -532,7 +514,7 @@ class TestE2EDisconnectedComponents:
 
         started_nodes = {e.node_id for e in events if e.event_type == "started"}
         assert "cs" in started_nodes
-        assert "pt" in started_nodes
+        assert "pipe" in started_nodes
         assert "orphan" in started_nodes
 
 
@@ -545,27 +527,27 @@ class TestE2ETopologicalSort:
     """Verify the flow executor properly orders nodes."""
 
     def test_complex_graph_ordering(self):
-        """Model Selector + Chat Start → Template → LLM → Conditional ordering."""
+        """Model Selector + Chat Start → Passthrough → LLM → Conditional ordering."""
         nodes = [
             make_node("model", "model-selector"),
             make_node("cs", "chat-start"),
-            make_node("pt", "prompt-template"),
+            make_node("pipe", "passthrough"),
             make_node("llm", "llm-completion"),
             make_node("cond", "conditional"),
             make_node("upper", "uppercase"),
         ]
         edges = [
             make_edge("model", "llm", "output", "model"),
-            make_edge("cs", "pt", "output", "input"),
-            make_edge("pt", "llm", "output", "prompt"),
+            make_edge("cs", "pipe", "output", "input"),
+            make_edge("pipe", "llm", "output", "prompt"),
             make_edge("llm", "cond", "output", "input"),
             make_edge("cond", "upper", "true", "input"),
         ]
         order = topological_sort(nodes, edges)
 
         assert order.index("model") < order.index("llm")
-        assert order.index("cs") < order.index("pt")
-        assert order.index("pt") < order.index("llm")
+        assert order.index("cs") < order.index("pipe")
+        assert order.index("pipe") < order.index("llm")
         assert order.index("llm") < order.index("cond")
         assert order.index("cond") < order.index("upper")
 
@@ -602,13 +584,13 @@ class TestE2EEventProtocol:
 
     @pytest.mark.asyncio
     async def test_sync_executor_gets_auto_events(self):
-        """Sync executors (chat start, prompt template) get auto started/completed."""
+        """Sync executors (chat start, passthrough) get auto started/completed."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="hi"),
+                make_node("pipe", "passthrough"),
             ],
-            edges=[make_edge("cs", "pt", "output", "input")],
+            edges=[make_edge("cs", "pipe", "output", "input")],
         )
         ctx = _flow_ctx("auto events")
 
@@ -628,12 +610,12 @@ class TestE2EEventProtocol:
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="{{input}}"),
+                make_node("pipe", "passthrough"),
                 make_node("llm", "llm-completion", model="mock:test"),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
-                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("cs", "pipe", "output", "input"),
+                make_edge("pipe", "llm", "output", "prompt"),
             ],
         )
         ctx = _flow_ctx("order test")
@@ -648,8 +630,8 @@ class TestE2EEventProtocol:
             if e.node_id not in first_occurrence:
                 first_occurrence[e.node_id] = i
 
-        assert first_occurrence.get("cs", 0) < first_occurrence.get("pt", 999)
-        assert first_occurrence.get("pt", 0) < first_occurrence.get("llm", 999)
+        assert first_occurrence.get("cs", 0) < first_occurrence.get("pipe", 999)
+        assert first_occurrence.get("pipe", 0) < first_occurrence.get("llm", 999)
 
 
 # ═══════════════════════════════════════════════════════════════════════

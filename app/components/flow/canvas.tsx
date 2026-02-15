@@ -595,6 +595,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         panOnScroll
         zoomOnScroll={false}
         zoomOnPinch
+        panActivationKeyCode={null}
       >
         <Background
           variant={BackgroundVariant.Dots}
