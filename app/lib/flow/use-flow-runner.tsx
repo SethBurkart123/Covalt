@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FlowNode, FlowEdge } from "@/lib/flow";
 import { useFlowState, getNodeDefinition } from "@/lib/flow";
 import { api } from "@/lib/services/api";
@@ -23,6 +23,7 @@ interface FlowRunnerContextValue {
   promptState: PromptState;
   isRunning: boolean;
   requestRun: (nodeId: string, mode: FlowRunMode) => void;
+  stopRun: () => Promise<void>;
   closePrompt: () => void;
   submitPrompt: (input: FlowRunPromptInput) => Promise<void>;
   getPromptNode: () => FlowNode | null;
@@ -244,6 +245,9 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
     requirePromptInput: true,
   });
   const [isRunning, setIsRunning] = useState(false);
+  const streamAbortRef = useRef<(() => void) | null>(null);
+  const runIdRef = useRef<string | null>(null);
+  const stopRequestedRef = useRef(false);
   const {
     executionByNode,
     pinnedByNodeId,
@@ -251,6 +255,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
     recordFlowEvent,
     setLastPromptInput,
     clearExecutionForNodes,
+    clearRunningExecution,
   } = useFlowExecution();
 
   const runWithInput = useCallback(
@@ -260,6 +265,9 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
       input: FlowRunPromptInput,
       selectedTriggerId?: string | null
     ) => {
+      stopRequestedRef.current = false;
+      runIdRef.current = null;
+
       const pinnedSet = new Set(
         Object.keys(pinnedByNodeId).filter(id => pinnedByNodeId[id])
       );
@@ -291,7 +299,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
       setIsRunning(true);
 
       try {
-        const { response } = api.streamFlowRun({
+        const { response, abort } = api.streamFlowRun({
           agentId,
           mode,
           targetNodeId: nodeId,
@@ -299,6 +307,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
           promptInput: input,
           nodeIds,
         });
+        streamAbortRef.current = abort;
         if (!response.ok) {
           throw new Error(`Flow run failed: ${response.statusText}`);
         }
@@ -306,15 +315,36 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
         await processMessageStream(response, {
           onUpdate: () => {},
           onMessageId: () => {},
-          onSessionId: () => {},
+          onSessionId: (sessionId) => {
+            runIdRef.current = sessionId;
+            if (stopRequestedRef.current) {
+              api.cancelFlowRun(sessionId)
+                .catch((error) => {
+                  console.error("Flow run cancel error:", error);
+                })
+                .finally(() => {
+                  streamAbortRef.current?.();
+                  streamAbortRef.current = null;
+                });
+            }
+          },
           onEvent: (eventType, payload) => {
+            if (stopRequestedRef.current) return;
             recordFlowEvent(eventType, payload);
           },
         });
       } catch (error) {
-        console.error("Flow run error:", error);
+        if (!stopRequestedRef.current) {
+          console.error("Flow run error:", error);
+        }
       } finally {
         setIsRunning(false);
+        if (stopRequestedRef.current) {
+          clearRunningExecution();
+        }
+        streamAbortRef.current = null;
+        runIdRef.current = null;
+        stopRequestedRef.current = false;
         setPromptState({
           open: false,
           nodeId: null,
@@ -328,6 +358,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
     [
       agentId,
       clearExecutionForNodes,
+      clearRunningExecution,
       executionByNode,
       flowEdges,
       nodes,
@@ -336,6 +367,24 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
       setLastPromptInput,
     ]
   );
+
+  const stopRun = useCallback(async () => {
+    if (!isRunning) return;
+    stopRequestedRef.current = true;
+    clearRunningExecution();
+    setIsRunning(false);
+
+    const runId = runIdRef.current;
+    if (runId) {
+      try {
+        await api.cancelFlowRun(runId);
+      } catch (error) {
+        console.error("Flow run cancel error:", error);
+      }
+      streamAbortRef.current?.();
+      streamAbortRef.current = null;
+    }
+  }, [clearRunningExecution, isRunning]);
 
   const requestRun = useCallback(
     (nodeId: string, mode: FlowRunMode) => {
@@ -431,6 +480,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
       promptState,
       isRunning,
       requestRun,
+      stopRun,
       closePrompt,
       submitPrompt,
       getPromptNode,
@@ -440,6 +490,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
       promptState,
       isRunning,
       requestRun,
+      stopRun,
       closePrompt,
       submitPrompt,
       getPromptNode,

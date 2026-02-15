@@ -16,6 +16,7 @@ import {
   switchToSibling,
   getMessageSiblings,
   cancelRun,
+  cancelFlowRun,
   generateChatTitle,
   respondToThinkingTagPrompt,
   toggleStarChat,
@@ -229,6 +230,9 @@ export const api = {
 
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
     cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,
+
+  cancelFlowRun: (runId: string): Promise<{ cancelled: boolean }> =>
+    cancelFlowRun({ body: { runId } }) as Promise<{ cancelled: boolean }>,
 
   generateChatTitle: (chatId: string): Promise<{ title: string | null }> =>
     generateChatTitle({ body: { id: chatId } }) as Promise<{

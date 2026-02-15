@@ -24,6 +24,7 @@ from ..services.chat_graph_runner import (
     run_graph_chat_runtime,
     update_chat_model_selection,
     _build_trigger_payload,
+    FlowRunHandle,
 )
 from ..services.flow_executor import run_flow
 from ..services.tool_registry import get_tool_registry
@@ -258,6 +259,42 @@ async def cancel_run(body: CancelRunRequest) -> dict:
 
 
 @command
+async def cancel_flow_run(body: CancelFlowRunRequest) -> dict:
+    active_run = run_control.get_active_run(body.runId)
+    if active_run is None:
+        logger.info(
+            f"[cancel_flow_run] No active run found for flow run {body.runId}"
+        )
+        return {"cancelled": False}
+
+    run_id, agent = active_run
+    remove_active_run = False
+    try:
+        if run_id:
+            logger.info(
+                f"[cancel_flow_run] Cancelling run {run_id} for flow run {body.runId}"
+            )
+            agent.cancel_run(run_id)
+            remove_active_run = True
+        else:
+            logger.info(
+                f"[cancel_flow_run] Flagging early cancel for flow run {body.runId}"
+            )
+            run_control.mark_early_cancel(body.runId)
+            request_cancel = getattr(agent, "request_cancel", None)
+            if callable(request_cancel):
+                request_cancel()
+
+        if remove_active_run:
+            run_control.remove_active_run(body.runId)
+        logger.info(f"[cancel_flow_run] Successfully cancelled for flow run {body.runId}")
+        return {"cancelled": True}
+    except Exception as e:
+        logger.info(f"[cancel_flow_run] Error cancelling run: {e}")
+        return {"cancelled": False}
+
+
+@command
 async def stream_chat(
     channel: Channel,
     body: StreamChatRequest,
@@ -377,6 +414,35 @@ class StreamFlowRunRequest(BaseModel):
     cachedOutputs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
     promptInput: Optional[FlowRunPromptInput] = None
     nodeIds: Optional[List[str]] = None
+
+
+class CancelFlowRunRequest(BaseModel):
+    runId: str
+
+
+class FlowRunCancelHandle:
+    def __init__(self, run_handle: FlowRunHandle, execution_ctx: Any | None) -> None:
+        self._run_handle = run_handle
+        self._execution_ctx = execution_ctx
+
+    def bind_agent(self, agent: Any) -> None:
+        self._run_handle.bind_agent(agent)
+
+    def set_run_id(self, run_id: str) -> None:
+        self._run_handle.set_run_id(run_id)
+
+    def request_cancel(self) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.request_cancel()
+
+    def cancel_run(self, run_id: str) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.cancel_run(run_id)
+
+    def is_cancel_requested(self) -> bool:
+        return self._run_handle.is_cancel_requested()
 
 
 @command
@@ -500,8 +566,16 @@ async def stream_flow_run(
     if body.nodeIds is not None:
         scope_payload["node_ids"] = body.nodeIds
 
+    execution_ctx = types.SimpleNamespace(
+        scope=scope_payload,
+        cached_outputs=body.cachedOutputs or {},
+        stop_run=False,
+    )
+    run_handle = FlowRunHandle()
+    cancel_handle = FlowRunCancelHandle(run_handle, execution_ctx)
+
     services = types.SimpleNamespace(
-        run_handle=None,
+        run_handle=cancel_handle,
         extra_tool_ids=[],
         tool_registry=get_tool_registry(),
         chat_input=types.SimpleNamespace(
@@ -511,11 +585,7 @@ async def stream_flow_run(
             last_user_attachments=attachments,
         ),
         expression_context={"trigger": trigger_payload},
-        execution=types.SimpleNamespace(
-            scope=scope_payload,
-            cached_outputs=body.cachedOutputs or {},
-            stop_run=False,
-        ),
+        execution=execution_ctx,
     )
     context = types.SimpleNamespace(
         run_id=run_id,
@@ -524,9 +594,15 @@ async def stream_flow_run(
         services=services,
     )
 
+    run_control.register_active_run(run_id, cancel_handle)
+
     channel.send_model(ChatEvent(event="RunStarted", sessionId=run_id))
 
     try:
+        if run_control.consume_early_cancel(run_id):
+            channel.send_model(ChatEvent(event="RunCancelled"))
+            return
+
         async for item in run_flow(agent_data["graph_data"], context):
             if isinstance(item, NodeEvent):
                 if item.event_type == "agent_event":
@@ -587,10 +663,16 @@ async def stream_flow_run(
                     )
                     channel.send_model(ChatEvent(event="RunError", content="Node error"))
                     return
-        channel.send_model(ChatEvent(event="RunCompleted"))
+        if cancel_handle.is_cancel_requested() or execution_ctx.stop_run:
+            channel.send_model(ChatEvent(event="RunCancelled"))
+        else:
+            channel.send_model(ChatEvent(event="RunCompleted"))
     except Exception as e:
         logger.error(f"[stream_flow_run] Error: {e}")
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
+    finally:
+        run_control.remove_active_run(run_id)
+        run_control.clear_early_cancel(run_id)
 
 
 class ActiveStreamInfo(BaseModel):
