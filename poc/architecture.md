@@ -214,10 +214,6 @@ nodes/
       definition.ts
       executor.py
 
-    prompt_template/
-      definition.ts
-      executor.py
-
   flow/
     conditional/
       definition.ts
@@ -253,7 +249,7 @@ class FlowExecutor(Protocol):
 ```
 
 - **Structural-only** nodes implement `build()`. MCP Server, Toolset.
-- **Flow-only** nodes implement `execute()`. LLM Completion, Prompt Template, Conditional.
+- **Flow-only** nodes implement `execute()`. LLM Completion, Conditional.
 - **Hybrid** nodes implement both. Agent, Chat Start.
 
 The registry detects which methods a node implements. The engine delegates accordingly.
@@ -313,7 +309,6 @@ Agent nodes in flow mode emit their Agno events wrapped as `agent_event` — ful
 | **MCP Server** | tools | structural | Resolves tools from an MCP server. |
 | **Toolset** | tools | structural | Resolves tools from a registered toolset. |
 | **LLM Completion** | ai | flow | Single LLM call. Prompt in, text out. Streams tokens. |
-| **Prompt Template** | ai | flow | Variable interpolation into a template string. |
 | **Conditional** | flow | flow | If/else routing based on field evaluation. |
 | **Model Selector** | utility | flow | Passes a model reference through. Fan out to multiple nodes. |
 
@@ -360,7 +355,6 @@ Each node needs a defined output schema — what fields appear in its data outpu
 - Chat Start: `{ message: string }`
 - Agent: `{ response: string, model: string, tokens_used: object }`
 - LLM Completion: `{ text: string, usage: object }`
-- Prompt Template: `{ text: string }`
 - Conditional: passes through input data on the active branch
 
 ## What This Gets Right

@@ -6,23 +6,26 @@ import {
   useCallback,
   useEffect,
   type DragEvent,
+  type MouseEvent,
+  type ComponentType,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Braces, CircleDot, Database, Search, X } from 'lucide-react';
+import { Check, CircleDot, Database, FastForward, Loader2, Pin, Play, Search, X } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useFlowState } from '@/lib/flow';
+import { getNodeDefinition, useFlowState } from '@/lib/flow';
 import { PropertiesPanel } from './properties-panel';
 import type {
   FlowNodeExecutionSnapshot,
 } from '@/contexts/agent-test-chat-context';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
+import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import {
   buildInputExpression,
   buildNodeExpression,
   buildTriggerExpression,
-  collectObjectRows,
   formatPreview,
   formatSchemaPreview,
   getNodeName,
@@ -32,6 +35,7 @@ import {
   valueType,
 } from './flow-data-utils';
 import { TEMPLATE_DRAG_ACTIVE_CLASS } from './template-editor/template-editor-constants';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 type InspectorView = 'schema' | 'json';
 
@@ -68,18 +72,27 @@ function toJsonText(value: unknown): string {
   }
 }
 
-function EventBadge({ status }: { status: FlowNodeExecutionSnapshot['status'] }) {
+function EventBadge({ status, className }: { status: FlowNodeExecutionSnapshot['status'], className?: string }) {
+  const icon = status === 'running'
+    ? <Loader2 className="size-4 animate-spin" />
+    : status === 'completed'
+      ? <Check className="size-4" />
+      : status === 'error'
+        ? <X className="size-4" />
+        : <CircleDot className="size-4" />;
+
   return (
     <span
+      title={status}
       className={cn(
-        'text-[10px] uppercase tracking-wide rounded px-2 py-0.5 border font-medium',
-        status === 'completed' && 'bg-primary/10 text-primary border-primary/30',
-        status === 'running' && 'bg-accent text-accent-foreground border-border',
-        status === 'error' && 'bg-destructive/10 text-destructive border-destructive/30',
-        status === 'idle' && 'bg-muted text-muted-foreground border-border'
+        'inline-flex items-center justify-center text-muted-foreground', className,
+        status === 'completed' && 'text-primary',
+        status === 'running' && 'text-accent-foreground',
+        status === 'error' && 'text-destructive',
+        status === 'idle' && 'text-muted-foreground'
       )}
     >
-      {status}
+      {icon}
     </span>
   );
 }
@@ -108,6 +121,85 @@ function ViewTabs({
         </button>
       ))}
     </div>
+  );
+}
+
+function getIcon(name: string) {
+  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
+  return IconComponent ?? Icons.Circle;
+}
+
+function RunMenuButton({
+  onExecute,
+  onRunFrom,
+  isRunning,
+  className,
+}: {
+  onExecute: () => void;
+  onRunFrom: () => void;
+  isRunning: boolean;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleExecute = useCallback(
+    (event?: MouseEvent<HTMLElement>) => {
+      event?.stopPropagation();
+      setIsOpen(false);
+      onExecute();
+    },
+    [onExecute]
+  );
+
+  const handleRunFrom = useCallback(
+    (event?: MouseEvent<HTMLElement>) => {
+      event?.stopPropagation();
+      setIsOpen(false);
+      onRunFrom();
+    },
+    [onRunFrom]
+  );
+
+  const handleContextMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsOpen(true);
+  }, []);
+
+  return (
+    <DropdownMenu
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) setIsOpen(false);
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'h-8 w-8 rounded-md border border-transparent text-muted-foreground hover:text-foreground hover:border-border transition-colors',
+            isRunning && 'opacity-50 pointer-events-none',
+            className
+          )}
+          title="Execute node"
+          onClick={handleExecute}
+          onContextMenu={handleContextMenu}
+          disabled={isRunning}
+        >
+          <Play className="h-4 w-4 mx-auto" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[150px] z-[200]">
+        <DropdownMenuItem onClick={handleExecute} disabled={isRunning}>
+          <Play className="mr-2 h-3.5 w-3.5" />
+          Execute node
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleRunFrom} disabled={isRunning}>
+          <FastForward className="mr-2 h-3.5 w-3.5" />
+          Run from node
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -191,6 +283,89 @@ function getRowPreview(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value === null) return 'null';
   return '';
+}
+
+function OutputTree({
+  nodes,
+  collapsedPreviews,
+  onTogglePreview,
+}: {
+  nodes: SchemaNode[];
+  collapsedPreviews: Set<string>;
+  onTogglePreview: (key: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      {nodes.map(node => (
+        <OutputTreeRow
+          key={node.id}
+          node={node}
+          depth={0}
+          collapsedPreviews={collapsedPreviews}
+          onTogglePreview={onTogglePreview}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OutputTreeRow({
+  node,
+  depth,
+  collapsedPreviews,
+  onTogglePreview,
+}: {
+  node: SchemaNode;
+  depth: number;
+  collapsedPreviews: Set<string>;
+  onTogglePreview: (key: string) => void;
+}) {
+  const key = node.path || '(root)';
+  const preview = getRowPreview(node.value);
+  const isCollapsed = collapsedPreviews.has(key);
+
+  return (
+    <div>
+      <div
+        className="group flex items-start gap-2 rounded-md px-2 py-1 hover:bg-muted/40"
+        style={{ paddingLeft: depth * 10 + 8 }}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-foreground truncate">{node.name || '(root)'}</span>
+            <span className="text-[10px] uppercase text-muted-foreground">{node.type}</span>
+          </div>
+          {preview ? (
+            <button
+              type="button"
+              onClick={() => onTogglePreview(key)}
+              title={isCollapsed ? 'Show full preview' : 'Collapse preview'}
+              className={cn(
+                'mt-1 text-left text-[11px] text-muted-foreground/80 whitespace-pre-wrap bg-transparent border-0 p-0',
+                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
+                isCollapsed && 'preview-ellipsis'
+              )}
+            >
+              {preview}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {node.children.length > 0 && (
+        <div className="ml-2 pl-3 border-l border-border">
+          {node.children.map(child => (
+            <OutputTreeRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              collapsedPreviews={collapsedPreviews}
+              onTogglePreview={onTogglePreview}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SchemaTree({
@@ -373,7 +548,8 @@ export function NodeInspectorDialog({
   nodeId,
 }: NodeInspectorDialogProps) {
   const { nodes, edges } = useFlowState();
-  const { executionByNode, pinnedByNodeId } = useFlowExecution();
+  const { executionByNode, pinnedByNodeId, togglePinned } = useFlowExecution();
+  const { requestRun, isRunning } = useFlowRunner();
   const [leftView, setLeftView] = useState<InspectorView>('schema');
   const [rightView, setRightView] = useState<InspectorView>('schema');
   const [search, setSearch] = useState('');
@@ -519,13 +695,44 @@ export function NodeInspectorDialog({
 
   const currentSnapshot = nodeId ? executionByNode[nodeId] : undefined;
   const currentOutput = useMemo(() => pickPrimaryOutput(currentSnapshot), [currentSnapshot]);
-  const currentRows = useMemo(
-    () => (currentOutput.value === undefined ? [] : collectObjectRows(currentOutput.value)),
+  const currentSchemaNodes = useMemo(
+    () => (currentOutput.value === undefined ? [] : buildSchemaNodes(currentOutput.value)),
     [currentOutput.value]
   );
 
+  const definition = useMemo(
+    () => (selectedNode ? getNodeDefinition(selectedNode.type) : null),
+    [selectedNode]
+  );
+  const HeaderIcon = useMemo(
+    () => getIcon(definition?.icon ?? 'Circle'),
+    [definition?.icon]
+  );
   const currentNodeName = selectedNode ? getNodeName(selectedNode) : 'Node';
+  const currentNodeDescription = definition?.description?.trim() ?? '';
   const isPinned = nodeId ? Boolean(pinnedByNodeId[nodeId]) : false;
+  const hasFullPanel = useMemo(() => {
+    if (!definition) return false;
+    if (definition.id === 'code') return true;
+    return definition.parameters.some(
+      param => param.panelLayout === 'full' && (param.renderScope ?? 'both') !== 'node'
+    );
+  }, [definition]);
+
+  const handleExecute = useCallback(() => {
+    if (!nodeId) return;
+    requestRun(nodeId, 'execute');
+  }, [nodeId, requestRun]);
+
+  const handleRunFrom = useCallback(() => {
+    if (!nodeId) return;
+    requestRun(nodeId, 'runFrom');
+  }, [nodeId, requestRun]);
+
+  const handleTogglePin = useCallback(() => {
+    if (!nodeId) return;
+    togglePinned(nodeId);
+  }, [nodeId, togglePinned]);
 
   if (!mounted || !open || !nodeId || !selectedNode) {
     return null;
@@ -609,35 +816,51 @@ export function NodeInspectorDialog({
 
           <section className="absolute left-[27.75%] right-[27.75%] top-4 bottom-5 rounded-2xl border border-border bg-background shadow-2xl overflow-hidden z-20">
             <div className="h-full min-h-0 flex flex-col">
-              <div className="p-4 border-b border-border bg-card/40 space-y-3">
+              <div className="p-4 border-b border-border bg-card/40">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-semibold truncate">{currentNodeName}</h2>
-                    <p className="text-xs text-muted-foreground truncate">{selectedNode.type} · Double-click node editor</p>
+                  <div className="min-w-0 flex items-center gap-3">
+                    <span className="inline-flex size-10 items-center justify-center rounded-xl border border-border/60 bg-muted/50">
+                      <HeaderIcon className="size-5 text-muted-foreground" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-semibold truncate">{currentNodeName}</h2>
+                      {currentNodeDescription ? (
+                        <p className="text-xs text-muted-foreground truncate">{currentNodeDescription}</p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isPinned && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 text-amber-500">
-                        Pinned
-                      </span>
-                    )}
                     <EventBadge status={currentSnapshot?.status ?? 'idle'} />
+                    <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/70 p-0.5">
+                      <button
+                        type="button"
+                        className={cn(
+                          'h-8 w-8 rounded-md border border-transparent transition-colors text-muted-foreground hover:text-foreground hover:border-border',
+                          isPinned && 'text-amber-500 hover:text-amber-500'
+                        )}
+                        title={isPinned ? 'Unpin data' : 'Pin data'}
+                        onClick={handleTogglePin}
+                      >
+                        <Pin className="h-4 w-4 mx-auto" />
+                      </button>
+                      <RunMenuButton
+                        onExecute={handleExecute}
+                        onRunFrom={handleRunFrom}
+                        isRunning={isRunning}
+                        className="bg-primary/10 text-primary hover:text-primary hover:border-primary/30"
+                      />
+                    </div>
                     <Button variant="ghost" size="icon" onClick={close} title="Close">
                       <X className="size-4" />
                     </Button>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Braces className="size-4 text-muted-foreground" />
-                    Parameters
-                  </div>
-                  <p className="text-xs text-muted-foreground">Drag expressions from the side wings into fields</p>
-                </div>
               </div>
 
-              <div className="flex-1 min-h-0 px-5 py-4 overflow-y-auto">
+              <div className={cn(
+                'flex-1 min-h-0',
+                hasFullPanel ? 'p-0 overflow-hidden' : 'px-5 py-4 overflow-y-auto'
+              )}>
                 <PropertiesPanel nodeId={nodeId} variant="flat" className="h-full" />
               </div>
             </div>
@@ -660,42 +883,16 @@ export function NodeInspectorDialog({
                     {toJsonText(currentOutput.value)}
                   </pre>
                 ) : (
-                  <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <span>Field</span>
-                      <span>{rightView === 'schema' ? 'Type' : 'Value'}</span>
-                    </div>
-                    <div className="max-h-[70vh] overflow-y-auto">
-                      {currentRows.map(row => {
-                        const preview = getRowPreview(row.value);
-                        const key = row.path || '(root)';
-                        const isCollapsed = collapsedPreviews.has(key);
-                        return (
-                          <div key={key} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 border-b last:border-b-0 border-border text-xs">
-                            <div className="min-w-0 flex flex-col">
-                              <span className="truncate text-foreground">{key}</span>
-                              {preview ? (
-                                <button
-                                  type="button"
-                                  onClick={() => togglePreview(key)}
-                                  title={isCollapsed ? 'Show full preview' : 'Collapse preview'}
-                                  className={cn(
-                                    'mt-1 text-left text-[11px] text-muted-foreground/80 whitespace-pre-wrap bg-transparent border-0 p-0',
-                                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
-                                    isCollapsed && 'preview-ellipsis'
-                                  )}
-                                >
-                                  {preview}
-                                </button>
-                              ) : null}
-                            </div>
-                            <span className="text-muted-foreground max-w-[180px] truncate text-right">
-                              {row.type}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="rounded-xl border border-border bg-card/50 p-2">
+                    {currentSchemaNodes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-1 py-2">No fields available</p>
+                    ) : (
+                      <OutputTree
+                        nodes={currentSchemaNodes}
+                        collapsedPreviews={collapsedPreviews}
+                        onTogglePreview={togglePreview}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -706,18 +903,39 @@ export function NodeInspectorDialog({
         <div className="lg:hidden absolute inset-3 rounded-2xl border border-border bg-background shadow-2xl overflow-hidden">
           <div className="h-full min-h-0 flex flex-col">
             <header className="px-4 py-3 border-b border-border bg-card/60 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold truncate">{currentNodeName}</h2>
-                <p className="text-xs text-muted-foreground truncate">{selectedNode.type} · Double-click node editor</p>
+              <div className="min-w-0 flex items-center gap-3">
+                <span className="inline-flex size-9 items-center justify-center rounded-xl border border-border/60 bg-muted/50">
+                  <HeaderIcon className="size-4 text-muted-foreground" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold truncate">{currentNodeName}</h2>
+                  {currentNodeDescription ? (
+                    <p className="text-xs text-muted-foreground truncate">{currentNodeDescription}</p>
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {isPinned && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 text-amber-500">
-                    Pinned
-                  </span>
-                )}
-                <EventBadge status={currentSnapshot?.status ?? 'idle'} />
+                <EventBadge className="w-10" status={currentSnapshot?.status ?? 'idle'} />
+                <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/70 p-0.5">
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-8 w-8 rounded-md border border-transparent transition-colors text-muted-foreground hover:text-foreground hover:border-border',
+                      isPinned && 'text-amber-500 hover:text-amber-500'
+                    )}
+                    title={isPinned ? 'Unpin data' : 'Pin data'}
+                    onClick={handleTogglePin}
+                  >
+                    <Pin className="h-4 w-4 mx-auto" />
+                  </button>
+                  <RunMenuButton
+                    onExecute={handleExecute}
+                    onRunFrom={handleRunFrom}
+                    isRunning={isRunning}
+                    className="bg-primary/10 text-primary hover:text-primary hover:border-primary/30"
+                  />
+                </div>
                 <Button variant="ghost" size="icon" onClick={close} title="Close">
                   <X className="size-4" />
                 </Button>
@@ -744,10 +962,6 @@ export function NodeInspectorDialog({
               </section>
 
               <section className="rounded-xl border border-border bg-card/90 p-3 min-h-0">
-                <div className="flex items-center gap-2 text-sm font-medium mb-3">
-                  <Braces className="size-4 text-muted-foreground" />
-                  Parameters
-                </div>
                 <PropertiesPanel nodeId={nodeId} variant="flat" className="max-h-[45vh]" />
               </section>
 

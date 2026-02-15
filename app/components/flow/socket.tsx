@@ -43,7 +43,10 @@ export const Socket = memo(function Socket({ id, type, side, mode, bidirectional
       id={id}
       type={handleType}
       position={handlePosition}
-      className={cn('!w-3.5 !h-3.5 !bg-transparent !border-none', className)}
+      className={cn(
+        'relative !w-3.5 !h-3.5 !bg-transparent !border-none before:content-[\'\'] before:absolute before:inset-[-7px] before:rounded-full before:pointer-events-auto',
+        className
+      )}
       style={{ background: 'transparent' }}
     >
       <svg

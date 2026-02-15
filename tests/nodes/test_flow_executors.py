@@ -1,7 +1,7 @@
 """TDD specs for flow node executors (execute() method).
 
 These tests define the contract for executors that process data at runtime.
-Phase 3 executors (LLM Completion, Prompt Template, Conditional) are live.
+Phase 3 executors (LLM Completion, Conditional) are live.
 Phase 5+ executors are guarded and skipped until implemented.
 """
 
@@ -29,7 +29,6 @@ from nodes._types import (
 
 # ── Phase 3 executors — available now ────────────────────────────────
 from nodes.ai.llm_completion.executor import LlmCompletionExecutor
-from nodes.ai.prompt_template.executor import PromptTemplateExecutor
 from nodes.core.agent.executor import AgentExecutor
 from nodes.flow.conditional.executor import ConditionalExecutor
 from nodes.tools.mcp_server.executor import McpServerExecutor
@@ -966,89 +965,6 @@ class TestToolMaterializers:
                 "tools",
                 _flow_ctx(),
             )
-
-
-# ====================================================================
-# Prompt Template executor
-# ====================================================================
-
-
-class TestPromptTemplateExecutor:
-    """Prompt Template: variable interpolation into a template string."""
-
-    @pytest.mark.asyncio
-    async def test_renders_variables_from_input(self) -> None:
-        executor = PromptTemplateExecutor()
-        result = await executor.execute(
-            {"template": "Hello, {{name}}! You are {{age}} years old."},
-            {"input": _dv("data", {"name": "Alice", "age": 30})},
-            _flow_ctx(),
-        )
-
-        assert isinstance(result, ExecutionResult)
-        assert (
-            result.outputs["output"].value["text"]
-            == "Hello, Alice! You are 30 years old."
-        )
-
-    @pytest.mark.asyncio
-    async def test_undefined_variable_empty_mode(self) -> None:
-        executor = PromptTemplateExecutor()
-        result = await executor.execute(
-            {
-                "template": "Hi {{name}}, your id is {{id}}",
-                "undefinedBehavior": "empty",
-            },
-            {"input": _dv("data", {"name": "Bob"})},
-            _flow_ctx(),
-        )
-
-        assert result.outputs["output"].value["text"] == "Hi Bob, your id is "
-
-    @pytest.mark.asyncio
-    async def test_undefined_variable_keep_mode(self) -> None:
-        executor = PromptTemplateExecutor()
-        result = await executor.execute(
-            {"template": "Hi {{name}}, your id is {{id}}", "undefinedBehavior": "keep"},
-            {"input": _dv("data", {"name": "Bob"})},
-            _flow_ctx(),
-        )
-
-        assert result.outputs["output"].value["text"] == "Hi Bob, your id is {{id}}"
-
-    @pytest.mark.asyncio
-    async def test_undefined_variable_error_mode(self) -> None:
-        executor = PromptTemplateExecutor()
-
-        with pytest.raises(Exception, match="id"):
-            await executor.execute(
-                {"template": "{{id}}", "undefinedBehavior": "error"},
-                {"input": _dv("data", {})},
-                _flow_ctx(),
-            )
-
-    @pytest.mark.asyncio
-    async def test_json_output_format(self) -> None:
-        executor = PromptTemplateExecutor()
-        result = await executor.execute(
-            {"template": '{"key": "{{val}}"}', "outputFormat": "json"},
-            {"input": _dv("data", {"val": "hello"})},
-            _flow_ctx(),
-        )
-
-        parsed = json.loads(result.outputs["output"].value["text"])
-        assert parsed == {"key": "hello"}
-
-    @pytest.mark.asyncio
-    async def test_empty_template_returns_empty(self) -> None:
-        executor = PromptTemplateExecutor()
-        result = await executor.execute(
-            {"template": ""},
-            {"input": _dv("data", {"x": 1})},
-            _flow_ctx(),
-        )
-
-        assert result.outputs["output"].value["text"] == ""
 
 
 # ====================================================================

@@ -288,7 +288,7 @@ async def test_handle_flow_stream_sets_entry_node_ids() -> None:
                 "type": "chat-start",
                 "data": {"includeUserTools": False},
             },
-            {"id": "fmt", "type": "prompt-template", "data": {}},
+            {"id": "fmt", "type": "llm-completion", "data": {}},
             {"id": "agent_a", "type": "agent", "data": {}},
             {"id": "agent_b", "type": "agent", "data": {}},
         ],
@@ -564,3 +564,71 @@ async def test_handle_flow_stream_persists_member_run_blocks_in_saved_content() 
         and block.get("isCompleted") is True
         for block in member_block["content"]
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_splits_text_blocks_between_nodes() -> None:
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent-1",
+            node_type="agent",
+            event_type="started",
+            run_id="run-1",
+        )
+        yield NodeEvent(
+            node_id="agent-1",
+            node_type="agent",
+            event_type="progress",
+            run_id="run-1",
+            data={"token": "first"},
+        )
+        yield NodeEvent(
+            node_id="agent-1",
+            node_type="agent",
+            event_type="completed",
+            run_id="run-1",
+        )
+        yield NodeEvent(
+            node_id="agent-2",
+            node_type="agent",
+            event_type="started",
+            run_id="run-1",
+        )
+        yield NodeEvent(
+            node_id="agent-2",
+            node_type="agent",
+            event_type="progress",
+            run_id="run-1",
+            data={"token": "second"},
+        )
+        yield NodeEvent(
+            node_id="agent-2",
+            node_type="agent",
+            event_type="completed",
+            run_id="run-1",
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "done"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    text_blocks = [block.get("content") for block in final_blocks if block.get("type") == "text"]
+    assert text_blocks == ["first", "second"]

@@ -23,6 +23,7 @@ export type ParameterType =
   | 'boolean'
   | 'enum'
   | 'text-area'
+  | 'code'
   | 'messages'
   | 'model'
   | 'mcp-server'
@@ -81,6 +82,9 @@ export interface ParameterBase {
 
   /** Control where this parameter is rendered */
   renderScope?: ParameterRenderScope;
+
+  /** Layout hint for inspector panels */
+  panelLayout?: 'default' | 'full';
   
   /** For input/hybrid/output modes - socket configuration */
   socket?: SocketConfig;
@@ -147,6 +151,15 @@ export interface TextAreaParameter extends ParameterBase {
   rows?: number;
 }
 
+/** Code editor parameter */
+export interface CodeParameter extends ParameterBase {
+  type: 'code';
+  default?: string;
+  placeholder?: string;
+  rows?: number;
+  language?: 'javascript' | 'typescript';
+}
+
 /** Messages parameter */
 export interface MessagesParameter extends ParameterBase {
   type: 'messages';
@@ -193,6 +206,7 @@ export type Parameter =
   | BooleanParameter
   | EnumParameter
   | TextAreaParameter
+  | CodeParameter
   | MessagesParameter
   | ModelParameter
   | McpServerParameter

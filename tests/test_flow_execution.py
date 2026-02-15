@@ -222,24 +222,6 @@ class ChatStartStubExecutor:
         return ExecutionResult(outputs={"output": DataValue("data", {"message": msg})})
 
 
-class PromptTemplateStubExecutor:
-    """Formats data["template"] with input values."""
-
-    node_type = "prompt-template"
-
-    async def execute(
-        self, data: dict, inputs: dict[str, DataValue], context: FlowContext
-    ) -> ExecutionResult:
-        template = data.get("template", "{input}")
-        val = inputs.get("input", DataValue("data", {})).value
-        if isinstance(val, dict):
-            text_val = val.get("message", val.get("text", str(val)))
-        else:
-            text_val = str(val)
-        text = template.replace("{input}", text_val)
-        return ExecutionResult(outputs={"output": DataValue("data", {"text": text})})
-
-
 class LLMCompletionStubExecutor:
     """Returns a canned LLM response."""
 
@@ -277,7 +259,6 @@ STUB_EXECUTORS: dict[str, Any] = {
         StreamingStubExecutor,
         ExplodingExecutor,
         ChatStartStubExecutor,
-        PromptTemplateStubExecutor,
         LLMCompletionStubExecutor,
     ]
 }
@@ -451,16 +432,16 @@ class TestFlowLinear:
 
     @pytest.fixture
     def linear_graph(self):
-        """Chat Start → Prompt Template → LLM Completion."""
+        """Chat Start → Passthrough → LLM Completion."""
         return make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Summarize: {input}"),
+                make_node("pipe", "passthrough"),
                 make_node("llm", "llm-completion"),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
-                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("cs", "pipe", "output", "input"),
+                make_edge("pipe", "llm", "output", "prompt"),
             ],
         )
 
@@ -904,22 +885,22 @@ class TestFlowIntegration:
     async def test_full_pipeline_with_branching(self, flow_ctx):
         """
         Full pipeline:
-        Chat Start → Template → LLM → Conditional
+        Chat Start → Passthrough → LLM → Conditional
                                         ├─ true  → UpperCase (branch A)
                                         └─ false → Passthrough (branch B)
         """
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Process: {input}"),
+                make_node("pipe", "passthrough"),
                 make_node("llm", "llm-completion"),
                 make_node("cond", "conditional"),
                 make_node("branch_a", "uppercase"),
                 make_node("branch_b", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
-                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("cs", "pipe", "output", "input"),
+                make_edge("pipe", "llm", "output", "prompt"),
                 make_edge("llm", "cond", "output", "input"),
                 make_edge("cond", "branch_a", "true", "input"),
                 make_edge("cond", "branch_b", "false", "input"),
@@ -939,7 +920,7 @@ class TestFlowIntegration:
                 executed_nodes.append(e.node_id)
 
         assert "cs" in executed_nodes
-        assert "pt" in executed_nodes
+        assert "pipe" in executed_nodes
         assert "llm" in executed_nodes
         assert "cond" in executed_nodes
 
@@ -952,15 +933,15 @@ class TestFlowIntegration:
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
-                make_node("pt", "prompt-template", template="Q: {input}"),
+                make_node("pipe", "passthrough"),
                 make_node("llm", "llm-completion"),
                 make_node("cond", "conditional"),
                 make_node("branch_a", "uppercase"),
                 make_node("branch_b", "passthrough"),
             ],
             edges=[
-                make_edge("cs", "pt", "output", "input"),
-                make_edge("pt", "llm", "output", "prompt"),
+                make_edge("cs", "pipe", "output", "input"),
+                make_edge("pipe", "llm", "output", "prompt"),
                 make_edge("llm", "cond", "output", "input"),
                 make_edge("cond", "branch_a", "true", "input"),
                 make_edge("cond", "branch_b", "false", "input"),

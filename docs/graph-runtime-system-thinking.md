@@ -46,7 +46,7 @@ Every graph has two independent kinds of relationships between nodes:
 
 1. Flow edges
    - Data moves along these edges during execution.
-   - Example: output of a prompt template flows into a completion node.
+   - Example: output of a passthrough node flows into a completion node.
 
 2. Link edges
    - Dependencies are wired along these edges.

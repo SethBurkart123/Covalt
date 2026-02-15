@@ -139,6 +139,13 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   });
 
   const showCard = variant === 'card';
+  const showHeader = showCard;
+  const fullPanelParam =
+    panelParams.find(param => param.panelLayout === 'full') ??
+    panelParams.find(param => param.type === 'code');
+  const standardParams = fullPanelParam
+    ? panelParams.filter(param => param !== fullPanelParam)
+    : panelParams;
 
   return (
     <div
@@ -148,27 +155,53 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
         className
       )}
     >
-      <div className={cn('flex items-center gap-2 border-b border-border', showCard ? 'px-4 py-3' : 'px-0 pb-3')}>
-        <Icon className="h-5 w-5 text-muted-foreground" />
-        <div>
-          <h3 className="font-medium text-sm text-foreground">{definition.name}</h3>
-          {definition.description && (
-            <p className="text-xs text-muted-foreground">{definition.description}</p>
-          )}
+      {showHeader && (
+        <div className={cn('flex items-center gap-2 border-b border-border', showCard ? 'px-4 py-3' : 'px-0 pb-3')}>
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <h3 className="font-medium text-sm text-foreground">{definition.name}</h3>
+            {definition.description && (
+              <p className="text-xs text-muted-foreground">{definition.description}</p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className={cn('flex-1 overflow-y-auto space-y-4', showCard ? 'p-4' : 'pt-4 pr-1')}>
-        {panelParams.map(param => (
-          <ParameterField
-            key={param.id}
-            param={param}
-            value={selectedNodeData.data[param.id]}
-            isConnected={connectedHandles.has(param.id)}
-            onParamChange={handleDataChange}
-            nodeId={effectiveNodeId}
-          />
-        ))}
+      <div
+        className={cn(
+          'flex-1 min-h-0',
+          fullPanelParam ? 'flex flex-col' : 'overflow-y-auto space-y-4',
+          showCard ? (fullPanelParam ? 'p-0' : 'p-4') : (fullPanelParam ? 'p-0' : 'pt-0 pr-1')
+        )}
+      >
+        {standardParams.length > 0 && (
+          <div className={cn('space-y-4', fullPanelParam ? 'p-4' : undefined)}>
+            {standardParams.map(param => (
+              <ParameterField
+                key={param.id}
+                param={param}
+                value={selectedNodeData.data[param.id]}
+                isConnected={connectedHandles.has(param.id)}
+                onParamChange={handleDataChange}
+                nodeId={effectiveNodeId}
+              />
+            ))}
+          </div>
+        )}
+
+        {fullPanelParam && (
+          <div className="flex-1 min-h-0">
+            <ParameterField
+              key={fullPanelParam.id}
+              param={fullPanelParam}
+              value={selectedNodeData.data[fullPanelParam.id]}
+              isConnected={connectedHandles.has(fullPanelParam.id)}
+              onParamChange={handleDataChange}
+              nodeId={effectiveNodeId}
+              fullBleed
+            />
+          </div>
+        )}
 
         {definition.id === 'webhook-trigger' && (
           <div className="space-y-1.5">
@@ -220,6 +253,7 @@ interface ParameterFieldProps {
   isConnected?: boolean;
   onParamChange: (paramId: string, value: unknown) => void;
   nodeId?: string | null;
+  fullBleed?: boolean;
 }
 
 const ParameterField = memo(function ParameterField({
@@ -228,24 +262,27 @@ const ParameterField = memo(function ParameterField({
   isConnected,
   onParamChange,
   nodeId,
+  fullBleed = false,
 }: ParameterFieldProps) {
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
   const showControl = (param.mode === 'constant') || (param.mode === 'hybrid' && !isConnected);
   
   return (
-    <div className="space-y-1.5">
-      {param.type !== 'messages' && (
+    <div className={cn(fullBleed ? 'h-full' : 'space-y-1.5')}>
+      {!fullBleed && param.type !== 'messages' && (
         <label className="text-xs font-medium text-muted-foreground">
           {param.label}
         </label>
       )}
       {showControl ? (
-        <ParameterControl
-          param={param}
-          value={value}
-          onChange={handleChange}
-          nodeId={nodeId}
-        />
+        <div className={cn(fullBleed && 'h-full')}>
+          <ParameterControl
+            param={param}
+            value={value}
+            onChange={handleChange}
+            nodeId={nodeId}
+          />
+        </div>
       ) : (
         <div className="text-xs text-muted-foreground italic">
           Connected via graph input.

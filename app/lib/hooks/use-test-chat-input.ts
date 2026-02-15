@@ -9,12 +9,13 @@ import { processMessageStream } from "@/lib/services/stream-processor";
 import type { Attachment, Message, MessageSibling } from "@/lib/types/chat";
 
 export function useTestChatInput(agentId: string) {
-  const { clearLastExecution, recordFlowEvent } = useAgentTestChat();
+  const { clearLastExecution, clearRunningExecution, recordFlowEvent } = useAgentTestChat();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const editing = useMessageEditing();
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamAbortRef = useRef<(() => void) | null>(null);
+  const stopRequestedRef = useRef(false);
 
   const messageSiblings = useMemo<Record<string, MessageSibling[]>>(() => ({}), []);
   const canSendMessage = useMemo(() => !isLoading, [isLoading]);
@@ -53,6 +54,7 @@ export function useTestChatInput(agentId: string) {
             streamingMessageIdRef.current = id;
           },
           onEvent: (eventType, payload) => {
+            if (stopRequestedRef.current) return;
             recordFlowEvent(eventType, payload);
           },
         });
@@ -76,9 +78,13 @@ export function useTestChatInput(agentId: string) {
         setIsLoading(false);
         streamingMessageIdRef.current = null;
         streamAbortRef.current = null;
+        if (stopRequestedRef.current) {
+          clearRunningExecution();
+          stopRequestedRef.current = false;
+        }
       }
     },
-    [agentId, recordFlowEvent],
+    [agentId, clearRunningExecution, recordFlowEvent],
   );
 
   const handleSubmit = useCallback(
@@ -86,6 +92,7 @@ export function useTestChatInput(agentId: string) {
       void toolIds;
       if (!inputText.trim() && attachments.length === 0) return;
       if (isLoading) return;
+      stopRequestedRef.current = false;
 
       const userMsg = createUserMessage(inputText.trim(), attachments);
       const allMessages = [...messages, userMsg];
@@ -98,6 +105,8 @@ export function useTestChatInput(agentId: string) {
 
   const handleStop = useCallback(async () => {
     const messageId = streamingMessageIdRef.current;
+    stopRequestedRef.current = true;
+    clearRunningExecution();
 
     streamAbortRef.current?.();
     streamAbortRef.current = null;
@@ -112,7 +121,7 @@ export function useTestChatInput(agentId: string) {
 
     setIsLoading(false);
     streamingMessageIdRef.current = null;
-  }, []);
+  }, [clearRunningExecution]);
 
   const handleContinue = useCallback(async (messageId: string) => {
     void messageId;

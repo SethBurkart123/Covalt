@@ -7,6 +7,7 @@ import { StringControl } from './string';
 import { BooleanControl } from './boolean';
 import { EnumControl } from './enum';
 import { TextAreaControl } from './text-area';
+import { CodeControl } from './code';
 import { MessagesControl } from './messages';
 import { ModelPicker } from './model-picker';
 import { McpServerPicker } from './mcp-server-picker';
@@ -32,6 +33,7 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   boolean: BooleanControl as AnyControl,
   enum: EnumControl as AnyControl,
   'text-area': TextAreaControl as AnyControl,
+  code: CodeControl as AnyControl,
   messages: MessagesControl as AnyControl,
   model: ModelPicker as AnyControl,
   'mcp-server': McpServerPicker as AnyControl,
@@ -68,6 +70,7 @@ export { StringControl } from './string';
 export { BooleanControl } from './boolean';
 export { EnumControl } from './enum';
 export { TextAreaControl } from './text-area';
+export { CodeControl } from './code';
 export { MessagesControl } from './messages';
 export { ModelPicker } from './model-picker';
 export { McpServerPicker } from './mcp-server-picker';
