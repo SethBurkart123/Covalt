@@ -23,6 +23,7 @@ Edge partitioning is channel-based (`edge.data.channel`):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import types
 import uuid
@@ -498,29 +499,150 @@ async def run_flow(
                 label_sources[label] = cached_node_id
                 upstream_outputs[label] = data_output.value
 
-    for node_id in order:
+    order_index = {node_id: index for index, node_id in enumerate(order)}
+
+    node_ids = set(nodes_by_id.keys())
+    upstream_by_node: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    downstream_by_node: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    for edge in flow_edge_list:
+        source = edge.get("source")
+        target = edge.get("target")
+        if source in node_ids and target in node_ids:
+            upstream_by_node[target].add(source)
+            downstream_by_node[source].add(target)
+
+    remaining_deps: dict[str, int] = {
+        node_id: len(upstream_by_node[node_id]) for node_id in node_ids
+    }
+
+    event_queue: asyncio.Queue[tuple] = asyncio.Queue()
+    running_tasks: dict[str, asyncio.Task[None]] = {}
+    completed_nodes: set[str] = set()
+    ready: list[str] = []
+    ready_set: set[str] = set()
+
+    def _should_stop() -> bool:
         execution_ctx = getattr(services, "execution", None)
         stop_run = getattr(execution_ctx, "stop_run", False)
-        if isinstance(stop_run, bool) and stop_run:
-            break
+        return isinstance(stop_run, bool) and stop_run
 
-        node = nodes_by_id.get(node_id)
-        if node is None:
-            continue
+    def _enqueue_ready(node_id: str) -> None:
+        if node_id in completed_nodes or node_id in running_tasks or node_id in ready_set:
+            return
+        ready_set.add(node_id)
+        ready.append(node_id)
 
-        node_type = node.get("type", "")
-        data = node.get("data", {})
+    def _mark_done(node_id: str) -> None:
+        if node_id in completed_nodes:
+            return
+        completed_nodes.add(node_id)
+        for downstream_id in downstream_by_node.get(node_id, set()):
+            remaining_deps[downstream_id] -= 1
+            if remaining_deps[downstream_id] == 0:
+                _enqueue_ready(downstream_id)
 
-        executor = _get_executor(node_type, executors)
-        if executor is None or not hasattr(executor, "execute"):
-            continue
+    async def _cancel_running_tasks() -> None:
+        if not running_tasks:
+            return
+        for task in running_tasks.values():
+            task.cancel()
+        await asyncio.gather(*running_tasks.values(), return_exceptions=True)
+        running_tasks.clear()
 
-        if node_id in cached_outputs:
-            continue
-
-        on_error = data.get("on_error", "stop")
+    async def _run_node_task(
+        node_id: str,
+        node_type: str,
+        executor: Any,
+        data: dict[str, Any],
+        inputs: dict[str, DataValue],
+        on_error: str,
+    ) -> None:
         started_emitted = False
+        terminal_event: str | None = None
+        node_context = FlowContext(
+            node_id=node_id,
+            chat_id=chat_id,
+            run_id=run_id,
+            state=state,
+            runtime=runtime,
+            services=services,
+        )
+
         try:
+            async for item in _run_executor(
+                executor, data, inputs, node_context, run_id
+            ):
+                if isinstance(item, NodeEvent):
+                    if item.event_type == "started":
+                        started_emitted = True
+                    if item.event_type in {"completed", "error", "cancelled"}:
+                        terminal_event = item.event_type
+                await event_queue.put(("item", node_id, node_type, item))
+
+            status = terminal_event or "completed"
+            await event_queue.put(("done", node_id, node_type, status, None, on_error))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if not started_emitted:
+                await event_queue.put(
+                    (
+                        "item",
+                        node_id,
+                        node_type,
+                        NodeEvent(
+                            node_id=node_id,
+                            node_type=node_type,
+                            event_type="started",
+                            run_id=run_id,
+                        ),
+                    )
+                )
+            await event_queue.put(
+                (
+                    "item",
+                    node_id,
+                    node_type,
+                    NodeEvent(
+                        node_id=node_id,
+                        node_type=node_type,
+                        event_type="error",
+                        run_id=run_id,
+                        data={"error": str(e)},
+                    ),
+                )
+            )
+            await event_queue.put(
+                ("done", node_id, node_type, "error", str(e), on_error)
+            )
+
+    async def _schedule_ready_nodes() -> bool:
+        while ready:
+            if _should_stop():
+                await _cancel_running_tasks()
+                return False
+            ready.sort(key=lambda node_id: order_index.get(node_id, 0))
+            node_id = ready.pop(0)
+            ready_set.discard(node_id)
+
+            if node_id in completed_nodes or node_id in running_tasks:
+                continue
+
+            node = nodes_by_id.get(node_id)
+            if node is None:
+                _mark_done(node_id)
+                continue
+
+            node_type = node.get("type", "")
+            executor = _get_executor(node_type, executors)
+            if executor is None or not hasattr(executor, "execute"):
+                _mark_done(node_id)
+                continue
+
+            if node_id in cached_outputs:
+                _mark_done(node_id)
+                continue
+
             incoming_flow_edges = runtime.incoming_edges(
                 node_id, channel=FLOW_EDGE_CHANNEL
             )
@@ -528,7 +650,11 @@ async def run_flow(
 
             # Dead branch detection: has incoming flow edges but none produced data
             if _has_incoming_edges(node_id, incoming_flow_edges) and not inputs:
+                _mark_done(node_id)
                 continue
+
+            data = node.get("data", {})
+            on_error = data.get("on_error", "stop")
 
             direct_input = inputs.get("input")
             expression_context = getattr(services, "expression_context", None)
@@ -543,36 +669,55 @@ async def run_flow(
             )
             on_error = data.get("on_error", on_error)
 
-            node_context = FlowContext(
-                node_id=node_id,
-                chat_id=chat_id,
-                run_id=run_id,
-                state=state,
-                runtime=runtime,
-                services=services,
+            task = asyncio.create_task(
+                _run_node_task(node_id, node_type, executor, data, inputs, on_error)
             )
+            running_tasks[node_id] = task
 
-            async for item in _run_executor(
-                executor, data, inputs, node_context, run_id
-            ):
-                if isinstance(item, NodeEvent) and item.event_type == "started":
-                    started_emitted = True
+        return True
+
+    for cached_node_id in cached_outputs:
+        if cached_node_id in node_ids:
+            _mark_done(cached_node_id)
+
+    for node_id, count in remaining_deps.items():
+        if count == 0 and node_id not in completed_nodes:
+            _enqueue_ready(node_id)
+
+    while ready or running_tasks:
+        can_continue = await _schedule_ready_nodes()
+        if not can_continue:
+            return
+
+        if not running_tasks:
+            continue
+
+        if _should_stop():
+            await _cancel_running_tasks()
+            return
+
+        message = await event_queue.get()
+        kind = message[0]
+
+        if kind == "item":
+            _, node_id, node_type, item = message
+            if isinstance(item, ExecutionResult):
                 yield item
-                if isinstance(item, ExecutionResult):
-                    yield NodeEvent(
-                        node_id=node_id,
-                        node_type=node_type,
-                        event_type="result",
-                        run_id=run_id,
-                        data={
-                            "outputs": {
-                                handle: {"type": value.type, "value": value.value}
-                                for handle, value in item.outputs.items()
-                            }
-                        },
-                    )
-                    port_values[node_id] = item.outputs
-                    # Populate upstream outputs for $() expressions
+                yield NodeEvent(
+                    node_id=node_id,
+                    node_type=node_type,
+                    event_type="result",
+                    run_id=run_id,
+                    data={
+                        "outputs": {
+                            handle: {"type": value.type, "value": value.value}
+                            for handle, value in item.outputs.items()
+                        }
+                    },
+                )
+                port_values[node_id] = item.outputs
+                node = nodes_by_id.get(node_id)
+                if node is not None:
                     label = _get_node_label(node)
                     data_output = (
                         item.outputs.get("output")
@@ -592,27 +737,22 @@ async def run_flow(
                             )
                         label_sources[label] = node_id
                         upstream_outputs[label] = data_output.value
-        except Exception as e:
-            if not started_emitted:
-                yield NodeEvent(
-                    node_id=node_id,
-                    node_type=node_type,
-                    event_type="started",
-                    run_id=run_id,
-                )
-            yield NodeEvent(
-                node_id=node_id,
-                node_type=node_type,
-                event_type="error",
-                run_id=run_id,
-                data={"error": str(e)},
-            )
-            if on_error == "continue":
-                port_values[node_id] = {
-                    "output": DataValue(type="error", value={"error": str(e)})
-                }
             else:
-                return
+                yield item
+        elif kind == "done":
+            _, node_id, _node_type, _status, error_text, on_error = message
+            running_tasks.pop(node_id, None)
+            if error_text is not None:
+                if on_error == "continue":
+                    port_values[node_id] = {
+                        "output": DataValue(type="error", value={"error": error_text})
+                    }
+                else:
+                    await _cancel_running_tasks()
+                    return
+            _mark_done(node_id)
+
+    await _cancel_running_tasks()
 
 
 def _get_executor(node_type: str, executors: dict[str, Any] | None) -> Any | None:
