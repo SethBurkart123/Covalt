@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Bot, Package, PlusIcon, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +17,7 @@ import { useChat } from "@/contexts/chat-context";
 import { useStreaming } from "@/contexts/streaming-context";
 import { groupChatsByTimePeriod } from "@/lib/utils/chat-grouping";
 import { ChatItem } from "@/components/ChatItem";
+import { prefetchChat } from "@/lib/services/chat-prefetch";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter();
@@ -50,6 +51,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     () => groupChatsByTimePeriod(chatIds, chatsData),
     [chatIds, chatsData]
   );
+
+  const handlePrefetch = useCallback((id: string) => {
+    if (!id || id === currentChatId) return;
+    void prefetchChat(id);
+    router.prefetch(`/?chatId=${id}`);
+  }, [currentChatId, router]);
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -96,6 +103,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuItem>
                 {group.chatIds.map((id) => {
                   const streamState = getStreamState(id);
+                  const isEditing = editingId === id;
+                  const itemEditTitle = isEditing ? editTitle : "";
                   return (
                     <ChatItem
                       key={id}
@@ -105,8 +114,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       isPausedForApproval={streamState?.isPausedForApproval ?? false}
                       hasError={streamState?.status === "error" || streamState?.status === "interrupted"}
                       hasUnseenUpdate={streamState?.hasUnseenUpdate ?? false}
-                      isEditing={editingId === id}
-                      editTitle={editTitle}
+                      isEditing={isEditing}
+                      editTitle={itemEditTitle}
                       onEditTitleChange={setEditTitle}
                       onEditConfirm={() => handleRenameConfirm(id)}
                       onEditCancel={handleRenameCancel}
@@ -114,6 +123,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         markChatAsSeen(id);
                         switchChat(id);
                       }}
+                      onPrefetch={() => handlePrefetch(id)}
                       onRename={() => {
                         setEditingId(id);
                         setEditTitle(chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`);

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
-import { useTools } from "@/contexts/tools-context";
+import { useToolsActive } from "@/contexts/tools-context";
 import { useStreaming } from "@/contexts/streaming-context";
 import { api } from "@/lib/services/api";
+import { getPrefetchedChat, getPrefetchPromise, prefetchChat } from "@/lib/services/chat-prefetch";
 import { processMessageStream, type StreamResult } from "@/lib/services/stream-processor";
 import { useMessageEditing } from "@/lib/hooks/use-message-editing";
 import {
@@ -22,7 +23,7 @@ import { addRecentModel } from "@/lib/utils";
 
 export function useChatInput(onThinkTagDetected?: () => void) {
   const { chatId, selectedModel, refreshChats } = useChat();
-  const { activeToolIds, setChatToolIds } = useTools();
+  const { activeToolIds, setChatToolIds } = useToolsActive();
   const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
 
   const editing = useMessageEditing();
@@ -109,11 +110,37 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     if (existingStream?.isStreaming) {
       return;
     }
-    
-    reloadMessages(chatId).catch((err) => {
-      console.error("Failed to load chat messages:", err);
-      setBaseMessages([]);
-    });
+
+    const prefetched = getPrefetchedChat(chatId);
+    if (prefetched?.messages) {
+      setBaseMessages(prefetched.messages);
+    }
+
+    if (!prefetched?.messages) {
+      const inflight = getPrefetchPromise(chatId);
+      if (inflight) {
+        inflight
+          .then((data) => {
+            if (data.messages) setBaseMessages(data.messages);
+          })
+          .catch(() => {});
+      } else {
+        prefetchChat(chatId)
+          .then((data) => {
+            if (data?.messages) setBaseMessages(data.messages);
+          })
+          .catch(() => {});
+      }
+      return;
+    }
+
+    const isFresh = Date.now() - prefetched.fetchedAt < 2_000;
+    if (!isFresh) {
+      reloadMessages(chatId).catch((err) => {
+        console.error("Failed to load chat messages:", err);
+        setBaseMessages([]);
+      });
+    }
   }, [chatId, reloadTrigger, reloadMessages, getStreamState]);
 
   useEffect(() => {
@@ -128,24 +155,39 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   }, [chatId, reloadMessages, onStreamComplete]);
 
   useEffect(() => {
-    if (baseMessages.length === 0) return;
+    if (!chatId || baseMessages.length === 0) {
+      setMessageSiblings({});
+      return;
+    }
 
-    const loadSiblings = async () => {
-      const map: Record<string, MessageSibling[]> = {};
-      await Promise.all(
-        baseMessages.map(async (msg) => {
-          try {
-            map[msg.id] = await api.getMessageSiblings(msg.id);
-          } catch {
-            map[msg.id] = [];
-          }
-        }),
-      );
-      setMessageSiblings(map);
+    let cancelled = false;
+    const messageIds = Array.from(new Set(baseMessages.map((msg) => msg.id)));
+
+    const prefetched = getPrefetchedChat(chatId);
+    const hasAllPrefetched =
+      prefetched?.siblings &&
+      messageIds.every((id) => id in prefetched.siblings!);
+
+    if (hasAllPrefetched) {
+      setMessageSiblings(prefetched!.siblings!);
+      return;
+    }
+
+    api
+      .getMessageSiblingsBatch(chatId, messageIds)
+      .then((map) => {
+        if (cancelled) return;
+        setMessageSiblings(map);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMessageSiblings({});
+      });
+
+    return () => {
+      cancelled = true;
     };
-
-    loadSiblings();
-  }, [baseMessages]);
+  }, [chatId, baseMessages]);
 
   const handleSubmit = useCallback(
     async (inputText: string, attachments: Attachment[], extraToolIds?: string[]) => {

@@ -15,6 +15,7 @@ import {
   toggleChatTools,
 } from "@/python/api";
 import type { ToolInfo } from "@/lib/types/chat";
+import { getPrefetchedChat } from "@/lib/services/chat-prefetch";
 
 export interface ToolsByCategory {
   [category: string]: ToolInfo[];
@@ -27,10 +28,17 @@ export interface GroupedTools {
 
 export type { McpServerStatus };
 
-interface ToolsContextType {
+interface ToolsCatalogContextType {
   availableTools: ToolInfo[];
-  activeToolIds: string[];
   groupedTools: GroupedTools;
+  isLoadingTools: boolean;
+  mcpServers: McpServerStatus[];
+  refreshTools: () => void;
+  removeMcpServer: (serverId: string) => void;
+}
+
+interface ToolsActiveContextType {
+  activeToolIds: string[];
   toggleTool: (toolId: string) => void;
   toggleToolset: (category: string) => void;
   setChatToolIds: (
@@ -39,14 +47,11 @@ interface ToolsContextType {
   ) => Promise<void>;
   isToolsetActive: (category: string) => boolean;
   isToolsetPartiallyActive: (category: string) => boolean;
-  isLoadingTools: boolean;
   isLoadingActiveTools: boolean;
-  mcpServers: McpServerStatus[];
-  refreshTools: () => void;
-  removeMcpServer: (serverId: string) => void;
 }
 
-const ToolsContext = createContext<ToolsContextType | undefined>(undefined);
+const ToolsCatalogContext = createContext<ToolsCatalogContextType | undefined>(undefined);
+const ToolsActiveContext = createContext<ToolsActiveContextType | undefined>(undefined);
 
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const { chatId } = useChat();
@@ -100,14 +105,22 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setIsLoadingActiveTools(true);
       try {
         if (chatId) {
+          const prefetched = getPrefetchedChat(chatId);
+          const isFresh = prefetched && Date.now() - prefetched.fetchedAt < 2_000;
+          if (prefetched?.agentConfig?.toolIds) {
+            setActiveToolIds(prefetched.agentConfig.toolIds);
+          }
+
           if (pendingChatToolIdsRef.current) {
             const pending = pendingChatToolIdsRef.current;
             pendingChatToolIdsRef.current = null;
             setActiveToolIds(pending);
             await toggleChatTools({ body: { chatId, toolIds: pending } });
           } else {
-            const config = await getChatAgentConfig({ body: { id: chatId } });
-            setActiveToolIds(config.toolIds || []);
+            if (!isFresh || !prefetched?.agentConfig) {
+              const config = await getChatAgentConfig({ body: { id: chatId } });
+              setActiveToolIds(config.toolIds || []);
+            }
           }
         } else {
           const response = await getDefaultTools();
@@ -242,48 +255,76 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     void loadTools();
   }, [loadTools]);
 
-  const value = useMemo<ToolsContextType>(
+  const catalogValue = useMemo<ToolsCatalogContextType>(
     () => ({
       availableTools,
-      activeToolIds,
       groupedTools,
-      toggleTool,
-      toggleToolset,
-      setChatToolIds,
-      isToolsetActive,
-      isToolsetPartiallyActive,
       isLoadingTools,
-      isLoadingActiveTools,
       mcpServers,
       refreshTools,
       removeMcpServer,
     }),
     [
       availableTools,
-      activeToolIds,
       groupedTools,
+      isLoadingTools,
+      mcpServers,
+      refreshTools,
+      removeMcpServer,
+    ]
+  );
+
+  const activeValue = useMemo<ToolsActiveContextType>(
+    () => ({
+      activeToolIds,
       toggleTool,
       toggleToolset,
       setChatToolIds,
       isToolsetActive,
       isToolsetPartiallyActive,
-      isLoadingTools,
       isLoadingActiveTools,
-      removeMcpServer,
-      mcpServers,
-      refreshTools,
+    }),
+    [
+      activeToolIds,
+      toggleTool,
+      toggleToolset,
+      setChatToolIds,
+      isToolsetActive,
+      isToolsetPartiallyActive,
+      isLoadingActiveTools,
     ]
   );
 
   return (
-    <ToolsContext.Provider value={value}>{children}</ToolsContext.Provider>
+    <ToolsCatalogContext.Provider value={catalogValue}>
+      <ToolsActiveContext.Provider value={activeValue}>
+        {children}
+      </ToolsActiveContext.Provider>
+    </ToolsCatalogContext.Provider>
   );
 }
 
 export function useTools() {
-  const context = useContext(ToolsContext);
-  if (context === undefined) {
+  const catalog = useContext(ToolsCatalogContext);
+  const active = useContext(ToolsActiveContext);
+  if (catalog === undefined || active === undefined) {
     throw new Error("useTools must be used within a ToolsProvider");
+  }
+  return { ...catalog, ...active };
+}
+
+export function useToolsCatalog() {
+  const context = useContext(ToolsCatalogContext);
+  if (context === undefined) {
+    throw new Error("useToolsCatalog must be used within a ToolsProvider");
+  }
+  return context;
+}
+
+export function useToolsActive() {
+  const context = useContext(ToolsActiveContext);
+  if (context === undefined) {
+    throw new Error("useToolsActive must be used within a ToolsProvider");
   }
   return context;
 }

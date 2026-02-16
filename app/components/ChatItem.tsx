@@ -32,13 +32,14 @@ interface ChatItemProps {
   onEditConfirm: () => void;
   onEditCancel: () => void;
   onSelect: () => void;
+  onPrefetch?: () => void;
   onRename: () => void;
   onDelete: () => void;
   isStarred?: boolean;
   onToggleStar?: () => void;
 }
 
-export function ChatItem({
+function ChatItemInner({
   title,
   isActive,
   isStreaming,
@@ -51,6 +52,7 @@ export function ChatItem({
   onEditConfirm,
   onEditCancel,
   onSelect,
+  onPrefetch,
   onRename,
   onDelete,
   isStarred = false,
@@ -82,6 +84,8 @@ export function ChatItem({
           <>
             <button
               onClick={onSelect}
+              onMouseEnter={onPrefetch}
+              onFocus={onPrefetch}
               className={clsx(
                 "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
                 isActive
@@ -163,3 +167,18 @@ export function ChatItem({
   );
 }
 
+function arePropsEqual(prev: ChatItemProps, next: ChatItemProps) {
+  return (
+    prev.title === next.title &&
+    prev.isActive === next.isActive &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isPausedForApproval === next.isPausedForApproval &&
+    prev.hasError === next.hasError &&
+    prev.hasUnseenUpdate === next.hasUnseenUpdate &&
+    prev.isEditing === next.isEditing &&
+    prev.editTitle === next.editTitle &&
+    prev.isStarred === next.isStarred
+  );
+}
+
+export const ChatItem = React.memo(ChatItemInner, arePropsEqual);

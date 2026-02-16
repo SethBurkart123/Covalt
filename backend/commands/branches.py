@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from sqlalchemy import or_, select
+
 from zynk import Channel, command
 
 from .. import db
@@ -80,6 +82,11 @@ class MessageSiblingInfo(BaseModel):
     id: str
     sequence: int
     isActive: bool
+
+
+class GetMessageSiblingsBatchRequest(BaseModel):
+    chatId: str
+    messageIds: List[str]
 
 
 @command
@@ -503,3 +510,63 @@ async def get_message_siblings(
             )
             for sib in siblings
         ]
+
+
+@command
+async def get_message_siblings_batch(
+    body: GetMessageSiblingsBatchRequest,
+) -> Dict[str, List[MessageSiblingInfo]]:
+    message_ids = list(dict.fromkeys(body.messageIds))
+    if not message_ids:
+        return {}
+
+    with db.db_session() as sess:
+        stmt = (
+            select(db.Message.id, db.Message.parent_message_id)
+            .where(db.Message.chatId == body.chatId)
+            .where(db.Message.id.in_(message_ids))
+        )
+        message_rows = list(sess.execute(stmt))
+        if not message_rows:
+            return {}
+
+        parent_ids = {row[1] for row in message_rows}
+        conditions = []
+        if None in parent_ids:
+            conditions.append(db.Message.parent_message_id.is_(None))
+        non_null_parents = [pid for pid in parent_ids if pid is not None]
+        if non_null_parents:
+            conditions.append(db.Message.parent_message_id.in_(non_null_parents))
+
+        siblings_by_parent: Dict[Optional[str], List[MessageSiblingInfo]] = {}
+        active_path_ids: set[str] = set()
+
+        chat = sess.get(db.Chat, body.chatId)
+        if chat and chat.active_leaf_message_id:
+            active_path_msgs = db.get_message_path(sess, chat.active_leaf_message_id)
+            active_path_ids = {m.id for m in active_path_msgs}
+
+        if conditions:
+            sibling_stmt = (
+                select(
+                    db.Message.id,
+                    db.Message.parent_message_id,
+                    db.Message.sequence,
+                )
+                .where(db.Message.chatId == body.chatId)
+                .where(or_(*conditions))
+                .order_by(db.Message.sequence.asc())
+            )
+            siblings = list(sess.execute(sibling_stmt))
+            for msg_id, parent_id, sequence in siblings:
+                info = MessageSiblingInfo(
+                    id=msg_id,
+                    sequence=sequence,
+                    isActive=msg_id in active_path_ids,
+                )
+                siblings_by_parent.setdefault(parent_id, []).append(info)
+
+        return {
+            msg_id: siblings_by_parent.get(parent_id, [])
+            for msg_id, parent_id in message_rows
+        }

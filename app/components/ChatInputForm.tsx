@@ -19,7 +19,7 @@ import clsx from "clsx";
 import { LayoutGroup } from "framer-motion";
 import type { ModelInfo, AttachmentType, UploadingAttachment, Attachment } from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
-import { useTools } from "@/contexts/tools-context";
+import { useToolsCatalog } from "@/contexts/tools-context";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import {
@@ -165,7 +165,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     hideModelSelector,
     hideToolSelector,
   }) => {
-    const { availableTools, groupedTools, mcpServers } = useTools();
+    const { availableTools, groupedTools, mcpServers } = useToolsCatalog();
     const [hasTextContent, setHasTextContent] = useState(false);
     const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
     

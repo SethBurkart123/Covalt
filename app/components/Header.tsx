@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -11,7 +12,7 @@ const TRANSITION = {
   damping: 28,
 };
 
-export function Header() {
+function HeaderInner() {
   const { title, leftContent, rightContent, floating, rightOffset } = usePageTitle();
   const hasRightContent = rightContent != null;
   const left = leftContent != null ? (
@@ -59,3 +60,5 @@ export function Header() {
     </header>
   );
 }
+
+export const Header = memo(HeaderInner);

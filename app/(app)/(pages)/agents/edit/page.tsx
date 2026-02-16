@@ -19,12 +19,16 @@ import { useCanvasPreview } from '@/hooks/use-canvas-preview';
 function AgentEditorContent() {
   const router = useRouter();
   const { setLeftContent, setRightContent, setFloating } = usePageTitle();
-  const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata } = useAgentEditor();
+  const { agentId, isLoading, loadError, agent, saveStatus, updateMetadata, lastSaved } = useAgentEditor();
   const { isOpen: isChatOpen, toggle: toggleChat } = useAgentTestChat();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorNodeId, setInspectorNodeId] = useState<string | null>(null);
-  const { captureAndUpload } = useCanvasPreview(agentId);
+  const { captureAndUpload } = useCanvasPreview({
+    agentId,
+    lastSaved,
+    previewImage: agent?.previewImage ?? null,
+  });
   const hasEditedGraphRef = useRef(false);
 
   const handleNodeDoubleClick = (nodeId: string) => {
@@ -69,6 +73,12 @@ function AgentEditorContent() {
     const timer = setTimeout(() => captureAndUpload(), 800);
     return () => clearTimeout(timer);
   }, [isLoading, saveStatus, captureAndUpload]);
+
+  useEffect(() => {
+    if (isLoading || !agent) return;
+    const timer = setTimeout(() => captureAndUpload(), 800);
+    return () => clearTimeout(timer);
+  }, [isLoading, agent, captureAndUpload]);
 
   if (isLoading) {
     return (
