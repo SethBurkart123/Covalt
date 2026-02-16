@@ -9,6 +9,8 @@ import { mcpServer } from './tools/mcp_server/definition';
 import { toolset } from './tools/toolset/definition';
 import { llmCompletion } from './ai/llm_completion/definition';
 import { conditional } from './flow/conditional/definition';
+import { merge } from './flow/merge/definition';
+import { reroute } from './flow/reroute/definition';
 import { code } from './data/code/definition';
 import { modelSelector } from './utility/model_selector/definition';
 
@@ -21,6 +23,8 @@ const NODE_LIST = [
   toolset,
   llmCompletion,
   conditional,
+  merge,
+  reroute,
   code,
   modelSelector,
 ] as const;

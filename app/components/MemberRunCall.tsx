@@ -100,7 +100,7 @@ export default function MemberRunCall({
         <CollapsibleTrigger>
           <CollapsibleHeader>
             <CollapsibleIcon icon={Bot} />
-            <span className="text-sm font-mono text-foreground">{memberName || "Member"}</span>
+            <span className="text-sm font-mono text-foreground">{memberName || "Agent"}</span>
             <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
               Failed
             </span>
@@ -132,7 +132,7 @@ export default function MemberRunCall({
       >
         <CollapsibleHeader>
           <CollapsibleIcon icon={Bot} />
-          <span className="text-sm font-mono text-foreground">{memberName || "Member"}</span>
+          <span className="text-sm font-mono text-foreground">{memberName || "Agent"}</span>
         </CollapsibleHeader>
       </CollapsibleTrigger>
 

@@ -103,6 +103,16 @@ class FlowContext:
     services: Any = None
 
 
+@dataclass
+class RuntimeConfigContext:
+    """Context for runtime configuration hooks."""
+
+    mode: str
+    graph_data: dict[str, Any]
+    node_id: str
+    services: Any
+
+
 # ── Executor protocol ───────────────────────────────────────────────
 
 
@@ -126,3 +136,11 @@ class LinkMaterializer(Protocol):
         output_handle: str,
         context: FlowContext,
     ) -> Any: ...
+
+
+class RuntimeConfigurator(Protocol):
+    node_type: str
+
+    def configure_runtime(
+        self, data: dict[str, Any], context: RuntimeConfigContext
+    ) -> None: ...

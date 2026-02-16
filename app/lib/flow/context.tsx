@@ -22,9 +22,10 @@ import {
   type OnEdgesChange,
 } from '@xyflow/react';
 
-import type { EdgeChannel, FlowNode, FlowEdge, Parameter, SocketTypeId } from '@nodes/_types';
+import type { EdgeChannel, FlowNode, FlowEdge, NodeDefinition, Parameter, SocketTypeId } from '@nodes/_types';
 import { getNodeDefinition } from '@nodes/_registry';
-import { canConnect } from './sockets';
+import { canConnect, canCoerce } from './sockets';
+import { resolveParameterForHandle } from './node-parameters';
 
 function getSocketTypeFromParam(param: Parameter): SocketTypeId {
   if (param.socket?.type) return param.socket.type;
@@ -53,10 +54,17 @@ function getSocketTypeForHandle(
   const node = nodes.find(n => n.id === nodeId);
   if (!node) return isSource ? 'data' : 'tools';
 
+  if (node.type === 'reroute') {
+    const socketType = (node.data as { _socketType?: unknown } | undefined)?._socketType;
+    if (typeof socketType === 'string' && socketType) {
+      return socketType as SocketTypeId;
+    }
+  }
+
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return isSource ? 'data' : 'tools';
 
-  const param = definition.parameters.find(p => p.id === handleId);
+  const param = resolveParameterForHandle(definition, node as FlowNode, handleId);
   if (!param) return isSource ? 'data' : 'tools';
 
   return getSocketTypeFromParam(param);
@@ -73,7 +81,7 @@ function getParameterForHandle(
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return undefined;
 
-  return definition.parameters.find(p => p.id === handleId);
+  return resolveParameterForHandle(definition, node as FlowNode, handleId);
 }
 
 function canHandleActAsSource(param: Parameter | undefined): boolean {
@@ -153,6 +161,25 @@ function generateEdgeId(source: string, target: string): string {
   return `e-${source}-${target}-${Date.now()}`;
 }
 
+function buildNodeData(definition: NodeDefinition, type: string): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const param of definition.parameters) {
+    if ('default' in param && param.default !== undefined) {
+      data[param.id] = param.default;
+    }
+  }
+
+  if (type === 'webhook-trigger') {
+    const hookId = typeof data.hookId === 'string' ? data.hookId.trim() : '';
+    if (!hookId) {
+      data.hookId = `hook_${Math.random().toString(36).slice(2, 10)}`;
+    }
+  }
+
+  data._label = definition.name;
+  return data;
+}
+
 interface HistoryEntry {
   nodes: Node[];
   edges: Edge[];
@@ -177,6 +204,28 @@ interface SelectionValue {
   selectNode: (id: string | null) => void;
 }
 
+interface NodePickerState {
+  active: boolean;
+  originNodeId: string | null;
+  paramId: string | null;
+  allowedNodeTypes: string[] | null;
+  allowSelf: boolean;
+}
+
+interface NodePickerStartOptions {
+  originNodeId: string;
+  paramId: string;
+  allowedNodeTypes?: string[] | null;
+  allowSelf?: boolean;
+}
+
+interface NodePickerValue extends NodePickerState {
+  startPick: (options: NodePickerStartOptions) => void;
+  cancelPick: () => void;
+  completePick: () => void;
+  isPickableNode: (nodeId: string, nodeType?: string | null) => boolean;
+}
+
 interface FlowStateValue {
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -191,6 +240,7 @@ interface FlowActionsValue {
   isValidConnection: (connection: Connection | Edge) => boolean;
   addNode: (type: string, position: { x: number; y: number }) => string;
   removeNode: (id: string) => void;
+  insertRerouteOnEdge: (edgeId: string, position: { x: number; y: number }) => string | null;
   updateNodeData: (nodeId: string, paramId: string, value: unknown) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   loadGraph: (nodes: FlowNode[], edges: FlowEdge[], options?: { skipHistory?: boolean }) => void;
@@ -207,11 +257,19 @@ type FlowContextValue = FlowStateValue & FlowActionsValue & SelectionValue;
 const SelectionContext = createContext<SelectionValue | null>(null);
 const FlowStateContext = createContext<FlowStateValue | null>(null);
 const FlowActionsContext = createContext<FlowActionsValue | null>(null);
+const NodePickerContext = createContext<NodePickerValue | null>(null);
 
 export function FlowProvider({ children }: { children: ReactNode }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [pickerState, setPickerState] = useState<NodePickerState>({
+    active: false,
+    originNodeId: null,
+    paramId: null,
+    allowedNodeTypes: null,
+    allowSelf: false,
+  });
 
   const historyRef = useRef<HistoryState>({ past: [], future: [] });
   const [canUndo, setCanUndo] = useState(false);
@@ -340,6 +398,9 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     (connection: Connection | Edge) => {
       const normalized = normalizeConnectionDirection(connection, nodesRef.current);
 
+      const sourceNode = nodesRef.current.find(n => n.id === normalized.source);
+      const targetNode = nodesRef.current.find(n => n.id === normalized.target);
+
       const sourceType = getSocketTypeForHandle(
         nodesRef.current,
         normalized.source || '',
@@ -359,6 +420,26 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
       if (!sourceParam || !targetParam) return false;
 
+      const sourceRerouteType = (sourceNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+      const targetRerouteType = (targetNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+
+      if (
+        sourceNode?.type === 'reroute' &&
+        normalized.sourceHandle === 'output' &&
+        (typeof sourceRerouteType !== 'string' || !sourceRerouteType)
+      ) {
+        return true;
+      }
+
+      if (
+        targetNode?.type === 'reroute' &&
+        normalized.targetHandle === 'input' &&
+        typeof targetRerouteType === 'string' &&
+        targetRerouteType
+      ) {
+        return canCoerce(sourceType, targetRerouteType as SocketTypeId);
+      }
+
       return canConnect(sourceType, targetParam);
     },
     []
@@ -369,13 +450,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       const normalized = normalizeConnectionDirection(connection, nodesRef.current) as Connection;
       pushHistory();
 
-      const sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
+      let sourceType = socketTypes?.sourceType ?? getSocketTypeForHandle(
         nodesRef.current,
         normalized.source || '',
         normalized.sourceHandle,
         true
       );
-      const targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
+      let targetType = socketTypes?.targetType ?? getSocketTypeForHandle(
         nodesRef.current,
         normalized.target || '',
         normalized.targetHandle,
@@ -392,6 +473,44 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         normalized.target || '',
         normalized.targetHandle
       );
+
+      const updateRerouteSocketType = (nodeId: string, socketType: SocketTypeId) => {
+        setNodes(nds =>
+          nds.map(node => {
+            if (node.id !== nodeId) return node;
+            const current = (node.data as { _socketType?: unknown } | undefined)?._socketType;
+            if (current === socketType) return node;
+            return { ...node, data: { ...node.data, _socketType: socketType } };
+          })
+        );
+      };
+
+      const sourceNode = nodesRef.current.find(node => node.id === normalized.source);
+      const targetNode = nodesRef.current.find(node => node.id === normalized.target);
+
+      const sourceRerouteType = (sourceNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+      const targetRerouteType = (targetNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+
+      if (normalized.source && normalized.sourceHandle === 'output') {
+        if (
+          sourceNode?.type === 'reroute' &&
+          (typeof sourceRerouteType !== 'string' || !sourceRerouteType)
+        ) {
+          sourceType = targetType;
+          updateRerouteSocketType(normalized.source, sourceType);
+        }
+      }
+
+      if (normalized.target && normalized.targetHandle === 'input') {
+        if (
+          targetNode?.type === 'reroute' &&
+          (typeof targetRerouteType !== 'string' || !targetRerouteType)
+        ) {
+          targetType = sourceType;
+          updateRerouteSocketType(normalized.target, targetType);
+        }
+      }
+
       const channel = getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
 
       const edge: Edge = {
@@ -422,7 +541,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         return currentEdges;
       });
     },
-    [setEdges, pushHistory]
+    [setEdges, setNodes, pushHistory]
   );
 
   const addNode = useCallback(
@@ -434,15 +553,8 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         throw new Error(`Unknown node type: ${type}`);
       }
 
-      const data: Record<string, unknown> = {};
-      for (const param of definition.parameters) {
-        if ('default' in param && param.default !== undefined) {
-          data[param.id] = param.default;
-        }
-      }
-
+      const data = buildNodeData(definition, type);
       const id = generateNodeId(type);
-      data._label = definition.name;
       const node: Node = { id, type, position, data };
 
       setNodes(nds => [...nds, node]);
@@ -465,6 +577,74 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     [setNodes, setEdges, selectedNodeId, pushHistory]
   );
 
+  const insertRerouteOnEdge = useCallback(
+    (edgeId: string, position: { x: number; y: number }): string | null => {
+      const edge = edgesRef.current.find(e => e.id === edgeId);
+      if (!edge) return null;
+
+      const definition = getNodeDefinition('reroute');
+      if (!definition) return null;
+
+      pushHistory();
+
+      const sourceType =
+        (edge.data as { sourceType?: SocketTypeId } | undefined)?.sourceType ??
+        getSocketTypeForHandle(nodesRef.current, edge.source, edge.sourceHandle, true);
+      const targetType =
+        (edge.data as { targetType?: SocketTypeId } | undefined)?.targetType ??
+        getSocketTypeForHandle(nodesRef.current, edge.target, edge.targetHandle, false);
+
+      const sourceParam = getParameterForHandle(nodesRef.current, edge.source, edge.sourceHandle);
+      const targetParam = getParameterForHandle(nodesRef.current, edge.target, edge.targetHandle);
+      const channel =
+        (edge.data as { channel?: EdgeChannel } | undefined)?.channel ??
+        getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
+
+      const rerouteId = generateNodeId('reroute');
+      const rerouteData = buildNodeData(definition, 'reroute');
+      rerouteData._socketType = sourceType;
+
+      const node: Node = {
+        id: rerouteId,
+        type: 'reroute',
+        position,
+        data: rerouteData,
+      };
+
+      const sourceHandle = edge.sourceHandle ?? 'output';
+      const targetHandle = edge.targetHandle ?? 'input';
+
+      const inboundEdge: Edge = {
+        id: generateEdgeId(edge.source, rerouteId),
+        source: edge.source,
+        sourceHandle,
+        target: rerouteId,
+        targetHandle: 'input',
+        type: 'gradient',
+        data: { sourceType, targetType: sourceType, channel },
+      };
+
+      const outboundEdge: Edge = {
+        id: generateEdgeId(rerouteId, edge.target),
+        source: rerouteId,
+        sourceHandle: 'output',
+        target: edge.target,
+        targetHandle,
+        type: 'gradient',
+        data: { sourceType, targetType, channel },
+      };
+
+      setNodes(nds => [...nds, node]);
+      setEdges(eds => {
+        const filtered = eds.filter(existing => existing.id !== edgeId);
+        return [...filtered, inboundEdge, outboundEdge];
+      });
+
+      return rerouteId;
+    },
+    [pushHistory, setEdges, setNodes]
+  );
+
   const updateNodeData = useCallback(
     (nodeId: string, paramId: string, value: unknown) => {
       pushHistoryDebounced();
@@ -479,6 +659,65 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     },
     [setNodes, pushHistoryDebounced]
   );
+
+  const startPick = useCallback((options: NodePickerStartOptions) => {
+    setPickerState({
+      active: true,
+      originNodeId: options.originNodeId,
+      paramId: options.paramId,
+      allowedNodeTypes: options.allowedNodeTypes?.length ? [...options.allowedNodeTypes] : null,
+      allowSelf: options.allowSelf ?? false,
+    });
+  }, []);
+
+  const cancelPick = useCallback(() => {
+    setPickerState((prev) =>
+      prev.active
+        ? {
+            active: false,
+            originNodeId: null,
+            paramId: null,
+            allowedNodeTypes: null,
+            allowSelf: false,
+          }
+        : prev
+    );
+  }, []);
+
+  const completePick = useCallback(() => {
+    setPickerState((prev) =>
+      prev.active
+        ? {
+            active: false,
+            originNodeId: null,
+            paramId: null,
+            allowedNodeTypes: null,
+            allowSelf: false,
+          }
+        : prev
+    );
+  }, []);
+
+  const isPickableNode = useCallback(
+    (nodeId: string, nodeType?: string | null) => {
+      if (!pickerState.active) return false;
+      if (!pickerState.allowSelf && pickerState.originNodeId === nodeId) return false;
+      if (pickerState.allowedNodeTypes && nodeType) {
+        return pickerState.allowedNodeTypes.includes(nodeType);
+      }
+      if (pickerState.allowedNodeTypes && !nodeType) return false;
+      return true;
+    },
+    [pickerState]
+  );
+
+  useEffect(() => {
+    if (!pickerState.active || !pickerState.originNodeId) return;
+    const exists = nodes.some(node => node.id === pickerState.originNodeId);
+    if (!exists) {
+      cancelPick();
+    }
+  }, [cancelPick, nodes, pickerState.active, pickerState.originNodeId]);
 
   const updateNodePosition = useCallback(
     (nodeId: string, position: { x: number; y: number }) => {
@@ -542,6 +781,17 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     [selectedNodeId, selectNode]
   );
 
+  const nodePickerValue = useMemo<NodePickerValue>(
+    () => ({
+      ...pickerState,
+      startPick,
+      cancelPick,
+      completePick,
+      isPickableNode,
+    }),
+    [pickerState, startPick, cancelPick, completePick, isPickableNode]
+  );
+
   const stateValue = useMemo<FlowStateValue>(
     () => ({
       nodes: nodes as FlowNode[],
@@ -560,6 +810,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       isValidConnection,
       addNode,
       removeNode,
+      insertRerouteOnEdge,
       updateNodeData,
       updateNodePosition,
       loadGraph,
@@ -570,7 +821,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       redo,
       recordDragEnd,
     }),
-    [onConnect, isValidConnection, addNode, removeNode, updateNodeData, 
+    [onConnect, isValidConnection, addNode, removeNode, insertRerouteOnEdge, updateNodeData, 
      updateNodePosition, loadGraph, clearGraph, getNode, getConnectedInputs, undo, redo, recordDragEnd]
   );
 
@@ -579,7 +830,9 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       <SelectionContext.Provider value={selectionValue}>
         <FlowStateContext.Provider value={stateValue}>
           <FlowActionsContext.Provider value={actionsValue}>
-            {children}
+            <NodePickerContext.Provider value={nodePickerValue}>
+              {children}
+            </NodePickerContext.Provider>
           </FlowActionsContext.Provider>
         </FlowStateContext.Provider>
       </SelectionContext.Provider>
@@ -607,6 +860,14 @@ export function useFlowActions(): FlowActionsValue {
   const context = useContext(FlowActionsContext);
   if (!context) {
     throw new Error('useFlowActions must be used within a FlowProvider');
+  }
+  return context;
+}
+
+export function useNodePicker(): NodePickerValue {
+  const context = useContext(NodePickerContext);
+  if (!context) {
+    throw new Error('useNodePicker must be used within a FlowProvider');
   }
   return context;
 }

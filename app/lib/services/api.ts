@@ -23,7 +23,9 @@ import {
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 
-initBridge("http://127.0.0.1:8000");
+if (typeof window !== "undefined") {
+  initBridge("http://127.0.0.1:8000");
+}
 
 interface StreamingChatEvent {
   event: string;

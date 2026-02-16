@@ -16,7 +16,8 @@ from agno.media import Audio, File, Image, Video
 from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 from agno.team import Team
-from nodes._types import DataValue, ExecutionResult, NodeEvent
+from nodes._types import DataValue, ExecutionResult, NodeEvent, RuntimeConfigContext
+from nodes import get_executor
 from zynk import Channel
 
 from .. import db
@@ -119,6 +120,46 @@ def _chat_entry_node_ids(
 def _build_entry_node_ids(graph_data: dict[str, Any]) -> list[str]:
     nodes_by_id, _downstream_by_node, upstream_by_node = _flow_topology(graph_data)
     return _chat_entry_node_ids(nodes_by_id, upstream_by_node)
+
+
+def _apply_runtime_config(
+    graph_data: dict[str, Any],
+    services: Any,
+    *,
+    mode: str,
+) -> None:
+    nodes = graph_data.get("nodes", [])
+    if not isinstance(nodes, list):
+        return
+
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        node_type = node.get("type")
+        if not isinstance(node_id, str) or not isinstance(node_type, str):
+            continue
+        executor = get_executor(node_type)
+        if executor is None:
+            continue
+        configure = getattr(executor, "configure_runtime", None)
+        if not callable(configure):
+            continue
+        try:
+            configure(
+                node.get("data", {}),
+                RuntimeConfigContext(
+                    mode=mode,
+                    graph_data=graph_data,
+                    node_id=node_id,
+                    services=services,
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "[flow_stream] runtime config failed for %s (%s)", node_id, node_type
+            )
+
 
 
 def _build_trigger_payload(
@@ -995,23 +1036,27 @@ async def handle_flow_stream(
     )
 
     state = types.SimpleNamespace(user_message=user_message)
+    services = types.SimpleNamespace(
+        run_handle=run_handle,
+        extra_tool_ids=list(extra_tool_ids or []),
+        tool_registry=registry,
+        chat_output=types.SimpleNamespace(primary_agent_id=None),
+        chat_input=types.SimpleNamespace(
+            last_user_message=user_message,
+            last_user_attachments=last_user_attachments,
+            history=chat_history,
+            messages=openai_messages,
+        ),
+        expression_context={"trigger": trigger_payload},
+        execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
+    )
+    _apply_runtime_config(graph_data, services, mode="chat")
+
     context = types.SimpleNamespace(
         run_id=str(uuid.uuid4()),
         chat_id=chat_id,
         state=state,
-        services=types.SimpleNamespace(
-            run_handle=run_handle,
-            extra_tool_ids=list(extra_tool_ids or []),
-            tool_registry=registry,
-            chat_input=types.SimpleNamespace(
-                last_user_message=user_message,
-                last_user_attachments=last_user_attachments,
-                history=chat_history,
-                messages=openai_messages,
-            ),
-            expression_context={"trigger": trigger_payload},
-            execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
-        ),
+        services=services,
     )
 
     content_blocks: list[dict[str, Any]] = (
@@ -1021,6 +1066,11 @@ async def handle_flow_stream(
     current_reasoning = ""
     member_runs: dict[str, MemberRunState] = {}
     final_output: DataValue | None = None
+    primary_output: DataValue | None = None
+    primary_agent_id = None
+    if services is not None:
+        chat_output = getattr(services, "chat_output", None)
+        primary_agent_id = getattr(chat_output, "primary_agent_id", None)
     runtime_run_flow = run_flow_impl or run_flow
     had_error = False
     was_cancelled = False
@@ -1054,15 +1104,28 @@ async def handle_flow_stream(
                 return block
         return None
 
+    def _coerce_event_outputs(outputs: Any) -> dict[str, DataValue]:
+        if not isinstance(outputs, dict):
+            return {}
+        coerced: dict[str, DataValue] = {}
+        for handle, payload in outputs.items():
+            if not isinstance(payload, dict):
+                continue
+            value_type = payload.get("type")
+            if not isinstance(value_type, str) or not value_type:
+                continue
+            coerced[str(handle)] = DataValue(type=value_type, value=payload.get("value"))
+        return coerced
+
     def _get_or_create_member_state(data: dict[str, Any]) -> MemberRunState | None:
         run_id = str(data.get("memberRunId") or "")
         if not run_id:
             return None
 
-        name = str(data.get("memberName") or "Member")
+        name = str(data.get("memberName") or "Agent")
         if run_id in member_runs:
             member_state = member_runs[run_id]
-            if name and name != "Member":
+            if name and name != "Agent":
                 member_state.name = name
                 content_blocks[member_state.block_index]["memberName"] = name
             return member_state
@@ -1194,15 +1257,21 @@ async def handle_flow_stream(
                     return False
                 _flush_member_text(member_state)
                 _flush_member_reasoning(member_state)
-                member_content.append(
-                    {
-                        "type": "tool_call",
-                        "id": tool_id,
-                        "toolName": tool.get("toolName"),
-                        "toolArgs": tool.get("toolArgs"),
-                        "isCompleted": False,
-                    }
-                )
+                tool_block = _find_tool_block(member_content, tool_id)
+                if tool_block is None:
+                    member_content.append(
+                        {
+                            "type": "tool_call",
+                            "id": tool_id,
+                            "toolName": tool.get("toolName"),
+                            "toolArgs": tool.get("toolArgs"),
+                            "isCompleted": False,
+                        }
+                    )
+                else:
+                    tool_block["toolName"] = tool.get("toolName") or tool_block.get("toolName")
+                    tool_block["toolArgs"] = tool.get("toolArgs") or tool_block.get("toolArgs")
+                    tool_block["isCompleted"] = False
                 return True
 
             if event_name == "ToolCallCompleted":
@@ -1215,6 +1284,48 @@ async def handle_flow_stream(
                     return False
                 tool_block["isCompleted"] = True
                 tool_block["toolResult"] = tool.get("toolResult")
+                return True
+
+            if event_name == "ToolApprovalRequired":
+                tool_payload = data.get("tool") or {}
+                tools = tool_payload.get("tools")
+                if not isinstance(tools, list) or not tools:
+                    return False
+                _flush_member_text(member_state)
+                _flush_member_reasoning(member_state)
+                for tool in tools:
+                    if not isinstance(tool, dict):
+                        continue
+                    member_content.append(
+                        {
+                            "type": "tool_call",
+                            "id": tool.get("id"),
+                            "toolName": tool.get("toolName"),
+                            "toolArgs": tool.get("toolArgs"),
+                            "isCompleted": False,
+                            "requiresApproval": True,
+                            "runId": tool_payload.get("runId"),
+                            "toolCallId": tool.get("id"),
+                            "approvalStatus": "pending",
+                            "editableArgs": tool.get("editableArgs"),
+                        }
+                    )
+                return True
+
+            if event_name == "ToolApprovalResolved":
+                tool = data.get("tool") or {}
+                tool_id = str(tool.get("id") or "")
+                if not tool_id:
+                    return False
+                tool_block = _find_tool_block(member_content, tool_id)
+                if tool_block is None:
+                    return False
+                status = tool.get("approvalStatus")
+                tool_block["approvalStatus"] = status
+                if "toolArgs" in tool:
+                    tool_block["toolArgs"] = tool.get("toolArgs")
+                if status in ("denied", "timeout"):
+                    tool_block["isCompleted"] = True
                 return True
 
             if event_name == "MemberRunCompleted":
@@ -1369,6 +1480,8 @@ async def handle_flow_stream(
                         {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "progress":
+                    if primary_agent_id and item.node_id != primary_agent_id:
+                        continue
                     token = (item.data or {}).get("token", "")
                     if token:
                         if current_reasoning and not current_text:
@@ -1389,6 +1502,12 @@ async def handle_flow_stream(
                             await broadcaster.update_stream_run_id(chat_id, run_id)
                 elif item.event_type == "agent_event":
                     event_data = item.data or {}
+                    if (
+                        primary_agent_id
+                        and item.node_id != primary_agent_id
+                        and not event_data.get("memberRunId")
+                    ):
+                        continue
                     chat_event = _chat_event_from_agent_runtime_event(event_data)
                     if chat_event is not None:
                         ch.send_model(chat_event)
@@ -1437,6 +1556,10 @@ async def handle_flow_stream(
                             "outputs": (item.data or {}).get("outputs", {}),
                         },
                     )
+                    if primary_agent_id and item.node_id == primary_agent_id:
+                        primary_output = _pick_text_output(
+                            _coerce_event_outputs((item.data or {}).get("outputs", {}))
+                        )
                 elif item.event_type == "error":
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
@@ -1492,14 +1615,21 @@ async def handle_flow_stream(
         _flush_current_reasoning()
         _flush_all_member_runs()
 
-        if final_output is not None and not any(
-            block.get("type") == "text" for block in content_blocks
-        ):
-            final_value = final_output.value
-            text = str(final_value) if final_value is not None else ""
-            if text:
-                content_blocks.append({"type": "text", "content": text})
-                ch.send_model(ChatEvent(event="RunContent", content=text))
+        has_main_text = any(block.get("type") == "text" for block in content_blocks)
+        if not has_main_text:
+            if primary_agent_id:
+                if primary_output is not None:
+                    final_value = primary_output.value
+                    text = str(final_value) if final_value is not None else ""
+                    if text:
+                        content_blocks.append({"type": "text", "content": text})
+                        ch.send_model(ChatEvent(event="RunContent", content=text))
+            elif final_output is not None:
+                final_value = final_output.value
+                text = str(final_value) if final_value is not None else ""
+                if text:
+                    content_blocks.append({"type": "text", "content": text})
+                    ch.send_model(ChatEvent(event="RunContent", content=text))
 
         await asyncio.to_thread(
             save_content, assistant_msg_id, json.dumps(content_blocks)
@@ -1647,7 +1777,7 @@ async def handle_content_stream(
                 content_blocks[member_state.block_index]["memberName"] = name
             return member_state
 
-        name = getattr(chunk, "agent_name", "") or "Member"
+        name = getattr(chunk, "agent_name", "") or "Agent"
         block = {
             "type": "member_run",
             "runId": rid,

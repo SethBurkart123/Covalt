@@ -45,7 +45,7 @@ const serializer = new MarkdownSerializer(
       state.closeBlock(node);
     },
     hardBreak: (state) => {
-      state.write("\\\n");
+      state.write("  \n");
     },
     horizontalRule: (state, node) => {
       state.write("---");

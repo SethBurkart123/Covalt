@@ -106,7 +106,8 @@ class AgentExecutor:
             instructions=instructions,
         )
         member_node_lookup = _build_member_node_lookup(sub_agents)
-        emit_member_events = isinstance(agent, Team)
+        force_member_output = _force_member_output(context)
+        emit_member_events = isinstance(agent, Team) or force_member_output
 
         run_handle = _get_run_handle(context)
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
@@ -125,6 +126,7 @@ class AgentExecutor:
             fallback_final = ""
             seen_member_run_ids: set[str] = set()
             active_run_id = ""
+            forced_member_run_id = ""
             messages_override = _resolve_messages_override(data)
             run_input = _resolve_run_input(input_value, message, messages_override)
 
@@ -164,8 +166,24 @@ class AgentExecutor:
                     )
 
                 member_fields = _member_event_fields(chunk) if emit_member_events else {}
+                if force_member_output and not member_fields:
+                    if not forced_member_run_id:
+                        forced_member_run_id = (
+                            active_run_id
+                            or chunk_run_id
+                            or f"{context.run_id}:{context.node_id}"
+                        )
+                    member_fields = _fallback_member_fields(
+                        data,
+                        context,
+                        forced_member_run_id,
+                        self.node_type,
+                    )
                 if member_fields:
                     _attach_member_node_metadata(member_fields, member_node_lookup)
+                    if force_member_output:
+                        member_fields.setdefault("nodeId", context.node_id)
+                        member_fields.setdefault("nodeType", self.node_type)
                 member_run_id = str(member_fields.get("memberRunId", "") or "")
                 if member_run_id and member_run_id not in seen_member_run_ids:
                     seen_member_run_ids.add(member_run_id)
@@ -195,6 +213,8 @@ class AgentExecutor:
                     token = str(getattr(chunk, "content", "") or "")
                     if token:
                         if member_fields:
+                            if force_member_output:
+                                content_parts.append(token)
                             yield NodeEvent(
                                 node_id=context.node_id,
                                 node_type=self.node_type,
@@ -338,6 +358,21 @@ class AgentExecutor:
                         ).__aiter__()
                         continue
 
+                    approval_member_fields: dict[str, Any] = {}
+                    if force_member_output:
+                        if not forced_member_run_id:
+                            forced_member_run_id = (
+                                active_run_id
+                                or chunk_run_id
+                                or f"{context.run_id}:{context.node_id}"
+                            )
+                        approval_member_fields = _fallback_member_fields(
+                            data,
+                            context,
+                            forced_member_run_id,
+                            self.node_type,
+                        )
+
                     tools_info: list[dict[str, Any]] = []
                     for tool in tools:
                         tool_id = getattr(tool, "tool_call_id", "")
@@ -367,6 +402,7 @@ class AgentExecutor:
                         data={
                             "event": "ToolApprovalRequired",
                             "tool": {"runId": active_run_id, "tools": tools_info},
+                            **approval_member_fields,
                         },
                     )
 
@@ -425,6 +461,7 @@ class AgentExecutor:
                                 "tool": {
                                     **tool_info,
                                 },
+                                **approval_member_fields,
                             },
                         )
 
@@ -452,6 +489,8 @@ class AgentExecutor:
 
                 if event_name in {"RunCompleted", "TeamRunCompleted"}:
                     if member_fields:
+                        if force_member_output and not content_parts:
+                            fallback_final = str(getattr(chunk, "content", "") or "")
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
@@ -480,6 +519,10 @@ class AgentExecutor:
                                 **member_fields,
                             },
                         )
+                        if force_member_output:
+                            raise RuntimeError(
+                                str(getattr(chunk, "content", None) or "Agent run failed")
+                            )
                         continue
                     raise RuntimeError(
                         str(getattr(chunk, "content", None) or "Agent run failed")
@@ -622,6 +665,43 @@ def _get_run_handle(context: FlowContext) -> Any | None:
     if services is None:
         return None
     return getattr(services, "run_handle", None)
+
+
+def _chat_output_policy(context: FlowContext) -> Any | None:
+    services = context.services
+    if services is None:
+        return None
+    return getattr(services, "chat_output", None)
+
+
+def _force_member_output(context: FlowContext) -> bool:
+    policy = _chat_output_policy(context)
+    if policy is None:
+        return False
+    primary = getattr(policy, "primary_agent_id", None)
+    if not primary:
+        return False
+    return str(primary) != context.node_id
+
+
+def _fallback_member_fields(
+    data: dict[str, Any],
+    context: FlowContext,
+    run_id: str,
+    node_type: str,
+) -> dict[str, Any]:
+    resolved_run_id = str(run_id or "")
+    if not resolved_run_id:
+        resolved_run_id = f"{context.run_id}:{context.node_id}".strip(":")
+    if not resolved_run_id:
+        return {}
+    name = str(data.get("name") or "Agent")
+    return {
+        "memberRunId": resolved_run_id,
+        "memberName": name,
+        "nodeId": context.node_id,
+        "nodeType": node_type,
+    }
 
 
 def _resolve_run_input(
@@ -860,7 +940,7 @@ def _member_event_fields(chunk: Any) -> dict[str, Any]:
         return {}
 
     member_run_id = str(getattr(chunk, "run_id", "") or "")
-    member_name = str(getattr(chunk, "agent_name", "") or "Member")
+    member_name = str(getattr(chunk, "agent_name", "") or "Agent")
     if not member_run_id:
         return {}
     return {"memberRunId": member_run_id, "memberName": member_name}

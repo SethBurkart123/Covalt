@@ -22,6 +22,14 @@ export const chatStart = {
       socket: { type: 'data' },
     },
     {
+      id: 'primaryAgentId',
+      type: 'node-ref',
+      label: 'Primary Agent',
+      mode: 'constant',
+      nodeTypes: ['agent'],
+      placeholder: 'Select an agent...',
+    },
+    {
       id: 'includeUserTools',
       type: 'boolean',
       label: 'Include User Tools',

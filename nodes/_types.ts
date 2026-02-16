@@ -29,6 +29,7 @@ export type ParameterType =
   | 'mcp-server'
   | 'toolset'
   | 'tools'
+  | 'node-ref'
   | 'json';
 
 /** How the parameter behaves */
@@ -49,6 +50,11 @@ export interface SocketConfig {
   channel?: EdgeChannel;    // Optional explicit routing channel (flow/link)
   color?: string;           // Override default color
   shape?: SocketShape;  // Override default shape
+}
+
+export interface AutoExpandConfig {
+  min?: number;
+  max?: number;
 }
 
 /** Conditional visibility — show this parameter only when a condition is met */
@@ -100,6 +106,9 @@ export interface ParameterBase {
   
   /** Socket types this input accepts. Omit = same type only */
   acceptsTypes?: readonly SocketTypeId[];
+
+  /** Auto-expand socket inputs (e.g. input_2, input_3) */
+  autoExpand?: AutoExpandConfig;
   
   /** Conditional visibility — only render when condition is met */
   showWhen?: ShowWhen;
@@ -181,6 +190,17 @@ export interface ToolsetParameter extends ParameterBase {
   type: 'toolset';
 }
 
+/** Node reference parameter */
+export interface NodeRefParameter extends ParameterBase {
+  type: 'node-ref';
+  /** Restrict selectable node types (e.g. ['agent']) */
+  nodeTypes?: readonly string[];
+  /** Optional placeholder for the picker */
+  placeholder?: string;
+  /** Allow selecting the current node */
+  allowSelf?: boolean;
+}
+
 /** Tools socket parameter */
 export interface ToolsParameter extends ParameterBase {
   type: 'tools';
@@ -211,6 +231,7 @@ export type Parameter =
   | ModelParameter
   | McpServerParameter
   | ToolsetParameter
+  | NodeRefParameter
   | ToolsParameter
   | JsonParameter
   | DataParameter;

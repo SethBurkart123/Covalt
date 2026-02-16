@@ -82,7 +82,7 @@ export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): b
  * Priority:
  *   1. Data spine: data → data always works
  *   2. Data → non-data: allowed if target's acceptsTypes includes 'data' (e.g. sub-agent composition)
- *   3. Non-data → data: blocked
+ *   3. Non-data → data: allowed only if acceptsTypes includes the source type
  *   4. Typed sockets: check acceptsTypes or implicit coercion
  */
 export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): boolean {
@@ -94,7 +94,10 @@ export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): bo
     return false;
   }
 
-  if (targetType === 'data') return false;
+  if (targetType === 'data') {
+    if (targetParam.acceptsTypes?.includes(sourceType)) return true;
+    return false;
+  }
 
   if (targetParam.acceptsTypes) {
     return targetParam.acceptsTypes.includes(sourceType);

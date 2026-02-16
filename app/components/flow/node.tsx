@@ -6,7 +6,7 @@ import { ChevronDown, Check, X, Loader2, Play, FastForward, Pin } from 'lucide-r
 import * as Icons from 'lucide-react';
 import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
-import { getNodeDefinition, useFlowActions } from '@/lib/flow';
+import { getNodeDefinition, resolveNodeParameters, useFlowActions, useNodePicker, type FlowNode } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
 import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
@@ -112,6 +112,7 @@ const CompactSocketGroup = memo(function CompactSocketGroup({ items }: { items: 
  */
 function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const { updateNodeData } = useFlowActions();
+  const picker = useNodePicker();
   const { executionByNode, pinnedByNodeId, togglePinned } = useFlowExecution();
   const { requestRun, isRunning } = useFlowRunner();
   const rawStatus = typeof data._executionStatus === 'string' ? data._executionStatus : 'idle';
@@ -211,9 +212,21 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
     return connected;
   }, [edgeIndex]);
 
+  const resolvedParams = useMemo(
+    () =>
+      definition
+        ? resolveNodeParameters(
+            definition,
+            { id, type, position: { x: 0, y: 0 }, data: data as Record<string, unknown> } as FlowNode,
+            edges
+          )
+        : [],
+    [data, definition, edges, id, type]
+  );
+
   const visibleParams = useMemo(
-    () => (definition ? definition.parameters.filter(param => shouldRenderParam(param, 'node', edgeIndex)) : []),
-    [definition, edgeIndex]
+    () => resolvedParams.filter(param => shouldRenderParam(param, 'node', edgeIndex)),
+    [edgeIndex, resolvedParams]
   );
 
   const paramBlocks = useMemo<ParamBlock[]>(() => {
@@ -260,6 +273,8 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
         ? 'flow-node-glow ring-red-500/60'
         : '';
 
+  const isPickable = picker.isPickableNode(id, type);
+
   const statusBadge = status === 'running'
     ? (
       <span className="text-yellow-500" title={executionError}>
@@ -283,11 +298,15 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   return (
     <div
       className={cn(
-        'border rounded-lg bg-card min-w-[180px] max-w-[280px] shadow-lg',
+        'relative group border rounded-lg bg-card min-w-[180px] max-w-[280px] shadow-lg',
         selected ? 'border-primary' : getCategoryBorderColor(definition.category),
-        statusRing
+        statusRing,
+        isPickable && 'cursor-crosshair'
       )}
     >
+      {isPickable && (
+        <div className="pointer-events-none absolute -inset-3 z-10 rounded-2xl border-2 border-primary/40 opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:shadow-[0_0_0_6px_rgba(59,130,246,0.18)]" />
+      )}
       <div className={cn(
         getCategoryColor(definition.category),
         'rounded-lg'

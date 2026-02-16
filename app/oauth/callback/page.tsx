@@ -8,8 +8,6 @@ import {
   failMcpOauthCallback,
 } from "@/python/api";
 
-initBridge("http://127.0.0.1:8000");
-
 type CallbackStatus = "processing" | "success" | "error";
 
 function OAuthCallbackPageContent() {
@@ -19,6 +17,7 @@ function OAuthCallbackPageContent() {
 
   useEffect(() => {
     async function handleCallback() {
+      initBridge("http://127.0.0.1:8000");
       const code = searchParams.get("code");
       const state = searchParams.get("state");
       const error = searchParams.get("error");
