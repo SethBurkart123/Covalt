@@ -934,6 +934,17 @@ def _tool_node_refs(tool_payload: Any) -> list[tuple[str, str | None, str | None
     return refs
 
 
+def _count_agent_nodes(graph_data: dict[str, Any]) -> int:
+    nodes = graph_data.get("nodes", [])
+    if not isinstance(nodes, list):
+        return 0
+    count = 0
+    for node in nodes:
+        if isinstance(node, dict) and node.get("type") == "agent":
+            count += 1
+    return count
+
+
 def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | None:
     event_name = str(data.get("event") or "")
     if not event_name:
@@ -953,6 +964,8 @@ def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | No
         payload["memberName"] = data.get("memberName")
     if "task" in data:
         payload["task"] = data.get("task")
+    if "groupByNode" in data:
+        payload["groupByNode"] = data.get("groupByNode")
     if "nodeId" in data:
         payload["nodeId"] = data.get("nodeId")
     if "nodeType" in data:
@@ -1051,6 +1064,14 @@ async def handle_flow_stream(
         execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
     )
     _apply_runtime_config(graph_data, services, mode="chat")
+    if services is not None:
+        chat_output = getattr(services, "chat_output", None)
+        if (
+            chat_output is not None
+            and not getattr(chat_output, "primary_agent_id", None)
+            and _count_agent_nodes(graph_data) > 1
+        ):
+            setattr(chat_output, "group_by_node", True)
 
     context = types.SimpleNamespace(
         run_id=str(uuid.uuid4()),
@@ -1123,11 +1144,20 @@ async def handle_flow_stream(
             return None
 
         name = str(data.get("memberName") or "Agent")
+        node_id = data.get("nodeId")
+        node_type = data.get("nodeType")
+        group_by_node = data.get("groupByNode")
         if run_id in member_runs:
             member_state = member_runs[run_id]
             if name and name != "Agent":
                 member_state.name = name
                 content_blocks[member_state.block_index]["memberName"] = name
+            if node_id:
+                content_blocks[member_state.block_index]["nodeId"] = str(node_id)
+            if node_type:
+                content_blocks[member_state.block_index]["nodeType"] = str(node_type)
+            if group_by_node is not None:
+                content_blocks[member_state.block_index]["groupByNode"] = bool(group_by_node)
             return member_state
 
         block = {
@@ -1138,6 +1168,12 @@ async def handle_flow_stream(
             "isCompleted": False,
             "task": str(data.get("task") or ""),
         }
+        if node_id:
+            block["nodeId"] = str(node_id)
+        if node_type:
+            block["nodeType"] = str(node_type)
+        if group_by_node is not None:
+            block["groupByNode"] = bool(group_by_node)
         content_blocks.append(block)
         member_state = MemberRunState(
             run_id=run_id,
@@ -1616,7 +1652,8 @@ async def handle_flow_stream(
         _flush_all_member_runs()
 
         has_main_text = any(block.get("type") == "text" for block in content_blocks)
-        if not has_main_text:
+        has_member_runs = any(block.get("type") == "member_run" for block in content_blocks)
+        if not has_main_text and not has_member_runs:
             if primary_agent_id:
                 if primary_output is not None:
                     final_value = primary_output.value

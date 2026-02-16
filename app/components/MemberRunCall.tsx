@@ -8,7 +8,6 @@ import ThinkingCall from "./ThinkingCall";
 import {
   Collapsible,
   CollapsibleTrigger,
-  CollapsibleIcon,
   CollapsibleHeader,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
@@ -16,6 +15,7 @@ import type { ContentBlock } from "@/lib/types/chat";
 
 interface MemberRunCallProps {
   memberName: string;
+  nodeId?: string;
   content: ContentBlock[];
   active?: boolean;
   isGrouped?: boolean;
@@ -23,10 +23,13 @@ interface MemberRunCallProps {
   isLast?: boolean;
   isCompleted?: boolean;
   hasError?: boolean;
+  alwaysOpen?: boolean;
+  compact?: boolean;
 }
 
 export default function MemberRunCall({
   memberName,
+  nodeId,
   content,
   active = false,
   isGrouped = false,
@@ -34,6 +37,8 @@ export default function MemberRunCall({
   isLast = false,
   isCompleted = false,
   hasError = false,
+  alwaysOpen = false,
+  compact = false,
 }: MemberRunCallProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
@@ -42,14 +47,16 @@ export default function MemberRunCall({
   const userInteractedRef = useRef(false);
 
   useEffect(() => {
+    if (alwaysOpen) return;
     if (active) {
       setIsManuallyExpanded(false);
       userInteractedRef.current = false;
       setIsClosing(false);
     }
-  }, [active]);
+  }, [active, alwaysOpen]);
 
   useEffect(() => {
+    if (alwaysOpen) return;
     if (active && !userInteractedRef.current) {
       setIsOpen(true);
     } else if (!active && isOpen && !isManuallyExpanded && !userInteractedRef.current) {
@@ -60,7 +67,7 @@ export default function MemberRunCall({
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [active, isOpen, isManuallyExpanded]);
+  }, [active, alwaysOpen, isOpen, isManuallyExpanded]);
 
   useEffect(() => {
     if (active && !isManuallyExpanded && contentRef.current) {
@@ -69,6 +76,7 @@ export default function MemberRunCall({
   }, [content, active, isManuallyExpanded]);
 
   const handleToggle = () => {
+    if (alwaysOpen) return;
     userInteractedRef.current = true;
     if (active && isOpen && !isManuallyExpanded) {
       setIsManuallyExpanded(true);
@@ -87,6 +95,9 @@ export default function MemberRunCall({
     : activeTools.length > 0
       ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
       : undefined;
+  const nameLabel = memberName || "Agent";
+  const isOpenState = alwaysOpen ? true : isOpen;
+  const mode = compact || alwaysOpen ? "compact" : "regular";
 
   if (hasError) {
     return (
@@ -96,11 +107,11 @@ export default function MemberRunCall({
         isFirst={isFirst}
         isLast={isLast}
         disableToggle
+        mode={mode}
       >
         <CollapsibleTrigger>
           <CollapsibleHeader>
-            <CollapsibleIcon icon={Bot} />
-            <span className="text-sm font-mono text-foreground">{memberName || "Agent"}</span>
+            <span className="text-sm font-mono text-foreground">{nameLabel}</span>
             <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
               Failed
             </span>
@@ -112,12 +123,14 @@ export default function MemberRunCall({
 
   return (
     <Collapsible
-      open={isOpen}
-      onOpenChange={setIsOpen}
+      open={isOpenState}
+      onOpenChange={alwaysOpen ? undefined : setIsOpen}
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
       shimmer={active}
+      disableToggle={alwaysOpen}
+      mode={mode}
     >
       <CollapsibleTrigger
         onClick={handleToggle}
@@ -131,15 +144,14 @@ export default function MemberRunCall({
         }
       >
         <CollapsibleHeader>
-          <CollapsibleIcon icon={Bot} />
-          <span className="text-sm font-mono text-foreground">{memberName || "Agent"}</span>
+          <span className="text-sm font-mono text-foreground">{nameLabel}</span>
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
-      <CollapsibleContent className={(active || isClosing) && !isManuallyExpanded ? "pt-0" : ""}>
+      <CollapsibleContent className={(active || isClosing) && !isManuallyExpanded && !alwaysOpen ? "pt-0" : ""}>
         <div
           ref={contentRef}
-          className={(active || isClosing) && !isManuallyExpanded ? "max-h-48 overflow-y-auto pt-2" : ""}
+          className={(active || isClosing) && !isManuallyExpanded && !alwaysOpen ? "max-h-48 overflow-y-auto pt-2" : ""}
         >
           {content.map((block, i) => {
             if (block.type === "text") {

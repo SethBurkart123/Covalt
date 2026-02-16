@@ -78,6 +78,9 @@ export type ContentBlock =
       isCompleted: boolean;
       task?: string;
       hasError?: boolean;
+      nodeId?: string;
+      nodeType?: string;
+      groupByNode?: boolean;
     }
   | { type: "error"; content: string }
   | {

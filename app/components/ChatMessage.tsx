@@ -187,6 +187,23 @@ function ChatMessage({
                           continue;
                         }
 
+                        if (block.type === "member_run" && block.groupByNode) {
+                          rendered.push(
+                            <MemberRunCall
+                              key={block.runId || `member-${i}`}
+                              memberName={block.memberName}
+                              nodeId={block.nodeId}
+                              content={block.content}
+                              active={!block.isCompleted && !!isStreaming}
+                              isCompleted={block.isCompleted}
+                              hasError={block.hasError}
+                              alwaysOpen
+                              compact
+                            />
+                          );
+                          continue;
+                        }
+
                         if (
                           block.type === "tool_call" ||
                           block.type === "reasoning" ||
@@ -198,6 +215,9 @@ function ChatMessage({
 
                           while (j < blocks.length) {
                             const b = blocks[j];
+                            if (b.type === "member_run" && b.groupByNode) {
+                              break;
+                            }
                             if (
                               b.type === "tool_call" ||
                               b.type === "reasoning" ||
@@ -255,10 +275,11 @@ function ChatMessage({
                                 />
                               );
                             } else if (b.type === "member_run") {
-                              return (
+                                  return (
                                 <MemberRunCall
                                   key={b.runId || `member-${start}-${idx}`}
                                   memberName={b.memberName}
+                                  nodeId={b.nodeId}
                                   content={b.content}
                                   isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
