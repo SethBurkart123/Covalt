@@ -4,11 +4,10 @@ import asyncio
 import json
 import traceback
 import uuid
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence
+import types
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional, Literal
 
-from agno.agent import Agent, Message, RunEvent
-from agno.media import Audio, File, Image, Video
 from pydantic import BaseModel
 from rich.logging import RichHandler
 
@@ -16,15 +15,23 @@ from zynk import Channel, command
 
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
-from ..services.agent_factory import create_agent_for_chat
-from ..services.file_storage import (
-    get_extension_from_mime,
-    get_pending_attachment_path,
+from ..services.agent_manager import get_agent_manager
+from ..services.chat_attachments import prepare_stream_attachments
+from ..services.chat_graph_runner import (
+    append_error_block_to_message,
+    get_graph_data_for_chat,
+    parse_model_id,
+    run_graph_chat_runtime,
+    update_chat_model_selection,
+    _build_trigger_payload,
+    FlowRunHandle,
 )
+from ..services.flow_executor import run_flow
 from ..services.tool_registry import get_tool_registry
-from ..services.toolset_executor import get_toolset_executor
+from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
 from ..services.workspace_manager import get_workspace_manager
+from nodes._types import NodeEvent
 
 import logging
 
@@ -35,81 +42,6 @@ logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
 )
 logger = logging.getLogger(__name__)
-
-registry = get_tool_registry()
-_active_runs: Dict[str, tuple] = {}  # message_id -> (run_id, agent)
-
-
-def extract_error_message(error_content: str) -> str:
-    if not error_content:
-        return "Unknown error"
-
-    json_start = error_content.find("{")
-    if json_start != -1:
-        try:
-            data = json.loads(error_content[json_start:])
-            if isinstance(data, dict):
-                if "error" in data and isinstance(data["error"], dict):
-                    return data["error"].get("message", error_content)
-                if "message" in data:
-                    return data["message"]
-        except json.JSONDecodeError:
-            pass
-
-    return error_content
-
-
-def is_toolset_tool(tool_name: str) -> bool:
-    return (
-        ":" in tool_name
-        and not tool_name.startswith("mcp:")
-        and not tool_name.startswith("-")
-    )
-
-
-def parse_tool_result(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        return result
-    if isinstance(result, str):
-        try:
-            parsed = json.loads(result)
-            return parsed if isinstance(parsed, dict) else {"result": parsed}
-        except json.JSONDecodeError:
-            return {"result": result}
-    return {"result": result}
-
-
-class BroadcastingChannel:
-    def __init__(self, channel: Any, chat_id: str):
-        self._channel = channel
-        self._chat_id = chat_id
-        self._loop = asyncio.get_event_loop()
-        self._pending_broadcasts: list = []
-
-    def send_model(self, event: ChatEvent) -> None:
-        self._channel.send_model(event)
-
-        if self._chat_id:
-            event_dict = (
-                event.model_dump() if hasattr(event, "model_dump") else event.dict()
-            )
-            self._pending_broadcasts.append(
-                asyncio.create_task(
-                    broadcaster.broadcast_event(self._chat_id, event_dict)
-                )
-            )
-
-    async def flush_broadcasts(self) -> None:
-        if self._pending_broadcasts:
-            await asyncio.gather(*self._pending_broadcasts, return_exceptions=True)
-            self._pending_broadcasts.clear()
-
-
-_approval_events: Dict[str, asyncio.Event] = {}
-
-_approval_responses: Dict[
-    str, Dict[str, Any]
-] = {}  # approval_id -> {approved: bool, edited_args: dict}
 
 
 class AttachmentInput(BaseModel):
@@ -137,131 +69,51 @@ class StreamChatRequest(BaseModel):
     attachments: List[AttachmentMeta] = []
 
 
-def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
-    if not model_id:
-        return "", ""
-    if ":" in model_id:
-        provider, model = model_id.split(":", 1)
-        return provider, model
-    return "", model_id
-
-
-MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
-
-AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
-    "image/*",
-    "audio/*",
-    "video/*",
-    "application/pdf",
-    "text/plain",
-    "text/csv",
-    "application/json",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/msword",
-]
-
-
-def is_allowed_attachment_mime(mime_type: str) -> bool:
-    if not mime_type:
-        return False
-    for prefix, wildcard in [
-        ("image/", "image/*"),
-        ("audio/", "audio/*"),
-        ("video/", "video/*"),
-    ]:
-        if mime_type.startswith(prefix):
-            return wildcard in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-    return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
-
-
-def load_attachments_as_agno_media(
-    chat_id: str, attachments: List[Attachment]
-) -> tuple[Sequence[Image], Sequence[File], Sequence[Audio], Sequence[Video]]:
-    images: List[Image] = []
-    files: List[File] = []
-    audio: List[Audio] = []
-    videos: List[Video] = []
-
-    workspace_manager = get_workspace_manager(chat_id)
-
-    for att in attachments:
-        if att.size > MAX_ATTACHMENT_BYTES:
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): {att.size} bytes exceeds {MAX_ATTACHMENT_BYTES}"
-            )
-            continue
-
-        if not is_allowed_attachment_mime(att.mimeType):
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): MIME '{att.mimeType}' not allowed for Agno"
-            )
-            continue
-
-        filepath = workspace_manager.workspace_dir / att.name
-        if not filepath.exists():
-            logger.warning(
-                f"[attachments] Skipping {att.id} ({att.name}): file not found in workspace"
-            )
-            continue
-
-        if att.type == "image":
-            images.append(Image(filepath=filepath))
-        elif att.type == "audio":
-            audio.append(Audio(filepath=filepath))
-        elif att.type == "video":
-            videos.append(Video(filepath=filepath))
-        else:
-            files.append(File(filepath=filepath, name=att.name))
-
-    return images, files, audio, videos
-
-
 def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
+    agent_ref: str | None = None
+    if model_id and model_id.startswith("agent:"):
+        agent_ref = model_id[len("agent:") :]
+    effective_model_id = None if agent_ref else model_id
+
     if not chat_id:
         chat_id = str(uuid.uuid4())
         with db.db_session() as sess:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             db.create_chat(
                 sess,
                 id=chat_id,
                 title="New Chat",
-                model=model_id,
+                model=effective_model_id,
                 createdAt=now,
                 updatedAt=now,
             )
-            provider, model = parse_model_id(model_id)
+            provider, model = parse_model_id(effective_model_id)
             config = {
                 "provider": provider,
                 "model_id": model,
                 "tool_ids": db.get_default_tool_ids(sess),
                 "instructions": [],
             }
+            if agent_ref:
+                config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         return chat_id
 
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
-            provider, model = parse_model_id(model_id)
+            provider, model = parse_model_id(effective_model_id)
             config = {
                 "provider": provider,
                 "model_id": model,
                 "tool_ids": db.get_default_tool_ids(sess),
                 "instructions": [],
             }
+            if agent_ref:
+                config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         elif model_id:
-            provider, model = parse_model_id(model_id)
-            cur_provider = config.get("provider") or ""
-            cur_model = config.get("model_id") or ""
-            if (provider and provider != cur_provider) or (
-                model and model != cur_model
-            ):
-                if provider:
-                    config["provider"] = provider
-                if model:
-                    config["model_id"] = model
-                db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+            update_chat_model_selection(sess, chat_id, model_id)
 
     return chat_id
 
@@ -274,7 +126,7 @@ def save_user_msg(
     manifest_id: Optional[str] = None,
 ):
     with db.db_session() as sess:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         message = db.Message(
             id=msg.id,
             chatId=chat_id,
@@ -299,7 +151,7 @@ def save_user_msg(
 def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         model_used = None
         try:
             config = db.get_chat_agent_config(sess, chat_id)
@@ -338,517 +190,6 @@ def save_msg_content(msg_id: str, content: str):
         db.update_message_content(sess, messageId=msg_id, content=content)
 
 
-def convert_to_agno_messages(
-    chat_msg: ChatMessage,
-    chat_id: Optional[str] = None,
-) -> List[Message]:
-    if chat_msg.role == "user":
-        content = chat_msg.content
-        if isinstance(content, list):
-            content = json.dumps(content)
-
-        images_list: Optional[List[Image]] = None
-        files_list: Optional[List[File]] = None
-        audio_list: Optional[List[Audio]] = None
-        videos_list: Optional[List[Video]] = None
-
-        if chat_id and chat_msg.attachments:
-            images, files, audio, videos = load_attachments_as_agno_media(
-                chat_id, chat_msg.attachments
-            )
-            if images:
-                images_list = list(images)
-            if files:
-                files_list = list(files)
-            if audio:
-                audio_list = list(audio)
-            if videos:
-                videos_list = list(videos)
-
-        return [
-            Message(
-                role="user",
-                content=content,
-                images=images_list,
-                files=files_list,
-                audio=audio_list,
-                videos=videos_list,
-            )
-        ]
-
-    if chat_msg.role == "assistant":
-        content = chat_msg.content
-
-        if isinstance(content, str):
-            return [Message(role="assistant", content=content)]
-
-        if not isinstance(content, list):
-            return [Message(role="assistant", content=str(content))]
-
-        messages = []
-        text_parts = []
-
-        for block in content:
-            if block.type == "text":
-                text_parts.append(block.content or "")
-
-            elif block.type == "tool_call":
-                if text_parts:
-                    messages.append(
-                        Message(
-                            role="assistant",
-                            content=" ".join(text_parts),
-                            tool_calls=[
-                                {
-                                    "id": block.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": block.toolName,
-                                        "arguments": json.dumps(block.toolArgs or {}),
-                                    },
-                                }
-                            ],
-                        )
-                    )
-                    text_parts = []
-                else:
-                    messages.append(
-                        Message(
-                            role="assistant",
-                            content=None,
-                            tool_calls=[
-                                {
-                                    "id": block.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": block.toolName,
-                                        "arguments": json.dumps(block.toolArgs or {}),
-                                    },
-                                }
-                            ],
-                        )
-                    )
-
-                if block.toolResult:
-                    messages.append(
-                        Message(
-                            role="tool",
-                            tool_call_id=block.id,
-                            content=str(block.toolResult),
-                        )
-                    )
-
-        if text_parts:
-            messages.append(Message(role="assistant", content=" ".join(text_parts)))
-
-        return messages if messages else [Message(role="assistant", content="")]
-
-    return []
-
-
-def load_initial_content(msg_id: str) -> List[Dict[str, Any]]:
-    try:
-        with db.db_session() as sess:
-            message = sess.get(db.Message, msg_id)
-            if not message or not message.content:
-                return []
-
-            raw = message.content.strip()
-            blocks = (
-                json.loads(raw)
-                if raw.startswith("[")
-                else [{"type": "text", "content": raw}]
-            )
-
-            while blocks and blocks[-1].get("type") == "error":
-                blocks.pop()
-
-            return blocks
-    except Exception as e:
-        logger.info(f"[stream] Warning loading initial content: {e}")
-        return []
-
-
-async def handle_content_stream(
-    agent: Agent,
-    messages: List[ChatMessage],
-    assistant_msg_id: str,
-    raw_ch: Any,
-    chat_id: str = "",
-):
-    ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
-
-    agno_messages = []
-    for msg in messages:
-        agno_messages.extend(convert_to_agno_messages(msg, chat_id))
-
-    if chat_id:
-        await broadcaster.register_stream(chat_id, assistant_msg_id)
-
-    response_stream = agent.arun(
-        input=agno_messages,
-        stream=True,
-        stream_events=True,
-    )
-
-    content_blocks = load_initial_content(assistant_msg_id)
-    current_text = ""
-    current_reasoning = ""
-    had_error = False
-    run_id = None
-
-    def flush_text():
-        nonlocal current_text
-        if current_text:
-            content_blocks.append({"type": "text", "content": current_text})
-            current_text = ""
-
-    def flush_reasoning():
-        nonlocal current_reasoning
-        if current_reasoning:
-            content_blocks.append(
-                {"type": "reasoning", "content": current_reasoning, "isCompleted": True}
-            )
-            current_reasoning = ""
-
-    def save_state():
-        temp = content_blocks.copy()
-        if current_text:
-            temp.append({"type": "text", "content": current_text})
-        if current_reasoning:
-            temp.append(
-                {
-                    "type": "reasoning",
-                    "content": current_reasoning,
-                    "isCompleted": False,
-                }
-            )
-        return json.dumps(temp)
-
-    def save_final():
-        return json.dumps(content_blocks)
-
-    try:
-        while True:
-            async for chunk in response_stream:
-                if not run_id and chunk.run_id:
-                    run_id = chunk.run_id
-                    _active_runs[assistant_msg_id] = (run_id, agent)
-                    logger.info(f"[stream] Captured run_id {run_id}")
-                    if chat_id:
-                        await broadcaster.update_stream_run_id(chat_id, run_id)
-
-                if chunk.event == RunEvent.run_cancelled:
-                    flush_text()
-                    flush_reasoning()
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-                    with db.db_session() as sess:
-                        db.mark_message_complete(sess, assistant_msg_id)
-                    _active_runs.pop(assistant_msg_id, None)
-                    ch.send_model(ChatEvent(event="RunCancelled"))
-                    if chat_id:
-                        await broadcaster.update_stream_status(chat_id, "completed")
-                        await broadcaster.unregister_stream(chat_id)
-                    return
-
-                if chunk.event == RunEvent.run_content:
-                    if chunk.reasoning_content:
-                        if current_text and not current_reasoning:
-                            flush_text()
-                        current_reasoning += chunk.reasoning_content
-                        ch.send_model(
-                            ChatEvent(
-                                event="ReasoningStep",
-                                reasoningContent=chunk.reasoning_content,
-                            )
-                        )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
-
-                    if chunk.content:
-                        if current_reasoning and not current_text:
-                            flush_reasoning()
-                        current_text += chunk.content
-                        ch.send_model(
-                            ChatEvent(event="RunContent", content=chunk.content)
-                        )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
-
-                elif chunk.event == RunEvent.tool_call_started:
-                    flush_text()
-                    flush_reasoning()
-                    ch.send_model(
-                        ChatEvent(
-                            event="ToolCallStarted",
-                            tool={
-                                "id": chunk.tool.tool_call_id,
-                                "toolName": chunk.tool.tool_name,
-                                "toolArgs": chunk.tool.tool_args,
-                                "isCompleted": False,
-                            },
-                        )
-                    )
-
-                elif chunk.event == RunEvent.tool_call_completed:
-                    flush_text()
-                    flush_reasoning()
-
-                    render_plan = None
-                    if is_toolset_tool(chunk.tool.tool_name):
-                        toolset_executor = get_toolset_executor()
-                        parsed_result = parse_tool_result(chunk.tool.result)
-                        render_plan = toolset_executor.generate_render_plan(
-                            chunk.tool.tool_name,
-                            chunk.tool.tool_args or {},
-                            parsed_result,
-                            chat_id,
-                        )
-
-                    tool_block = {
-                        "type": "tool_call",
-                        "id": chunk.tool.tool_call_id,
-                        "toolName": chunk.tool.tool_name,
-                        "toolArgs": chunk.tool.tool_args,
-                        "toolResult": str(chunk.tool.result)
-                        if chunk.tool.result is not None
-                        else None,
-                        "isCompleted": True,
-                        "renderer": registry.get_renderer(chunk.tool.tool_name),
-                    }
-                    if render_plan is not None:
-                        tool_block["renderPlan"] = render_plan
-
-                    existing_index = next(
-                        (
-                            i
-                            for i, block in enumerate(content_blocks)
-                            if block.get("type") == "tool_call"
-                            and block.get("id") == tool_block["id"]
-                        ),
-                        None,
-                    )
-                    if existing_index is not None:
-                        content_blocks[existing_index] = tool_block
-                    else:
-                        content_blocks.append(tool_block)
-                    ch.send_model(ChatEvent(event="ToolCallCompleted", tool=tool_block))
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-
-                elif chunk.event == RunEvent.reasoning_started:
-                    flush_text()
-                    ch.send_model(ChatEvent(event="ReasoningStarted"))
-
-                elif chunk.event == RunEvent.reasoning_step:
-                    if chunk.reasoning_content:
-                        if current_text:
-                            flush_text()
-                        current_reasoning += chunk.reasoning_content
-                        ch.send_model(
-                            ChatEvent(
-                                event="ReasoningStep",
-                                reasoningContent=chunk.reasoning_content,
-                            )
-                        )
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
-
-                elif chunk.event == RunEvent.reasoning_completed:
-                    flush_reasoning()
-                    ch.send_model(ChatEvent(event="ReasoningCompleted"))
-
-                elif chunk.event == RunEvent.run_completed:
-                    flush_text()
-                    flush_reasoning()
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-                    with db.db_session() as sess:
-                        db.mark_message_complete(sess, assistant_msg_id)
-                    ch.send_model(ChatEvent(event="RunCompleted"))
-                    await ch.flush_broadcasts()
-                    if chat_id:
-                        await broadcaster.update_stream_status(chat_id, "completed")
-                        await broadcaster.unregister_stream(chat_id)
-                    return
-
-                elif chunk.event == RunEvent.run_error:
-                    flush_text()
-                    flush_reasoning()
-                    error_msg = extract_error_message(
-                        chunk.content if chunk.content else str(chunk)
-                    )
-                    content_blocks.append(
-                        {
-                            "type": "error",
-                            "content": error_msg,
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }
-                    )
-                    await asyncio.to_thread(
-                        save_msg_content, assistant_msg_id, save_final()
-                    )
-                    ch.send_model(ChatEvent(event="RunError", content=error_msg))
-                    had_error = True
-                    await ch.flush_broadcasts()
-                    if chat_id:
-                        await broadcaster.update_stream_status(
-                            chat_id, "error", error_msg
-                        )
-                        await broadcaster.unregister_stream(chat_id)
-                    return
-
-                elif chunk.event == RunEvent.run_paused:
-                    flush_text()
-                    flush_reasoning()
-
-                    if chat_id:
-                        await broadcaster.update_stream_status(chat_id, "paused_hitl")
-
-                    if (
-                        hasattr(chunk, "tools_requiring_confirmation")
-                        and chunk.tools_requiring_confirmation
-                    ):
-                        tools_info = []
-                        for tool in chunk.tools_requiring_confirmation:
-                            editable_args = registry.get_editable_args(tool.tool_name)
-                            tool_block = {
-                                "type": "tool_call",
-                                "id": tool.tool_call_id,
-                                "toolName": tool.tool_name,
-                                "toolArgs": tool.tool_args,
-                                "isCompleted": False,
-                                "requiresApproval": True,
-                                "approvalStatus": "pending",
-                            }
-                            content_blocks.append(tool_block)
-                            tool_info = {
-                                "id": tool.tool_call_id,
-                                "toolName": tool.tool_name,
-                                "toolArgs": tool.tool_args,
-                            }
-                            if editable_args:
-                                tool_info["editableArgs"] = editable_args
-                            tools_info.append(tool_info)
-
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
-                        ch.send_model(
-                            ChatEvent(
-                                event="ToolApprovalRequired",
-                                tool={"runId": run_id, "tools": tools_info},
-                            )
-                        )
-
-                        approval_event = asyncio.Event()
-                        _approval_events[run_id] = approval_event
-
-                        timed_out = False
-                        try:
-                            await asyncio.wait_for(approval_event.wait(), timeout=300)
-                        except asyncio.TimeoutError:
-                            timed_out = True
-                            for tool in chunk.tools_requiring_confirmation:
-                                tool.confirmed = False
-                        else:
-                            response = _approval_responses.get(run_id, {})
-                            tool_decisions = response.get("tool_decisions", {})
-                            edited_args = response.get("edited_args", {})
-                            default_approved = response.get("approved", False)
-                            for tool in chunk.tools_requiring_confirmation:
-                                tool_id = getattr(tool, "tool_call_id", None)
-                                tool.confirmed = tool_decisions.get(
-                                    tool_id, default_approved
-                                )
-                                if tool_id and tool_id in edited_args:
-                                    tool.tool_args = edited_args[tool_id]
-
-                        _approval_events.pop(run_id, None)
-                        _approval_responses.pop(run_id, None)
-
-                        for tool in chunk.tools_requiring_confirmation:
-                            tool_id = tool.tool_call_id
-                            status = (
-                                "timeout"
-                                if timed_out
-                                else ("approved" if tool.confirmed else "denied")
-                            )
-                            for block in content_blocks:
-                                if (
-                                    block.get("type") == "tool_call"
-                                    and block.get("id") == tool_id
-                                ):
-                                    block["approvalStatus"] = status
-                                    block["toolArgs"] = tool.tool_args
-                                    if status in ("denied", "timeout"):
-                                        block["isCompleted"] = True
-                            ch.send_model(
-                                ChatEvent(
-                                    event="ToolApprovalResolved",
-                                    tool={
-                                        "id": tool_id,
-                                        "approvalStatus": status,
-                                        "toolArgs": tool.tool_args,
-                                    },
-                                )
-                            )
-
-                        await asyncio.to_thread(
-                            save_msg_content, assistant_msg_id, save_state()
-                        )
-
-                        if chat_id:
-                            await broadcaster.update_stream_status(chat_id, "streaming")
-
-                        response_stream = agent.acontinue_run(
-                            run_id=run_id,
-                            updated_tools=chunk.tools,
-                            stream=True,
-                            stream_events=True,
-                        )
-                        break
-
-            else:
-                break
-
-    except asyncio.CancelledError:
-        if run_id:
-            _approval_events.pop(run_id, None)
-            _approval_responses.pop(run_id, None)
-        raise
-    except Exception as e:
-        logger.error(f"[stream] Exception in stream handler: {e}")
-        flush_text()
-        flush_reasoning()
-        try:
-            await asyncio.to_thread(save_msg_content, assistant_msg_id, save_final())
-        except Exception as save_err:
-            logger.error(f"[stream] Failed to save state on error: {save_err}")
-
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", str(e))
-            await broadcaster.unregister_stream(chat_id)
-
-    _active_runs.pop(assistant_msg_id, None)
-
-    if not had_error:
-        with db.db_session() as sess:
-            message = sess.get(db.Message, assistant_msg_id)
-            if message and not message.is_complete:
-                db.mark_message_complete(sess, assistant_msg_id)
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "completed")
-            await broadcaster.unregister_stream(chat_id)
-
-
 class CancelRunRequest(BaseModel):
     messageId: str
 
@@ -862,35 +203,94 @@ class RespondToToolApprovalInput(BaseModel):
 
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    _approval_responses[body.runId] = {
-        "approved": body.approved,
-        "tool_decisions": body.toolDecisions or {},
-        "edited_args": body.editedArgs or {},
-    }
-    if body.runId in _approval_events:
-        _approval_events[body.runId].set()
+    run_control.set_approval_response(
+        body.runId,
+        approved=body.approved,
+        tool_decisions=body.toolDecisions or {},
+        edited_args=body.editedArgs or {},
+    )
     return {"success": True}
 
 
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
-    if body.messageId not in _active_runs:
-        logger.info(f"[cancel_run] No active run found for message {body.messageId}")
-        return {"cancelled": False}
-
-    run_id, agent = _active_runs[body.messageId]
-    try:
+    active_run = run_control.get_active_run(body.messageId)
+    if active_run is None:
         logger.info(
-            f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
+            f"[cancel_run] No active run found for message {body.messageId}; storing early intent"
         )
-        agent.cancel_run(run_id)
+        run_control.mark_early_cancel(body.messageId)
+
+        try:
+            with db.db_session() as sess:
+                db.mark_message_complete(sess, body.messageId)
+        except Exception as e:
+            logger.info(f"[cancel_run] Warning marking message complete: {e}")
+
+        return {"cancelled": True}
+
+    run_id, agent = active_run
+    remove_active_run = False
+    try:
+        if run_id:
+            logger.info(
+                f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
+            )
+            agent.cancel_run(run_id)
+            remove_active_run = True
+        else:
+            logger.info(
+                f"[cancel_run] Flagging early cancel for message {body.messageId}"
+            )
+            run_control.mark_early_cancel(body.messageId)
+            request_cancel = getattr(agent, "request_cancel", None)
+            if callable(request_cancel):
+                request_cancel()
+
         with db.db_session() as sess:
             db.mark_message_complete(sess, body.messageId)
-        del _active_runs[body.messageId]
-        logger.info(f"[cancel_run] Successfully cancelled run {run_id}")
+        if remove_active_run:
+            run_control.remove_active_run(body.messageId)
+        logger.info(f"[cancel_run] Successfully cancelled for message {body.messageId}")
         return {"cancelled": True}
     except Exception as e:
         logger.info(f"[cancel_run] Error cancelling run: {e}")
+        return {"cancelled": False}
+
+
+@command
+async def cancel_flow_run(body: CancelFlowRunRequest) -> dict:
+    active_run = run_control.get_active_run(body.runId)
+    if active_run is None:
+        logger.info(
+            f"[cancel_flow_run] No active run found for flow run {body.runId}"
+        )
+        return {"cancelled": False}
+
+    run_id, agent = active_run
+    remove_active_run = False
+    try:
+        if run_id:
+            logger.info(
+                f"[cancel_flow_run] Cancelling run {run_id} for flow run {body.runId}"
+            )
+            agent.cancel_run(run_id)
+            remove_active_run = True
+        else:
+            logger.info(
+                f"[cancel_flow_run] Flagging early cancel for flow run {body.runId}"
+            )
+            run_control.mark_early_cancel(body.runId)
+            request_cancel = getattr(agent, "request_cancel", None)
+            if callable(request_cancel):
+                request_cancel()
+
+        if remove_active_run:
+            run_control.remove_active_run(body.runId)
+        logger.info(f"[cancel_flow_run] Successfully cancelled for flow run {body.runId}")
+        return {"cancelled": True}
+    except Exception as e:
+        logger.info(f"[cancel_flow_run] Error cancelling run: {e}")
         return {"cancelled": False}
 
 
@@ -916,63 +316,14 @@ async def stream_chat(
     file_renames = {}
 
     if body.attachments:
-        logger.info(
-            f"[stream] Processing {len(body.attachments)} attachments for chat {chat_id}"
+        attachment_state = prepare_stream_attachments(
+            chat_id,
+            body.attachments,
+            source_ref=messages[-1].id if messages else None,
         )
-
-        files_to_add: List[tuple[str, bytes]] = []
-        for att in body.attachments:
-            extension = get_extension_from_mime(att.mimeType)
-            pending_path = get_pending_attachment_path(att.id, extension)
-
-            if pending_path.exists():
-                content = pending_path.read_bytes()
-                files_to_add.append((att.name, content))
-                logger.info(f"[stream] Loaded pending file: {att.name}")
-            else:
-                logger.warning(
-                    f"[stream] Attachment {att.id} ({att.name}) not found in pending storage"
-                )
-                continue
-
-        if files_to_add:
-            with db.db_session() as sess:
-                chat = sess.get(db.Chat, chat_id)
-                parent_msg_id = chat.active_leaf_message_id if chat else None
-                parent_manifest_id = (
-                    db.get_manifest_for_message(sess, parent_msg_id)
-                    if parent_msg_id
-                    else None
-                )
-
-            workspace_manager = get_workspace_manager(chat_id)
-            manifest_id, file_renames = workspace_manager.add_files(
-                files=files_to_add,
-                parent_manifest_id=parent_manifest_id,
-                source="user_upload",
-                source_ref=messages[-1].id if messages else None,
-            )
-
-            for att in body.attachments:
-                saved_attachments.append(
-                    Attachment(
-                        id=att.id,
-                        type=att.type,
-                        name=file_renames.get(att.name, att.name),
-                        mimeType=att.mimeType,
-                        size=att.size,
-                    )
-                )
-
-            for att in body.attachments:
-                extension = get_extension_from_mime(att.mimeType)
-                pending_path = get_pending_attachment_path(att.id, extension)
-                if pending_path.exists():
-                    pending_path.unlink()
-
-            logger.info(
-                f"[stream] Added {len(files_to_add)} files to workspace, {len(file_renames)} renamed"
-            )
+        saved_attachments = attachment_state.attachments
+        manifest_id = attachment_state.manifest_id
+        file_renames = attachment_state.file_renames
 
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
@@ -999,12 +350,18 @@ async def stream_chat(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        agent = create_agent_for_chat(chat_id, tool_ids=body.toolIds)
-        if not messages or messages[-1].role != "user":
-            raise ValueError("No user message found in request")
-        await handle_content_stream(
-            agent, messages, assistant_msg_id, channel, chat_id=chat_id
+        graph_data = get_graph_data_for_chat(chat_id, body.modelId)
+        logger.info("[stream] Unified chat runtime — running graph runtime")
+        await run_graph_chat_runtime(
+            graph_data,
+            messages,
+            assistant_msg_id,
+            channel,
+            chat_id=chat_id,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
         )
+        return
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
 
@@ -1012,34 +369,310 @@ async def stream_chat(
             await broadcaster.update_stream_status(chat_id, "error", str(e))
             await broadcaster.unregister_stream(chat_id)
 
-        error_block = {
-            "type": "error",
-            "content": str(e),
-            "traceback": traceback.format_exc(),
-            "timestamp": datetime.utcnow().isoformat(),
-        }
         try:
-            with db.db_session() as sess:
-                message = sess.get(db.Message, assistant_msg_id)
-                blocks = []
-                if message and message.content:
-                    raw = message.content.strip()
-                    try:
-                        blocks = (
-                            json.loads(raw)
-                            if raw.startswith("[")
-                            else [{"type": "text", "content": message.content}]
-                        )
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                blocks.append(error_block)
-                db.update_message_content(
-                    sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-                )
+            append_error_block_to_message(
+                assistant_msg_id,
+                error_message=str(e),
+                traceback_text=traceback.format_exc(),
+            )
         except Exception as e2:
             logger.info(f"[stream] Failed to append error block, falling back: {e2}")
-            save_msg_content(assistant_msg_id, json.dumps([error_block]))
+            save_msg_content(
+                assistant_msg_id,
+                json.dumps(
+                    [
+                        {
+                            "type": "error",
+                            "content": str(e),
+                            "traceback": traceback.format_exc(),
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    ]
+                ),
+            )
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
+
+
+class StreamAgentChatRequest(BaseModel):
+    agentId: str
+    messages: List[Dict[str, Any]]
+    chatId: Optional[str] = None
+    ephemeral: bool = False
+
+
+class FlowRunPromptInput(BaseModel):
+    message: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    messages: Optional[List[Any]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+
+
+class StreamFlowRunRequest(BaseModel):
+    agentId: str
+    mode: Literal["execute", "runFrom"]
+    targetNodeId: str
+    cachedOutputs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
+    promptInput: Optional[FlowRunPromptInput] = None
+    nodeIds: Optional[List[str]] = None
+
+
+class CancelFlowRunRequest(BaseModel):
+    runId: str
+
+
+class FlowRunCancelHandle:
+    def __init__(self, run_handle: FlowRunHandle, execution_ctx: Any | None) -> None:
+        self._run_handle = run_handle
+        self._execution_ctx = execution_ctx
+
+    def bind_agent(self, agent: Any) -> None:
+        self._run_handle.bind_agent(agent)
+
+    def set_run_id(self, run_id: str) -> None:
+        self._run_handle.set_run_id(run_id)
+
+    def request_cancel(self) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.request_cancel()
+
+    def cancel_run(self, run_id: str) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.cancel_run(run_id)
+
+    def is_cancel_requested(self) -> bool:
+        return self._run_handle.is_cancel_requested()
+
+
+@command
+async def stream_agent_chat(
+    channel: Channel,
+    body: StreamAgentChatRequest,
+) -> None:
+    messages: List[ChatMessage] = [
+        ChatMessage(
+            id=m.get("id"),
+            role=m.get("role"),
+            content=m.get("content", ""),
+            createdAt=m.get("createdAt"),
+            toolCalls=m.get("toolCalls"),
+        )
+        for m in body.messages
+    ]
+
+    agent_manager = get_agent_manager()
+    agent_data = agent_manager.get_agent(body.agentId)
+    if not agent_data:
+        channel.send_model(
+            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        )
+        return
+
+    ephemeral = body.ephemeral
+
+    if ephemeral:
+        chat_id = ""
+        assistant_msg_id = str(uuid.uuid4())
+    else:
+        chat_id = ensure_chat_initialized(body.chatId, None)
+        with db.db_session() as sess:
+            chat = sess.get(db.Chat, chat_id)
+            parent_id = chat.active_leaf_message_id if chat else None
+        if messages and messages[-1].role == "user":
+            save_user_msg(messages[-1], chat_id, parent_id)
+            parent_id = messages[-1].id
+        assistant_msg_id = init_assistant_msg(chat_id, parent_id)
+
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id or None))
+    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+
+    try:
+        graph_data = agent_data["graph_data"]
+        logger.info("[stream_agent] Graph-backed chat — running graph runtime")
+        await run_graph_chat_runtime(
+            graph_data,
+            messages,
+            assistant_msg_id,
+            channel,
+            chat_id=chat_id,
+            ephemeral=ephemeral,
+            agent_id=body.agentId,
+        )
+    except Exception as e:
+        logger.error(f"[stream_agent] Error: {e}")
+        traceback.print_exc()
+
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
+
+        if not ephemeral:
+            try:
+                append_error_block_to_message(
+                    assistant_msg_id,
+                    error_message=str(e),
+                    traceback_text=traceback.format_exc(),
+                )
+            except Exception as e2:
+                logger.error(f"[stream_agent] Failed to append error block: {e2}")
+                save_msg_content(
+                    assistant_msg_id,
+                    json.dumps(
+                        [
+                            {
+                                "type": "error",
+                                "content": str(e),
+                                "traceback": traceback.format_exc(),
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        ]
+                    ),
+                )
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+
+
+@command
+async def stream_flow_run(
+    channel: Channel,
+    body: StreamFlowRunRequest,
+) -> None:
+    agent_manager = get_agent_manager()
+    agent_data = agent_manager.get_agent(body.agentId)
+    if not agent_data:
+        channel.send_model(
+            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        )
+        return
+
+    prompt = body.promptInput or FlowRunPromptInput()
+    message = prompt.message or ""
+    history = prompt.history or []
+    messages = prompt.messages or []
+    attachments = prompt.attachments or []
+
+    trigger_payload = _build_trigger_payload(
+        message,
+        history,
+        attachments,
+        messages,
+    )
+
+    run_id = str(uuid.uuid4())
+    scope_payload: dict[str, Any] = {
+        "mode": body.mode,
+        "target_node_ids": [body.targetNodeId],
+    }
+    if body.nodeIds is not None:
+        scope_payload["node_ids"] = body.nodeIds
+
+    execution_ctx = types.SimpleNamespace(
+        scope=scope_payload,
+        cached_outputs=body.cachedOutputs or {},
+        stop_run=False,
+    )
+    run_handle = FlowRunHandle()
+    cancel_handle = FlowRunCancelHandle(run_handle, execution_ctx)
+
+    services = types.SimpleNamespace(
+        run_handle=cancel_handle,
+        extra_tool_ids=[],
+        tool_registry=get_tool_registry(),
+        chat_input=types.SimpleNamespace(
+            last_user_message=message,
+            history=history,
+            messages=messages,
+            last_user_attachments=attachments,
+        ),
+        expression_context={"trigger": trigger_payload},
+        execution=execution_ctx,
+    )
+    context = types.SimpleNamespace(
+        run_id=run_id,
+        chat_id=None,
+        state=types.SimpleNamespace(user_message=message),
+        services=services,
+    )
+
+    run_control.register_active_run(run_id, cancel_handle)
+
+    channel.send_model(ChatEvent(event="RunStarted", sessionId=run_id))
+
+    try:
+        if run_control.consume_early_cancel(run_id):
+            channel.send_model(ChatEvent(event="RunCancelled"))
+            return
+
+        async for item in run_flow(agent_data["graph_data"], context):
+            if isinstance(item, NodeEvent):
+                if item.event_type == "agent_event":
+                    payload = dict(item.data or {})
+                    event_name = str(payload.pop("event", "agent_event"))
+                    channel.send_model(ChatEvent(event=event_name, **payload))
+                    continue
+
+                if item.event_type == "progress":
+                    token = (item.data or {}).get("token", "")
+                    if token:
+                        channel.send_model(ChatEvent(event="RunContent", content=token))
+                    continue
+
+                if item.event_type == "cancelled":
+                    channel.send_model(ChatEvent(event="RunCancelled"))
+                    return
+
+                if item.event_type == "started":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeStarted",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                        )
+                    )
+                    continue
+
+                if item.event_type == "completed":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeCompleted",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                        )
+                    )
+                    continue
+
+                if item.event_type == "result":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeResult",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                            outputs=(item.data or {}).get("outputs", {}),
+                        )
+                    )
+                    continue
+
+                if item.event_type == "error":
+                    channel.send_model(
+                        ChatEvent(
+                            event="FlowNodeError",
+                            nodeId=item.node_id,
+                            nodeType=item.node_type,
+                            error=(item.data or {}).get("error", "Unknown node error"),
+                        )
+                    )
+                    channel.send_model(ChatEvent(event="RunError", content="Node error"))
+                    return
+        if cancel_handle.is_cancel_requested() or execution_ctx.stop_run:
+            channel.send_model(ChatEvent(event="RunCancelled"))
+        else:
+            channel.send_model(ChatEvent(event="RunCompleted"))
+    except Exception as e:
+        logger.error(f"[stream_flow_run] Error: {e}")
+        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+    finally:
+        run_control.remove_active_run(run_id)
+        run_control.clear_early_cancel(run_id)
 
 
 class ActiveStreamInfo(BaseModel):

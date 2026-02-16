@@ -15,27 +15,32 @@ import {
   updateChat,
   switchToSibling,
   getMessageSiblings,
+  getMessageSiblingsBatch,
   cancelRun,
+  cancelFlowRun,
   generateChatTitle,
   respondToThinkingTagPrompt,
   toggleStarChat,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 
-initBridge("http://127.0.0.1:8000");
+if (typeof window !== "undefined") {
+  initBridge("http://127.0.0.1:8000");
+}
 
 interface StreamingChatEvent {
   event: string;
-  content?: string;
-  sessionId?: string;
-  reasoningContent?: string;
-  tool?: unknown;
-  blocks?: unknown[];
-  error?: string;
+  [key: string]: unknown;
 }
 
-function createStreamingResponse(channelName: string, body: Record<string, unknown>): Response {
+export interface StreamHandle {
+  response: Response;
+  abort: () => void;
+}
+
+function createStreamingResponse(channelName: string, body: Record<string, unknown>): StreamHandle {
   const encoder = new TextEncoder();
+  const channel = createChannel<StreamingChatEvent>(channelName, { body });
 
   const stream = new ReadableStream<Uint8Array>({
     start: (controller) => {
@@ -44,22 +49,12 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      const channel = createChannel<StreamingChatEvent>(channelName, { body });
-
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
-        const data: Record<string, unknown> = {};
 
-        if (rest.sessionId) data.sessionId = rest.sessionId;
-        if (typeof rest.content === "string") data.content = rest.content;
-        if (typeof rest.error === "string") data.error = rest.error;
-        if (typeof rest.reasoningContent === "string") data.reasoningContent = rest.reasoningContent;
-        if (rest.tool) data.tool = rest.tool;
-        if (Array.isArray(rest.blocks)) data.blocks = rest.blocks;
+        sendEvent(event || "RunContent", rest);
 
-        sendEvent(event || "RunContent", data);
-
-        if (event === "RunCompleted" || event === "RunError") {
+        if (event === "RunCompleted" || event === "RunError" || event === "RunCancelled") {
           controller.close();
           channel.close();
         }
@@ -73,13 +68,15 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
     },
   });
 
-  return new Response(stream, {
+  const response = new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
     },
   });
+
+  return { response, abort: () => channel.close() };
 }
 
 export const api = {
@@ -112,7 +109,7 @@ export const api = {
     chatId?: string,
     toolIds?: string[],
     attachments?: Attachment[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("stream_chat", {
       messages: messages.map((m) => ({
         id: m.id,
@@ -133,12 +130,42 @@ export const api = {
         })) || [],
     }),
 
+  streamAgentChat: (
+    agentId: string,
+    messages: Message[],
+    chatId?: string,
+    ephemeral?: boolean,
+  ): StreamHandle =>
+    createStreamingResponse("stream_agent_chat", {
+      agentId,
+      messages: messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+      chatId,
+      ephemeral: ephemeral ?? false,
+    }),
+
+  streamFlowRun: (
+    body: {
+      agentId: string;
+      mode: "execute" | "runFrom";
+      targetNodeId: string;
+      cachedOutputs?: Record<string, Record<string, unknown>>;
+      promptInput?: Record<string, unknown>;
+      nodeIds?: string[];
+    }
+  ): StreamHandle =>
+    createStreamingResponse("stream_flow_run", body),
+
   continueMessage: (
     messageId: string,
     chatId: string,
     modelId?: string,
     toolIds?: string[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("continue_message", {
       messageId,
       chatId,
@@ -151,7 +178,7 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("retry_message", {
       messageId,
       chatId,
@@ -167,7 +194,7 @@ export const api = {
     toolIds?: string[],
     existingAttachments?: Attachment[],
     newAttachments?: PendingAttachment[],
-  ): Response =>
+  ): StreamHandle =>
     createStreamingResponse("edit_user_message", {
       messageId,
       newContent,
@@ -203,8 +230,20 @@ export const api = {
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
 
+  getMessageSiblingsBatch: (
+    chatId: string,
+    messageIds: string[],
+  ): Promise<Record<string, MessageSibling[]>> =>
+    getMessageSiblingsBatch({ body: { chatId, messageIds } }) as Promise<
+      Record<string, MessageSibling[]>
+    >,
+
+
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
     cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,
+
+  cancelFlowRun: (runId: string): Promise<{ cancelled: boolean }> =>
+    cancelFlowRun({ body: { runId } }) as Promise<{ cancelled: boolean }>,
 
   generateChatTitle: (chatId: string): Promise<{ title: string | null }> =>
     generateChatTitle({ body: { id: chatId } }) as Promise<{

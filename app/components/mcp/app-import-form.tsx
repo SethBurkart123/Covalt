@@ -100,7 +100,11 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
   const handleServerToggle = useCallback((serverId: string, checked: boolean) => {
     setSelectedServerIds((prev) => {
       const next = new Set(prev);
-      checked ? next.add(serverId) : next.delete(serverId);
+      if (checked) {
+        next.add(serverId);
+      } else {
+        next.delete(serverId);
+      }
       return next;
     });
   }, []);

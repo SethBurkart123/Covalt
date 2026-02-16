@@ -29,6 +29,13 @@ from .core import (
     session,
     set_db_path,
 )
+from .executions import (
+    append_execution_events,
+    create_execution_run,
+    get_execution_events,
+    get_latest_execution_run_for_message,
+    update_execution_run,
+)
 from .model_ops import (
     get_all_model_settings,
     get_model_settings,
@@ -39,6 +46,8 @@ from .model_ops import (
 from .models import (
     Base,
     Chat,
+    ExecutionEvent,
+    ExecutionRun,
     Message,
     Model,
     ProviderSettings,
@@ -74,6 +83,8 @@ __all__ = [
     "Base",
     "Chat",
     "Message",
+    "ExecutionRun",
+    "ExecutionEvent",
     "Model",
     "ProviderSettings",
     "ToolOverride",
@@ -118,4 +129,9 @@ __all__ = [
     "save_auto_title_settings",
     "get_system_prompt_setting",
     "save_system_prompt_setting",
+    "create_execution_run",
+    "update_execution_run",
+    "append_execution_events",
+    "get_latest_execution_run_for_message",
+    "get_execution_events",
 ]

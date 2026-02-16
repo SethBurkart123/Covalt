@@ -1,13 +1,12 @@
 "use client";
 
-"use client";
-
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ChatContextType, AllChatsData } from "@/lib/types/chat";
 import { api } from "@/lib/services/api";
 import { useChatOperations } from "@/lib/hooks/useChatOperations";
 import { useModels } from "@/lib/hooks/useModels";
+import { useAgents } from "@/lib/hooks/useAgents";
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
@@ -21,6 +20,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   currentChatIdRef.current = currentChatId;
 
   const { models, selectedModel, setSelectedModel, refreshModels } = useModels();
+  const { agents, refreshAgents } = useAgents();
 
   const operations = useChatOperations({
     allChatsData,
@@ -89,6 +89,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setSelectedModel,
     models,
     refreshModels,
+    agents,
+    refreshAgents,
   }), [
     currentChatId,
     chatTitle,
@@ -100,6 +102,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     models,
     refreshModels,
     setSelectedModel,
+    agents,
+    refreshAgents,
   ]);
 
   if (!isLoaded) return null;
@@ -111,4 +115,8 @@ export function useChat() {
   const context = useContext(ChatContext);
   if (!context) throw new Error("useChat must be used within a ChatProvider");
   return context;
+}
+
+export function useOptionalChat() {
+  return useContext(ChatContext) ?? null;
 }

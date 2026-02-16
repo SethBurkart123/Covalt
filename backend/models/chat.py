@@ -16,7 +16,7 @@ class ToolCall(BaseModel):
 class ContentBlock(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
-    content: Optional[str] = None
+    content: Optional[Union[str, List["ContentBlock"]]] = None
     id: Optional[str] = None
     toolName: Optional[str] = None
     toolArgs: Optional[Dict[str, Any]] = None
@@ -85,6 +85,30 @@ class ChatId(BaseModel):
     id: str
 
 
+class MessageId(BaseModel):
+    id: str
+
+
+class ExecutionEventItem(BaseModel):
+    seq: int
+    ts: str
+    eventType: str
+    nodeId: Optional[str] = None
+    nodeType: Optional[str] = None
+    runId: Optional[str] = None
+    payload: Optional[Any] = None
+
+
+class MessageExecutionTraceResponse(BaseModel):
+    executionId: Optional[str] = None
+    kind: Optional[str] = None
+    status: Optional[str] = None
+    rootRunId: Optional[str] = None
+    startedAt: Optional[str] = None
+    endedAt: Optional[str] = None
+    events: List[ExecutionEventItem] = Field(default_factory=list)
+
+
 class ChatStreamRequest(BaseModel):
     messages: List[ChatMessage]
     modelId: str
@@ -101,6 +125,13 @@ class ChatEvent(BaseModel):
     error: Optional[str] = None
     blocks: Optional[List[Dict[str, Any]]] = None
     fileRenames: Optional[Dict[str, str]] = None
+    memberName: Optional[str] = None
+    memberRunId: Optional[str] = None
+    task: Optional[str] = None
+    groupByNode: Optional[bool] = None
+    nodeId: Optional[str] = None
+    nodeType: Optional[str] = None
+    outputs: Optional[Dict[str, Any]] = None
 
 
 class ToolApprovalResponse(BaseModel):

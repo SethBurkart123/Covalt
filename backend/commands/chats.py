@@ -15,6 +15,9 @@ from ..models.chat import (
     ChatAgentConfigResponse,
     ChatData,
     ChatId,
+    ExecutionEventItem,
+    MessageExecutionTraceResponse,
+    MessageId,
     CreateChatInput,
     MCPToolsetInfo,
     ToggleChatToolsInput,
@@ -22,8 +25,7 @@ from ..models.chat import (
     UpdateChatInput,
     UpdateChatModelInput,
 )
-from ..services.agent_factory import update_agent_model, update_agent_tools
-from ..services.file_storage import get_extension_from_mime
+from ..services.chat_config import update_chat_model_provider, update_chat_tool_ids
 from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
@@ -148,13 +150,33 @@ async def get_chat(body: ChatId) -> Dict[str, Any]:
 
 
 @command
+async def get_message_execution_trace(body: MessageId) -> MessageExecutionTraceResponse:
+    with db.db_session() as sess:
+        run = db.get_latest_execution_run_for_message(sess, message_id=body.id)
+        if run is None:
+            return MessageExecutionTraceResponse()
+
+        events = db.get_execution_events(sess, execution_id=run.id)
+
+    return MessageExecutionTraceResponse(
+        executionId=run.id,
+        kind=run.kind,
+        status=run.status,
+        rootRunId=run.root_run_id,
+        startedAt=run.started_at,
+        endedAt=run.ended_at,
+        events=[ExecutionEventItem(**event) for event in events],
+    )
+
+
+@command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
-    update_agent_tools(body.chatId, body.toolIds)
+    update_chat_tool_ids(body.chatId, body.toolIds)
 
 
 @command
 async def update_chat_model(body: UpdateChatModelInput) -> None:
-    update_agent_model(body.chatId, body.provider, body.modelId)
+    update_chat_model_provider(body.chatId, body.provider, body.modelId)
 
 
 @command

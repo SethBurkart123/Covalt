@@ -1,4 +1,5 @@
 import type { RenderPlan } from "@/lib/types/chat";
+import type { CollapsibleMode } from "@/components/ui/collapsible";
 
 export interface ToolCallRendererProps {
   toolName: string;
@@ -16,6 +17,7 @@ export interface ToolCallRendererProps {
   isLast?: boolean;
   renderPlan?: RenderPlan;
   chatId?: string;
+  mode?: CollapsibleMode;
 }
 
 export type ToolCallRenderer = React.ComponentType<ToolCallRendererProps>;

@@ -104,7 +104,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           handleFiles(e.dataTransfer.files);
         }
       },
-      [handleFiles, disabled]
+      [handleFiles]
     );
 
     const contextValue = React.useMemo<FileDropZoneContextValue>(
@@ -204,4 +204,3 @@ const FileDropZoneTrigger = React.forwardRef<
 FileDropZoneTrigger.displayName = "FileDropZoneTrigger";
 
 export { FileDropZone, FileDropZoneTrigger, useFileDropZone };
-

@@ -69,8 +69,50 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scheduleReconnectRef = useRef<() => void>(() => {});
   const mountedRef = useRef(true);
   const workspaceCallbacksRef = useRef<Set<WorkspaceFilesChangedCallback>>(new Set());
+
+  const cleanup = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+  }, []);
+
+  const handleMessage = useCallback(
+    (message: { event: string; data: unknown }) => {
+      switch (message.event) {
+        case "mcp_servers":
+          setMcpServers(
+            convertKeysToCamelCase<McpServersSnapshot>(message.data).servers
+          );
+          break;
+        case "mcp_status":
+          setMcpServers((prev) => {
+            const status = convertKeysToCamelCase<McpServerStatus>(message.data);
+            return prev.find((s) => s.id === status.id)
+              ? prev.map((s) => (s.id === status.id ? status : s))
+              : [...prev, status];
+          });
+          break;
+        case "workspace_files_changed": {
+          const { chatId, changedPaths, deletedPaths } = convertKeysToCamelCase<{
+            chatId: string;
+            changedPaths: string[];
+            deletedPaths: string[];
+          }>(message.data);
+          workspaceCallbacksRef.current.forEach((cb) =>
+            cb(chatId, changedPaths, deletedPaths)
+          );
+          break;
+        }
+        default:
+          console.log("[WebSocket] Unknown event:", message.event);
+      }
+    },
+    []
+  );
 
   const connect = useCallback(() => {
     if (
@@ -112,7 +154,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         console.log("[WebSocket] Disconnected:", event.code, event.reason);
         setStatus("disconnected");
         cleanup();
-        scheduleReconnect();
+        scheduleReconnectRef.current();
       };
 
       ws.onerror = (error) => {
@@ -123,50 +165,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("[WebSocket] Failed to connect:", e);
       setStatus("error");
-      scheduleReconnect();
+      scheduleReconnectRef.current();
     }
-  }, []);
-
-  const handleMessage = useCallback(
-    (message: { event: string; data: unknown }) => {
-      switch (message.event) {
-        case "mcp_servers":
-          setMcpServers(
-            convertKeysToCamelCase<McpServersSnapshot>(message.data).servers
-          );
-          break;
-        case "mcp_status":
-          setMcpServers((prev) => {
-            const status = convertKeysToCamelCase<McpServerStatus>(message.data);
-            return prev.find((s) => s.id === status.id)
-              ? prev.map((s) => (s.id === status.id ? status : s))
-              : [...prev, status];
-          });
-          break;
-        case "workspace_files_changed": {
-          const { chatId, changedPaths, deletedPaths } = convertKeysToCamelCase<{
-            chatId: string;
-            changedPaths: string[];
-            deletedPaths: string[];
-          }>(message.data);
-          workspaceCallbacksRef.current.forEach((cb) =>
-            cb(chatId, changedPaths, deletedPaths)
-          );
-          break;
-        }
-        default:
-          console.log("[WebSocket] Unknown event:", message.event);
-      }
-    },
-    []
-  );
-
-  const cleanup = useCallback(() => {
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
-    }
-  }, []);
+  }, [cleanup, handleMessage]);
 
   const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -179,6 +180,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       }
     }, RECONNECT_DELAY);
   }, [connect]);
+
+  useEffect(() => {
+    scheduleReconnectRef.current = scheduleReconnect;
+  }, [scheduleReconnect]);
 
   const reconnect = useCallback(() => {
     if (wsRef.current) {
@@ -264,4 +269,3 @@ export function useMcpStatus() {
   const { mcpServers, isConnected, removeMcpServer } = useWebSocket();
   return { mcpServers, isConnected, removeMcpServer };
 }
-
