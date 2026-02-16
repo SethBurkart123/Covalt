@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import uuid
 from datetime import datetime
@@ -46,15 +45,7 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
         attachments = None
         if r.attachments:
             raw_attachments = json.loads(r.attachments)
-            attachments = []
-            for att in raw_attachments:
-                if att.get("type") == "image":
-                    file_bytes = _load_attachment_content(
-                        chatId, r.id, att["name"], att["mimeType"]
-                    )
-                    if file_bytes:
-                        att["data"] = base64.b64encode(file_bytes).decode("utf-8")
-                attachments.append(att)
+            attachments = raw_attachments
 
         msg_data = {
             "id": r.id,
@@ -332,19 +323,3 @@ def set_message_manifest(sess: Session, message_id: str, manifest_id: str) -> No
         message.manifest_id = manifest_id
         sess.commit()
 
-
-def _load_attachment_content(
-    chat_id: str, message_id: str, filename: str, mime_type: str
-) -> Optional[bytes]:
-    from ..services.workspace_manager import get_workspace_manager
-    from .core import db_session
-
-    workspace_manager = get_workspace_manager(chat_id)
-    if content := workspace_manager.read_file(filename):
-        return content
-
-    with db_session() as sess:
-        if manifest_id := get_manifest_for_message(sess, message_id):
-            return workspace_manager.read_file_from_manifest(manifest_id, filename)
-
-    return None

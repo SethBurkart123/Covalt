@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AllChatsData } from "@/lib/types/chat";
 import { api } from "@/lib/services/api";
+import { prefetchChat } from "@/lib/services/chat-prefetch";
 
 interface UseChatOperationsProps {
   allChatsData: AllChatsData;
@@ -32,6 +33,7 @@ export function useChatOperations({
     (id: string) => {
       if (id === currentChatId || !allChatsData.chats[id]) return;
 
+      void prefetchChat(id);
       setCurrentChatId(id);
       router.push(`/?chatId=${id}`);
     },

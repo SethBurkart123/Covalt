@@ -20,6 +20,12 @@ interface AgentCardProps {
   onDelete: (id: string) => void;
 }
 
+function withCacheKey(url: string, cacheKey?: string): string {
+  if (!cacheKey) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${encodeURIComponent(cacheKey)}`;
+}
+
 function parseIcon(icon: string | null | undefined): {
   type: 'emoji' | 'lucide' | 'image' | null;
   value: string;
@@ -38,7 +44,7 @@ function parseIcon(icon: string | null | undefined): {
   return { type: 'emoji', value: icon };
 }
 
-function AgentIconImage({ agentId }: { agentId: string }) {
+function AgentIconImage({ agentId, cacheKey }: { agentId: string; cacheKey?: string }) {
   const [hasError, setHasError] = useState(false);
   
   if (hasError) {
@@ -47,7 +53,7 @@ function AgentIconImage({ agentId }: { agentId: string }) {
   
   return (
     <img
-      src={agentFileUrl({ agentId, fileType: 'icon' })}
+      src={withCacheKey(agentFileUrl({ agentId, fileType: 'icon' }), cacheKey)}
       className="size-8 rounded object-cover"
       alt=""
       onError={() => setHasError(true)}
@@ -55,7 +61,7 @@ function AgentIconImage({ agentId }: { agentId: string }) {
   );
 }
 
-function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId: string }) {
+function AgentIcon({ icon, agentId, cacheKey }: { icon: string | null | undefined; agentId: string; cacheKey?: string }) {
   const { type, value } = parseIcon(icon);
   
   if (type === 'emoji') {
@@ -70,7 +76,7 @@ function AgentIcon({ icon, agentId }: { icon: string | null | undefined; agentId
   }
   
   if (type === 'image') {
-    return <AgentIconImage agentId={agentId} />;
+    return <AgentIconImage agentId={agentId} cacheKey={cacheKey} />;
   }
   return <Bot className="size-8 text-muted-foreground" />;
 }
@@ -79,16 +85,17 @@ function AgentPreview({ agent }: { agent: AgentInfo }) {
   const [hasError, setHasError] = useState(false);
   
   const showFallback = !agent.previewImage || hasError;
+  const cacheKey = agent.updatedAt;
   
   return (
     <div className="aspect-video bg-muted/30 relative flex items-center justify-center">
       {showFallback ? (
         <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-          <AgentIcon icon={agent.icon} agentId={agent.id} />
+          <AgentIcon icon={agent.icon} agentId={agent.id} cacheKey={cacheKey} />
         </div>
       ) : (
         <img
-          src={agentFileUrl({ agentId: agent.id, fileType: 'preview' })}
+          src={withCacheKey(agentFileUrl({ agentId: agent.id, fileType: 'preview' }), cacheKey)}
           alt={`${agent.name} preview`}
           className="w-full h-full object-cover"
           onError={() => setHasError(true)}

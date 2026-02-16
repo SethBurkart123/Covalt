@@ -15,6 +15,7 @@ import {
   updateChat,
   switchToSibling,
   getMessageSiblings,
+  getMessageSiblingsBatch,
   cancelRun,
   cancelFlowRun,
   generateChatTitle,
@@ -228,6 +229,14 @@ export const api = {
 
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
+
+  getMessageSiblingsBatch: (
+    chatId: string,
+    messageIds: string[],
+  ): Promise<Record<string, MessageSibling[]>> =>
+    getMessageSiblingsBatch({ body: { chatId, messageIds } }) as Promise<
+      Record<string, MessageSibling[]>
+    >,
 
 
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
