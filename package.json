@@ -6,7 +6,7 @@
   "scripts": {
     "backend": "uv run main.py",
     "dev": "concurrently \"bun run backend\" \"bun run dev:frontend\"",
-    "dev:frontend": "bunx --bun next dev --turbopack",
+    "dev:frontend": "next dev --turbopack",
     "electron:dev": "NODE_ENV=development electron .",
     "build": "next build",
     "start": "next start -p 4096",
