@@ -275,12 +275,24 @@ function processMemberEvent(
       content: [],
       isCompleted: false,
       task: (d.task as string) || "",
+      nodeId: (d.nodeId as string) || undefined,
+      nodeType: (d.nodeType as string) || undefined,
+      groupByNode: (d.groupByNode as boolean) || undefined,
     };
     state.contentBlocks.push(block);
   }
 
   if (memberName && memberName !== "Agent") {
     block.memberName = memberName;
+  }
+  if (d.nodeId && !block.nodeId) {
+    block.nodeId = d.nodeId as string;
+  }
+  if (d.nodeType && !block.nodeType) {
+    block.nodeType = d.nodeType as string;
+  }
+  if (d.groupByNode && !block.groupByNode) {
+    block.groupByNode = true;
   }
 
   const ms = getMemberState(state, runId);
@@ -422,6 +434,9 @@ function handleMemberRunStarted(state: StreamState, d: Record<string, unknown>):
     content: [],
     isCompleted: false,
     task,
+    nodeId: (d.nodeId as string) || undefined,
+    nodeType: (d.nodeType as string) || undefined,
+    groupByNode: (d.groupByNode as boolean) || undefined,
   });
   getMemberState(state, runId);
 }

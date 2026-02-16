@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ChevronRight, ChevronDown, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type CollapsibleMode = "regular" | "minimal"
+type CollapsibleMode = "regular" | "minimal" | "compact"
 
 interface CollapsibleContextValue {
   isOpen: boolean
@@ -63,6 +63,18 @@ function Collapsible({
     return (
       <CollapsibleContext.Provider value={value}>
         <div className={cn("relative py-0.5", className)} {...props}>{children}</div>
+      </CollapsibleContext.Provider>
+    )
+  }
+
+  if (mode === "compact") {
+    return (
+      <CollapsibleContext.Provider value={value}>
+        <div className={cn("my-2 not-prose", className)} {...props}>
+          <div className="border border-border/60 rounded-md overflow-hidden bg-card/80">
+            {children}
+          </div>
+        </div>
       </CollapsibleContext.Provider>
     )
   }
@@ -128,6 +140,35 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
           </motion.div>
         )}
         {rightContent}
+      </div>
+    )
+  }
+
+  if (mode === "compact") {
+    const rotation = overrideIsOpenPreview !== undefined
+      ? (overrideIsOpenPreview ? 180 : 0)
+      : (isOpen ? 180 : 0)
+
+    return (
+      <div
+        onClick={handleClick}
+        className={cn(
+          "w-full px-2 py-2 flex items-center justify-between transition-colors",
+          "hover:bg-border/30",
+          shimmer && "shimmer",
+          disableToggle ? "cursor-default" : "cursor-pointer",
+          className
+        )}
+      >
+        {children}
+        <div className="flex items-center gap-2">
+          {rightContent}
+          {!disableToggle && (
+            <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.2 }}>
+              <ChevronDown size={14} className="text-muted-foreground" />
+            </motion.div>
+          )}
+        </div>
       </div>
     )
   }
@@ -228,6 +269,32 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
             className="overflow-hidden"
           >
             <div className={cn("pl-2 pt-1 pb-1 space-y-1", className)}>
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  if (mode === "compact") {
+    return (
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 270, damping: 30 }}
+            className="overflow-hidden"
+          >
+            <div
+              className={cn(
+                "px-2 pb-2 pt-2 space-y-2",
+                isGrouped ? (isLast ? "border-t border-border/60" : "") + " pl-8" : "border-t border-border/60",
+                className
+              )}
+            >
               {children}
             </div>
           </motion.div>

@@ -128,6 +128,7 @@ class ChatEvent(BaseModel):
     memberName: Optional[str] = None
     memberRunId: Optional[str] = None
     task: Optional[str] = None
+    groupByNode: Optional[bool] = None
     nodeId: Optional[str] = None
     nodeType: Optional[str] = None
     outputs: Optional[Dict[str, Any]] = None

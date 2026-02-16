@@ -106,6 +106,7 @@ class AgentExecutor:
             instructions=instructions,
         )
         member_node_lookup = _build_member_node_lookup(sub_agents)
+        group_by_node = _should_group_by_node(context)
         force_member_output = _force_member_output(context)
         emit_member_events = isinstance(agent, Team) or force_member_output
 
@@ -184,6 +185,12 @@ class AgentExecutor:
                     if force_member_output:
                         member_fields.setdefault("nodeId", context.node_id)
                         member_fields.setdefault("nodeType", self.node_type)
+                        if group_by_node and not isinstance(agent, Team):
+                            member_fields["groupByNode"] = True
+                            member_fields["memberName"] = _resolve_grouped_member_name(
+                                data,
+                                member_fields.get("memberName"),
+                            )
                 member_run_id = str(member_fields.get("memberRunId", "") or "")
                 if member_run_id and member_run_id not in seen_member_run_ids:
                     seen_member_run_ids.add(member_run_id)
@@ -678,10 +685,30 @@ def _force_member_output(context: FlowContext) -> bool:
     policy = _chat_output_policy(context)
     if policy is None:
         return False
+    if bool(getattr(policy, "group_by_node", False)):
+        return True
     primary = getattr(policy, "primary_agent_id", None)
     if not primary:
         return False
     return str(primary) != context.node_id
+
+
+def _should_group_by_node(context: FlowContext) -> bool:
+    policy = _chat_output_policy(context)
+    if policy is None:
+        return False
+    return bool(getattr(policy, "group_by_node", False))
+
+
+def _resolve_grouped_member_name(
+    data: dict[str, Any],
+    current_name: Any,
+) -> str:
+    name = str(current_name or "").strip()
+    if not name or name == "Agent":
+        candidate = str(data.get("name") or "").strip()
+        name = candidate if candidate else "Agent"
+    return name
 
 
 def _fallback_member_fields(
