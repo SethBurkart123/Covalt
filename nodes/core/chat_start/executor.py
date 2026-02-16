@@ -2,13 +2,47 @@
 
 from __future__ import annotations
 
+import types
 from typing import Any
 
-from nodes._types import DataValue, ExecutionResult, FlowContext
+from nodes._types import DataValue, ExecutionResult, FlowContext, RuntimeConfigContext
 
 
 class ChatStartExecutor:
     node_type = "chat-start"
+
+    def configure_runtime(self, data: dict[str, Any], context: RuntimeConfigContext) -> None:
+        if context.mode != "chat":
+            return
+        primary_agent = data.get("primaryAgentId")
+        if not isinstance(primary_agent, str) or not primary_agent.strip():
+            return
+        candidate_id = primary_agent.strip()
+        nodes = context.graph_data.get("nodes", [])
+        if isinstance(nodes, list):
+            matched = any(
+                isinstance(node, dict)
+                and node.get("id") == candidate_id
+                and node.get("type") == "agent"
+                for node in nodes
+            )
+            if not matched:
+                return
+
+        services = context.services
+        if services is None:
+            return
+
+        policy = getattr(services, "chat_output", None)
+        if policy is None:
+            policy = types.SimpleNamespace()
+            setattr(services, "chat_output", policy)
+
+        if getattr(policy, "primary_agent_id", None):
+            return
+
+        policy.primary_agent_id = candidate_id
+        policy.primary_agent_source = context.node_id
 
     def _get_chat_input(self, context: FlowContext) -> Any:
         services = context.services

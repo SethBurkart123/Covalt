@@ -25,6 +25,7 @@ export type {
   ModelParameter,
   McpServerParameter,
   ToolsetParameter,
+  NodeRefParameter,
   ToolsParameter,
   JsonParameter,
   NodeCategory,
@@ -37,6 +38,8 @@ export type {
 
 export { SOCKET_TYPES, canConnect, canCoerce, getSocketStyle } from './sockets';
 export type { SocketType } from './sockets';
+
+export { resolveNodeParameters, resolveParameterForHandle } from './node-parameters';
 
 export {
   NODE_DEFINITIONS,
@@ -52,4 +55,4 @@ export {
 } from '@nodes/_registry';
 export type { CompatibleNodeSocket } from '@nodes/_registry';
 
-export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection } from './context';
+export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection, useNodePicker } from './context';

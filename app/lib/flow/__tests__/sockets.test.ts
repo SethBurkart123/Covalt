@@ -69,6 +69,11 @@ describe('canConnect', () => {
     expect(canConnect('string', makeParam('data'))).toBe(false)
   })
 
+  it('allows non-data -> data when acceptsTypes includes source', () => {
+    const param = makeParam('data', ['string'])
+    expect(canConnect('string', param)).toBe(true)
+  })
+
   it('allows data -> tools when acceptsTypes includes data (sub-agent)', () => {
     const param = makeParam('tools', ['tools', 'data'])
     expect(canConnect('data', param)).toBe(true)

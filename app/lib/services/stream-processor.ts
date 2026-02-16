@@ -264,7 +264,7 @@ function processMemberEvent(
   state: StreamState,
 ): void {
   const runId = d.memberRunId as string;
-  const memberName = (d.memberName as string) || "Member";
+  const memberName = (d.memberName as string) || "Agent";
 
   let block = findMemberBlock(state, runId);
   if (!block) {
@@ -279,7 +279,7 @@ function processMemberEvent(
     state.contentBlocks.push(block);
   }
 
-  if (memberName && memberName !== "Member") {
+  if (memberName && memberName !== "Agent") {
     block.memberName = memberName;
   }
 
@@ -318,13 +318,23 @@ function processMemberEvent(
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
       const t = d.tool as ToolData;
-      block.content.push({
-        type: "tool_call",
-        id: t.id,
-        toolName: t.toolName,
-        toolArgs: t.toolArgs,
-        isCompleted: false,
-      });
+      const existing = block.content.find(
+        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
+          b.type === "tool_call" && b.id === t.id,
+      );
+      if (existing) {
+        existing.toolName = t.toolName || existing.toolName;
+        existing.toolArgs = t.toolArgs || existing.toolArgs;
+        existing.isCompleted = false;
+      } else {
+        block.content.push({
+          type: "tool_call",
+          id: t.id,
+          toolName: t.toolName,
+          toolArgs: t.toolArgs,
+          isCompleted: false,
+        });
+      }
       break;
     }
 
@@ -341,11 +351,51 @@ function processMemberEvent(
       break;
     }
 
+    case "ToolApprovalRequired": {
+      flushMemberText(block, ms);
+      flushMemberReasoning(block, ms);
+      const payload = d.tool as ToolApprovalData;
+      const tools = payload?.tools || [];
+      for (const tool of tools) {
+        block.content.push({
+          type: "tool_call",
+          id: tool.id,
+          toolName: tool.toolName,
+          toolArgs: tool.toolArgs,
+          isCompleted: false,
+          requiresApproval: true,
+          runId: payload?.runId,
+          toolCallId: tool.id,
+          approvalStatus: "pending",
+          editableArgs: tool.editableArgs,
+        });
+      }
+      break;
+    }
+
+    case "ToolApprovalResolved": {
+      const t = d.tool as ToolData;
+      const tc = block.content.find(
+        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
+          b.type === "tool_call" && b.id === t.id,
+      );
+      if (tc) {
+        tc.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
+        if (t.toolArgs) {
+          tc.toolArgs = t.toolArgs;
+        }
+        if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
+          tc.isCompleted = true;
+        }
+      }
+      break;
+    }
+
     case "RunError":
     case "MemberRunError": {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
-      const errorContent = (d.content as string) || (d.error as string) || "Member agent encountered an error.";
+      const errorContent = (d.content as string) || (d.error as string) || "Agent encountered an error.";
       block.content.push({ type: "error", content: errorContent });
       block.isCompleted = true;
       block.hasError = true;
@@ -360,7 +410,7 @@ function handleMemberRunStarted(state: StreamState, d: Record<string, unknown>):
   flushReasoningBlock(state);
 
   const runId = (d.memberRunId as string) || "";
-  const memberName = (d.memberName as string) || "Member";
+  const memberName = (d.memberName as string) || "Agent";
   const task = (d.task as string) || "";
 
   if (runId && findMemberBlock(state, runId)) return;
@@ -417,8 +467,10 @@ export function processEvent(
 
   if (d.memberRunId && eventType !== "MemberRunStarted" && eventType !== "MemberRunCompleted") {
     processMemberEvent(eventType, d, state);
-    scheduleUpdate(state, callbacks.onUpdate);
-    return;
+    if (eventType !== "ToolApprovalRequired" && eventType !== "ToolApprovalResolved") {
+      scheduleUpdate(state, callbacks.onUpdate);
+      return;
+    }
   }
 
   switch (eventType) {
@@ -478,6 +530,17 @@ export function processEvent(
 
     case "ToolApprovalResolved":
       handleToolApprovalResolved(state, d.tool);
+      if (d.memberRunId) {
+        const toolId = (d.tool as ToolData | undefined)?.id;
+        if (toolId) {
+          const idx = state.contentBlocks.findIndex(
+            (b) => b.type === "tool_call" && b.id === toolId,
+          );
+          if (idx !== -1) {
+            state.contentBlocks.splice(idx, 1);
+          }
+        }
+      }
       break;
 
     case "FlowNodeStarted":
@@ -504,7 +567,7 @@ export function processEvent(
           flushMemberReasoning(block, ms);
           block.content.push({
             type: "error",
-            content: (d.content as string) || "Member agent encountered an error.",
+            content: (d.content as string) || "Agent encountered an error.",
           });
           block.isCompleted = true;
           block.hasError = true;

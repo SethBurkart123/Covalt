@@ -8,6 +8,8 @@ import {
   MiniMap,
   ConnectionMode,
   type Node,
+  type Edge,
+  type NodeChange,
   type NodeTypes,
   type EdgeProps,
   type ConnectionLineComponentProps,
@@ -16,9 +18,11 @@ import {
   BackgroundVariant,
   Position,
   useReactFlow,
+  useStoreApi,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Square } from 'lucide-react';
+import { XYHandle } from '@xyflow/system';
+import { Square, X } from 'lucide-react';
 
 import {
   NODE_DEFINITIONS,
@@ -29,11 +33,15 @@ import {
   getNodeDefinition,
   getCompatibleNodeSockets,
   type SocketTypeId,
+  type FlowNode,
+  useNodePicker,
+  resolveParameterForHandle,
 } from '@/lib/flow';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
 import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import { FlowRunPrompt } from './flow-run-prompt';
 import { FlowNode as FlowNodeComponent } from './node';
+import { RerouteNode } from './reroute-node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -48,7 +56,7 @@ interface PendingConnection {
 function buildNodeTypes(): NodeTypes {
   const types: NodeTypes = {};
   for (const id of Object.keys(NODE_DEFINITIONS)) {
-    types[id] = FlowNodeComponent;
+    types[id] = id === 'reroute' ? RerouteNode : FlowNodeComponent;
   }
   return types;
 }
@@ -161,16 +169,28 @@ const GradientEdge = memo(function GradientEdge({
   const targetColor = SOCKET_TYPES[targetType]?.color || '#f59e0b';
 
   const pathD = getBezierPathString(p0, p1, p2, p3);
+  const interactionPath = (
+    <path
+      d={pathD}
+      stroke="rgba(0,0,0,0)"
+      strokeWidth={12}
+      fill="none"
+      pointerEvents="stroke"
+    />
+  );
 
   if (sourceType === targetType) {
     return (
-      <path
-        d={pathD}
-        stroke={targetColor}
-        strokeWidth={2}
-        fill="none"
-        strokeLinecap="round"
-      />
+      <>
+        {interactionPath}
+        <path
+          d={pathD}
+          stroke={targetColor}
+          strokeWidth={2}
+          fill="none"
+          strokeLinecap="round"
+        />
+      </>
     );
   }
 
@@ -187,6 +207,7 @@ const GradientEdge = memo(function GradientEdge({
 
   return (
     <>
+      {interactionPath}
       <defs>
         <mask id={maskId}>
           <path
@@ -228,7 +249,7 @@ function CustomConnectionLine({
   toPosition,
 }: ConnectionLineComponentProps) {
   const definition = getNodeDefinition(fromNode.type || '');
-  const param = definition?.parameters.find(p => p.id === fromHandle.id);
+  const param = definition ? resolveParameterForHandle(definition, fromNode as FlowNode, fromHandle.id) : undefined;
   const socketType = (param?.socket?.type ?? 'tools') as SocketTypeId;
   const { p0, p1, p2, p3 } = getControlPoints(
     fromX,
@@ -270,18 +291,22 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const { executionByNode } = useFlowExecution();
   const { isRunning, stopRun } = useFlowRunner();
   const { selectNode } = useSelection();
+  const picker = useNodePicker();
   const {
     onConnect,
     isValidConnection,
     addNode,
     removeNode,
+    insertRerouteOnEdge,
     updateNodePosition,
+    updateNodeData,
     undo,
     redo,
     recordDragEnd,
   } = useFlowActions();
 
-  const { screenToFlowPosition, getNodes } = useReactFlow();
+  const { screenToFlowPosition, getNodes, fitView } = useReactFlow();
+  const store = useStoreApi();
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const isHoveringCanvasRef = useRef(false);
   const nodesRef = useRef(nodes);
@@ -291,6 +316,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const [placingNodeId, setPlacingNodeId] = useState<string | null>(null);
   const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pendingConnectionRef = useRef<PendingConnection | null>(null);
+  const rerouteDragActiveRef = useRef(false);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter | null>(null);
 
   const displayNodes = useMemo(() => {
@@ -310,26 +336,78 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     });
   }, [nodes, executionByNode]);
 
+  const pickerMessage = picker.allowedNodeTypes?.[0]
+    ? `Pick the ${picker.allowedNodeTypes[0]} node from the graph`
+    : 'Pick a node from the graph';
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      if (picker.active) {
+        const filtered = changes.filter(change => change.type !== 'select');
+        if (filtered.length === 0) return;
+        onNodesChange(filtered);
+        return;
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange, picker.active]
+  );
+
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
-      if (placingNodeId) return;
+      if (placingNodeId || picker.active) return;
       selectNode(selectedNodes.length > 0 ? selectedNodes[0].id : null);
     },
-    [selectNode, placingNodeId]
+    [selectNode, placingNodeId, picker.active]
   );
 
   const handleNodeDoubleClick = useCallback(
     (_event: unknown, node: Node) => {
-      if (placingNodeId) return;
+      if (placingNodeId || picker.active) return;
       selectNode(node.id);
       onNodeDoubleClick?.(node.id);
     },
-    [onNodeDoubleClick, placingNodeId, selectNode]
+    [onNodeDoubleClick, placingNodeId, picker.active, selectNode]
+  );
+
+  const handleNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      if (!picker.active) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!picker.isPickableNode(node.id, node.type)) return;
+
+      const originNodeId = picker.originNodeId;
+      const paramId = picker.paramId;
+
+      if (originNodeId) {
+        selectNode(originNodeId);
+        const originNode = getNodes().find(n => n.id === originNodeId);
+        if (originNode) {
+          fitView({ nodes: [originNode], duration: 300, padding: 0.6 });
+        }
+      }
+
+      if (originNodeId && paramId) {
+        updateNodeData(originNodeId, paramId, node.id);
+      }
+
+      picker.completePick();
+    },
+    [fitView, getNodes, picker, selectNode, updateNodeData]
   );
 
   const onNodeDragStop = useCallback(() => {
     recordDragEnd();
   }, [recordDragEnd]);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      rerouteDragActiveRef.current = false;
+    };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
 
   const onMouseMove = useCallback(
     (e: React.MouseEvent) => {
@@ -374,9 +452,15 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const getSocketTypeFromHandle = useCallback((nodeId: string, handleId: string): SocketTypeId | null => {
     const node = nodesRef.current.find(n => n.id === nodeId);
     if (!node) return null;
+    if (node.type === 'reroute') {
+      const socketType = (node.data as { _socketType?: unknown } | undefined)?._socketType;
+      if (typeof socketType === 'string' && socketType) {
+        return socketType as SocketTypeId;
+      }
+    }
     const definition = getNodeDefinition(node.type || '');
     if (!definition) return null;
-    const param = definition.parameters.find(p => p.id === handleId);
+    const param = resolveParameterForHandle(definition, node as FlowNode, handleId);
     if (!param || !('socket' in param) || !param.socket) return null;
     return param.socket.type as SocketTypeId;
   }, []);
@@ -417,7 +501,15 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       const flowPosition = screenToFlowPosition(mousePositionRef.current);
       const newNodeId = addNode(nodeType, flowPosition);
       selectNode(newNodeId);
-      const newSocketType: SocketTypeId = getNodeDefinition(nodeType)?.parameters.find(p => p.id === socketId)?.socket?.type ?? 'data';
+      const newDefinition = getNodeDefinition(nodeType);
+      const newParam = newDefinition
+        ? resolveParameterForHandle(
+            newDefinition,
+            { id: newNodeId, type: nodeType, position: flowPosition, data: {} } as FlowNode,
+            socketId
+          )
+        : null;
+      const newSocketType: SocketTypeId = newParam?.socket?.type ?? 'data';
 
       if (pending.handleType === 'source') {
         onConnect(
@@ -489,6 +581,111 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     [openAddMenu, getNodes, screenToFlowPosition, handleAddNodeWithSocket]
   );
 
+  const startConnectionFromReroute = useCallback(
+    (nodeId: string, clientX: number, clientY: number) => {
+      const state = store.getState();
+      const domNode = state.domNode;
+      if (!domNode) return;
+
+      const handleDomNode = domNode.querySelector(
+        `.react-flow__node[data-id=\"${nodeId}\"] .react-flow__handle[data-handleid=\"output\"]`
+      ) as HTMLElement | null;
+      if (!handleDomNode) return;
+
+      const fakeEvent = {
+        clientX,
+        clientY,
+        target: handleDomNode,
+        currentTarget: handleDomNode,
+        button: 0,
+        buttons: 1,
+        pointerType: 'mouse',
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as unknown as PointerEvent;
+
+      XYHandle.onPointerDown(fakeEvent, {
+        connectionMode: state.connectionMode,
+        connectionRadius: state.connectionRadius,
+        handleId: 'output',
+        nodeId,
+        edgeUpdaterType: undefined,
+        isTarget: false,
+        domNode,
+        nodeLookup: state.nodeLookup,
+        lib: state.lib,
+        autoPanOnConnect: state.autoPanOnConnect,
+        flowId: state.rfId,
+        panBy: state.panBy,
+        cancelConnection: state.cancelConnection,
+        onConnectStart: state.onConnectStart,
+        onConnect: state.onConnect,
+        onConnectEnd: state.onConnectEnd,
+        isValidConnection: state.isValidConnection,
+        onReconnectEnd: state.onReconnectEnd,
+        updateConnection: state.updateConnection,
+        getTransform: () => state.transform,
+        getFromHandle: () => state.connection.fromHandle,
+        autoPanSpeed: state.autoPanSpeed,
+        dragThreshold: 0,
+        handleDomNode,
+      });
+    },
+    [store]
+  );
+
+  const maybeInsertReroute = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      if (!event.shiftKey) return;
+      const rightButtonDown = (event.buttons & 2) === 2;
+      if (!rightButtonDown) return;
+      if (rerouteDragActiveRef.current) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      rerouteDragActiveRef.current = true;
+
+      const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const rerouteId = insertRerouteOnEdge(edge.id, flowPos);
+      if (!rerouteId) {
+        rerouteDragActiveRef.current = false;
+        return;
+      }
+
+      const { clientX, clientY } = event;
+      requestAnimationFrame(() => {
+        startConnectionFromReroute(rerouteId, clientX, clientY);
+      });
+    },
+    [insertRerouteOnEdge, screenToFlowPosition, startConnectionFromReroute]
+  );
+
+  const handleEdgeMouseEnter = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      maybeInsertReroute(event, edge);
+    },
+    [maybeInsertReroute]
+  );
+
+  const handleEdgeMouseMove = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      maybeInsertReroute(event, edge);
+    },
+    [maybeInsertReroute]
+  );
+
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      if (!event.shiftKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (rerouteDragActiveRef.current) return;
+      const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      insertRerouteOnEdge(edge.id, flowPos);
+    },
+    [insertRerouteOnEdge, screenToFlowPosition]
+  );
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
@@ -536,9 +733,20 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, canUndo, canRedo]);
 
+  useEffect(() => {
+    if (!picker.active) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      picker.cancelPick();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [picker.active, picker.cancelPick]);
+
   const onContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      if (e.shiftKey) return;
 
       if (placingNodeId && originalPositionRef.current) {
         updateNodePosition(placingNodeId, originalPositionRef.current);
@@ -565,7 +773,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
 
   return (
     <div
-      className={cn('w-full h-full bg-background', placingNodeId && 'cursor-grabbing')}
+      className={cn('w-full h-full bg-background', placingNodeId && 'cursor-grabbing', picker.active && 'cursor-crosshair')}
       onMouseMove={onMouseMove}
       onMouseEnter={() => { isHoveringCanvasRef.current = true; }}
       onMouseLeave={() => { isHoveringCanvasRef.current = false; }}
@@ -573,12 +781,16 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       <ReactFlow
         nodes={displayNodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
+        onEdgeMouseEnter={handleEdgeMouseEnter}
+        onEdgeMouseMove={handleEdgeMouseMove}
+        onEdgeContextMenu={handleEdgeContextMenu}
         onSelectionChange={onSelectionChange}
+        onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={onNodeDragStop}
@@ -622,6 +834,24 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onSelectWithSocket={handleAddNodeWithSocket}
       />
       <FlowRunPrompt />
+      {picker.active && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg">
+            <span className="text-xs text-muted-foreground">
+              {pickerMessage}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={picker.cancelPick}
+            >
+              <X className="size-3.5" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {isRunning && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto">

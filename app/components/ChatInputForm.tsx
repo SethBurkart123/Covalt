@@ -365,8 +365,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       if (!editor) return;
 
       const uploadedAttachments = getUploadedAttachments();
-      const markdown = serializeChatInputMarkdown(editor).trim();
-      const hasContent = markdown.length > 0 || uploadedAttachments.length > 0;
+      const markdown = serializeChatInputMarkdown(editor);
+      const hasContent = markdown.trim().length > 0 || uploadedAttachments.length > 0;
 
       if (!hasContent || isLoading || !canSendMessage || hasUploadingFiles || hasUploadErrors) {
         return;

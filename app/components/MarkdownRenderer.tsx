@@ -9,6 +9,7 @@ import { Check, Copy } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Components, ExtraProps } from 'react-markdown';
+import { cn } from '@/lib/utils';
 
 type MdProps<T extends keyof React.JSX.IntrinsicElements> = React.ComponentPropsWithoutRef<T> & ExtraProps;
 
@@ -121,14 +122,28 @@ const InlineCode = memo(function InlineCode({ children, ...props }: MdProps<'cod
   return <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>{children}</code>;
 });
 
-function MarkdownRendererInner({ content, fontSize = "1rem" }: { content: string; fontSize?: string }) {
+function MarkdownRendererInner({
+  content,
+  fontSize = "1rem",
+  trimLast = false,
+}: {
+  content: string;
+  fontSize?: string;
+  trimLast?: boolean;
+}) {
   const components: Partial<Components> = useMemo(
     () => ({ ...MemoizedComponents, pre: CodeBlock, code: InlineCode }),
     []
   );
   
   return (
-    <div className="prose prose-neutral dark:prose-invert max-w-none" style={{ fontSize }}>
+    <div
+      className={cn(
+        "prose prose-neutral dark:prose-invert max-w-none",
+        trimLast && "[&>*:last-child]:!mb-0 [&>*:last-child]:!pb-0"
+      )}
+      style={{ fontSize }}
+    >
       <ReactMarkdown 
         remarkPlugins={[remarkGfm, remarkMath]} 
         rehypePlugins={[rehypeKatex]}

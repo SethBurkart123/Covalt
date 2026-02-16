@@ -106,7 +106,11 @@ function ChatMessage({
               </div>
             )}
             <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit overflow-x-scroll max-w-full">
-              <p>{typeof content === "string" ? content : ""}</p>
+              {typeof content === "string" ? (
+                <MarkdownRenderer content={content} trimLast />
+              ) : (
+                <p />
+              )}
             </div>
           </div>
         ) : (
