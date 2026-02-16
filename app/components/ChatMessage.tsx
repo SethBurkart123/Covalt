@@ -4,6 +4,7 @@ import { memo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
+import MemberRunCall from "./MemberRunCall";
 import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
@@ -105,7 +106,11 @@ function ChatMessage({
               </div>
             )}
             <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit overflow-x-scroll max-w-full">
-              <p>{typeof content === "string" ? content : ""}</p>
+              {typeof content === "string" ? (
+                <MarkdownRenderer content={content} trimLast />
+              ) : (
+                <p />
+              )}
             </div>
           </div>
         ) : (
@@ -182,9 +187,27 @@ function ChatMessage({
                           continue;
                         }
 
+                        if (block.type === "member_run" && block.groupByNode) {
+                          rendered.push(
+                            <MemberRunCall
+                              key={block.runId || `member-${i}`}
+                              memberName={block.memberName}
+                              nodeId={block.nodeId}
+                              content={block.content}
+                              active={!block.isCompleted && !!isStreaming}
+                              isCompleted={block.isCompleted}
+                              hasError={block.hasError}
+                              alwaysOpen
+                              compact
+                            />
+                          );
+                          continue;
+                        }
+
                         if (
                           block.type === "tool_call" ||
-                          block.type === "reasoning"
+                          block.type === "reasoning" ||
+                          block.type === "member_run"
                         ) {
                           const start = i;
                           const group: ContentBlock[] = [];
@@ -192,9 +215,13 @@ function ChatMessage({
 
                           while (j < blocks.length) {
                             const b = blocks[j];
+                            if (b.type === "member_run" && b.groupByNode) {
+                              break;
+                            }
                             if (
                               b.type === "tool_call" ||
-                              b.type === "reasoning"
+                              b.type === "reasoning" ||
+                              b.type === "member_run"
                             ) {
                               group.push(b);
                               j++;
@@ -209,7 +236,11 @@ function ChatMessage({
 
                           i = j - 1;
 
-                          const groupItems = group.map((b, idx) => {
+                          const visibleGroup = group.filter(
+                            (b) => !(b.type === "tool_call" && b.isDelegation),
+                          );
+
+                          const groupItems = visibleGroup.map((b, idx) => {
                             if (b.type === "tool_call") {
                               return (
                                 <ToolCall
@@ -224,9 +255,9 @@ function ChatMessage({
                                   toolCallId={b.toolCallId}
                                   approvalStatus={b.approvalStatus}
                                   editableArgs={b.editableArgs}
-                                  isGrouped={group.length > 1}
+                                  isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
-                                  isLast={idx === group.length - 1}
+                                  isLast={idx === visibleGroup.length - 1}
                                   renderPlan={b.renderPlan}
                                   chatId={chatId}
                                 />
@@ -236,20 +267,35 @@ function ChatMessage({
                                 <ThinkingCall
                                   key={`think-${start}-${idx}`}
                                   content={b.content}
-                                  isGrouped={group.length > 1}
+                                  isGrouped={visibleGroup.length > 1}
                                   isFirst={idx === 0}
-                                  isLast={idx === group.length - 1}
+                                  isLast={idx === visibleGroup.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
                                   isCompleted={b.isCompleted}
+                                />
+                              );
+                            } else if (b.type === "member_run") {
+                                  return (
+                                <MemberRunCall
+                                  key={b.runId || `member-${start}-${idx}`}
+                                  memberName={b.memberName}
+                                  nodeId={b.nodeId}
+                                  content={b.content}
+                                  isGrouped={visibleGroup.length > 1}
+                                  isFirst={idx === 0}
+                                  isLast={idx === visibleGroup.length - 1}
+                                  active={!b.isCompleted && !!isStreaming}
+                                  isCompleted={b.isCompleted}
+                                  hasError={b.hasError}
                                 />
                               );
                             }
                             return null;
                           });
 
-                          if (group.length === 1) {
+                          if (visibleGroup.length === 1) {
                             rendered.push(groupItems[0]);
-                          } else if (group.length > 1) {
+                          } else if (visibleGroup.length > 1) {
                             rendered.push(
                               <div
                                 key={`group-${start}`}

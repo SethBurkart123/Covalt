@@ -28,12 +28,15 @@ export function MarkdownArtifact({
   const filePath = renderPlan?.config?.file;
   const hasFile = !!filePath && !!chatId;
   const fileState = filePath ? getFileState(filePath) : undefined;
-  const title = toolArgs.title || filePath || toolName;
+  const titleFromArgs = typeof toolArgs.title === "string" ? toolArgs.title : "";
+  const title = titleFromArgs || filePath || toolName;
   const content = filePath && fileState?.content
     ? fileState.content
     : renderPlan?.config?.content
       ? String(renderPlan.config.content)
-      : toolResult || "";
+      : typeof toolResult === "string"
+        ? toolResult
+        : "";
 
   const handleClick = () => {
     if (!isCompleted || (!content && !fileState)) return;
@@ -48,7 +51,7 @@ export function MarkdownArtifact({
     );
   };
 
-  const isLoading = !isCompleted || (hasFile && fileState?.isLoading);
+  const isLoading = !isCompleted || Boolean(hasFile && fileState?.isLoading);
 
   return (
     <Collapsible

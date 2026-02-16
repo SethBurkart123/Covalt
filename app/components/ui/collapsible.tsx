@@ -2,8 +2,10 @@
 
 import { createContext, useContext, useState, type HTMLAttributes, type ReactNode } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronDown, type LucideIcon } from "lucide-react"
+import { ChevronRight, ChevronDown, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+type CollapsibleMode = "regular" | "minimal" | "compact"
 
 interface CollapsibleContextValue {
   isOpen: boolean
@@ -13,6 +15,7 @@ interface CollapsibleContextValue {
   isLast: boolean
   shimmer: boolean
   disableToggle: boolean
+  mode: CollapsibleMode
 }
 
 const CollapsibleContext = createContext<CollapsibleContextValue | null>(null)
@@ -33,6 +36,7 @@ interface CollapsibleProps extends HTMLAttributes<HTMLDivElement> {
   isLast?: boolean
   shimmer?: boolean
   disableToggle?: boolean
+  mode?: CollapsibleMode
 }
 
 function Collapsible({
@@ -45,6 +49,7 @@ function Collapsible({
   isLast = false,
   shimmer = false,
   disableToggle = false,
+  mode = "regular",
   className,
   ...props
 }: CollapsibleProps) {
@@ -52,7 +57,27 @@ function Collapsible({
   const isOpen = controlledOpen ?? uncontrolledOpen
   const setIsOpen = onOpenChange ?? setUncontrolledOpen
 
-  const value = { isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle }
+  const value = { isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle, mode }
+
+  if (mode === "minimal") {
+    return (
+      <CollapsibleContext.Provider value={value}>
+        <div className={cn("relative py-0.5", className)} {...props}>{children}</div>
+      </CollapsibleContext.Provider>
+    )
+  }
+
+  if (mode === "compact") {
+    return (
+      <CollapsibleContext.Provider value={value}>
+        <div className={cn("my-2 not-prose", className)} {...props}>
+          <div className="border border-border/60 rounded-md overflow-hidden bg-card/80">
+            {children}
+          </div>
+        </div>
+      </CollapsibleContext.Provider>
+    )
+  }
 
   if (isGrouped) {
     return (
@@ -82,7 +107,7 @@ interface CollapsibleTriggerProps {
 }
 
 function CollapsibleTrigger({ children, rightContent, className, onClick, overrideIsOpenPreview }: CollapsibleTriggerProps) {
-  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle } = useCollapsible()
+  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle, mode } = useCollapsible()
 
   const handleClick = () => {
     if (onClick) {
@@ -90,6 +115,62 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
     } else if (!disableToggle) {
       setIsOpen(!isOpen)
     }
+  }
+
+  if (mode === "minimal") {
+    const rotation = overrideIsOpenPreview !== undefined
+      ? (overrideIsOpenPreview ? 90 : 0)
+      : (isOpen ? 90 : 0)
+
+    return (
+      <div
+        onClick={handleClick}
+        className={cn(
+          "inline-flex items-center gap-1.5 py-1 transition-colors",
+          disableToggle ? "cursor-default" : "cursor-pointer hover:opacity-80",
+          className
+        )}
+      >
+        <span className={cn("text-sm font-mono text-muted-foreground", shimmer && "shimmer-text")}>
+          {children}
+        </span>
+        {!disableToggle && (
+          <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.15 }}>
+            <ChevronRight size={14} className="text-muted-foreground" />
+          </motion.div>
+        )}
+        {rightContent}
+      </div>
+    )
+  }
+
+  if (mode === "compact") {
+    const rotation = overrideIsOpenPreview !== undefined
+      ? (overrideIsOpenPreview ? 180 : 0)
+      : (isOpen ? 180 : 0)
+
+    return (
+      <div
+        onClick={handleClick}
+        className={cn(
+          "w-full px-2 py-2 flex items-center justify-between transition-colors",
+          "hover:bg-border/30",
+          shimmer && "shimmer",
+          disableToggle ? "cursor-default" : "cursor-pointer",
+          className
+        )}
+      >
+        {children}
+        <div className="flex items-center gap-2">
+          {rightContent}
+          {!disableToggle && (
+            <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.2 }}>
+              <ChevronDown size={14} className="text-muted-foreground" />
+            </motion.div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const rotation = overrideIsOpenPreview !== undefined 
@@ -126,7 +207,9 @@ interface CollapsibleIconProps {
 }
 
 function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
-  const { isGrouped, isFirst, isLast } = useCollapsible()
+  const { isGrouped, isFirst, isLast, mode } = useCollapsible()
+
+  if (mode === "minimal") return null
 
   if (isGrouped) {
     return (
@@ -161,6 +244,8 @@ interface CollapsibleHeaderProps {
 }
 
 function CollapsibleHeader({ children, className }: CollapsibleHeaderProps) {
+  const { mode } = useCollapsible()
+  if (mode === "minimal") return <>{children}</>
   return <div className={cn("flex items-center gap-2", className)}>{children}</div>
 }
 
@@ -170,7 +255,53 @@ interface CollapsibleContentProps {
 }
 
 function CollapsibleContent({ children, className }: CollapsibleContentProps) {
-  const { isOpen, isGrouped, isLast } = useCollapsible()
+  const { isOpen, isGrouped, isLast, mode } = useCollapsible()
+
+  if (mode === "minimal") {
+    return (
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="overflow-hidden"
+          >
+            <div className={cn("pl-2 pt-1 pb-1 space-y-1", className)}>
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  if (mode === "compact") {
+    return (
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 270, damping: 30 }}
+            className="overflow-hidden"
+          >
+            <div
+              className={cn(
+                "px-2 pb-2 pt-2 space-y-2",
+                isGrouped ? (isLast ? "border-t border-border/60" : "") + " pl-8" : "border-t border-border/60",
+                className
+              )}
+            >
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
 
   return (
     <AnimatePresence initial={false}>
@@ -205,3 +336,4 @@ export {
   CollapsibleContent,
   useCollapsible,
 }
+export type { CollapsibleMode }

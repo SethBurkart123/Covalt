@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   initBridge,
@@ -8,17 +8,16 @@ import {
   failMcpOauthCallback,
 } from "@/python/api";
 
-initBridge("http://127.0.0.1:8000");
-
 type CallbackStatus = "processing" | "success" | "error";
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackPageContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<CallbackStatus>("processing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function handleCallback() {
+      initBridge("http://127.0.0.1:8000");
       const code = searchParams.get("code");
       const state = searchParams.get("state");
       const error = searchParams.get("error");
@@ -133,5 +132,13 @@ export default function OAuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <OAuthCallbackPageContent />
+    </Suspense>
   );
 }

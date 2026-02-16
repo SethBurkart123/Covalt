@@ -6,20 +6,23 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from sqlalchemy import or_, select
+
 from zynk import Channel, command
 
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage
-from ..services.agent_factory import create_agent_for_chat
 from ..services.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
 )
-from ..services.workspace_manager import get_workspace_manager
-from .streaming import (
-    handle_content_stream,
-    parse_model_id,
+from ..services.chat_graph_runner import (
+    append_error_block_to_message,
+    get_graph_data_for_chat,
+    run_graph_chat_runtime,
+    update_chat_model_selection,
 )
+from ..services.workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,11 @@ class MessageSiblingInfo(BaseModel):
     isActive: bool
 
 
+class GetMessageSiblingsBatchRequest(BaseModel):
+    chatId: str
+    messageIds: List[str]
+
+
 @command
 async def continue_message(
     channel: Channel,
@@ -91,11 +99,7 @@ async def continue_message(
 
     with db.db_session() as sess:
         if body.modelId:
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+            update_chat_model_selection(sess, body.chatId, body.modelId)
 
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
@@ -179,37 +183,20 @@ async def continue_message(
     )
 
     try:
-        agent = create_agent_for_chat(
-            body.chatId,
-            tool_ids=body.toolIds,
-        )
-
-        await handle_content_stream(
-            agent,
+        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        await run_graph_chat_runtime(
+            graph_data,
             chat_messages,
             new_msg_id,
             channel,
             chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
         )
 
     except Exception as e:
         logger.error(f"continue_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, new_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=new_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(new_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -221,11 +208,7 @@ async def retry_message(
     parent_msg_id: Optional[str] = None
     with db.db_session() as sess:
         if body.modelId:
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+            update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
@@ -285,37 +268,20 @@ async def retry_message(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
 
     try:
-        agent = create_agent_for_chat(
-            body.chatId,
-            tool_ids=body.toolIds,
-        )
-
-        await handle_content_stream(
-            agent,
+        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        await run_graph_chat_runtime(
+            graph_data,
             chat_messages,
             new_msg_id,
             channel,
             chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
         )
 
     except Exception as e:
         logger.error(f"retry_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, new_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=new_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(new_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -329,11 +295,7 @@ async def edit_user_message(
 
     with db.db_session() as sess:
         if body.modelId:
-            provider, model = parse_model_id(body.modelId)
-            config = db.get_chat_agent_config(sess, body.chatId) or {}
-            config["provider"] = provider
-            config["model_id"] = model
-            db.update_chat_agent_config(sess, chatId=body.chatId, config=config)
+            update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
@@ -493,37 +455,20 @@ async def edit_user_message(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        agent = create_agent_for_chat(
-            body.chatId,
-            tool_ids=body.toolIds,
-        )
-
-        await handle_content_stream(
-            agent,
+        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        await run_graph_chat_runtime(
+            graph_data,
             chat_messages,
             assistant_msg_id,
             channel,
             chat_id=body.chatId,
+            ephemeral=False,
+            extra_tool_ids=body.toolIds or None,
         )
 
     except Exception as e:
         logger.error(f"edit_user_message error: {e}")
-        with db.db_session() as sess:
-            message = sess.get(db.Message, assistant_msg_id)
-            blocks: List[Dict[str, Any]] = []
-            if message and message.content:
-                raw = message.content.strip()
-                if raw.startswith("["):
-                    try:
-                        blocks = json.loads(raw)
-                    except Exception:
-                        blocks = [{"type": "text", "content": message.content}]
-                else:
-                    blocks = [{"type": "text", "content": message.content}]
-            blocks.append({"type": "error", "content": str(e)})
-            db.update_message_content(
-                sess, messageId=assistant_msg_id, content=json.dumps(blocks)
-            )
+        append_error_block_to_message(assistant_msg_id, error_message=str(e))
         channel.send_model(ChatEvent(event="RunError", content=str(e)))
 
 
@@ -565,3 +510,63 @@ async def get_message_siblings(
             )
             for sib in siblings
         ]
+
+
+@command
+async def get_message_siblings_batch(
+    body: GetMessageSiblingsBatchRequest,
+) -> Dict[str, List[MessageSiblingInfo]]:
+    message_ids = list(dict.fromkeys(body.messageIds))
+    if not message_ids:
+        return {}
+
+    with db.db_session() as sess:
+        stmt = (
+            select(db.Message.id, db.Message.parent_message_id)
+            .where(db.Message.chatId == body.chatId)
+            .where(db.Message.id.in_(message_ids))
+        )
+        message_rows = list(sess.execute(stmt))
+        if not message_rows:
+            return {}
+
+        parent_ids = {row[1] for row in message_rows}
+        conditions = []
+        if None in parent_ids:
+            conditions.append(db.Message.parent_message_id.is_(None))
+        non_null_parents = [pid for pid in parent_ids if pid is not None]
+        if non_null_parents:
+            conditions.append(db.Message.parent_message_id.in_(non_null_parents))
+
+        siblings_by_parent: Dict[Optional[str], List[MessageSiblingInfo]] = {}
+        active_path_ids: set[str] = set()
+
+        chat = sess.get(db.Chat, body.chatId)
+        if chat and chat.active_leaf_message_id:
+            active_path_msgs = db.get_message_path(sess, chat.active_leaf_message_id)
+            active_path_ids = {m.id for m in active_path_msgs}
+
+        if conditions:
+            sibling_stmt = (
+                select(
+                    db.Message.id,
+                    db.Message.parent_message_id,
+                    db.Message.sequence,
+                )
+                .where(db.Message.chatId == body.chatId)
+                .where(or_(*conditions))
+                .order_by(db.Message.sequence.asc())
+            )
+            siblings = list(sess.execute(sibling_stmt))
+            for msg_id, parent_id, sequence in siblings:
+                info = MessageSiblingInfo(
+                    id=msg_id,
+                    sequence=sequence,
+                    isActive=msg_id in active_path_ids,
+                )
+                siblings_by_parent.setdefault(parent_id, []).append(info)
+
+        return {
+            msg_id: siblings_by_parent.get(parent_id, [])
+            for msg_id, parent_id in message_rows
+        }

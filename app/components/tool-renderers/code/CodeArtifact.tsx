@@ -75,7 +75,7 @@ export function CodeArtifact({
     }
   };
 
-  const isLoading = !isCompleted || (filePath && fileState?.isLoading);
+  const isLoading = !isCompleted || Boolean(filePath && fileState?.isLoading);
 
   return (
     <Collapsible

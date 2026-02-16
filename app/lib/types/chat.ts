@@ -67,9 +67,32 @@ export type ContentBlock =
       approvalStatus?: "pending" | "approved" | "denied" | "timeout";
       editableArgs?: string[] | boolean;
       renderPlan?: RenderPlan;
+      isDelegation?: boolean;
     }
   | { type: "reasoning"; content: string; isCompleted: boolean }
-  | { type: "error"; content: string };
+  | {
+      type: "member_run";
+      runId: string;
+      memberName: string;
+      content: ContentBlock[];
+      isCompleted: boolean;
+      task?: string;
+      hasError?: boolean;
+      nodeId?: string;
+      nodeType?: string;
+      groupByNode?: boolean;
+    }
+  | { type: "error"; content: string }
+  | {
+      type: "flow_step";
+      nodeId: string;
+      nodeType: string;
+      nodeName?: string;
+      status: "started" | "completed" | "error";
+      summary?: string;
+      detail?: Record<string, unknown>;
+      durationMs?: number;
+    };
 
 export interface Message {
   id: string;
@@ -129,4 +152,6 @@ export interface ChatContextType {
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
   refreshModels: () => Promise<void>;
+  agents: import("@/python/api").AgentInfo[];
+  refreshAgents: () => Promise<void>;
 }

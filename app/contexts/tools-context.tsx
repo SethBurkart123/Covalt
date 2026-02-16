@@ -15,6 +15,7 @@ import {
   toggleChatTools,
 } from "@/python/api";
 import type { ToolInfo } from "@/lib/types/chat";
+import { getPrefetchedChat } from "@/lib/services/chat-prefetch";
 
 export interface ToolsByCategory {
   [category: string]: ToolInfo[];
@@ -27,22 +28,30 @@ export interface GroupedTools {
 
 export type { McpServerStatus };
 
-interface ToolsContextType {
+interface ToolsCatalogContextType {
   availableTools: ToolInfo[];
-  activeToolIds: string[];
   groupedTools: GroupedTools;
-  toggleTool: (toolId: string) => void;
-  toggleToolset: (category: string) => void;
-  isToolsetActive: (category: string) => boolean;
-  isToolsetPartiallyActive: (category: string) => boolean;
   isLoadingTools: boolean;
-  isLoadingActiveTools: boolean;
   mcpServers: McpServerStatus[];
   refreshTools: () => void;
   removeMcpServer: (serverId: string) => void;
 }
 
-const ToolsContext = createContext<ToolsContextType | undefined>(undefined);
+interface ToolsActiveContextType {
+  activeToolIds: string[];
+  toggleTool: (toolId: string) => void;
+  toggleToolset: (category: string) => void;
+  setChatToolIds: (
+    toolIds: string[],
+    options?: { persistDefaults?: boolean }
+  ) => Promise<void>;
+  isToolsetActive: (category: string) => boolean;
+  isToolsetPartiallyActive: (category: string) => boolean;
+  isLoadingActiveTools: boolean;
+}
+
+const ToolsCatalogContext = createContext<ToolsCatalogContextType | undefined>(undefined);
+const ToolsActiveContext = createContext<ToolsActiveContextType | undefined>(undefined);
 
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const { chatId } = useChat();
@@ -53,6 +62,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [isLoadingTools, setIsLoadingTools] = useState(true);
   const [isLoadingActiveTools, setIsLoadingActiveTools] = useState(true);
   const hasLoadedToolsOnce = useRef(false);
+  const pendingChatToolIdsRef = useRef<string[] | null>(null);
 
   const connectedServerIds = useMemo(
     () =>
@@ -95,8 +105,23 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setIsLoadingActiveTools(true);
       try {
         if (chatId) {
-          const config = await getChatAgentConfig({ body: { id: chatId } });
-          setActiveToolIds(config.toolIds || []);
+          const prefetched = getPrefetchedChat(chatId);
+          const isFresh = prefetched && Date.now() - prefetched.fetchedAt < 2_000;
+          if (prefetched?.agentConfig?.toolIds) {
+            setActiveToolIds(prefetched.agentConfig.toolIds);
+          }
+
+          if (pendingChatToolIdsRef.current) {
+            const pending = pendingChatToolIdsRef.current;
+            pendingChatToolIdsRef.current = null;
+            setActiveToolIds(pending);
+            await toggleChatTools({ body: { chatId, toolIds: pending } });
+          } else {
+            if (!isFresh || !prefetched?.agentConfig) {
+              const config = await getChatAgentConfig({ body: { id: chatId } });
+              setActiveToolIds(config.toolIds || []);
+            }
+          }
         } else {
           const response = await getDefaultTools();
           setActiveToolIds(response.toolIds || []);
@@ -132,20 +157,40 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, [availableTools]);
 
   const persistTools = useCallback(
-    async (newToolIds: string[]) => {
+    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+      const persistDefaults = options?.persistDefaults ?? true;
       try {
         if (chatId) {
           await toggleChatTools({
             body: { chatId, toolIds: newToolIds },
           });
+        } else if (!persistDefaults) {
+          pendingChatToolIdsRef.current = newToolIds;
         }
-        await setDefaultTools({ body: { toolIds: newToolIds } });
+
+        if (persistDefaults) {
+          await setDefaultTools({ body: { toolIds: newToolIds } });
+        }
       } catch (error) {
         console.error("Failed to persist tools:", error);
         throw error;
       }
     },
     [chatId]
+  );
+
+  const setChatToolIds = useCallback(
+    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+      const prevToolIds = activeToolIds;
+      setActiveToolIds(newToolIds);
+
+      try {
+        await persistTools(newToolIds, options);
+      } catch {
+        setActiveToolIds(prevToolIds);
+      }
+    },
+    [activeToolIds, persistTools]
   );
 
   const toggleTool = useCallback(
@@ -210,46 +255,76 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     void loadTools();
   }, [loadTools]);
 
-  const value = useMemo<ToolsContextType>(
+  const catalogValue = useMemo<ToolsCatalogContextType>(
     () => ({
       availableTools,
-      activeToolIds,
       groupedTools,
-      toggleTool,
-      toggleToolset,
-      isToolsetActive,
-      isToolsetPartiallyActive,
       isLoadingTools,
-      isLoadingActiveTools,
       mcpServers,
       refreshTools,
       removeMcpServer,
     }),
     [
       availableTools,
-      activeToolIds,
       groupedTools,
-      toggleTool,
-      toggleToolset,
-      isToolsetActive,
-      isToolsetPartiallyActive,
       isLoadingTools,
-      isLoadingActiveTools,
-      removeMcpServer,
       mcpServers,
       refreshTools,
+      removeMcpServer,
+    ]
+  );
+
+  const activeValue = useMemo<ToolsActiveContextType>(
+    () => ({
+      activeToolIds,
+      toggleTool,
+      toggleToolset,
+      setChatToolIds,
+      isToolsetActive,
+      isToolsetPartiallyActive,
+      isLoadingActiveTools,
+    }),
+    [
+      activeToolIds,
+      toggleTool,
+      toggleToolset,
+      setChatToolIds,
+      isToolsetActive,
+      isToolsetPartiallyActive,
+      isLoadingActiveTools,
     ]
   );
 
   return (
-    <ToolsContext.Provider value={value}>{children}</ToolsContext.Provider>
+    <ToolsCatalogContext.Provider value={catalogValue}>
+      <ToolsActiveContext.Provider value={activeValue}>
+        {children}
+      </ToolsActiveContext.Provider>
+    </ToolsCatalogContext.Provider>
   );
 }
 
 export function useTools() {
-  const context = useContext(ToolsContext);
-  if (context === undefined) {
+  const catalog = useContext(ToolsCatalogContext);
+  const active = useContext(ToolsActiveContext);
+  if (catalog === undefined || active === undefined) {
     throw new Error("useTools must be used within a ToolsProvider");
+  }
+  return { ...catalog, ...active };
+}
+
+export function useToolsCatalog() {
+  const context = useContext(ToolsCatalogContext);
+  if (context === undefined) {
+    throw new Error("useToolsCatalog must be used within a ToolsProvider");
+  }
+  return context;
+}
+
+export function useToolsActive() {
+  const context = useContext(ToolsActiveContext);
+  if (context === undefined) {
+    throw new Error("useToolsActive must be used within a ToolsProvider");
   }
   return context;
 }

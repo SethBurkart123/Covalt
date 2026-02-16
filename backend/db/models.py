@@ -91,6 +91,45 @@ class ActiveStream(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class ExecutionRun(Base):
+    __tablename__ = "execution_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    chat_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    message_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="streaming")
+    root_run_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    ended_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ExecutionEvent(Base):
+    __tablename__ = "execution_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("execution_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    ts: Mapped[str] = mapped_column(String, nullable=False)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    node_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    node_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    run_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "execution_id", "seq", name="uq_execution_events_execution_seq"
+        ),
+    )
+
+
 class ToolsetMcpServer(Base):
     """MCP server configuration belonging to a toolset."""
 
@@ -258,3 +297,27 @@ class ToolOverride(Base):
     __table_args__ = (
         UniqueConstraint("toolset_id", "tool_id", name="uq_toolset_tool_override"),
     )
+
+
+class Agent(Base):
+    """A visual agent graph that can be used in place of a model."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Icon format: "emoji:🤖" | "lucide:Bot" | "image:icon.png" | null
+    icon: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Preview screenshot filename (stored in agents/{id}/)
+    preview_image: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Graph as JSON: {"nodes": [...], "edges": [...]}
+    graph_data: Mapped[str] = mapped_column(
+        Text, nullable=False, default='{"nodes":[],"edges":[]}'
+    )
+
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)

@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { ChatProvider } from "@/contexts/chat-context";
 import { ToolsProvider } from "@/contexts/tools-context";
 import { StreamingProvider } from "@/contexts/streaming-context";
@@ -12,26 +13,28 @@ import type { CSSProperties, ReactNode } from "react";
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <WebSocketProvider>
-      <ChatProvider>
-        <ToolsProvider>
-          <StreamingProvider>
-            <PageTitleProvider>
-              <SidebarProvider
-                className="flex h-dvh w-full"
-                style={{
-                  "--sidebar-width": "19rem",
-                  "--sidebar-half-width": "9.5rem",
-                } as CSSProperties}
-              >
-                <AppSidebar />
-                <SidebarInset className="dark:bg-card/30 border border-border shadow overflow-clip">
-                  {children}
-                </SidebarInset>
-              </SidebarProvider>
-            </PageTitleProvider>
-          </StreamingProvider>
-        </ToolsProvider>
-      </ChatProvider>
+      <Suspense fallback={null}>
+        <ChatProvider>
+          <ToolsProvider>
+            <StreamingProvider>
+              <PageTitleProvider>
+                <SidebarProvider
+                  className="flex h-dvh w-full"
+                  style={{
+                    "--sidebar-width": "19rem",
+                    "--sidebar-half-width": "9.5rem",
+                  } as CSSProperties}
+                >
+                  <AppSidebar />
+                  <SidebarInset className="dark:bg-card/30 border border-border shadow overflow-clip">
+                    {children}
+                  </SidebarInset>
+                </SidebarProvider>
+              </PageTitleProvider>
+            </StreamingProvider>
+          </ToolsProvider>
+        </ChatProvider>
+      </Suspense>
     </WebSocketProvider>
   );
 }

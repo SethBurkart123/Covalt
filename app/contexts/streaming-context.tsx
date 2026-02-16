@@ -247,11 +247,13 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     };
 
     loadActiveStreams();
+    const subscriptions = subscriptionsRef.current;
+    const streamStates = streamStateRefs.current;
 
     return () => {
-      subscriptionsRef.current.forEach(({ unsubscribe }) => unsubscribe());
-      subscriptionsRef.current.clear();
-      streamStateRefs.current.clear();
+      subscriptions.forEach(({ unsubscribe }) => unsubscribe());
+      subscriptions.clear();
+      streamStates.clear();
       isInitializedRef.current = false;
     };
   }, [subscribeToStreamInternal]);

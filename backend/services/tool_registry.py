@@ -87,6 +87,9 @@ class ToolRegistry:
             elif len(parts) == 3:
                 return ("mcp_tool", parts[1], parts[2])
 
+        if tool_id.startswith("toolset:"):
+            return ("toolset_all", tool_id.split(":", 1)[1], None)
+
         if ":" in tool_id:
             parts = tool_id.split(":", 1)
             return ("toolset_tool", parts[0], parts[1])
@@ -102,6 +105,7 @@ class ToolRegistry:
         include_mcp_toolsets: set[str] = set()
         include_mcp_tools: set[tuple[str, str]] = set()
         include_toolset_tools: set[str] = set()
+        include_toolset_all: set[str] = set()
         blacklist: set[tuple[str, str]] = set()
 
         for tool_id in tool_ids:
@@ -116,6 +120,8 @@ class ToolRegistry:
                 include_mcp_tools.add((namespace, tool_name))
             elif tool_type == "toolset_tool" and namespace and tool_name:
                 include_toolset_tools.add(tool_id)
+            elif tool_type == "toolset_all" and namespace:
+                include_toolset_all.add(namespace)
             elif tool_type == "blacklist" and namespace and tool_name:
                 blacklist.add((namespace, tool_name))
 
@@ -145,6 +151,19 @@ class ToolRegistry:
                     fn = mcp.create_tool_function(server_id, tool_name)
                     if fn:
                         result.append(fn)
+
+        if include_toolset_all and chat_id:
+            executor = get_toolset_executor()
+            all_tools = executor.list_toolset_tools()
+            for tool_info in all_tools:
+                if tool_info.get("toolset_id") in include_toolset_all:
+                    fn = executor.get_tool_function(tool_info["id"], chat_id)
+                    if fn:
+                        result.append(fn)
+        elif include_toolset_all and not chat_id:
+            logger.warning(
+                f"Toolset-all requested but no chat_id provided: {include_toolset_all}"
+            )
 
         if include_toolset_tools and chat_id:
             executor = get_toolset_executor()

@@ -18,11 +18,19 @@ import type { AllModelSettingsResponse } from "@/python/api";
 import type { Attachment, Message } from "@/lib/types/chat";
 
 export default function ChatPanel() {
-  const { selectedModel, setSelectedModel, models: availableModels, chatId } = useChat();
+  const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
+
+  const hideToolSelector = useMemo(() => {
+    if (!selectedModel.startsWith("agent:")) return false;
+    const agentId = selectedModel.slice("agent:".length);
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return true;
+    return !agent.includeUserTools;
+  }, [selectedModel, agents]);
 
   useEffect(() => {
     getModelSettings()
@@ -120,8 +128,11 @@ export default function ChatPanel() {
   useEffect(() => { setSelectedModelRef.current = setSelectedModel; }, [setSelectedModel]);
   useEffect(() => { handleStopRef.current = handleStop; }, [handleStop]);
 
-  const stableHandleSubmit = useCallback((input: string, attachments: Attachment[]) => 
-    submitRef.current(input, attachments), []);
+  const stableHandleSubmit = useCallback(
+    (input: string, attachments: Attachment[], toolIds?: string[]) =>
+      submitRef.current(input, attachments, toolIds),
+    []
+  );
 
   const stableSetSelectedModel = useCallback((model: string) => 
     setSelectedModelRef.current(model), []);
@@ -181,6 +192,7 @@ export default function ChatPanel() {
                   models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
+                  hideToolSelector={hideToolSelector}
                 />
               </div>
             </>
@@ -198,6 +210,7 @@ export default function ChatPanel() {
                   models={availableModels}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
+                  hideToolSelector={hideToolSelector}
                 />
               </div>
             </div>

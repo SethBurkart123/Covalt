@@ -1,5 +1,15 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+.flow-node-glow {
+  --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 0 var(--tw-ring-color, currentcolor);
+  box-shadow:
+    var(--tw-inset-shadow),
+    var(--tw-inset-ring-shadow),
+    var(--tw-ring-offset-shadow),
+    0 0 16px -2px var(--tw-ring-color, currentcolor),
+    var(--tw-shadow);
+}
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -330,6 +340,254 @@ button {
   100% {
     transform: translateX(200%) skewX(-15deg);
   }
+}
+
+.shimmer-text {
+  --_shimmer-dim: color-mix(in oklch, var(--muted-foreground) 50%, var(--background));
+  background: linear-gradient(
+    90deg,
+    var(--_shimmer-dim) 0%,
+    var(--_shimmer-dim) 30%,
+    var(--foreground) 50%,
+    var(--_shimmer-dim) 70%,
+    var(--_shimmer-dim) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text 1.5s linear infinite;
+}
+@keyframes shimmer-text {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.template-editor .ProseMirror {
+  outline: none;
+}
+
+.template-editor-content {
+  min-height: 1.25rem;
+}
+
+.template-editor-content p {
+  margin: 0;
+}
+
+.template-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.chat-input-editor-content {
+  outline: none;
+}
+
+.chat-input-editor-content p {
+  line-height: 1.75rem;
+  margin: 0;
+}
+
+.chat-input-editor-content p:not(:first-child) {
+  margin-top: 1.5rem;
+}
+
+.chat-input-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.chat-input-editor-content :not(pre) > code {
+  @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold;
+}
+
+.chat-input-editor-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+.chat-input-editor-content h1 {
+  font-size: 2.25em;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0.5rem 0;
+}
+
+@media (min-width: 1024px) {
+  .chat-input-editor-content h1 {
+    font-size: 2.5em;
+  }
+}
+
+.chat-input-editor-content h2 {
+  font-size: 1.875em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.chat-input-editor-content h3 {
+  font-size: 1.5em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0.5rem 0;
+}
+
+.chat-input-editor-content h4 {
+  font-size: 1.25em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0.5rem 0;
+}
+
+.chat-input-editor-content ul {
+  margin: 0.25rem 0;
+  padding-left: 1.625rem;
+  list-style: disc;
+}
+
+.chat-input-editor-content ol {
+  margin: 1.5rem 0;
+  padding-left: 1.625rem;
+  list-style: decimal;
+}
+
+.chat-input-editor-content li {
+  margin-top: 0.5rem;
+}
+
+.chat-input-editor-content hr {
+  margin: 2rem 0;
+}
+
+.chat-input-editor-content a {
+  color: hsl(var(--primary));
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.chat-input-editor-content blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1.5rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.at-mention-pill {
+  @apply inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-sm font-medium text-primary;
+  white-space: nowrap;
+}
+
+.chat-input-editor-content pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1rem;
+  background: transparent;
+}
+
+.chat-input-editor-content pre code .hljs-comment,
+.chat-input-editor-content pre code .hljs-quote {
+  color: #7c6f64;
+}
+
+.chat-input-editor-content pre code .hljs-keyword,
+.chat-input-editor-content pre code .hljs-selector-tag,
+.chat-input-editor-content pre code .hljs-literal {
+  color: #9d0006;
+}
+
+.chat-input-editor-content pre code .hljs-string,
+.chat-input-editor-content pre code .hljs-doctag {
+  color: #79740e;
+}
+
+.chat-input-editor-content pre code .hljs-title,
+.chat-input-editor-content pre code .hljs-section,
+.chat-input-editor-content pre code .hljs-built_in {
+  color: #076678;
+}
+
+.chat-input-editor-content pre code .hljs-variable,
+.chat-input-editor-content pre code .hljs-attribute,
+.chat-input-editor-content pre code .hljs-number,
+.chat-input-editor-content pre code .hljs-symbol {
+  color: #8f3f71;
+}
+
+.dark .chat-input-editor-content pre code .hljs-comment,
+.dark .chat-input-editor-content pre code .hljs-quote {
+  color: #928374;
+}
+
+.dark .chat-input-editor-content pre code .hljs-keyword,
+.dark .chat-input-editor-content pre code .hljs-selector-tag,
+.dark .chat-input-editor-content pre code .hljs-literal {
+  color: #fb4934;
+}
+
+.dark .chat-input-editor-content pre code .hljs-string,
+.dark .chat-input-editor-content pre code .hljs-doctag {
+  color: #b8bb26;
+}
+
+.dark .chat-input-editor-content pre code .hljs-title,
+.dark .chat-input-editor-content pre code .hljs-section,
+.dark .chat-input-editor-content pre code .hljs-built_in {
+  color: #83a598;
+}
+
+.dark .chat-input-editor-content pre code .hljs-variable,
+.dark .chat-input-editor-content pre code .hljs-attribute,
+.dark .chat-input-editor-content pre code .hljs-number,
+.dark .chat-input-editor-content pre code .hljs-symbol {
+  color: #d3869b;
+}
+
+.template-var-content:empty::before {
+  content: attr(data-placeholder);
+  color: currentColor;
+}
+
+.template-var-content {
+  display: inline-block;
+  min-width: 0.5ch;
+}
+
+.preview-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.preview-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.template-drag-active .template-editor-dropzone {
+  outline: 1px dashed hsl(var(--primary) / 0.35);
+  outline-offset: 2px;
+}
+
+.template-editor-dropzone-active {
+  outline: 2px solid hsl(var(--primary) / 0.5);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
 }
 
 body {

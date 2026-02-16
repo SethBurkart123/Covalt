@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
-import { useChat } from "@/contexts/chat-context";
+import { useOptionalChat } from "@/contexts/chat-context";
 import { useWebSocket } from "@/contexts/websocket-context";
 import { getWorkspaceFile, updateWorkspaceFile } from "@/python/api";
 
@@ -45,14 +45,20 @@ interface ArtifactPanelContextValue {
 
 const ArtifactPanelContext = createContext<ArtifactPanelContextValue | null>(null);
 
-export function ArtifactPanelProvider({ children }: { children: ReactNode }) {
+interface ArtifactPanelProviderProps {
+  children: ReactNode;
+  chatId?: string;
+}
+
+export function ArtifactPanelProvider({ children, chatId: chatIdProp }: ArtifactPanelProviderProps) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [openFiles, setOpenFiles] = useState<Map<string, FileState>>(new Map());
 
   const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
   const { onWorkspaceFilesChanged } = useWebSocket();
-  const { chatId } = useChat();
+  const chatContext = useOptionalChat();
+  const chatId = chatIdProp ?? chatContext?.chatId ?? "";
 
   const wasSidebarOpenRef = useRef<boolean | null>(null);
   const prevChatIdRef = useRef<string>("");
