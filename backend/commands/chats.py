@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import uuid
 from datetime import datetime
@@ -262,7 +263,8 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
 
 @command
 async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
-    title = generate_title_for_chat(body.id)
+    # Run title generation off the event loop so chat streaming is not blocked.
+    title = await asyncio.to_thread(generate_title_for_chat, body.id)
     if title:
         with db.db_session() as sess:
             db.update_chat(sess, id=body.id, title=title)

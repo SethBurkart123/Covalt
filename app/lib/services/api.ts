@@ -23,9 +23,10 @@ import {
   toggleStarChat,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
+import { getBackendBaseUrl } from "@/lib/services/backend-url";
 
 if (typeof window !== "undefined") {
-  initBridge("http://127.0.0.1:8000");
+  initBridge(getBackendBaseUrl());
 }
 
 interface StreamingChatEvent {
@@ -51,10 +52,15 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
 
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
+        const normalizedEvent = (event || "RunContent").trim();
 
-        sendEvent(event || "RunContent", rest);
+        sendEvent(normalizedEvent, rest);
 
-        if (event === "RunCompleted" || event === "RunError" || event === "RunCancelled") {
+        if (
+          normalizedEvent === "RunCompleted" ||
+          normalizedEvent === "RunError" ||
+          normalizedEvent === "RunCancelled"
+        ) {
           controller.close();
           channel.close();
         }
@@ -154,7 +160,12 @@ export const api = {
       mode: "execute" | "runFrom";
       targetNodeId: string;
       cachedOutputs?: Record<string, Record<string, unknown>>;
-      promptInput?: Record<string, unknown>;
+      promptInput?: Record<string, unknown> & {
+        message: string;
+        history?: Record<string, unknown>[];
+        messages?: unknown[];
+        attachments?: Record<string, unknown>[];
+      };
       nodeIds?: string[];
     }
   ): StreamHandle =>
@@ -239,11 +250,13 @@ export const api = {
     >,
 
 
-  cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
-    cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,
+  cancelRun: async (messageId: string): Promise<void> => {
+    await cancelRun({ body: { messageId } });
+  },
 
-  cancelFlowRun: (runId: string): Promise<{ cancelled: boolean }> =>
-    cancelFlowRun({ body: { runId } }) as Promise<{ cancelled: boolean }>,
+  cancelFlowRun: async (runId: string): Promise<void> => {
+    await cancelFlowRun({ body: { runId } });
+  },
 
   generateChatTitle: (chatId: string): Promise<{ title: string | null }> =>
     generateChatTitle({ body: { id: chatId } }) as Promise<{
