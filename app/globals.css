@@ -707,3 +707,7 @@ body {
   --chart-4: oklch(0.82 0.11 40.89);
   --chart-5: oklch(0.64 0.13 32.07);
 }
+
+*:hover {
+  transition: 0s !important;
+}
