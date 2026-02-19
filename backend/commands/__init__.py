@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from . import agents, branches, chats, events, mcp, streaming, system, toolsets, uploads
+from . import (
+    agents,
+    branches,
+    chats,
+    events,
+    mcp,
+    provider_oauth,
+    streaming,
+    system,
+    toolsets,
+    uploads,
+)
 
 __all__ = [
     "agents",
@@ -8,6 +19,7 @@ __all__ = [
     "chats",
     "events",
     "mcp",
+    "provider_oauth",
     "streaming",
     "system",
     "toolsets",

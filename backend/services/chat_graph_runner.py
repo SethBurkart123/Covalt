@@ -63,6 +63,51 @@ AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
 FLOW_EDGE_CHANNEL = "flow"
 
 
+def _log_token_usage(
+    *,
+    run_id: str | None,
+    model: str | None,
+    provider: str | None,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    total_tokens: int | None,
+    cache_read_tokens: int | None,
+    cache_write_tokens: int | None,
+    reasoning_tokens: int | None,
+    time_to_first_token: float | None,
+) -> None:
+    if (
+        input_tokens is None
+        and output_tokens is None
+        and total_tokens is None
+        and cache_read_tokens is None
+        and cache_write_tokens is None
+        and reasoning_tokens is None
+    ):
+        return
+
+    tokens = {
+        "input": input_tokens,
+        "output": output_tokens,
+        "total": total_tokens,
+        "cache_read": cache_read_tokens,
+        "cache_write": cache_write_tokens,
+        "reasoning": reasoning_tokens,
+    }
+    tokens_str = ", ".join(
+        f"{key}={value}" for key, value in tokens.items() if value is not None
+    )
+    ttf_str = f" ttf={time_to_first_token:.3f}s" if time_to_first_token else ""
+    logger.info(
+        "[usage] run_id=%s provider=%s model=%s %s%s",
+        run_id or "-",
+        provider or "-",
+        model or "-",
+        tokens_str,
+        ttf_str,
+    )
+
+
 def _flow_topology(
     graph_data: dict[str, Any],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]], dict[str, list[str]]]:
@@ -161,7 +206,6 @@ def _apply_runtime_config(
             )
 
 
-
 def _build_trigger_payload(
     user_message: str,
     chat_history: list[dict[str, Any]],
@@ -204,6 +248,24 @@ def _is_member_event(chunk: Any) -> bool:
 
 def _is_team_event(chunk: Any) -> bool:
     return isinstance(chunk, BaseTeamRunEvent)
+
+
+def _get_tool_provider_data(tool: Any) -> dict[str, Any] | None:
+    if isinstance(tool, dict):
+        provider_data = tool.get("providerData")
+        return (
+            provider_data if isinstance(provider_data, dict) and provider_data else None
+        )
+
+    provider_data = getattr(tool, "provider_data", None)
+    if isinstance(provider_data, dict) and provider_data:
+        return provider_data
+
+    provider_data = getattr(tool, "providerData", None)
+    if isinstance(provider_data, dict) and provider_data:
+        return provider_data
+
+    return None
 
 
 @dataclass
@@ -683,6 +745,9 @@ def convert_chat_message_to_agno_messages(
                 tool_name = block.get("toolName")
                 tool_args = block.get("toolArgs")
                 tool_result = block.get("toolResult")
+                provider_data = block.get("providerData")
+                if not isinstance(provider_data, dict) or not provider_data:
+                    provider_data = None
 
                 message_content = " ".join(text_parts) if text_parts else None
                 messages.append(
@@ -697,6 +762,11 @@ def convert_chat_message_to_agno_messages(
                                     "name": tool_name,
                                     "arguments": json.dumps(tool_args or {}),
                                 },
+                                **(
+                                    {"providerData": provider_data}
+                                    if provider_data
+                                    else {}
+                                ),
                             }
                         ],
                     )
@@ -902,15 +972,21 @@ def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
 
     return DataValue(type="string", value="" if raw_value is None else str(raw_value))
 
-def _normalize_tool_node_ref(payload: dict[str, Any]) -> tuple[str, str | None, str | None] | None:
+
+def _normalize_tool_node_ref(
+    payload: dict[str, Any],
+) -> tuple[str, str | None, str | None] | None:
     node_id = payload.get("nodeId")
     if not node_id:
         return None
     node_type = payload.get("nodeType")
     error_value = payload.get("error")
-    node_type_text = str(node_type) if isinstance(node_type, str) and node_type else None
+    node_type_text = (
+        str(node_type) if isinstance(node_type, str) and node_type else None
+    )
     error_text = str(error_value) if error_value is not None else None
     return (str(node_id), node_type_text, error_text)
+
 
 def _tool_node_refs(tool_payload: Any) -> list[tuple[str, str | None, str | None]]:
     if not isinstance(tool_payload, dict):
@@ -1135,7 +1211,9 @@ async def handle_flow_stream(
             value_type = payload.get("type")
             if not isinstance(value_type, str) or not value_type:
                 continue
-            coerced[str(handle)] = DataValue(type=value_type, value=payload.get("value"))
+            coerced[str(handle)] = DataValue(
+                type=value_type, value=payload.get("value")
+            )
         return coerced
 
     def _get_or_create_member_state(data: dict[str, Any]) -> MemberRunState | None:
@@ -1157,7 +1235,9 @@ async def handle_flow_stream(
             if node_type:
                 content_blocks[member_state.block_index]["nodeType"] = str(node_type)
             if group_by_node is not None:
-                content_blocks[member_state.block_index]["groupByNode"] = bool(group_by_node)
+                content_blocks[member_state.block_index]["groupByNode"] = bool(
+                    group_by_node
+                )
             return member_state
 
         block = {
@@ -1291,6 +1371,11 @@ async def handle_flow_stream(
                 tool_id = str(tool.get("id") or "")
                 if not tool_id:
                     return False
+                provider_data = (
+                    tool.get("providerData") if isinstance(tool, dict) else None
+                )
+                if not isinstance(provider_data, dict) or not provider_data:
+                    provider_data = None
                 _flush_member_text(member_state)
                 _flush_member_reasoning(member_state)
                 tool_block = _find_tool_block(member_content, tool_id)
@@ -1302,12 +1387,21 @@ async def handle_flow_stream(
                             "toolName": tool.get("toolName"),
                             "toolArgs": tool.get("toolArgs"),
                             "isCompleted": False,
+                            **(
+                                {"providerData": provider_data} if provider_data else {}
+                            ),
                         }
                     )
                 else:
-                    tool_block["toolName"] = tool.get("toolName") or tool_block.get("toolName")
-                    tool_block["toolArgs"] = tool.get("toolArgs") or tool_block.get("toolArgs")
+                    tool_block["toolName"] = tool.get("toolName") or tool_block.get(
+                        "toolName"
+                    )
+                    tool_block["toolArgs"] = tool.get("toolArgs") or tool_block.get(
+                        "toolArgs"
+                    )
                     tool_block["isCompleted"] = False
+                    if provider_data:
+                        tool_block["providerData"] = provider_data
                 return True
 
             if event_name == "ToolCallCompleted":
@@ -1416,6 +1510,9 @@ async def handle_flow_stream(
             tool_id = str(tool.get("id") or "")
             if not tool_id:
                 return False
+            provider_data = tool.get("providerData") if isinstance(tool, dict) else None
+            if not isinstance(provider_data, dict) or not provider_data:
+                provider_data = None
             _flush_current_text()
             _flush_current_reasoning()
             tool_block = _find_tool_block(content_blocks, tool_id)
@@ -1427,10 +1524,13 @@ async def handle_flow_stream(
                         "toolName": tool.get("toolName"),
                         "toolArgs": tool.get("toolArgs"),
                         "isCompleted": False,
+                        **({"providerData": provider_data} if provider_data else {}),
                     }
                 )
             else:
                 tool_block["isCompleted"] = False
+                if provider_data:
+                    tool_block["providerData"] = provider_data
             return True
 
         if event_name == "ToolCallCompleted":
@@ -1443,6 +1543,9 @@ async def handle_flow_stream(
                 return False
             tool_block["isCompleted"] = True
             tool_block["toolResult"] = tool.get("toolResult")
+            provider_data = tool.get("providerData") if isinstance(tool, dict) else None
+            if isinstance(provider_data, dict) and provider_data:
+                tool_block["providerData"] = provider_data
             return True
 
         if event_name == "ToolApprovalRequired":
@@ -1652,7 +1755,9 @@ async def handle_flow_stream(
         _flush_all_member_runs()
 
         has_main_text = any(block.get("type") == "text" for block in content_blocks)
-        has_member_runs = any(block.get("type") == "member_run" for block in content_blocks)
+        has_member_runs = any(
+            block.get("type") == "member_run" for block in content_blocks
+        )
         if not has_main_text and not has_member_runs:
             if primary_agent_id:
                 if primary_output is not None:
@@ -1799,6 +1904,7 @@ async def handle_content_stream(
     current_reasoning = ""
     had_error = False
     run_id: str | None = None
+    logged_usage_events = 0
 
     active_delegation_tool_id: str | None = None
     delegation_task: str = ""
@@ -1921,6 +2027,7 @@ async def handle_content_stream(
                     }
                 )
                 member_state.current_reasoning = ""
+            provider_data = _get_tool_provider_data(chunk.tool)
             member_content.append(
                 {
                     "type": "tool_call",
@@ -1928,6 +2035,7 @@ async def handle_content_stream(
                     "toolName": chunk.tool.tool_name,
                     "toolArgs": chunk.tool.tool_args,
                     "isCompleted": False,
+                    **({"providerData": provider_data} if provider_data else {}),
                 }
             )
             ch.send_model(
@@ -1938,6 +2046,7 @@ async def handle_content_stream(
                         "toolName": chunk.tool.tool_name,
                         "toolArgs": chunk.tool.tool_args,
                         "isCompleted": False,
+                        **({"providerData": provider_data} if provider_data else {}),
                     },
                 )
             )
@@ -1946,6 +2055,7 @@ async def handle_content_stream(
             tool_result = (
                 str(chunk.tool.result) if chunk.tool.result is not None else None
             )
+            provider_data = _get_tool_provider_data(chunk.tool)
             for block in member_content:
                 if (
                     block["type"] == "tool_call"
@@ -1953,6 +2063,8 @@ async def handle_content_stream(
                 ):
                     block["isCompleted"] = True
                     block["toolResult"] = tool_result
+                    if provider_data:
+                        block.setdefault("providerData", provider_data)
                     break
             ch.send_model(
                 _make_event(
@@ -1961,6 +2073,7 @@ async def handle_content_stream(
                         "id": chunk.tool.tool_call_id,
                         "toolName": chunk.tool.tool_name,
                         "toolResult": tool_result,
+                        **({"providerData": provider_data} if provider_data else {}),
                     },
                 )
             )
@@ -2127,6 +2240,21 @@ async def handle_content_stream(
                     payload=_chunk_trace_payload(chunk),
                 )
 
+                if evt == RunEvent.model_request_completed:
+                    _log_token_usage(
+                        run_id=run_id or getattr(chunk, "run_id", None),
+                        model=getattr(chunk, "model", None),
+                        provider=getattr(chunk, "model_provider", None),
+                        input_tokens=getattr(chunk, "input_tokens", None),
+                        output_tokens=getattr(chunk, "output_tokens", None),
+                        total_tokens=getattr(chunk, "total_tokens", None),
+                        cache_read_tokens=getattr(chunk, "cache_read_tokens", None),
+                        cache_write_tokens=getattr(chunk, "cache_write_tokens", None),
+                        reasoning_tokens=getattr(chunk, "reasoning_tokens", None),
+                        time_to_first_token=getattr(chunk, "time_to_first_token", None),
+                    )
+                    logged_usage_events += 1
+
                 if active_delegation_tool_id and _is_member_event(chunk):
                     await _handle_member_event(evt, chunk)
                     continue
@@ -2184,6 +2312,7 @@ async def handle_content_stream(
                         flush_reasoning()
                         active_delegation_tool_id = chunk.tool.tool_call_id
                         delegation_task = (chunk.tool.tool_args or {}).get("task", "")
+                        provider_data = _get_tool_provider_data(chunk.tool)
                         content_blocks.append(
                             {
                                 "type": "tool_call",
@@ -2192,12 +2321,18 @@ async def handle_content_stream(
                                 "toolArgs": chunk.tool.tool_args,
                                 "isCompleted": False,
                                 "isDelegation": True,
+                                **(
+                                    {"providerData": provider_data}
+                                    if provider_data
+                                    else {}
+                                ),
                             }
                         )
                         continue
 
                     flush_text()
                     flush_reasoning()
+                    provider_data = _get_tool_provider_data(chunk.tool)
                     ch.send_model(
                         ChatEvent(
                             event="ToolCallStarted",
@@ -2206,6 +2341,11 @@ async def handle_content_stream(
                                 "toolName": chunk.tool.tool_name,
                                 "toolArgs": chunk.tool.tool_args,
                                 "isCompleted": False,
+                                **(
+                                    {"providerData": provider_data}
+                                    if provider_data
+                                    else {}
+                                ),
                             },
                         )
                     )
@@ -2252,6 +2392,7 @@ async def handle_content_stream(
                             chat_id,
                         )
 
+                    provider_data = _get_tool_provider_data(chunk.tool)
                     tool_block = {
                         "type": "tool_call",
                         "id": chunk.tool.tool_call_id,
@@ -2262,6 +2403,7 @@ async def handle_content_stream(
                         else None,
                         "isCompleted": True,
                         "renderer": registry.get_renderer(chunk.tool.tool_name),
+                        **({"providerData": provider_data} if provider_data else {}),
                     }
                     if render_plan is not None:
                         tool_block["renderPlan"] = render_plan
@@ -2308,6 +2450,29 @@ async def handle_content_stream(
                     ch.send_model(ChatEvent(event="ReasoningCompleted"))
 
                 elif evt == RunEvent.run_completed:
+                    if logged_usage_events == 0:
+                        metrics = getattr(chunk, "metrics", None)
+                        if metrics:
+                            _log_token_usage(
+                                run_id=run_id or getattr(chunk, "run_id", None),
+                                model=getattr(chunk, "model", None),
+                                provider=getattr(chunk, "model_provider", None),
+                                input_tokens=getattr(metrics, "input_tokens", None),
+                                output_tokens=getattr(metrics, "output_tokens", None),
+                                total_tokens=getattr(metrics, "total_tokens", None),
+                                cache_read_tokens=getattr(
+                                    metrics, "cache_read_tokens", None
+                                ),
+                                cache_write_tokens=getattr(
+                                    metrics, "cache_write_tokens", None
+                                ),
+                                reasoning_tokens=getattr(
+                                    metrics, "reasoning_tokens", None
+                                ),
+                                time_to_first_token=getattr(
+                                    metrics, "time_to_first_token", None
+                                ),
+                            )
                     trace_status = "completed"
                     flush_text()
                     flush_reasoning()
@@ -2471,6 +2636,29 @@ async def handle_content_stream(
                         break
             else:
                 break
+
+        if trace_status == "streaming":
+            flush_text()
+            flush_reasoning()
+            error_msg = "Run ended unexpectedly"
+            trace_status = "error"
+            trace_error = error_msg
+            content_blocks.append(
+                {
+                    "type": "error",
+                    "content": error_msg,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
+            had_error = True
+            try:
+                await asyncio.to_thread(save_content, assistant_msg_id, save_final())
+            except Exception as save_err:
+                logger.error(f"[stream] Failed to save state on close: {save_err}")
+            ch.send_model(ChatEvent(event="RunError", content=error_msg))
+            if chat_id:
+                await broadcaster.update_stream_status(chat_id, "error", error_msg)
+                await broadcaster.unregister_stream(chat_id)
 
     except asyncio.CancelledError:
         if run_id:

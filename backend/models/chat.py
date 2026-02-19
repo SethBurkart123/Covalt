@@ -6,11 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolCall(BaseModel):
+    model_config = ConfigDict(extra="allow")
     id: str
     toolName: str
     toolArgs: Dict[str, Any]
     toolResult: Optional[str] = None
     isCompleted: Optional[bool] = None
+    providerData: Optional[Dict[str, Any]] = None
 
 
 class ContentBlock(BaseModel):
@@ -26,6 +28,7 @@ class ContentBlock(BaseModel):
     requiresApproval: Optional[bool] = None
     approvalId: Optional[str] = None
     approvalStatus: Optional[str] = None
+    providerData: Optional[Dict[str, Any]] = None
 
 
 class Attachment(BaseModel):

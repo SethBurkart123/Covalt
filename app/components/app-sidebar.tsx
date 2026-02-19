@@ -86,7 +86,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarMenu className="gap-1 px-2 flex flex-col">
+        <SidebarMenu className="px-2 flex flex-col gap-0">
           {chatGroups.length === 0 ? (
             <SidebarMenuItem>
               <span className="px-4 py-2 text-sm text-muted-foreground italic">
@@ -97,7 +97,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             chatGroups.map((group) => (
               <div key={group.label} className="contents">
                 <SidebarMenuItem>
-                  <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground">
+                  <div className="px-2 pt-3 pb-1 my-1 text-xs text-muted-foreground">
                     {group.label}
                   </div>
                 </SidebarMenuItem>
@@ -107,6 +107,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   const itemEditTitle = isEditing ? editTitle : "";
                   return (
                     <ChatItem
+                      outsidePadding="py-0.5"
                       key={id}
                       title={chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`}
                       isActive={currentChatId === id}
