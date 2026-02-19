@@ -58,17 +58,39 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
         from .model_factory import get_model
 
         model = get_model(provider, model_id)
-        agent = Agent(model=model, instructions=[prompt], tools=[], stream=False)
-        response = agent.run(input=[])
+        agent = Agent(model=model, instructions=[prompt], tools=[], stream=True)
+        response_stream = agent.run(
+            input=[],
+            stream=True,
+            stream_events=False,
+            yield_run_output=True,
+        )
 
-        if not response or not response.messages:
+        final_response = None
+        streamed_text_parts: list[str] = []
+
+        for chunk in response_stream:
+            if hasattr(chunk, "messages"):
+                final_response = chunk
+                continue
+            content = getattr(chunk, "content", None)
+            if isinstance(content, str) and content:
+                streamed_text_parts.append(content)
+
+        title_raw: Optional[str] = None
+
+        if final_response is not None and getattr(final_response, "messages", None):
+            last_msg = final_response.messages[-1]
+            if last_msg and hasattr(last_msg, "content"):
+                title_raw = str(last_msg.content)
+
+        if title_raw is None and streamed_text_parts:
+            title_raw = "".join(streamed_text_parts)
+
+        if not title_raw:
             return None
 
-        last_msg = response.messages[-1]
-        if not last_msg or not hasattr(last_msg, "content"):
-            return None
-
-        title = str(last_msg.content).strip().strip("\"'").strip()
+        title = title_raw.strip().strip("\"'").strip()
 
         if len(title) > 100:
             title = title[:100].strip()
