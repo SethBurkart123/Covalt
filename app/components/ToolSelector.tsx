@@ -347,7 +347,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                       return (
                         <div
                           key={tool.id}
-                          className="flex items-start gap-3 px-3 py-2.5 hover:bg-accent rounded-md cursor-pointer"
+                          className="flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors rounded-md cursor-pointer"
                           onClick={() => toggleTool(tool.id)}
                         >
                           <Switch

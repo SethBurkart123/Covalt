@@ -92,7 +92,7 @@ function ChatItemInner({
               onClick={(e) => { e.stopPropagation(); onSelect(); }}
               onFocus={onPrefetch}
               className={clsx(
-                "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
+                "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
                 isActive
                   ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
                   : "hover:bg-muted/50",
