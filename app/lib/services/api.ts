@@ -23,10 +23,9 @@ import {
   toggleStarChat,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
-import { getBackendBaseUrl } from "@/lib/services/backend-url";
 
 if (typeof window !== "undefined") {
-  initBridge(getBackendBaseUrl());
+  initBridge("http://127.0.0.1:8000");
 }
 
 interface StreamingChatEvent {
@@ -52,15 +51,10 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
 
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
-        const normalizedEvent = (event || "RunContent").trim();
 
-        sendEvent(normalizedEvent, rest);
+        sendEvent(event || "RunContent", rest);
 
-        if (
-          normalizedEvent === "RunCompleted" ||
-          normalizedEvent === "RunError" ||
-          normalizedEvent === "RunCancelled"
-        ) {
+        if (event === "RunCompleted" || event === "RunError" || event === "RunCancelled") {
           controller.close();
           channel.close();
         }
@@ -160,12 +154,7 @@ export const api = {
       mode: "execute" | "runFrom";
       targetNodeId: string;
       cachedOutputs?: Record<string, Record<string, unknown>>;
-      promptInput?: Record<string, unknown> & {
-        message: string;
-        history?: Record<string, unknown>[];
-        messages?: unknown[];
-        attachments?: Record<string, unknown>[];
-      };
+      promptInput?: Record<string, unknown>;
       nodeIds?: string[];
     }
   ): StreamHandle =>
@@ -250,13 +239,11 @@ export const api = {
     >,
 
 
-  cancelRun: async (messageId: string): Promise<void> => {
-    await cancelRun({ body: { messageId } });
-  },
+  cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
+    cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,
 
-  cancelFlowRun: async (runId: string): Promise<void> => {
-    await cancelFlowRun({ body: { runId } });
-  },
+  cancelFlowRun: (runId: string): Promise<{ cancelled: boolean }> =>
+    cancelFlowRun({ body: { runId } }) as Promise<{ cancelled: boolean }>,
 
   generateChatTitle: (chatId: string): Promise<{ title: string | null }> =>
     generateChatTitle({ body: { id: chatId } }) as Promise<{

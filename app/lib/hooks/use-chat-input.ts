@@ -205,7 +205,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
-      const isNewChat = !chatId;
 
       setBaseMessages(newBaseMessages);
 
@@ -236,6 +235,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
             if (!chatId && id) {
               window.history.replaceState(null, "", `/?chatId=${id}`);
               refreshChats();
+              api.generateChatTitle(id).then(refreshChats).catch(console.error);
             }
             if (id && streamingMessageIdRef.current) {
               registerStream(id, streamingMessageIdRef.current);
@@ -256,9 +256,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           trackModel();
           preserveStreamingMessage(result);
           unregisterStream(finalChatId);
-          if (isNewChat) {
-            api.generateChatTitle(finalChatId).then(refreshChats).catch(console.error);
-          }
         }
       } catch (error) {
         console.error("Error streaming chat:", error);
