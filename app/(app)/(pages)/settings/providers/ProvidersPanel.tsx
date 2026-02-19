@@ -5,8 +5,33 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
 import { PROVIDERS, ProviderConfig } from './ProviderRegistry';
-import { getProviderSettings, saveProviderSettings, testProvider } from '@/python/api';
+import {
+  getProviderOauthStatus,
+  getProviderSettings,
+  revokeProviderOauth,
+  saveProviderSettings,
+  startProviderOauth,
+  submitProviderOauthCode,
+  testProvider,
+} from '@/python/api';
 import { useModels } from '@/lib/hooks/useModels';
+
+type OAuthStatus = 'none' | 'pending' | 'authenticated' | 'error';
+
+interface OAuthState {
+  status: OAuthStatus;
+  hasTokens?: boolean;
+  authUrl?: string;
+  instructions?: string;
+  error?: string;
+}
+
+const normalizeOAuthStatus = (value: unknown): OAuthStatus => {
+  if (value === 'none' || value === 'pending' || value === 'authenticated' || value === 'error') {
+    return value;
+  }
+  return 'none';
+};
 
 export default function ProvidersPanel() {
   const [search, setSearch] = useState('');
@@ -18,6 +43,9 @@ export default function ProvidersPanel() {
     Record<string, 'idle' | 'testing' | 'success' | 'error'>
   >({});
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
+  const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthState>>({});
+  const [oauthCodes, setOauthCodes] = useState<Record<string, string>>({});
+  const [oauthEnterpriseDomains, setOauthEnterpriseDomains] = useState<Record<string, string>>({});
   const { connectedProviders, refreshModels } = useModels();
 
   useEffect(() => {
@@ -59,6 +87,7 @@ export default function ProvidersPanel() {
       }
 
       setProviderConfigs(map);
+      await loadOauthStatuses();
     } catch {
       const fallback: Record<string, ProviderConfig> = {};
       for (const def of PROVIDERS) {
@@ -70,9 +99,36 @@ export default function ProvidersPanel() {
         };
       }
       setProviderConfigs(fallback);
+      await loadOauthStatuses();
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadOauthStatuses = async () => {
+    const entries = PROVIDERS.filter((p) => p.authType === 'oauth');
+    if (entries.length === 0) return;
+    const results = await Promise.all(entries.map(async (def) => {
+      try {
+        const status = await getProviderOauthStatus({ body: { provider: def.key } });
+        return [def.key, {
+          status: normalizeOAuthStatus(status.status),
+          hasTokens: status.hasTokens,
+          authUrl: status.authUrl,
+          instructions: status.instructions,
+          error: status.error,
+        }] as const;
+      } catch {
+        return [def.key, { status: 'error', error: 'Failed to load OAuth status' }] as const;
+      }
+    }));
+    setOauthStatus((prev) => {
+      const next = { ...prev };
+      results.forEach(([key, status]) => {
+        next[key] = status;
+      });
+      return next;
+    });
   };
 
   const filtered = useMemo(() => {
@@ -104,6 +160,10 @@ export default function ProvidersPanel() {
   };
 
   const handleSave = async (key: string) => {
+    const def = PROVIDERS.find((p) => p.key === key);
+    if (def?.authType === 'oauth') {
+      return;
+    }
     setSaving((s) => ({ ...s, [key]: true }));
     setSaved((s) => ({ ...s, [key]: false }));
     try {
@@ -141,6 +201,10 @@ export default function ProvidersPanel() {
   };
 
   const handleTestConnection = async (providerKey: string) => {
+    const def = PROVIDERS.find((p) => p.key === providerKey);
+    if (def?.authType === 'oauth') {
+      return;
+    }
     setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'testing' }));
     setConnectionErrors((prev) => ({ ...prev, [providerKey]: '' }));
 
@@ -207,6 +271,63 @@ export default function ProvidersPanel() {
             saved={!!saved[def.key]}
             connectionStatus={connectionStatus[def.key] || 'idle'}
             connectionError={connectionErrors[def.key]}
+            oauthStatus={oauthStatus[def.key]}
+            oauthCode={oauthCodes[def.key]}
+            oauthEnterpriseDomain={oauthEnterpriseDomains[def.key]}
+            onOauthCodeChange={(value) => setOauthCodes((prev) => ({ ...prev, [def.key]: value }))}
+            onOauthEnterpriseDomainChange={(value) => setOauthEnterpriseDomains((prev) => ({ ...prev, [def.key]: value }))}
+            onOauthStart={async () => {
+              const result = await startProviderOauth({
+                body: {
+                  provider: def.key,
+                  enterpriseDomain: oauthEnterpriseDomains[def.key] || undefined,
+                },
+              });
+              setOauthStatus((prev) => ({
+                ...prev,
+                [def.key]: {
+                  status: normalizeOAuthStatus(result.status),
+                  authUrl: result.authUrl,
+                  instructions: result.instructions,
+                  error: result.error,
+                },
+              }));
+            }}
+            onOauthSubmitCode={async () => {
+              const code = oauthCodes[def.key];
+              if (!code) return;
+              await submitProviderOauthCode({ body: { provider: def.key, code } });
+              setOauthCodes((prev) => ({ ...prev, [def.key]: '' }));
+              const status = await getProviderOauthStatus({ body: { provider: def.key } });
+              setOauthStatus((prev) => ({
+                ...prev,
+                [def.key]: {
+                  status: normalizeOAuthStatus(status.status),
+                  hasTokens: status.hasTokens,
+                  authUrl: status.authUrl,
+                  instructions: status.instructions,
+                  error: status.error,
+                },
+              }));
+              if (normalizeOAuthStatus(status.status) === 'authenticated') {
+                refreshModels();
+              }
+            }}
+            onOauthRevoke={async () => {
+              await revokeProviderOauth({ body: { provider: def.key } });
+              const status = await getProviderOauthStatus({ body: { provider: def.key } });
+              setOauthStatus((prev) => ({
+                ...prev,
+                [def.key]: {
+                  status: normalizeOAuthStatus(status.status),
+                  hasTokens: status.hasTokens,
+                  authUrl: status.authUrl,
+                  instructions: status.instructions,
+                  error: status.error,
+                },
+              }));
+              refreshModels();
+            }}
             onChange={(field, value) => updateProvider(def.key, field, value)}
             onSave={() => handleSave(def.key)}
             onTestConnection={() => handleTestConnection(def.key)}

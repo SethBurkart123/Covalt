@@ -16,6 +16,8 @@ const inflight = new Map<string, Promise<PrefetchedChatData>>();
 const MAX_CACHE = 30;
 
 function setCache(chatId: string, data: PrefetchedChatData) {
+  const existing = cache.get(chatId);
+  if (existing && existing.fetchedAt > data.fetchedAt) return;
   cache.set(chatId, data);
   if (cache.size <= MAX_CACHE) return;
   const oldestKey = cache.keys().next().value as string | undefined;
@@ -29,6 +31,10 @@ export function getPrefetchedChat(chatId: string): PrefetchedChatData | undefine
 export function clearPrefetchedChat(chatId: string): void {
   cache.delete(chatId);
   inflight.delete(chatId);
+}
+
+export function setPrefetchedChat(chatId: string, data: PrefetchedChatData): void {
+  setCache(chatId, data);
 }
 
 export function getPrefetchPromise(

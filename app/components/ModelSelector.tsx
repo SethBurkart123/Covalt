@@ -268,7 +268,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         <Command className="rounded-2xl" shouldFilter={false}>
           <CommandInput placeholder="Search model or agent..." value={search} onValueChange={setSearch} />
 
-          <div className="flex gap-1 px-3 pt-2 pb-1 overflow-x-auto scrollbar-hide">
+          <div className="flex w-full min-w-0 max-w-full flex-nowrap gap-1 px-3 pt-2 pb-1 overflow-x-auto overflow-y-hidden scrollbar-hide">
             <FilterTab active={providerFilter === null} onClick={() => setProviderFilter(null)}>All</FilterTab>
             {!hideAgents && agents.length > 0 && (
               <FilterTab active={providerFilter === AGENT_FILTER} onClick={() => setProviderFilter(AGENT_FILTER)}>Agents</FilterTab>

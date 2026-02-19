@@ -5,7 +5,11 @@ import { useChat } from "@/contexts/chat-context";
 import { useToolsActive } from "@/contexts/tools-context";
 import { useStreaming } from "@/contexts/streaming-context";
 import { api } from "@/lib/services/api";
-import { getPrefetchedChat, getPrefetchPromise, prefetchChat } from "@/lib/services/chat-prefetch";
+import {
+  clearPrefetchedChat,
+  getPrefetchedChat,
+  setPrefetchedChat,
+} from "@/lib/services/chat-prefetch";
 import { processMessageStream, type StreamResult } from "@/lib/services/stream-processor";
 import { useMessageEditing } from "@/lib/hooks/use-message-editing";
 import {
@@ -36,6 +40,9 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const streamAbortRef = useRef<(() => void) | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
   const activeSubmissionChatIdRef = useRef<string | null>(null);
+  const loadTokenRef = useRef(0);
+  const currentChatIdRef = useRef<string | null>(chatId);
+  const prevChatIdRef = useRef<string | null>(null);
 
   const streamState = chatId ? getStreamState(chatId) : undefined;
   const isLoading = streamState?.isStreaming || streamState?.isPausedForApproval || false;
@@ -89,59 +96,88 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     [selectedModel],
   );
 
-  const reloadMessages = useCallback(async (id: string) => {
+  const applySnapshot = useCallback(
+    (messages: Message[], siblings: Record<string, MessageSibling[]>) => {
+      setBaseMessages(messages);
+      setMessageSiblings(siblings);
+    },
+    [],
+  );
+
+  const fetchSnapshot = useCallback(async (id: string) => {
     const fullChat = await api.getChat(id);
-    setBaseMessages(fullChat.messages || []);
+    const messages = fullChat.messages || [];
+    const messageIds = Array.from(new Set(messages.map((msg) => msg.id)));
+    const siblings: Record<string, MessageSibling[]> = messageIds.length > 0
+      ? await api.getMessageSiblingsBatch(id, messageIds)
+      : {};
+
+    const cached = getPrefetchedChat(id);
+    setPrefetchedChat(id, {
+      ...(cached ?? { fetchedAt: 0 }),
+      messages,
+      siblings,
+      fetchedAt: Date.now(),
+    });
+
+    return { messages, siblings };
   }, []);
+
+  const reloadMessages = useCallback(async (id: string) => {
+    const loadId = ++loadTokenRef.current;
+    const { messages, siblings } = await fetchSnapshot(id);
+    if (loadTokenRef.current !== loadId || currentChatIdRef.current !== id) return;
+    applySnapshot(messages, siblings);
+  }, [applySnapshot, fetchSnapshot]);
 
   useEffect(() => {
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
 
   useEffect(() => {
+    currentChatIdRef.current = chatId;
+  }, [chatId]);
+
+  useEffect(() => {
     if (activeSubmissionChatIdRef.current) return;
-    
+
+    const isChatSwitch = prevChatIdRef.current !== chatId;
+    prevChatIdRef.current = chatId;
+
     if (!chatId) {
-      setBaseMessages([]);
-      return;
-    }
-    
-    const existingStream = getStreamState(chatId);
-    if (existingStream?.isStreaming) {
+      applySnapshot([], {});
       return;
     }
 
+    const loadId = ++loadTokenRef.current;
     const prefetched = getPrefetchedChat(chatId);
-    if (prefetched?.messages) {
-      setBaseMessages(prefetched.messages);
-    }
+    const prefetchedMessages = prefetched?.messages || [];
+    const prefetchedSiblings = prefetched?.siblings || {};
+    const hasAllSiblings = prefetchedMessages.length > 0
+      ? prefetchedMessages.every((msg) => msg.id in prefetchedSiblings)
+      : true;
+    const isFresh = prefetched ? Date.now() - prefetched.fetchedAt < 2_000 : false;
 
-    if (!prefetched?.messages) {
-      const inflight = getPrefetchPromise(chatId);
-      if (inflight) {
-        inflight
-          .then((data) => {
-            if (data.messages) setBaseMessages(data.messages);
-          })
-          .catch(() => {});
-      } else {
-        prefetchChat(chatId)
-          .then((data) => {
-            if (data?.messages) setBaseMessages(data.messages);
-          })
-          .catch(() => {});
-      }
+    if (hasAllSiblings && isFresh) {
+      applySnapshot(prefetchedMessages, prefetchedSiblings);
       return;
     }
 
-    const isFresh = Date.now() - prefetched.fetchedAt < 2_000;
-    if (!isFresh) {
-      reloadMessages(chatId).catch((err) => {
-        console.error("Failed to load chat messages:", err);
-        setBaseMessages([]);
-      });
+    if (isChatSwitch) {
+      applySnapshot([], {});
     }
-  }, [chatId, reloadTrigger, reloadMessages, getStreamState]);
+
+    fetchSnapshot(chatId)
+      .then(({ messages, siblings }) => {
+        if (loadTokenRef.current !== loadId || currentChatIdRef.current !== chatId) return;
+        applySnapshot(messages, siblings);
+      })
+      .catch((err) => {
+        if (loadTokenRef.current !== loadId || currentChatIdRef.current !== chatId) return;
+        console.error("Failed to load chat messages:", err);
+        applySnapshot([], {});
+      });
+  }, [chatId, reloadTrigger, applySnapshot, fetchSnapshot]);
 
   useEffect(() => {
     const unsubscribe = onStreamComplete((completedChatId) => {
@@ -153,41 +189,6 @@ export function useChatInput(onThinkTagDetected?: () => void) {
     });
     return unsubscribe;
   }, [chatId, reloadMessages, onStreamComplete]);
-
-  useEffect(() => {
-    if (!chatId || baseMessages.length === 0) {
-      setMessageSiblings({});
-      return;
-    }
-
-    let cancelled = false;
-    const messageIds = Array.from(new Set(baseMessages.map((msg) => msg.id)));
-
-    const prefetched = getPrefetchedChat(chatId);
-    const hasAllPrefetched =
-      prefetched?.siblings &&
-      messageIds.every((id) => id in prefetched.siblings!);
-
-    if (hasAllPrefetched) {
-      setMessageSiblings(prefetched!.siblings!);
-      return;
-    }
-
-    api
-      .getMessageSiblingsBatch(chatId, messageIds)
-      .then((map) => {
-        if (cancelled) return;
-        setMessageSiblings(map);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setMessageSiblings({});
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chatId, baseMessages]);
 
   const handleSubmit = useCallback(
     async (inputText: string, attachments: Attachment[], extraToolIds?: string[]) => {
@@ -418,6 +419,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       if (!chatId) return;
       try {
         await api.switchToSibling(messageId, siblingId, chatId);
+        clearPrefetchedChat(chatId);
         triggerReload();
       } catch (error) {
         console.error("Failed to switch sibling:", error);

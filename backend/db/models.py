@@ -272,6 +272,21 @@ class OAuthToken(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class ProviderOAuthCredential(Base):
+    """Stored OAuth credentials for model providers."""
+
+    __tablename__ = "provider_oauth_credentials"
+
+    provider: Mapped[str] = mapped_column(String, primary_key=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    expires_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    extra: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class ToolOverride(Base):
     """Override configuration for a tool within a toolset."""
 

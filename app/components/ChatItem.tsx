@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import { memo } from "react";
 import {
   MoreVertical,
   Pencil,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface ChatItemProps {
+  outsidePadding?: string;
   title: string;
   isActive: boolean;
   isStreaming: boolean;
@@ -40,6 +41,7 @@ interface ChatItemProps {
 }
 
 function ChatItemInner({
+  outsidePadding,
   title,
   isActive,
   isStreaming,
@@ -60,7 +62,11 @@ function ChatItemInner({
 }: ChatItemProps) {
   return (
     <SidebarMenuItem>
-      <div className="group/chat relative flex w-full items-center">
+      <div
+        className={clsx("group/chat relative flex w-full items-center cursor-pointer", outsidePadding)}
+        onClick={onSelect}
+        onMouseEnter={onPrefetch}
+      >
         {isEditing ? (
           <input
             type="text"
@@ -83,8 +89,7 @@ function ChatItemInner({
         ) : (
           <>
             <button
-              onClick={onSelect}
-              onMouseEnter={onPrefetch}
+              onClick={(e) => { e.stopPropagation(); onSelect(); }}
               onFocus={onPrefetch}
               className={clsx(
                 "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2",
@@ -95,73 +100,73 @@ function ChatItemInner({
               )}
               title={title}
             >
-              {isStreaming && (
-                <Loader2 className="size-3 animate-spin text-primary flex-shrink-0" />
-              )}
-              {isPausedForApproval && (
-                <AlertCircle className="size-3 text-amber-500 flex-shrink-0" />
-              )}
-              {hasError && !isActive && (
-                <AlertCircle className="size-3 text-destructive flex-shrink-0" />
-              )}
-              {hasUnseenUpdate &&
-                !isActive &&
-                !isStreaming &&
-                !isPausedForApproval &&
-                !hasError && (
-                  <Circle className="size-2 fill-primary text-primary flex-shrink-0" />
+                {isStreaming && (
+                  <Loader2 className="size-3 animate-spin text-primary flex-shrink-0" />
                 )}
-              <span className="truncate">{title}</span>
-            </button>
-            <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className={clsx(
-                      "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      isActive
-                        ? "text-sidebar-accent-foreground"
-                        : "text-muted-foreground",
-                    )}
-                    aria-label={`Chat options for ${title}`}
-                  >
-                    <MoreVertical className="size-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {onToggleStar && (
-                    <DropdownMenuItem onClick={onToggleStar}>
-                      <Star
-                        className={clsx(
-                          "mr-2 size-4",
-                          isStarred
-                            ? "fill-yellow-500 text-yellow-500"
-                            : "text-muted-foreground"
-                        )}
-                      />
-                      {isStarred ? "Unstar" : "Star"}
-                    </DropdownMenuItem>
+                {isPausedForApproval && (
+                  <AlertCircle className="size-3 text-amber-500 flex-shrink-0" />
+                )}
+                {hasError && !isActive && (
+                  <AlertCircle className="size-3 text-destructive flex-shrink-0" />
+                )}
+                {hasUnseenUpdate &&
+                  !isActive &&
+                  !isStreaming &&
+                  !isPausedForApproval &&
+                  !hasError && (
+                    <Circle className="size-2 fill-primary text-primary flex-shrink-0" />
                   )}
-                  <DropdownMenuItem onClick={onRename}>
-                    <Pencil className="mr-2 size-4" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={onDelete}
-                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                <span className="truncate">{title}</span>
+              </button>
+              <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className={clsx(
+                        "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        isActive
+                          ? "text-sidebar-accent-foreground"
+                          : "text-muted-foreground",
+                      )}
+                      aria-label={`Chat options for ${title}`}
+                    >
+                      <MoreVertical className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Trash2 className="mr-2 size-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </>
-        )}
+                    {onToggleStar && (
+                      <DropdownMenuItem onClick={onToggleStar}>
+                        <Star
+                          className={clsx(
+                            "mr-2 size-4",
+                            isStarred
+                              ? "fill-yellow-500 text-yellow-500"
+                              : "text-muted-foreground"
+                          )}
+                        />
+                        {isStarred ? "Unstar" : "Star"}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={onRename}>
+                      <Pencil className="mr-2 size-4" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={onDelete}
+                      className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                    >
+                      <Trash2 className="mr-2 size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </>
+          )}
       </div>
     </SidebarMenuItem>
   );
@@ -181,4 +186,4 @@ function arePropsEqual(prev: ChatItemProps, next: ChatItemProps) {
   );
 }
 
-export const ChatItem = React.memo(ChatItemInner, arePropsEqual);
+export const ChatItem = memo(ChatItemInner, arePropsEqual);

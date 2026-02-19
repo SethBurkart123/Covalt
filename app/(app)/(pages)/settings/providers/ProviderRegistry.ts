@@ -6,6 +6,8 @@ import OllamaIcon from './icons/Ollama';
 import VLLMIcon from './icons/VLLM';
 import LMStudioIcon from './icons/LMStudio';
 import GeminiIcon from './icons/Gemini';
+import GitHubIcon from './icons/GitHub';
+import GeminiCliIcon from './icons/GeminiCli';
 
 export interface ProviderConfig {
   provider: string;
@@ -32,6 +34,10 @@ export interface ProviderDefinition {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   fields: ProviderFieldDef[];
   defaults?: Partial<ProviderConfig>;
+  authType?: 'apiKey' | 'oauth';
+  oauth?: {
+    enterpriseDomain?: boolean;
+  };
 }
 
 export const PROVIDERS: ProviderDefinition[] = [
@@ -45,6 +51,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'extra', label: 'Extra (JSON)', type: 'textarea', placeholder: '{\n  "vertexai": false,\n  "project_id": "",\n  "location": ""\n}', required: false },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
   },
   {
     key: 'openai',
@@ -56,6 +63,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'baseUrl', label: 'Base URL (optional)', type: 'text', placeholder: 'https://api.openai.com', required: false },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
   },
   {
     key: 'anthropic',
@@ -66,6 +74,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-ant-...' },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
   },
   {
     key: 'groq',
@@ -76,6 +85,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'gsk_...' },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
   },
   {
     key: 'openrouter',
@@ -86,6 +96,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-or-v1-...' },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
   },
   {
     key: 'ollama',
@@ -96,6 +107,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'baseUrl', label: 'Host URL', type: 'text', placeholder: 'http://localhost:11434' },
     ],
     defaults: { enabled: true, baseUrl: 'http://localhost:11434' },
+    authType: 'apiKey',
   },
   {
     key: 'vllm',
@@ -106,6 +118,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:8000/v1' },
     ],
     defaults: { enabled: true, baseUrl: 'http://localhost:8000/v1' },
+    authType: 'apiKey',
   },
   {
     key: 'lmstudio',
@@ -116,6 +129,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:1234/v1' },
     ],
     defaults: { enabled: true, baseUrl: 'http://localhost:1234/v1' },
+    authType: 'apiKey',
   },
   {
     key: 'openai_like',
@@ -127,6 +141,44 @@ export const PROVIDERS: ProviderDefinition[] = [
       { id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'https://api.example.com/v1' },
     ],
     defaults: { enabled: true },
+    authType: 'apiKey',
+  },
+  {
+    key: 'anthropic_oauth',
+    name: 'Claude',
+    description: 'Claude Pro/Max via OAuth sign-in',
+    icon: ClaudeIcon,
+    fields: [],
+    defaults: { enabled: true },
+    authType: 'oauth',
+  },
+  {
+    key: 'openai_codex',
+    name: 'ChatGPT',
+    description: 'ChatGPT Plus/Pro via OAuth',
+    icon: OpenAIIcon,
+    fields: [],
+    defaults: { enabled: true },
+    authType: 'oauth',
+  },
+  {
+    key: 'github_copilot',
+    name: 'GitHub Copilot OAuth',
+    description: 'Copilot models via device flow',
+    icon: GitHubIcon,
+    fields: [],
+    defaults: { enabled: true },
+    authType: 'oauth',
+    oauth: { enterpriseDomain: true },
+  },
+  {
+    key: 'google_gemini_cli',
+    name: 'Gemini CLI OAuth',
+    description: 'Cloud Code Assist Gemini models via OAuth',
+    icon: GeminiCliIcon,
+    fields: [],
+    defaults: { enabled: true },
+    authType: 'oauth',
   },
 ];
 

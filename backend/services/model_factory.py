@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from ..providers import get_model as get_provider_model
 from ..providers import fetch_provider_models, list_providers
 from .. import db
+from .provider_oauth_manager import get_provider_oauth_manager
 
 
 def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
@@ -54,4 +55,22 @@ async def get_available_models() -> tuple[List[Dict[str, Any]], List[str]]:
 
 def _get_configured_providers() -> Dict[str, Dict[str, Any]]:
     with db.db_session() as sess:
-        return db.get_all_provider_settings(sess)
+        configured = db.get_all_provider_settings(sess)
+
+    oauth_providers = [
+        "anthropic_oauth",
+        "openai_codex",
+        "github_copilot",
+        "google_gemini_cli",
+    ]
+    oauth_manager = get_provider_oauth_manager()
+    for provider in oauth_providers:
+        if provider not in configured:
+            configured[provider] = {
+                "provider": provider,
+                "api_key": None,
+                "base_url": None,
+                "extra": None,
+                "enabled": oauth_manager.has_valid_tokens(provider),
+            }
+    return configured
