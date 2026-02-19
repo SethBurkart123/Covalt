@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
@@ -46,11 +46,92 @@ export default function ProvidersPanel() {
   const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthState>>({});
   const [oauthCodes, setOauthCodes] = useState<Record<string, string>>({});
   const [oauthEnterpriseDomains, setOauthEnterpriseDomains] = useState<Record<string, string>>({});
+  const [oauthAuthenticating, setOauthAuthenticating] = useState<Record<string, boolean>>({});
+  const [oauthRevoking, setOauthRevoking] = useState<Record<string, boolean>>({});
+  const [oauthSubmitting, setOauthSubmitting] = useState<Record<string, boolean>>({});
+  const pollIntervalRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const pollTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { connectedProviders, refreshModels } = useModels();
+
+  const stopPolling = useCallback((providerKey?: string) => {
+    const stopKey = (key: string) => {
+      const interval = pollIntervalRef.current[key];
+      if (interval) {
+        clearInterval(interval);
+        delete pollIntervalRef.current[key];
+      }
+      const timeout = pollTimeoutRef.current[key];
+      if (timeout) {
+        clearTimeout(timeout);
+        delete pollTimeoutRef.current[key];
+      }
+    };
+
+    if (providerKey) {
+      stopKey(providerKey);
+      return;
+    }
+
+    Object.keys(pollIntervalRef.current).forEach(stopKey);
+    Object.keys(pollTimeoutRef.current).forEach(stopKey);
+  }, []);
+
+  const openOauthWindow = useCallback((url: string) => {
+    if (typeof window === 'undefined') return;
+    const width = 600;
+    const height = 800;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    window.open(
+      url,
+      'Authenticate',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+  }, []);
+
+  const pollOauthStatus = useCallback(async (providerKey: string) => {
+    try {
+      const status = await getProviderOauthStatus({ body: { provider: providerKey } });
+      const normalized = normalizeOAuthStatus(status.status);
+      setOauthStatus((prev) => ({
+        ...prev,
+        [providerKey]: {
+          status: normalized,
+          hasTokens: status.hasTokens,
+          authUrl: status.authUrl,
+          instructions: status.instructions,
+          error: status.error,
+        },
+      }));
+
+      if (normalized === 'authenticated') {
+        stopPolling(providerKey);
+        setOauthAuthenticating((prev) => ({ ...prev, [providerKey]: false }));
+        refreshModels();
+      } else if (normalized === 'error') {
+        stopPolling(providerKey);
+        setOauthAuthenticating((prev) => ({ ...prev, [providerKey]: false }));
+      }
+    } catch (error) {
+      stopPolling(providerKey);
+      setOauthAuthenticating((prev) => ({ ...prev, [providerKey]: false }));
+      setOauthStatus((prev) => ({
+        ...prev,
+        [providerKey]: {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Failed to load OAuth status',
+        },
+      }));
+    }
+  }, [refreshModels, stopPolling]);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
   const loadSettings = async () => {
     setIsLoading(true);
@@ -139,7 +220,14 @@ export default function ProvidersPanel() {
     );
   }, [search]);
 
-  const isConnected = (key: string) => connectedProviders.includes(key);
+  const isConnected = (key: string) => {
+    const def = PROVIDERS.find((p) => p.key === key);
+    if (def?.authType === 'oauth') {
+      const status = oauthStatus[key]?.status;
+      if (status) return status === 'authenticated';
+    }
+    return connectedProviders.includes(key);
+  };
 
   const displayProviders = useMemo(() => 
     filtered
@@ -277,57 +365,155 @@ export default function ProvidersPanel() {
             onOauthCodeChange={(value) => setOauthCodes((prev) => ({ ...prev, [def.key]: value }))}
             onOauthEnterpriseDomainChange={(value) => setOauthEnterpriseDomains((prev) => ({ ...prev, [def.key]: value }))}
             onOauthStart={async () => {
-              const result = await startProviderOauth({
-                body: {
-                  provider: def.key,
-                  enterpriseDomain: oauthEnterpriseDomains[def.key] || undefined,
-                },
-              });
-              setOauthStatus((prev) => ({
-                ...prev,
-                [def.key]: {
-                  status: normalizeOAuthStatus(result.status),
-                  authUrl: result.authUrl,
-                  instructions: result.instructions,
-                  error: result.error,
-                },
-              }));
+              setOauthAuthenticating((prev) => ({ ...prev, [def.key]: true }));
+              stopPolling(def.key);
+              try {
+                const result = await startProviderOauth({
+                  body: {
+                    provider: def.key,
+                    enterpriseDomain: oauthEnterpriseDomains[def.key] || undefined,
+                  },
+                });
+
+                if (!result.success) {
+                  setOauthStatus((prev) => ({
+                    ...prev,
+                    [def.key]: {
+                      status: 'error',
+                      error: result.error || 'Failed to start OAuth',
+                    },
+                  }));
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                  return;
+                }
+
+                const normalizedStatus = normalizeOAuthStatus(result.status);
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [def.key]: {
+                    status: normalizedStatus,
+                    authUrl: result.authUrl,
+                    instructions: result.instructions,
+                    error: result.error,
+                  },
+                }));
+
+                if (result.authUrl) {
+                  openOauthWindow(result.authUrl);
+                }
+
+                if (normalizedStatus === 'authenticated') {
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                  refreshModels();
+                  return;
+                }
+
+                if (normalizedStatus === 'error') {
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                  return;
+                }
+
+                pollIntervalRef.current[def.key] = setInterval(() => {
+                  void pollOauthStatus(def.key);
+                }, 2000);
+
+                pollTimeoutRef.current[def.key] = setTimeout(() => {
+                  stopPolling(def.key);
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                }, 5 * 60 * 1000);
+              } catch (error) {
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [def.key]: {
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Failed to start OAuth',
+                  },
+                }));
+                setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+              }
             }}
             onOauthSubmitCode={async () => {
               const code = oauthCodes[def.key];
               if (!code) return;
-              await submitProviderOauthCode({ body: { provider: def.key, code } });
-              setOauthCodes((prev) => ({ ...prev, [def.key]: '' }));
-              const status = await getProviderOauthStatus({ body: { provider: def.key } });
-              setOauthStatus((prev) => ({
-                ...prev,
-                [def.key]: {
-                  status: normalizeOAuthStatus(status.status),
-                  hasTokens: status.hasTokens,
-                  authUrl: status.authUrl,
-                  instructions: status.instructions,
-                  error: status.error,
-                },
-              }));
-              if (normalizeOAuthStatus(status.status) === 'authenticated') {
-                refreshModels();
+              setOauthSubmitting((prev) => ({ ...prev, [def.key]: true }));
+              try {
+                const result = await submitProviderOauthCode({ body: { provider: def.key, code } });
+                if (!result.success) {
+                  setOauthStatus((prev) => ({
+                    ...prev,
+                    [def.key]: {
+                      status: 'error',
+                      error: result.error || 'Failed to submit code',
+                    },
+                  }));
+                  return;
+                }
+
+                const status = await getProviderOauthStatus({ body: { provider: def.key } });
+                const normalized = normalizeOAuthStatus(status.status);
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [def.key]: {
+                    status: normalized,
+                    hasTokens: status.hasTokens,
+                    authUrl: status.authUrl,
+                    instructions: status.instructions,
+                    error: status.error,
+                  },
+                }));
+                if (normalized === 'authenticated') {
+                  stopPolling(def.key);
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                  refreshModels();
+                } else if (normalized === 'error') {
+                  stopPolling(def.key);
+                  setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
+                }
+              } catch (error) {
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [def.key]: {
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Failed to submit code',
+                  },
+                }));
+              } finally {
+                setOauthSubmitting((prev) => ({ ...prev, [def.key]: false }));
               }
             }}
             onOauthRevoke={async () => {
-              await revokeProviderOauth({ body: { provider: def.key } });
-              const status = await getProviderOauthStatus({ body: { provider: def.key } });
+              stopPolling(def.key);
+              setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
               setOauthStatus((prev) => ({
                 ...prev,
                 [def.key]: {
-                  status: normalizeOAuthStatus(status.status),
-                  hasTokens: status.hasTokens,
-                  authUrl: status.authUrl,
-                  instructions: status.instructions,
-                  error: status.error,
+                  status: 'none',
+                  hasTokens: false,
+                  authUrl: undefined,
+                  instructions: undefined,
+                  error: undefined,
                 },
               }));
-              refreshModels();
+              setOauthRevoking((prev) => ({ ...prev, [def.key]: true }));
+              try {
+                await revokeProviderOauth({ body: { provider: def.key } });
+                refreshModels();
+              } catch (error) {
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [def.key]: {
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Failed to revoke OAuth',
+                  },
+                }));
+              } finally {
+                setOauthRevoking((prev) => ({ ...prev, [def.key]: false }));
+              }
             }}
+            onOauthOpenLink={openOauthWindow}
+            oauthIsAuthenticating={oauthAuthenticating[def.key]}
+            oauthIsRevoking={oauthRevoking[def.key]}
+            oauthIsSubmitting={oauthSubmitting[def.key]}
             onChange={(field, value) => updateProvider(def.key, field, value)}
             onSave={() => handleSave(def.key)}
             onTestConnection={() => handleTestConnection(def.key)}
