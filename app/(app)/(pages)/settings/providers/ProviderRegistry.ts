@@ -37,6 +37,7 @@ export interface ProviderDefinition {
   authType?: 'apiKey' | 'oauth';
   oauth?: {
     enterpriseDomain?: boolean;
+    variant?: 'panel' | 'compact' | 'inline-code' | 'device';
   };
 }
 
@@ -151,6 +152,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     fields: [],
     defaults: { enabled: true },
     authType: 'oauth',
+    oauth: { variant: 'inline-code' },
   },
   {
     key: 'openai_codex',
@@ -160,6 +162,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     fields: [],
     defaults: { enabled: true },
     authType: 'oauth',
+    oauth: { variant: 'compact' },
   },
   {
     key: 'github_copilot',
@@ -169,7 +172,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     fields: [],
     defaults: { enabled: true },
     authType: 'oauth',
-    oauth: { enterpriseDomain: true },
+    oauth: { enterpriseDomain: true, variant: 'device' },
   },
   {
     key: 'google_gemini_cli',
@@ -179,6 +182,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     fields: [],
     defaults: { enabled: true },
     authType: 'oauth',
+    oauth: { variant: 'compact' },
   },
 ];
 

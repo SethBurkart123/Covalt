@@ -97,17 +97,18 @@ export default function ProviderItem({
   const isOauthRevoking = Boolean(oauthIsRevoking);
   const isOauthSubmitting = Boolean(oauthIsSubmitting);
   const showOauthConnected = oauthConnected && !isOauthRevoking;
-  const isCompactOauth = isOauth && def.key === 'openai_codex';
-  const isAnthropicOauth = isOauth && def.key === 'anthropic_oauth';
-  const isGithubOauth = isOauth && def.key === 'github_copilot';
-  const deviceCode = isGithubOauth ? extractDeviceCode(oauthStatus?.instructions) : null;
+  const oauthVariant = def.oauth?.variant ?? 'panel';
+  const isCompactOauth = isOauth && oauthVariant === 'compact';
+  const isInlineCodeOauth = isOauth && oauthVariant === 'inline-code';
+  const isDeviceOauth = isOauth && oauthVariant === 'device';
+  const deviceCode = isDeviceOauth ? extractDeviceCode(oauthStatus?.instructions) : null;
   const formattedDeviceCode = deviceCode ? formatDeviceCode(deviceCode) : null;
 
   useEffect(() => {
-    if (isGithubOauth && oauthStatus?.authUrl && !oauthConnected && !isOpen) {
+    if (isDeviceOauth && oauthStatus?.authUrl && !oauthConnected && !isOpen) {
       setIsOpen(true);
     }
-  }, [isGithubOauth, oauthStatus?.authUrl, oauthConnected, isOpen]);
+  }, [isDeviceOauth, oauthStatus?.authUrl, oauthConnected, isOpen]);
 
   const handleCopyCode = async () => {
     if (!deviceCode || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -214,7 +215,7 @@ export default function ProviderItem({
     );
   }
 
-  if (isAnthropicOauth) {
+  if (isInlineCodeOauth) {
     const authUrl = oauthStatus?.authUrl;
     const showCodeInput = Boolean(authUrl) && !oauthConnected;
     return (
@@ -445,8 +446,8 @@ export default function ProviderItem({
                 </div>
               )}
 
-              {isOauth && oauthStatus?.authUrl && (!isGithubOauth || !oauthConnected) && (
-                isGithubOauth ? (
+              {isOauth && oauthStatus?.authUrl && (!isDeviceOauth || !oauthConnected) && (
+                isDeviceOauth ? (
                   <div className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-foreground">Verification code</div>
@@ -490,7 +491,7 @@ export default function ProviderItem({
                 )
               )}
 
-              {isOauth && !isGithubOauth && (
+              {isOauth && !isDeviceOauth && (
                 <div className="space-y-2">
                   <Label htmlFor={`${def.key}-oauth-code`}>Authorization code</Label>
                   <Input
@@ -545,7 +546,7 @@ export default function ProviderItem({
                   )}
                   {isOauth && (
                     <>
-                      {!isGithubOauth && (
+                      {!isDeviceOauth && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -569,9 +570,9 @@ export default function ProviderItem({
                           disabled
                         >
                           <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          {isGithubOauth ? 'Signing out...' : 'Revoking...'}
+                          {isDeviceOauth ? 'Signing out...' : 'Revoking...'}
                         </Button>
-                      ) : isGithubOauth ? (
+                      ) : isDeviceOauth ? (
                         oauthConnected ? (
                           <Button
                             variant="secondary"
