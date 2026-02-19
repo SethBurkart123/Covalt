@@ -118,7 +118,7 @@ export function createChannel<T>(command: string, args: unknown): BridgeChannel<
 
                     for (const line of eventBlock.split("\n")) {
                         if (line.startsWith("event: ")) {
-                            eventType = line.slice(7).trim();
+                            eventType = line.slice(7);
                         } else if (line.startsWith("data: ")) {
                             eventData = line.slice(6);
                         }
