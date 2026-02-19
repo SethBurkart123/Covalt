@@ -7,14 +7,14 @@ import ProviderItem from './ProviderItem';
 import { PROVIDERS, ProviderConfig } from './ProviderRegistry';
 import {
   getProviderOauthStatus,
-  getProviderSettings,
   revokeProviderOauth,
   saveProviderSettings,
   startProviderOauth,
   submitProviderOauthCode,
   testProvider,
 } from '@/python/api';
-import { useModels } from '@/lib/hooks/useModels';
+import { request } from '@/python/_internal';
+import { useOptionalChat } from '@/contexts/chat-context';
 
 type OAuthStatus = 'none' | 'pending' | 'authenticated' | 'error';
 
@@ -24,6 +24,28 @@ interface OAuthState {
   authUrl?: string;
   instructions?: string;
   error?: string;
+}
+
+interface ProviderOAuthOverview {
+  status: OAuthStatus;
+  hasTokens?: boolean;
+  authUrl?: string;
+  instructions?: string;
+  error?: string;
+}
+
+interface ProviderOverview {
+  provider: string;
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  extra?: unknown;
+  enabled?: boolean;
+  connected?: boolean;
+  oauth?: ProviderOAuthOverview | null;
+}
+
+interface ProviderOverviewResponse {
+  providers: ProviderOverview[];
 }
 
 const normalizeOAuthStatus = (value: unknown): OAuthStatus => {
@@ -43,6 +65,7 @@ export default function ProvidersPanel() {
     Record<string, 'idle' | 'testing' | 'success' | 'error'>
   >({});
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
+  const [providerConnections, setProviderConnections] = useState<Record<string, boolean>>({});
   const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthState>>({});
   const [oauthCodes, setOauthCodes] = useState<Record<string, string>>({});
   const [oauthEnterpriseDomains, setOauthEnterpriseDomains] = useState<Record<string, string>>({});
@@ -51,7 +74,14 @@ export default function ProvidersPanel() {
   const [oauthSubmitting, setOauthSubmitting] = useState<Record<string, boolean>>({});
   const pollIntervalRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const pollTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const { connectedProviders, refreshModels } = useModels();
+  const chatContext = useOptionalChat();
+  const refreshModels = chatContext?.refreshModels;
+
+  const fetchProviderOverview = useCallback(async (providers: string[]) => {
+    return request<ProviderOverviewResponse>("get_provider_overview", {
+      body: { providers },
+    });
+  }, []);
 
   const stopPolling = useCallback((providerKey?: string) => {
     const stopKey = (key: string) => {
@@ -107,7 +137,7 @@ export default function ProvidersPanel() {
       if (normalized === 'authenticated') {
         stopPolling(providerKey);
         setOauthAuthenticating((prev) => ({ ...prev, [providerKey]: false }));
-        refreshModels();
+        refreshModels?.();
       } else if (normalized === 'error') {
         stopPolling(providerKey);
         setOauthAuthenticating((prev) => ({ ...prev, [providerKey]: false }));
@@ -136,10 +166,12 @@ export default function ProvidersPanel() {
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      const response = await getProviderSettings();
+      const response = await fetchProviderOverview(PROVIDERS.map((p) => p.key));
       const map: Record<string, ProviderConfig> = {};
+      const oauthMap: Record<string, OAuthState> = {};
+      const connectionMap: Record<string, boolean> = {};
 
-      (response?.providers || []).forEach((p) => {
+      (response?.providers || []).forEach((p: ProviderOverview) => {
         const extra = typeof p.extra === 'string'
           ? p.extra
           : p.extra && typeof p.extra === 'object'
@@ -153,6 +185,18 @@ export default function ProvidersPanel() {
           extra,
           enabled: Boolean(p.enabled ?? true),
         };
+
+        connectionMap[p.provider] = Boolean(p.connected);
+
+        if (p.oauth) {
+          oauthMap[p.provider] = {
+            status: normalizeOAuthStatus(p.oauth.status),
+            hasTokens: p.oauth.hasTokens,
+            authUrl: p.oauth.authUrl,
+            instructions: p.oauth.instructions,
+            error: p.oauth.error,
+          };
+        }
       });
 
       for (const def of PROVIDERS) {
@@ -165,12 +209,21 @@ export default function ProvidersPanel() {
             enabled: def.defaults?.enabled ?? true,
           };
         }
+        if (connectionMap[def.key] === undefined) {
+          connectionMap[def.key] = false;
+        }
+        if (def.authType === 'oauth' && !oauthMap[def.key]) {
+          oauthMap[def.key] = { status: 'none' };
+        }
       }
 
       setProviderConfigs(map);
-      await loadOauthStatuses();
+      setOauthStatus(oauthMap);
+      setProviderConnections(connectionMap);
     } catch {
       const fallback: Record<string, ProviderConfig> = {};
+      const fallbackOauth: Record<string, OAuthState> = {};
+      const fallbackConnections: Record<string, boolean> = {};
       for (const def of PROVIDERS) {
         fallback[def.key] = {
           provider: def.key,
@@ -178,39 +231,55 @@ export default function ProvidersPanel() {
           baseUrl: def.defaults?.baseUrl,
           enabled: def.defaults?.enabled ?? true,
         };
+        fallbackConnections[def.key] = false;
+        if (def.authType === 'oauth') {
+          fallbackOauth[def.key] = { status: 'none' };
+        }
       }
       setProviderConfigs(fallback);
-      await loadOauthStatuses();
+      setOauthStatus(fallbackOauth);
+      setProviderConnections(fallbackConnections);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadOauthStatuses = async () => {
-    const entries = PROVIDERS.filter((p) => p.authType === 'oauth');
-    if (entries.length === 0) return;
-    const results = await Promise.all(entries.map(async (def) => {
-      try {
-        const status = await getProviderOauthStatus({ body: { provider: def.key } });
-        return [def.key, {
-          status: normalizeOAuthStatus(status.status),
-          hasTokens: status.hasTokens,
-          authUrl: status.authUrl,
-          instructions: status.instructions,
-          error: status.error,
-        }] as const;
-      } catch {
-        return [def.key, { status: 'error', error: 'Failed to load OAuth status' }] as const;
-      }
-    }));
-    setOauthStatus((prev) => {
+  const applyOverviewStatus = useCallback((providers: ProviderOverview[]) => {
+    setProviderConnections((prev) => {
       const next = { ...prev };
-      results.forEach(([key, status]) => {
-        next[key] = status;
+      providers.forEach((p) => {
+        if (p.connected !== undefined) {
+          next[p.provider] = Boolean(p.connected);
+        }
       });
       return next;
     });
-  };
+
+    setOauthStatus((prev) => {
+      const next = { ...prev };
+      providers.forEach((p) => {
+        if (p.oauth) {
+          next[p.provider] = {
+            status: normalizeOAuthStatus(p.oauth.status),
+            hasTokens: p.oauth.hasTokens,
+            authUrl: p.oauth.authUrl,
+            instructions: p.oauth.instructions,
+            error: p.oauth.error,
+          };
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  const refreshProviderStatus = useCallback(async (providers: string[]) => {
+    try {
+      const response = await fetchProviderOverview(providers);
+      applyOverviewStatus(response.providers || []);
+    } catch (error) {
+      console.error('Failed to refresh provider status', error);
+    }
+  }, [applyOverviewStatus, fetchProviderOverview]);
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -223,22 +292,21 @@ export default function ProvidersPanel() {
   const isConnected = (key: string) => {
     const def = PROVIDERS.find((p) => p.key === key);
     if (def?.authType === 'oauth') {
-      const status = oauthStatus[key]?.status;
-      if (status) return status === 'authenticated';
+      return oauthStatus[key]?.status === 'authenticated';
     }
-    return connectedProviders.includes(key);
+    return Boolean(providerConnections[key]);
   };
 
   const displayProviders = useMemo(() => 
     filtered
       .slice()
       .sort((a, b) => {
-        const aConnected = connectedProviders.includes(a.key) ? 0 : 1;
-        const bConnected = connectedProviders.includes(b.key) ? 0 : 1;
+        const aConnected = isConnected(a.key) ? 0 : 1;
+        const bConnected = isConnected(b.key) ? 0 : 1;
         if (aConnected !== bConnected) return aConnected - bConnected;
         return a.name.localeCompare(b.name);
       }),
-  [filtered, connectedProviders]);
+  [filtered, oauthStatus, providerConnections]);
 
   const updateProvider = (key: string, field: keyof ProviderConfig, value: string | boolean) => {
     setProviderConfigs((prev) => ({
@@ -279,7 +347,8 @@ export default function ProvidersPanel() {
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
       
       setConnectionStatus((prev) => ({ ...prev, [key]: 'testing' }));
-      refreshModels().finally(() => {
+      refreshModels?.();
+      refreshProviderStatus([key]).finally(() => {
         setConnectionStatus((prev) => ({ ...prev, [key]: 'idle' }));
       });
     } catch (e) {
@@ -307,11 +376,13 @@ export default function ProvidersPanel() {
 
       if (result.success) {
         setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'success' }));
+        setProviderConnections((prev) => ({ ...prev, [providerKey]: true }));
         setTimeout(() => {
           setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'idle' }));
         }, 3000);
       } else {
         setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'error' }));
+        setProviderConnections((prev) => ({ ...prev, [providerKey]: false }));
         setConnectionErrors((prev) => ({ 
           ...prev, 
           [providerKey]: result.error || 'Connection failed' 
@@ -319,6 +390,7 @@ export default function ProvidersPanel() {
       }
     } catch (error) {
       setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'error' }));
+      setProviderConnections((prev) => ({ ...prev, [providerKey]: false }));
       setConnectionErrors((prev) => ({ 
         ...prev, 
         [providerKey]: error instanceof Error ? error.message : 'Unexpected error' 
@@ -404,7 +476,7 @@ export default function ProvidersPanel() {
 
                 if (normalizedStatus === 'authenticated') {
                   setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
-                  refreshModels();
+                  refreshModels?.();
                   return;
                 }
 
@@ -464,7 +536,7 @@ export default function ProvidersPanel() {
                 if (normalized === 'authenticated') {
                   stopPolling(def.key);
                   setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
-                  refreshModels();
+                  refreshModels?.();
                 } else if (normalized === 'error') {
                   stopPolling(def.key);
                   setOauthAuthenticating((prev) => ({ ...prev, [def.key]: false }));
@@ -497,7 +569,7 @@ export default function ProvidersPanel() {
               setOauthRevoking((prev) => ({ ...prev, [def.key]: true }));
               try {
                 await revokeProviderOauth({ body: { provider: def.key } });
-                refreshModels();
+                refreshModels?.();
               } catch (error) {
                 setOauthStatus((prev) => ({
                   ...prev,

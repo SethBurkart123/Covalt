@@ -17,6 +17,9 @@ from ..models.chat import (
     ModelInfo,
     ModelSettingsInfo,
     ProviderConfig,
+    ProviderOverview,
+    ProviderOverviewResponse,
+    ProviderOAuthInfo,
     ReasoningInfo,
     SaveAutoTitleSettingsInput,
     SaveModelSettingsInput,
@@ -28,6 +31,7 @@ from ..models.chat import (
 )
 from ..services.model_factory import get_available_models as get_models_from_factory
 from ..providers import test_provider_connection
+from ..services.provider_oauth_manager import get_provider_oauth_manager
 
 
 class Person(BaseModel):
@@ -92,6 +96,50 @@ async def get_provider_settings() -> AllProvidersResponse:
             for provider, config in db_settings.items()
         ]
     )
+
+
+class ProviderOverviewInput(BaseModel):
+    providers: list[str]
+
+
+@command
+async def get_provider_overview(
+    body: ProviderOverviewInput,
+) -> ProviderOverviewResponse:
+    with db.db_session() as sess:
+        db_settings = db.get_all_provider_settings(sess)
+
+    provider_keys = [p for p in body.providers if p]
+    oauth_manager = get_provider_oauth_manager()
+    providers: list[ProviderOverview] = []
+
+    for provider in provider_keys:
+        config = db_settings.get(provider, {})
+        oauth_status = oauth_manager.get_oauth_status(provider)
+        oauth = ProviderOAuthInfo(
+            status=oauth_status.get("status", "none"),
+            hasTokens=oauth_status.get("hasTokens", False),
+            authUrl=oauth_status.get("authUrl"),
+            instructions=oauth_status.get("instructions"),
+            error=oauth_status.get("error"),
+        )
+        enabled = config.get("enabled", True)
+        has_api_key = bool(config.get("api_key"))
+        connected = bool(enabled and (oauth.status == "authenticated" or has_api_key))
+
+        providers.append(
+            ProviderOverview(
+                provider=provider,
+                apiKey=config.get("api_key"),
+                baseUrl=config.get("base_url"),
+                extra=_safe_parse_json(config.get("extra")),
+                enabled=enabled,
+                connected=connected,
+                oauth=oauth,
+            )
+        )
+
+    return ProviderOverviewResponse(providers=providers)
 
 
 @command

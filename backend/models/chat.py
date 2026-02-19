@@ -211,6 +211,28 @@ class AllProvidersResponse(BaseModel):
     providers: List[ProviderConfig]
 
 
+class ProviderOAuthInfo(BaseModel):
+    status: Literal["none", "pending", "authenticated", "error"]
+    hasTokens: bool = False
+    authUrl: Optional[str] = None
+    instructions: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ProviderOverview(BaseModel):
+    provider: str
+    apiKey: Optional[str] = None
+    baseUrl: Optional[str] = None
+    extra: Optional[Any] = None
+    enabled: bool = True
+    connected: bool = False
+    oauth: Optional[ProviderOAuthInfo] = None
+
+
+class ProviderOverviewResponse(BaseModel):
+    providers: List[ProviderOverview]
+
+
 class DefaultToolsResponse(BaseModel):
     toolIds: List[str]
 
