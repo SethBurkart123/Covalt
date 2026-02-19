@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,15 +25,42 @@ interface ProviderItemProps {
   };
   oauthCode?: string;
   oauthEnterpriseDomain?: string;
+  oauthIsAuthenticating?: boolean;
+  oauthIsRevoking?: boolean;
+  oauthIsSubmitting?: boolean;
   onOauthCodeChange?: (value: string) => void;
   onOauthEnterpriseDomainChange?: (value: string) => void;
   onOauthStart?: () => void;
   onOauthSubmitCode?: () => void;
   onOauthRevoke?: () => void;
+  onOauthOpenLink?: (url: string) => void;
   onChange: (field: keyof ProviderConfig, value: string | boolean) => void;
   onSave: () => Promise<void> | void;
   onTestConnection: () => void;
 }
+
+const extractDeviceCode = (instructions?: string): string | null => {
+  if (!instructions) return null;
+  const labeledMatch = instructions.match(/code:\s*([A-Za-z0-9-]+)/i);
+  if (labeledMatch?.[1]) return labeledMatch[1];
+  const dashedMatch = instructions.match(/[A-Za-z0-9]{3,}-[A-Za-z0-9]{3,}/);
+  if (dashedMatch) return dashedMatch[0];
+  const plainMatch = instructions.match(/[A-Za-z0-9]{6,}/);
+  return plainMatch ? plainMatch[0] : null;
+};
+
+const formatDeviceCode = (code: string): string => {
+  const normalized = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (!normalized) return code.toUpperCase();
+  if (normalized.length % 2 === 0 && normalized.length >= 6) {
+    const midpoint = normalized.length / 2;
+    return `${normalized.slice(0, midpoint)}-${normalized.slice(midpoint)}`;
+  }
+  if (normalized.length === 6) {
+    return `${normalized.slice(0, 3)}-${normalized.slice(3)}`;
+  }
+  return normalized;
+};
 
 export default function ProviderItem({ 
   def, 
@@ -46,19 +73,269 @@ export default function ProviderItem({
   oauthStatus,
   oauthCode,
   oauthEnterpriseDomain,
+  oauthIsAuthenticating,
+  oauthIsRevoking,
+  oauthIsSubmitting,
   onOauthCodeChange,
   onOauthEnterpriseDomainChange,
   onOauthStart,
   onOauthSubmitCode,
   onOauthRevoke,
+  onOauthOpenLink,
   onChange, 
   onSave,
   onTestConnection
 }: ProviderItemProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const isOauth = def.authType === 'oauth';
-  const oauthConnected = oauthStatus?.status === 'authenticated' || isConnected;
+  const oauthConnected = isOauth
+    ? (oauthStatus ? oauthStatus.status === 'authenticated' : isConnected)
+    : isConnected;
   const oauthError = oauthStatus?.status === 'error' ? oauthStatus.error : undefined;
+  const isOauthAuthenticating = Boolean(oauthIsAuthenticating);
+  const isOauthRevoking = Boolean(oauthIsRevoking);
+  const isOauthSubmitting = Boolean(oauthIsSubmitting);
+  const showOauthConnected = oauthConnected && !isOauthRevoking;
+  const isCompactOauth = isOauth && def.key === 'openai_codex';
+  const isAnthropicOauth = isOauth && def.key === 'anthropic_oauth';
+  const isGithubOauth = isOauth && def.key === 'github_copilot';
+  const deviceCode = isGithubOauth ? extractDeviceCode(oauthStatus?.instructions) : null;
+  const formattedDeviceCode = deviceCode ? formatDeviceCode(deviceCode) : null;
+
+  useEffect(() => {
+    if (isGithubOauth && oauthStatus?.authUrl && !oauthConnected && !isOpen) {
+      setIsOpen(true);
+    }
+  }, [isGithubOauth, oauthStatus?.authUrl, oauthConnected, isOpen]);
+
+  const handleCopyCode = async () => {
+    if (!deviceCode || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(deviceCode);
+      setCopiedCode(true);
+      window.setTimeout(() => setCopiedCode(false), 1500);
+    } catch {
+      setCopiedCode(false);
+    }
+  };
+
+  if (isCompactOauth) {
+    const authUrl = oauthStatus?.authUrl;
+    return (
+      <Card className="overflow-hidden border-border/70 py-2 gap-0">
+        <div className="w-full px-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-left flex-1 min-w-0">
+            <div className="rounded-md flex items-center justify-center">
+              <def.icon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium leading-none flex items-center gap-2">
+                {def.name}
+                {isOauth && showOauthConnected && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
+                    <CheckCircle size={14} />
+                    Connected
+                  </span>
+                )}
+                {isOauth && oauthStatus?.status === 'pending' && (
+                  <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Pending
+                  </span>
+                )}
+                {isOauth && oauthStatus?.status === 'error' && (
+                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
+                    <XCircle size={14} />
+                    Failed
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1 truncate">{def.description}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isOauthRevoking ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled
+              >
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Signing out...
+              </Button>
+            ) : oauthConnected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onOauthRevoke}
+              >
+                Sign out
+              </Button>
+            ) : authUrl ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (onOauthOpenLink) {
+                    onOauthOpenLink(authUrl);
+                    return;
+                  }
+                  window.open(authUrl, '_blank');
+                }}
+              >
+                Open link
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onOauthStart}
+                disabled={isOauthAuthenticating}
+              >
+                {isOauthAuthenticating ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Waiting...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+        {oauthError && (
+          <div className="px-4 pb-3 text-xs text-red-600 dark:text-red-500">
+            {oauthError}
+          </div>
+        )}
+      </Card>
+    );
+  }
+
+  if (isAnthropicOauth) {
+    const authUrl = oauthStatus?.authUrl;
+    const showCodeInput = Boolean(authUrl) && !oauthConnected;
+    return (
+      <Card className="overflow-hidden border-border/70 py-2 gap-0">
+        <div className="w-full px-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-left flex-1 min-w-0">
+            <div className="rounded-md flex items-center justify-center">
+              <def.icon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium leading-none flex items-center gap-2">
+                {def.name}
+                {showOauthConnected && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
+                    <CheckCircle size={14} />
+                    Connected
+                  </span>
+                )}
+                {oauthStatus?.status === 'pending' && (
+                  <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Pending
+                  </span>
+                )}
+                {oauthStatus?.status === 'error' && (
+                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
+                    <XCircle size={14} />
+                    Failed
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1 truncate">{def.description}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isOauthRevoking ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled
+              >
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Signing out...
+              </Button>
+            ) : oauthConnected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onOauthRevoke}
+              >
+                Sign out
+              </Button>
+            ) : authUrl ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (onOauthOpenLink) {
+                    onOauthOpenLink(authUrl);
+                    return;
+                  }
+                  window.open(authUrl, '_blank');
+                }}
+              >
+                Open link
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onOauthStart}
+                disabled={isOauthAuthenticating}
+              >
+                {isOauthAuthenticating ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Waiting...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+        {showCodeInput && (
+          <div className="px-4 pt-2 pb-3 mt-2 border-t border-border/60">
+            <div className="flex items-center gap-2">
+              <Input
+                id={`${def.key}-oauth-code`}
+                type="text"
+                placeholder="Paste authorization code"
+                value={oauthCode || ''}
+                onChange={(e) => onOauthCodeChange?.(e.target.value)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOauthSubmitCode}
+                disabled={!oauthCode || isOauthSubmitting}
+              >
+                {isOauthSubmitting ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit'
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+        {oauthError && (
+          <div className="px-4 pb-3 text-xs text-red-600 dark:text-red-500">
+            {oauthError}
+          </div>
+        )}
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden border-border/70 py-2 gap-0">
@@ -94,7 +371,7 @@ export default function ProviderItem({
                   Connected
                 </span>
               )}
-              {isOauth && oauthConnected && (
+              {isOauth && showOauthConnected && (
                 <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
                   <CheckCircle size={14} />
                   Connected
@@ -168,26 +445,52 @@ export default function ProviderItem({
                 </div>
               )}
 
-              {isOauth && oauthStatus?.authUrl && (
-                <div className="rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                  <div className="font-medium text-foreground">Sign-in link</div>
-                  <div className="break-all mt-1">{oauthStatus.authUrl}</div>
-                  {oauthStatus.instructions && (
-                    <div className="mt-2">{oauthStatus.instructions}</div>
-                  )}
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(oauthStatus.authUrl, '_blank')}
-                    >
-                      Open link
-                    </Button>
+              {isOauth && oauthStatus?.authUrl && (!isGithubOauth || !oauthConnected) && (
+                isGithubOauth ? (
+                  <div className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-foreground">Verification code</div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyCode}
+                        disabled={!deviceCode}
+                      >
+                        {copiedCode ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-foreground font-mono tracking-[0.35em]">
+                      {formattedDeviceCode || '--- ---'}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="font-medium text-foreground">Sign-in link</div>
+                    <div className="break-all mt-1">{oauthStatus.authUrl}</div>
+                    {oauthStatus.instructions && (
+                      <div className="mt-2">{oauthStatus.instructions}</div>
+                    )}
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!oauthStatus.authUrl) return;
+                          if (onOauthOpenLink) {
+                            onOauthOpenLink(oauthStatus.authUrl);
+                            return;
+                          }
+                          window.open(oauthStatus.authUrl, '_blank');
+                        }}
+                      >
+                        Open link
+                      </Button>
+                    </div>
+                  </div>
+                )
               )}
 
-              {isOauth && (
+              {isOauth && !isGithubOauth && (
                 <div className="space-y-2">
                   <Label htmlFor={`${def.key}-oauth-code`}>Authorization code</Label>
                   <Input
@@ -242,21 +545,88 @@ export default function ProviderItem({
                   )}
                   {isOauth && (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onOauthSubmitCode}
-                        disabled={!oauthCode}
-                      >
-                        Submit Code
-                      </Button>
-                      {!oauthConnected ? (
+                      {!isGithubOauth && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onOauthSubmitCode}
+                          disabled={!oauthCode || isOauthSubmitting}
+                        >
+                          {isOauthSubmitting ? (
+                            <>
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            'Submit Code'
+                          )}
+                        </Button>
+                      )}
+                      {isOauthRevoking ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled
+                        >
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          {isGithubOauth ? 'Signing out...' : 'Revoking...'}
+                        </Button>
+                      ) : isGithubOauth ? (
+                        oauthConnected ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={onOauthRevoke}
+                          >
+                            Sign out
+                          </Button>
+                        ) : oauthStatus?.authUrl ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              if (!oauthStatus.authUrl) return;
+                              if (onOauthOpenLink) {
+                                onOauthOpenLink(oauthStatus.authUrl);
+                                return;
+                              }
+                              window.open(oauthStatus.authUrl, '_blank');
+                            }}
+                          >
+                            Open link
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={onOauthStart}
+                            disabled={isOauthAuthenticating}
+                          >
+                            {isOauthAuthenticating ? (
+                              <>
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                Waiting...
+                              </>
+                            ) : (
+                              'Sign in'
+                            )}
+                          </Button>
+                        )
+                      ) : (!oauthConnected ? (
                         <Button
                           variant="secondary"
                           size="sm"
                           onClick={onOauthStart}
+                          disabled={isOauthAuthenticating}
                         >
-                          Start Sign-in
+                          {isOauthAuthenticating ? (
+                            <>
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              Waiting...
+                            </>
+                          ) : (
+                            'Start Sign-in'
+                          )}
                         </Button>
                       ) : (
                         <Button
@@ -266,7 +636,7 @@ export default function ProviderItem({
                         >
                           Revoke
                         </Button>
-                      )}
+                      ))}
                     </>
                   )}
                 </div>
