@@ -10,6 +10,7 @@
     0 0 16px -2px var(--tw-ring-color, currentcolor),
     var(--tw-shadow);
 }
+
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -208,6 +209,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
@@ -321,9 +323,15 @@ button {
   vertical-align: middle;
   animation: pulse 1.2s infinite alternate;
 }
+
 @keyframes pulse {
-  from { opacity: 0.5; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.5;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* Generic shimmer overlay for loading/active states */
@@ -331,6 +339,7 @@ button {
   position: relative;
   overflow: hidden;
 }
+
 .shimmer::before {
   content: "";
   position: absolute;
@@ -340,13 +349,16 @@ button {
   transform: translateX(-100%) skewX(-15deg);
   animation: shimmer 2s infinite;
 }
+
 .dark .shimmer::before {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
 }
+
 @keyframes shimmer {
   0% {
     transform: translateX(-100%) skewX(-15deg);
   }
+
   100% {
     transform: translateX(200%) skewX(-15deg);
   }
@@ -354,23 +366,27 @@ button {
 
 .shimmer-text {
   --_shimmer-dim: color-mix(in oklch, var(--muted-foreground) 50%, var(--background));
-  background: linear-gradient(
-    90deg,
-    var(--_shimmer-dim) 0%,
-    var(--_shimmer-dim) 30%,
-    var(--foreground) 50%,
-    var(--_shimmer-dim) 70%,
-    var(--_shimmer-dim) 100%
-  );
+  background: linear-gradient(90deg,
+      var(--_shimmer-dim) 0%,
+      var(--_shimmer-dim) 30%,
+      var(--foreground) 50%,
+      var(--_shimmer-dim) 70%,
+      var(--_shimmer-dim) 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: shimmer-text 1.5s linear infinite;
 }
+
 @keyframes shimmer-text {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .template-editor .ProseMirror {
@@ -414,7 +430,7 @@ button {
   height: 0;
 }
 
-.chat-input-editor-content :not(pre) > code {
+.chat-input-editor-content :not(pre)>code {
   @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold;
 }
 
@@ -602,14 +618,15 @@ body.template-drag-active .template-editor-dropzone {
 
 body {
   scroll-behavior: smooth;
-  
+
   /* macos overscroll fix */
   position: fixed;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  
+
   background: var(--sidebar);
+
   ::selection {
     background-color: var(--border);
   }
@@ -652,7 +669,7 @@ body {
   * {
     scrollbar-color: var(--border) transparent;
   }
-  
+
   *::-webkit-scrollbar-thumb {
     background-color: var(--border);
     visibility: visible;
@@ -719,5 +736,5 @@ body {
 }
 
 *:hover {
-  transition: 0s !important;
+  transition: 0.01s !important;
 }
