@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -29,7 +28,6 @@ interface MemberRunCallProps {
 
 export default function MemberRunCall({
   memberName,
-  nodeId,
   content,
   active = false,
   isGrouped = false,

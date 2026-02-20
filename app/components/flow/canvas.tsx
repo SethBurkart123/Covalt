@@ -33,7 +33,6 @@ import {
   getNodeDefinition,
   getCompatibleNodeSockets,
   type SocketTypeId,
-  type FlowNode,
   useNodePicker,
   resolveParameterForHandle,
 } from '@/lib/flow';
@@ -249,7 +248,7 @@ function CustomConnectionLine({
   toPosition,
 }: ConnectionLineComponentProps) {
   const definition = getNodeDefinition(fromNode.type || '');
-  const param = definition ? resolveParameterForHandle(definition, fromNode as FlowNode, fromHandle.id) : undefined;
+  const param = definition ? resolveParameterForHandle(definition, fromHandle.id) : undefined;
   const socketType = (param?.socket?.type ?? 'tools') as SocketTypeId;
   const { p0, p1, p2, p3 } = getControlPoints(
     fromX,
@@ -460,7 +459,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     }
     const definition = getNodeDefinition(node.type || '');
     if (!definition) return null;
-    const param = resolveParameterForHandle(definition, node as FlowNode, handleId);
+    const param = resolveParameterForHandle(definition, handleId);
     if (!param || !('socket' in param) || !param.socket) return null;
     return param.socket.type as SocketTypeId;
   }, []);
@@ -503,11 +502,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       selectNode(newNodeId);
       const newDefinition = getNodeDefinition(nodeType);
       const newParam = newDefinition
-        ? resolveParameterForHandle(
-            newDefinition,
-            { id: newNodeId, type: nodeType, position: flowPosition, data: {} } as FlowNode,
-            socketId
-          )
+        ? resolveParameterForHandle(newDefinition, socketId)
         : null;
       const newSocketType: SocketTypeId = newParam?.socket?.type ?? 'data';
 
@@ -622,7 +617,6 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onConnect: state.onConnect,
         onConnectEnd: state.onConnectEnd,
         isValidConnection: state.isValidConnection,
-        onReconnectEnd: state.onReconnectEnd,
         updateConnection: state.updateConnection,
         getTransform: () => state.transform,
         getFromHandle: () => state.connection.fromHandle,

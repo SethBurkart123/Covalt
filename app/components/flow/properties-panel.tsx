@@ -10,7 +10,7 @@ import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { getBaseUrl } from '@/python/_internal';
+import { getBackendBaseUrl } from '@/lib/services/backend-url';
 
 function getIcon(name: string) {
   const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
@@ -69,15 +69,12 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   const definition = nodeType ? getNodeDefinition(nodeType) : null;
   const hookId = selectedNodeData?.data?.hookId;
   const routeId = selectedNodeData?.data?.routeId;
+  const backendBaseUrl = useMemo(() => getBackendBaseUrl(), []);
   const webhookUrl = useMemo(() => {
     if (definition?.id !== 'webhook-trigger') return null;
     if (typeof hookId !== 'string' || !hookId.trim()) return null;
-    try {
-      return `${getBaseUrl()}/webhooks/${hookId}`;
-    } catch {
-      return `http://127.0.0.1:8000/webhooks/${hookId}`;
-    }
-  }, [definition?.id, hookId]);
+    return `${backendBaseUrl}/webhooks/${hookId}`;
+  }, [backendBaseUrl, definition?.id, hookId]);
 
   const handleCopyWebhook = useCallback(() => {
     if (!webhookUrl) return;
@@ -101,12 +98,8 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     if (typeof routeId !== 'string' || !routeId.trim()) return null;
     const resolvedNodeType = definition?.id ?? nodeType;
     if (!resolvedNodeType) return null;
-    try {
-      return `${getBaseUrl()}/nodes/${resolvedNodeType}/${routeId}`;
-    } catch {
-      return `http://127.0.0.1:8000/nodes/${resolvedNodeType}/${routeId}`;
-    }
-  }, [definition?.id, nodeType, routeId, showRouteId]);
+    return `${backendBaseUrl}/nodes/${resolvedNodeType}/${routeId}`;
+  }, [backendBaseUrl, definition?.id, nodeType, routeId, showRouteId]);
 
   const handleCopyNodeRoute = useCallback(() => {
     if (!nodeRouteUrl) return;

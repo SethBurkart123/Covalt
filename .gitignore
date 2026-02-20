@@ -11,6 +11,9 @@ node_modules
 dist
 out/
 dist-ssr
+build/
+backend/build/
+backend/dist/
 *.local
 
 # Editor directories and files

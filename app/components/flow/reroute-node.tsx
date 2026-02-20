@@ -11,9 +11,9 @@ interface RerouteNodeData {
 
 const NODE_SIZE = 18;
 
-export const RerouteNode = memo(function RerouteNode({ data, selected }: NodeProps<RerouteNodeData>) {
+export const RerouteNode = memo(function RerouteNode({ data, selected }: NodeProps) {
   const socketType = useMemo<SocketTypeId>(() => {
-    const raw = data?._socketType;
+    const raw = (data as RerouteNodeData | undefined)?._socketType;
     if (typeof raw === 'string' && raw in SOCKET_TYPES) {
       return raw as SocketTypeId;
     }

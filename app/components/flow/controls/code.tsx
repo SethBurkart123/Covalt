@@ -5,6 +5,7 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 import type { Parameter } from '@/lib/flow';
 import { useFlowState } from '@/lib/flow';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
+import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { filterFlowEdges, upstreamClosure } from '@/lib/flow/graph-traversal';
 import { getNodeDefinition } from '@/lib/flow';
 import { getNodeName, pickPrimaryOutput } from '../flow-data-utils';
@@ -79,7 +80,7 @@ function buildEditorTypes(
   nodeId: string | null,
   nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>,
   edges: Array<{ source?: string; target?: string; targetHandle?: string | null; data?: { channel?: string } }>,
-  executionByNode: Record<string, { outputs?: Record<string, { value?: unknown }> }>,
+  executionByNode: Record<string, FlowNodeExecutionSnapshot>,
   lastPromptInput: { message: string; history?: Record<string, unknown>[]; messages?: unknown[]; attachments?: Record<string, unknown>[] } | null
 ): string {
   if (!nodeId) {

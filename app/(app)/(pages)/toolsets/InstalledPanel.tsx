@@ -48,12 +48,18 @@ import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
 
 function ToolCard({ tool }: { tool: ToolInfo }) {
+  const toolLabel = useMemo(() => {
+    if (tool.name) return tool.name;
+    const id = tool.toolId;
+    return id.split(":").pop() || id;
+  }, [tool.name, tool.toolId]);
+
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
       <Wrench className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm truncate">
-          {tool.name || tool.id?.split(":").pop()}
+          {toolLabel}
         </p>
         {tool.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
@@ -179,7 +185,7 @@ function ToolsetCard({
         ) : tools.length > 0 ? (
           <div className="space-y-2">
             {tools.map((tool, index) => (
-              <ToolCard key={tool.id ?? `tool-${index}`} tool={tool} />
+              <ToolCard key={tool.toolId ?? `tool-${index}`} tool={tool} />
             ))}
           </div>
         ) : (

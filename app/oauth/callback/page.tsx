@@ -7,6 +7,7 @@ import {
   completeMcpOauthCallback,
   failMcpOauthCallback,
 } from "@/python/api";
+import { getBackendBaseUrl } from "@/lib/services/backend-url";
 
 type CallbackStatus = "processing" | "success" | "error";
 
@@ -17,7 +18,7 @@ function OAuthCallbackPageContent() {
 
   useEffect(() => {
     async function handleCallback() {
-      initBridge("http://127.0.0.1:8000");
+      initBridge(getBackendBaseUrl());
       const code = searchParams.get("code");
       const state = searchParams.get("state");
       const error = searchParams.get("error");

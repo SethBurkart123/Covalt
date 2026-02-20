@@ -1,12 +1,18 @@
 from pathlib import Path
 import os
 import sys
+from typing import Any
 
 _local_zynk = Path(__file__).parent.parent / "zynk"
 sys.path.insert(0, str(_local_zynk))
 existing_pythonpath = os.environ.get("PYTHONPATH", "")
 paths = [str(_local_zynk)] + ([existing_pythonpath] if existing_pythonpath else [])
 os.environ["PYTHONPATH"] = os.pathsep.join([p for p in paths if p])
+
+try:
+    import tiktoken_ext.openai_public  # noqa: F401
+except Exception as e:
+    print(f"⚠ Failed to load tiktoken encodings: {e}")
 
 import nodes  # noqa: F401
 
@@ -24,15 +30,26 @@ def main() -> int:
     rebuild_node_route_index()
 
     output_dir = Path(__file__).parent.parent / "app" / "python"
-    app = Bridge(
-        generate_ts=str(output_dir / "api.ts"),
-        port=8000,
-        debug=False,
-        app_init="backend.services.http_routes:register_http_routes",
-        reload_includes=["backend"],
-    )
+    dev_mode = os.environ.get("AGNO_DEV_MODE") == "1"
+    generate_ts = os.environ.get("AGNO_GENERATE_TS") == "1"
+    port = int(os.environ.get("AGNO_BACKEND_PORT", "8000"))
+    bridge_kwargs: dict[str, Any] = {
+        "generate_ts": str(output_dir / "api.ts") if generate_ts else None,
+        "port": port,
+        "debug": dev_mode,
+        "app_init": "backend.services.http_routes:register_http_routes",
+        "reload_includes": ["backend"],
+        "reload_excludes": [
+            ".next",
+            "out",
+            "build",
+            "dist",
+            "app/python",
+        ],
+    }
+    app = Bridge(**bridge_kwargs)
     register_http_routes(app.app)
     app.on_shutdown(shutdown_mcp)
 
-    app.run(dev=True)
+    app.run(dev=dev_mode)
     return 0

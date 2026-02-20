@@ -15,6 +15,7 @@ import {
   toggleChatTools,
 } from "@/python/api";
 import type { ToolInfo } from "@/lib/types/chat";
+import type { ToolInfo as ApiToolInfo } from "@/python/api";
 import { getPrefetchedChat } from "@/lib/services/chat-prefetch";
 
 export interface ToolsByCategory {
@@ -27,6 +28,32 @@ export interface GroupedTools {
 }
 
 export type { McpServerStatus };
+
+type ToolInfoLike = ApiToolInfo | ToolInfo | {
+  id?: string;
+  toolId?: string;
+  name?: string | null;
+  description?: string | null;
+  category?: string | null;
+};
+
+const normalizeToolInfo = (tool: ToolInfoLike): ToolInfo | null => {
+  const raw = tool as {
+    id?: string;
+    toolId?: string;
+    name?: string | null;
+    description?: string | null;
+    category?: string | null;
+  };
+  const id = raw.id ?? raw.toolId;
+  if (!id) return null;
+  return {
+    id,
+    name: raw.name ?? null,
+    description: raw.description ?? null,
+    category: raw.category ?? null,
+  };
+};
 
 interface ToolsCatalogContextType {
   availableTools: ToolInfo[];
@@ -80,7 +107,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     }
     try {
       const response = await getAvailableTools();
-      setAvailableTools(response?.tools || []);
+      const normalizedTools = (response?.tools || [])
+        .map((tool) => normalizeToolInfo(tool))
+        .filter((tool): tool is ToolInfo => tool !== null);
+      setAvailableTools(normalizedTools);
       hasLoadedToolsOnce.current = true;
     } catch (error) {
       console.error("Failed to load available tools:", error);

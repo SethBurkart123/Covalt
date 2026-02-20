@@ -60,6 +60,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar variant="inset" {...props}>
+      <div className="electrobun-titlebar electrobun-webkit-app-region-drag" />
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
