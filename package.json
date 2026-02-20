@@ -12,7 +12,7 @@
     "electrobun:build": "electrobun build",
     "build": "next build",
     "build:frontend": "next build",
-    "build:backend": "uv run --group dev pyinstaller --noconfirm --clean --onefile --name agno-backend --distpath backend/dist --workpath backend/build --specpath backend/build --add-data \"$PWD/zynk:zynk\" --add-data \"$PWD/nodes:nodes\" --collect-submodules nodes --collect-submodules agno --collect-submodules sqlalchemy --collect-submodules backend --collect-data tiktoken --collect-data litellm --additional-hooks-dir \"$PWD/backend/pyinstaller-hooks\" --hidden-import uvicorn.logging --hidden-import uvicorn.lifespan.on --hidden-import uvicorn.protocols.http --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto main.py",
+    "build:backend": "uv run --group dev pyinstaller --noconfirm --clean --onedir --name agno-backend --distpath backend/dist --workpath backend/build --specpath backend/build --add-data \"$PWD/zynk:zynk\" --add-data \"$PWD/nodes:nodes\" --collect-submodules nodes --collect-submodules agno --collect-submodules sqlalchemy --collect-submodules backend --collect-data tiktoken --collect-data litellm --additional-hooks-dir \"$PWD/backend/pyinstaller-hooks\" --hidden-import uvicorn.logging --hidden-import uvicorn.lifespan.on --hidden-import uvicorn.protocols.http --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto main.py",
     "build:desktop": "bun run build:frontend && bun run build:backend && bun run electrobun:build",
     "start": "next start -p 4096",
     "lint": "next lint",
