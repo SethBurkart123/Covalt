@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "perplexity": {
+      "url": "http://100.127.10.6:8002/sse",
+      "type": "sse"
+    }
+  }
+}

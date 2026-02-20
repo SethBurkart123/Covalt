@@ -8,6 +8,7 @@
     "dev": "bun run electrobun:build && concurrently \"bun run dev:frontend\" \"bun run electrobun:dev\"",
     "dev:desktop": "bun run electrobun:build && concurrently \"bun run dev:frontend\" \"bun run electrobun:dev\"",
     "dev:frontend": "next dev --turbopack",
+    "dev:backend": "AGNO_DEV_MODE=1 AGNO_GENERATE_TS=1 uv run main.py",
     "electrobun:dev": "ELECTROBUN_DEV=1 ELECTROBUN_PROJECT_ROOT=\"$PWD\" electrobun dev",
     "electrobun:build": "electrobun build",
     "build": "next build",
