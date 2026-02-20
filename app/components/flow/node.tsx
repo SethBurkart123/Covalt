@@ -6,7 +6,7 @@ import { ChevronDown, Check, X, Loader2, Play, FastForward, Pin } from 'lucide-r
 import * as Icons from 'lucide-react';
 import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
-import { getNodeDefinition, resolveNodeParameters, useFlowActions, useNodePicker, type FlowNode } from '@/lib/flow';
+import { getNodeDefinition, resolveNodeParameters, useFlowActions, useNodePicker, type FlowNode as FlowNodeType } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
 import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
 import { cn } from '@/lib/utils';
@@ -217,7 +217,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
       definition
         ? resolveNodeParameters(
             definition,
-            { id, type, position: { x: 0, y: 0 }, data: data as Record<string, unknown> } as FlowNode,
+            { id, type, position: { x: 0, y: 0 }, data: data as Record<string, unknown> } as FlowNodeType,
             edges
           )
         : [],

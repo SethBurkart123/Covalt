@@ -86,10 +86,11 @@ export function NodePicker({ param, value, onChange, compact, nodeId }: NodePick
       picker.cancelPick();
       return;
     }
+    const allowedNodeTypes = nodeParam.nodeTypes ? Array.from(nodeParam.nodeTypes) : null;
     picker.startPick({
       originNodeId: nodeId,
       paramId: param.id,
-      allowedNodeTypes: nodeParam.nodeTypes ?? null,
+      allowedNodeTypes,
       allowSelf: nodeParam.allowSelf ?? false,
     });
     setOpen(false);

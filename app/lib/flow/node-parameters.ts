@@ -49,7 +49,6 @@ export function resolveNodeParameters(
 
 export function resolveParameterForHandle(
   definition: NodeDefinition,
-  node: FlowNode,
   handleId: string | null | undefined
 ): Parameter | undefined {
   if (!handleId) return undefined;

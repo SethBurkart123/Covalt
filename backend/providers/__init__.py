@@ -6,7 +6,7 @@ import contextvars
 import importlib
 import inspect
 import pkgutil
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .. import db
 

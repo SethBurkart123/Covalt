@@ -164,7 +164,17 @@ export function FlowExecutionProvider({
       setExecutionByNode(storedExecution as Record<string, FlowNodeExecutionSnapshot>);
       setPinnedByNodeId(storedPinned as Record<string, boolean>);
       if (storedPrompt && isRecord(storedPrompt) && typeof storedPrompt.message === "string") {
-        setLastPromptInputState(storedPrompt as FlowRunPromptInput);
+        const prompt: FlowRunPromptInput = {
+          message: storedPrompt.message,
+          history: Array.isArray(storedPrompt.history)
+            ? (storedPrompt.history as Record<string, unknown>[])
+            : undefined,
+          messages: Array.isArray(storedPrompt.messages) ? storedPrompt.messages : undefined,
+          attachments: Array.isArray(storedPrompt.attachments)
+            ? (storedPrompt.attachments as Record<string, unknown>[])
+            : undefined,
+        };
+        setLastPromptInputState(prompt);
       }
     } catch (error) {
       console.error("Failed to load flow execution cache:", error);

@@ -23,9 +23,10 @@ import {
   toggleStarChat,
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
+import { getBackendBaseUrl } from "@/lib/services/backend-url";
 
 if (typeof window !== "undefined") {
-  initBridge("http://127.0.0.1:8000");
+  initBridge(getBackendBaseUrl());
 }
 
 interface StreamingChatEvent {
@@ -242,8 +243,8 @@ export const api = {
   cancelRun: (messageId: string): Promise<{ cancelled: boolean }> =>
     cancelRun({ body: { messageId } }) as Promise<{ cancelled: boolean }>,
 
-  cancelFlowRun: (runId: string): Promise<{ cancelled: boolean }> =>
-    cancelFlowRun({ body: { runId } }) as Promise<{ cancelled: boolean }>,
+  cancelFlowRun: (runId: string): Promise<void> =>
+    cancelFlowRun({ body: { runId } }),
 
   generateChatTitle: (chatId: string): Promise<{ title: string | null }> =>
     generateChatTitle({ body: { id: chatId } }) as Promise<{

@@ -22,6 +22,10 @@ export interface ChatStreamState {
   hasUnseenUpdate: boolean;
 }
 
+function getPendingMessageId(chatId: string): string {
+  return `pending:${chatId}`;
+}
+
 type StreamCompleteCallback = (chatId: string) => void;
 
 interface StreamingContextValue {
@@ -310,11 +314,15 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     streamStateRefs.current.set(chatId, createInitialState());
     
     setStreamStates((prev) => {
+      const current = prev.get(chatId);
       const next = new Map(prev);
       next.set(chatId, {
         isStreaming: true,
         isPausedForApproval: false,
-        streamingContent: [{ type: "text", content: "" }],
+        streamingContent:
+          current && current.streamingContent.length > 0
+            ? current.streamingContent
+            : [{ type: "text", content: "" }],
         streamingMessageId: messageId,
         status: "streaming",
         errorMessage: null,
@@ -343,13 +351,24 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   const updateStreamContent = useCallback((chatId: string, content: ContentBlock[]) => {
     setStreamStates((prev) => {
       const current = prev.get(chatId);
-      if (!current) return prev;
-
       const next = new Map(prev);
-      next.set(chatId, {
-        ...current,
-        streamingContent: content,
-      });
+      if (!current) {
+        next.set(chatId, {
+          isStreaming: true,
+          isPausedForApproval: false,
+          streamingContent: content,
+          streamingMessageId: getPendingMessageId(chatId),
+          status: "streaming",
+          errorMessage: null,
+          hasUnseenUpdate: false,
+        });
+      } else {
+        next.set(chatId, {
+          ...current,
+          streamingContent: content,
+          streamingMessageId: current.streamingMessageId ?? getPendingMessageId(chatId),
+        });
+      }
       return next;
     });
   }, []);

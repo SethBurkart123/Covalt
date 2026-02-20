@@ -64,7 +64,7 @@ function getSocketTypeForHandle(
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return isSource ? 'data' : 'tools';
 
-  const param = resolveParameterForHandle(definition, node as FlowNode, handleId);
+  const param = resolveParameterForHandle(definition, handleId);
   if (!param) return isSource ? 'data' : 'tools';
 
   return getSocketTypeFromParam(param);
@@ -81,7 +81,7 @@ function getParameterForHandle(
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return undefined;
 
-  return resolveParameterForHandle(definition, node as FlowNode, handleId);
+  return resolveParameterForHandle(definition, handleId);
 }
 
 function canHandleActAsSource(param: Parameter | undefined): boolean {

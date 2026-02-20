@@ -478,6 +478,10 @@ export function processEvent(
     ? data
     : { content: data }) as Record<string, unknown>;
 
+  if (typeof d.sessionId === "string" && d.sessionId) {
+    callbacks.onSessionId?.(d.sessionId);
+  }
+
   callbacks.onEvent?.(eventType, d);
 
   if (d.memberRunId && eventType !== "MemberRunStarted" && eventType !== "MemberRunCompleted") {
@@ -490,7 +494,6 @@ export function processEvent(
 
   switch (eventType) {
     case "RunStarted":
-      callbacks.onSessionId?.(d.sessionId as string);
       break;
 
     case "AssistantMessageId":
