@@ -3,11 +3,16 @@ from pathlib import Path
 
 
 def get_db_directory() -> Path:
-    if os.getenv("ENV") != "production":
+    # USER_DATA_DIR is set by the Electrobun main process (Utils.paths.userData)
+    # and resolves to the app-scoped data directory, e.g.:
+    #   macOS: ~/Library/Application Support/com.agno.desktop/<channel>
+    app_data = os.getenv("USER_DATA_DIR")
+    if app_data:
+        db_dir = Path(app_data)
+    elif os.getenv("ENV") != "production":
         db_dir = Path(__file__).parent.parent / "db"
     else:
-        app_data = os.getenv("ELECTRON_USER_DATA")
-        db_dir = Path(app_data) / "agno" if app_data else Path.home() / ".agno"
+        db_dir = Path.home() / ".agno"
 
     db_dir.mkdir(parents=True, exist_ok=True)
     return db_dir

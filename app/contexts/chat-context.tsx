@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 import { useSearchParams } from "next/navigation";
 import type { ChatContextType, AllChatsData } from "@/lib/types/chat";
 import { api } from "@/lib/services/api";
+import { subscribeBackendBaseUrl } from "@/lib/services/backend-url";
 import { useChatOperations } from "@/lib/hooks/useChatOperations";
 import { useModels } from "@/lib/hooks/useModels";
 import { useAgents } from "@/lib/hooks/useAgents";
@@ -30,6 +31,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadChats = async () => {
       try {
         setAllChatsData(await api.getAllChats());
@@ -37,10 +40,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load chats:", error);
         setAllChatsData({ chats: {} });
       } finally {
-        setIsLoaded(true);
+        if (!cancelled) setIsLoaded(true);
       }
     };
+
     loadChats();
+
+    const unsubscribe = subscribeBackendBaseUrl(() => {
+      if (cancelled) return;
+      loadChats();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
