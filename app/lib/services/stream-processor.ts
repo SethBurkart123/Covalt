@@ -675,5 +675,8 @@ export async function processMessageStream(
     reader.releaseLock();
   }
 
-  return { finalContent: buildCurrentContent(state), messageId };
+  const finalContent = buildCurrentContent(state);
+  callbacks.onUpdate(finalContent);
+
+  return { finalContent, messageId };
 }

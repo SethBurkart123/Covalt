@@ -34,6 +34,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
   const [reloadTrigger, setReloadTrigger] = useState(0);
+  const [submissionChatId, setSubmissionChatId] = useState<string | null>(null);
   const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
 
   const streamingMessageIdRef = useRef<string | null>(null);
@@ -44,7 +45,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
   const currentChatIdRef = useRef<string | null>(chatId);
   const prevChatIdRef = useRef<string | null>(null);
 
-  const streamState = chatId ? getStreamState(chatId) : undefined;
+  const effectiveStreamChatId = submissionChatId || chatId || null;
+  const streamState = effectiveStreamChatId ? getStreamState(effectiveStreamChatId) : undefined;
   const isLoading = streamState?.isStreaming || streamState?.isPausedForApproval || false;
   const streamingContent = streamState?.streamingContent || null;
   const streamingMessageId = streamState?.streamingMessageId || null;
@@ -231,7 +233,10 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           },
           onSessionId: async (id) => {
             sessionId = id;
-            if (id) activeSubmissionChatIdRef.current = id;
+            if (id) {
+              activeSubmissionChatIdRef.current = id;
+              setSubmissionChatId(id);
+            }
             if (!chatId && id) {
               window.history.replaceState(null, "", `/?chatId=${id}`);
               refreshChats();
@@ -271,6 +276,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         streamingMessageIdRef.current = null;
         streamAbortRef.current = null;
         activeSubmissionChatIdRef.current = null;
+        setSubmissionChatId(null);
       }
     },
     [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, setChatToolIds, registerStream, unregisterStream, updateStreamContent, preserveStreamingMessage],
