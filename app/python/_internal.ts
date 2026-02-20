@@ -40,7 +40,7 @@ export function getBaseUrl(): string {
     return _baseUrl;
 }
 
-export async function request<T>(command: string, args: unknown): Promise<T> {
+export async function request<T = any>(command: string, args: unknown): Promise<T> {
     const baseUrl = getBaseUrl();
     const url = `${baseUrl}/command/${command}`;
 
@@ -65,7 +65,7 @@ export async function request<T>(command: string, args: unknown): Promise<T> {
     return data.result as T;
 }
 
-export function createChannel<T>(command: string, args: unknown): BridgeChannel<T> {
+export function createChannel<T = any>(command: string, args: unknown): BridgeChannel<T> {
     const baseUrl = getBaseUrl();
     const url = `${baseUrl}/channel/${command}`;
 

@@ -1,4 +1,10 @@
-import Electrobun, { BrowserWindow, Utils, PATHS } from "electrobun/bun";
+import Electrobun, {
+  ApplicationMenu,
+  type ApplicationMenuItemConfig,
+  BrowserWindow,
+  Utils,
+  PATHS,
+} from "electrobun/bun";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { connect, createServer } from "node:net";
@@ -17,6 +23,86 @@ const RETRY_DELAY_MS = 500;
 
 function isDevMode(): boolean {
   return process.env.ELECTROBUN_DEV === "1";
+}
+
+function buildApplicationMenu(): ApplicationMenuItemConfig[] {
+  const isMac = process.platform === "darwin";
+
+  const fileMenu: ApplicationMenuItemConfig = {
+    label: "File",
+    submenu: [{ role: "close" }],
+  };
+
+  const editMenu: ApplicationMenuItemConfig = {
+    label: "Edit",
+    submenu: [
+      { role: "undo" },
+      { role: "redo" },
+      { type: "separator" },
+      { role: "cut" },
+      { role: "copy" },
+      { role: "paste" },
+      { role: "pasteAndMatchStyle" },
+      { role: "delete" },
+      { role: "selectAll" },
+      { type: "separator" },
+      {
+        label: "Speech",
+        submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+      },
+    ],
+  };
+
+  const viewMenu: ApplicationMenuItemConfig = {
+    label: "View",
+    submenu: [{ role: "toggleFullScreen" }],
+  };
+
+  const windowMenu: ApplicationMenuItemConfig = {
+    label: "Window",
+    submenu: [
+      { role: "minimize" },
+      { role: "zoom" },
+      { type: "separator" },
+      { role: "cycleThroughWindows" },
+      { role: "bringAllToFront" },
+    ],
+  };
+
+  const helpMenu: ApplicationMenuItemConfig = {
+    label: "Help",
+    submenu: [{ role: "showHelp" }],
+  };
+
+  if (isMac) {
+    return [
+      {
+        submenu: [
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "showAll" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
+      fileMenu,
+      editMenu,
+      viewMenu,
+      windowMenu,
+      helpMenu,
+    ];
+  }
+
+  return [
+    {
+      label: "File",
+      submenu: [{ role: "close" }, { type: "separator" }, { role: "quit" }],
+    },
+    editMenu,
+    viewMenu,
+    windowMenu,
+    helpMenu,
+  ];
 }
 
 function getProjectRoot(): string {
@@ -68,6 +154,8 @@ async function resolveBackendPort(): Promise<number> {
 function getBackendBinaryPath(): string {
   const binaryName = process.platform === "win32" ? "agno-backend.exe" : "agno-backend";
   const candidates = [
+    path.resolve(PATHS.VIEWS_FOLDER, "..", "backend", "agno-backend", binaryName),
+    path.resolve(PATHS.VIEWS_FOLDER, "..", "..", "backend", "agno-backend", binaryName),
     path.resolve(PATHS.VIEWS_FOLDER, "..", "backend", binaryName),
     path.resolve(PATHS.VIEWS_FOLDER, "..", "..", "backend", binaryName),
   ];
@@ -384,6 +472,8 @@ async function main(): Promise<void> {
     frontendServer = frontend.server;
     appUrl = frontend.url;
   }
+
+  ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
   const mainWindow = new BrowserWindow({
     title: "Agno",
