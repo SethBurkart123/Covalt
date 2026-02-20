@@ -29,6 +29,23 @@ declare module "electrobun/bun" {
   export const Utils: {
     quit: () => void;
     openExternal: (url: string) => boolean;
+    paths: {
+      home: string;
+      appData: string;
+      config: string;
+      cache: string;
+      temp: string;
+      logs: string;
+      documents: string;
+      downloads: string;
+      desktop: string;
+      pictures: string;
+      music: string;
+      videos: string;
+      userData: string;
+      userCache: string;
+      userLogs: string;
+    };
   };
   export const PATHS: {
     VIEWS_FOLDER: string;

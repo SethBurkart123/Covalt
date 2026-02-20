@@ -170,11 +170,22 @@ function startBackendProcess(options: {
   devMode: boolean;
 }): ChildProcessWithoutNullStreams {
   const { port, devMode } = options;
+
+  let userDataDir: string | undefined;
+  if (!devMode) {
+    try {
+      userDataDir = Utils.paths.userData;
+    } catch (err) {
+      console.warn("[backend] Could not resolve Utils.paths.userData:", err);
+    }
+  }
+
   const env = {
     ...process.env,
     AGNO_BACKEND_PORT: String(port),
     AGNO_DEV_MODE: devMode ? "1" : "0",
     AGNO_GENERATE_TS: devMode ? "1" : "0",
+    ...(userDataDir ? { USER_DATA_DIR: userDataDir } : {}),
   };
 
   if (devMode) {

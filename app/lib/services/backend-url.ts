@@ -2,6 +2,7 @@ import { initBridge } from "@/python/_internal";
 
 const STORAGE_KEY = "agno:backendBaseUrl";
 let cachedBaseUrl: string | null = null;
+const listeners = new Set<(value: string) => void>();
 
 type BackendWindow = Window & {
   __AGNO_BACKEND_BASE_URL?: string;
@@ -69,6 +70,20 @@ export function setBackendBaseUrl(value: string): void {
   } catch {}
 
   initBridge(cachedBaseUrl);
+  for (const listener of listeners) {
+    try {
+      listener(cachedBaseUrl);
+    } catch (error) {
+      console.error("Backend base URL listener failed:", error);
+    }
+  }
+}
+
+export function subscribeBackendBaseUrl(listener: (value: string) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 if (typeof window !== "undefined") {
