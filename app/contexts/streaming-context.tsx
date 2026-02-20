@@ -50,6 +50,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   const streamStateRefs = useRef<Map<string, StreamState>>(new Map());
   const isInitializedRef = useRef(false);
   const completeCallbacksRef = useRef<Set<StreamCompleteCallback>>(new Set());
+  const cleanedUpChatsRef = useRef<Set<string>>(new Set());
 
   const subscribeToStreamInternal = useCallback(async (chatId: string) => {
     if (subscriptionsRef.current.has(chatId)) return;
@@ -311,6 +312,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
 
   const registerStream = useCallback((chatId: string, messageId: string) => {
     console.log(`[StreamingContext] Registering stream for ${chatId}, message ${messageId}`);
+    cleanedUpChatsRef.current.delete(chatId);
     streamStateRefs.current.set(chatId, createInitialState());
     
     setStreamStates((prev) => {
@@ -334,6 +336,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
 
   const unregisterStream = useCallback((chatId: string) => {
     console.log(`[StreamingContext] Unregistering stream for ${chatId}`);
+    cleanedUpChatsRef.current.add(chatId);
     streamStateRefs.current.delete(chatId);
     
     subscriptionsRef.current.get(chatId)?.unsubscribe();
@@ -349,6 +352,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateStreamContent = useCallback((chatId: string, content: ContentBlock[]) => {
+    if (cleanedUpChatsRef.current.has(chatId)) return;
     setStreamStates((prev) => {
       const current = prev.get(chatId);
       const next = new Map(prev);
