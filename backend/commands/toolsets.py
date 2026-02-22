@@ -15,7 +15,7 @@ from ..services.workspace_manager import get_workspace_manager
 logger = logging.getLogger(__name__)
 
 
-class ToolInfo(BaseModel):
+class ToolsetToolInfo(BaseModel):
     tool_id: str
     name: str
     description: Optional[str] = None
@@ -40,7 +40,7 @@ class ListToolsetsRequest(BaseModel):
 
 
 class ToolsetDetailInfo(ToolsetInfo):
-    tools: List[ToolInfo] = []
+    tools: List[ToolsetToolInfo] = []
 
 
 class ToolsetsResponse(BaseModel):
@@ -158,7 +158,7 @@ async def get_toolset(body: ToolsetIdRequest) -> ToolsetDetailInfo:
         source_type=toolset.get("source_type"),
         tool_count=len(toolset.get("tools", [])),
         tools=[
-            ToolInfo(
+            ToolsetToolInfo(
                 tool_id=t["tool_id"],
                 name=t["name"],
                 description=t.get("description"),
