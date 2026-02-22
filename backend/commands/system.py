@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sys
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from zynk import command
+from zynk import Channel, command
 
 from .. import db
 from ..config import get_db_directory
@@ -12,7 +12,6 @@ from ..models.chat import (
     AllModelSettingsResponse,
     AllProvidersResponse,
     AutoTitleSettings,
-    AvailableModelsResponse,
     DefaultToolsResponse,
     ModelInfo,
     ModelSettingsInfo,
@@ -29,7 +28,10 @@ from ..models.chat import (
     SystemPromptSettings,
     ThinkingTagPromptInfo,
 )
-from ..services.model_factory import get_available_models as get_models_from_factory
+from ..services.model_factory import (
+    get_enabled_providers as get_enabled_providers_from_factory,
+    stream_available_model_batches as stream_model_batches_from_factory,
+)
 from ..providers import test_provider_connection
 from ..services.provider_oauth_manager import get_provider_oauth_manager
 
@@ -58,25 +60,76 @@ class DbPathResponse(BaseModel):
     path: str
 
 
+class AvailableModelsEvent(BaseModel):
+    event: str
+    provider: str | None = None
+    models: list[ModelInfo] = Field(default_factory=list)
+    connectedProviders: list[str] = Field(default_factory=list)
+    expectedProviders: list[str] = Field(default_factory=list)
+
+
 @command
 async def get_db_path() -> DbPathResponse:
     return DbPathResponse(path=str(get_db_directory()))
 
 
 @command
-async def get_available_models() -> AvailableModelsResponse:
-    models_data, connected_providers = await get_models_from_factory()
-    return AvailableModelsResponse(
-        models=[
+async def stream_available_models(channel: Channel) -> None:
+    enabled_providers = get_enabled_providers_from_factory()
+    connected_providers: set[str] = set()
+
+    def connected_in_order() -> list[str]:
+        return [provider for provider in enabled_providers if provider in connected_providers]
+
+    channel.send_model(
+        AvailableModelsEvent(
+            event="ModelsStarted",
+            expectedProviders=enabled_providers,
+        )
+    )
+
+    async for provider, models_data, has_error in stream_model_batches_from_factory():
+        if has_error:
+            connected_providers.discard(provider)
+            channel.send_model(
+                AvailableModelsEvent(
+                    event="ModelsFailed",
+                    provider=provider,
+                    connectedProviders=connected_in_order(),
+                )
+            )
+            continue
+
+        batch_models = [
             ModelInfo(
                 provider=m["provider"],
                 modelId=m["modelId"],
                 displayName=m["displayName"],
-                isDefault=m["isDefault"],
+                isDefault=False,
             )
             for m in models_data
-        ],
-        connectedProviders=connected_providers,
+        ]
+
+        if batch_models:
+            connected_providers.add(provider)
+        else:
+            connected_providers.discard(provider)
+
+        channel.send_model(
+            AvailableModelsEvent(
+                event="ModelsBatch",
+                provider=provider,
+                models=batch_models,
+                connectedProviders=connected_in_order(),
+            )
+        )
+
+    channel.send_model(
+        AvailableModelsEvent(
+            event="ModelsCompleted",
+            connectedProviders=connected_in_order(),
+            expectedProviders=enabled_providers,
+        )
     )
 
 

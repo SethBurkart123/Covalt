@@ -9,11 +9,6 @@ existing_pythonpath = os.environ.get("PYTHONPATH", "")
 paths = [str(_local_zynk)] + ([existing_pythonpath] if existing_pythonpath else [])
 os.environ["PYTHONPATH"] = os.pathsep.join([p for p in paths if p])
 
-try:
-    import tiktoken_ext.openai_public  # noqa: F401
-except Exception as e:
-    print(f"⚠ Failed to load tiktoken encodings: {e}")
-
 import nodes  # noqa: F401
 
 from zynk import Bridge
@@ -36,7 +31,7 @@ def main() -> int:
     bridge_kwargs: dict[str, Any] = {
         "generate_ts": str(output_dir / "api.ts") if generate_ts else None,
         "port": port,
-        "debug": dev_mode,
+        "debug": False,
         "app_init": "backend.services.http_routes:register_http_routes",
         "reload_includes": ["backend"],
         "reload_excludes": [
