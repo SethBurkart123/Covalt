@@ -25,7 +25,7 @@ import {
   reconnectMcpServer,
   testMcpTool,
   type ToolsetInfo,
-  type ToolInfo,
+  type ToolsetToolInfo,
   type MCPToolInfo,
 } from "@/python/api";
 import { useTools } from "@/contexts/tools-context";
@@ -47,7 +47,7 @@ import {
 import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
 
-function ToolCard({ tool }: { tool: ToolInfo }) {
+function ToolCard({ tool }: { tool: ToolsetToolInfo }) {
   const toolLabel = useMemo(() => {
     if (tool.name) return tool.name;
     const id = tool.toolId;
@@ -87,7 +87,7 @@ function ToolsetCard({
   isToggling,
 }: ToolsetCardProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [tools, setTools] = useState<ToolsetToolInfo[]>([]);
   const [isLoadingTools, setIsLoadingTools] = useState(false);
 
   const handleOpenChange = async (open: boolean) => {
