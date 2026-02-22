@@ -6,6 +6,26 @@ from agno.agent import Agent
 
 from .. import db
 
+ERROR_RUN_EVENTS = {"RunError", "RunCancelled"}
+TITLE_CONTENT_EVENTS = {"RunContent", "RunCompleted"}
+
+
+def _get_event_name(chunk: object) -> Optional[str]:
+    event = getattr(chunk, "event", None)
+    return event if isinstance(event, str) and event else None
+
+
+def _run_completed_successfully(run_output: object) -> bool:
+    status = getattr(run_output, "status", None)
+    if status is None:
+        return True
+
+    status_value = getattr(status, "value", status)
+    if not isinstance(status_value, str):
+        return False
+
+    return status_value.lower() == "completed"
+
 
 def generate_title_for_chat(chat_id: str) -> Optional[str]:
     try:
@@ -68,16 +88,33 @@ def generate_title_for_chat(chat_id: str) -> Optional[str]:
 
         final_response = None
         streamed_text_parts: list[str] = []
+        had_run_error = False
 
         for chunk in response_stream:
+            event_name = _get_event_name(chunk)
+
+            if event_name in ERROR_RUN_EVENTS:
+                had_run_error = True
+                continue
+
             if hasattr(chunk, "messages"):
                 final_response = chunk
                 continue
+
+            if event_name and event_name not in TITLE_CONTENT_EVENTS:
+                continue
+
             content = getattr(chunk, "content", None)
             if isinstance(content, str) and content:
                 streamed_text_parts.append(content)
 
+        if had_run_error:
+            return None
+
         title_raw: Optional[str] = None
+
+        if final_response is not None and not _run_completed_successfully(final_response):
+            return None
 
         if final_response is not None and getattr(final_response, "messages", None):
             last_msg = final_response.messages[-1]
