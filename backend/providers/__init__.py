@@ -18,6 +18,17 @@ _credential_override: contextvars.ContextVar[
 ] = contextvars.ContextVar("credential_override", default=None)
 
 
+def _default_get_model_options(
+    _model_id: str,
+    _model_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return {"main": [], "advanced": []}
+
+
+def _default_map_model_options(_model_id: str, _options: Dict[str, Any]) -> Dict[str, Any]:
+    return {}
+
+
 def get_credentials() -> Tuple[Optional[str], Optional[str]]:
     """Get API credentials for the calling provider. Auto-detects provider from filename."""
     override = _credential_override.get()
@@ -75,12 +86,16 @@ for _, name, _ in pkgutil.iter_modules(__path__):
         get_func = getattr(module, f"get_{name}_model", None)
         fetch_func = getattr(module, "fetch_models", None)
         test_func = getattr(module, "test_connection", None)
+        model_options_func = getattr(module, "get_model_options", None)
+        map_options_func = getattr(module, "map_model_options", None)
 
         if get_func and fetch_func:
             PROVIDERS[name] = {
                 "get_model": get_func,
                 "fetch_models": fetch_func,
                 "test_connection": test_func,
+                "get_model_options": model_options_func or _default_get_model_options,
+                "map_model_options": map_options_func or _default_map_model_options,
             }
 
             if hasattr(module, "ALIASES"):
@@ -109,6 +124,28 @@ async def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
     if provider not in PROVIDERS:
         return []
     return await PROVIDERS[provider]["fetch_models"]()
+
+
+def get_provider_model_options(
+    provider: str,
+    model_id: str,
+    model_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    provider = _normalize(provider)
+    if provider not in PROVIDERS:
+        return _default_get_model_options(model_id, model_metadata)
+    return PROVIDERS[provider]["get_model_options"](model_id, model_metadata)
+
+
+def map_provider_model_options(
+    provider: str,
+    model_id: str,
+    options: Dict[str, Any],
+) -> Dict[str, Any]:
+    provider = _normalize(provider)
+    if provider not in PROVIDERS:
+        return _default_map_model_options(model_id, options)
+    return PROVIDERS[provider]["map_model_options"](model_id, options)
 
 
 def list_providers() -> List[str]:
@@ -147,6 +184,8 @@ async def test_provider_connection(
 __all__ = [
     "get_model",
     "fetch_provider_models",
+    "get_provider_model_options",
+    "map_provider_model_options",
     "test_provider_connection",
     "list_providers",
     "get_credentials",

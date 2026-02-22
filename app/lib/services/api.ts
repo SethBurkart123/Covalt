@@ -110,6 +110,7 @@ export const api = {
     chatId?: string,
     toolIds?: string[],
     attachments?: Attachment[],
+    modelOptions?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("stream_chat", {
       messages: messages.map((m) => ({
@@ -121,6 +122,7 @@ export const api = {
       modelId,
       chatId,
       toolIds,
+      modelOptions,
       attachments:
         attachments?.map((a) => ({
           id: a.id,
@@ -166,12 +168,14 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
+    modelOptions?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("continue_message", {
       messageId,
       chatId,
       modelId,
       toolIds,
+      modelOptions,
     }),
 
   retryMessage: (
@@ -179,12 +183,14 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
+    modelOptions?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("retry_message", {
       messageId,
       chatId,
       modelId,
       toolIds,
+      modelOptions,
     }),
 
   editUserMessage: (
@@ -193,6 +199,7 @@ export const api = {
     chatId: string,
     modelId?: string,
     toolIds?: string[],
+    modelOptions?: Record<string, unknown>,
     existingAttachments?: Attachment[],
     newAttachments?: PendingAttachment[],
   ): StreamHandle =>
@@ -202,6 +209,7 @@ export const api = {
       chatId,
       modelId,
       toolIds,
+      modelOptions,
       existingAttachments:
         existingAttachments?.map((a) => ({
           id: a.id,

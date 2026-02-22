@@ -22,7 +22,7 @@ bun run lint           # Run linting
 ### Regenerating TypeScript Types
 If you need to regenerate the TypeScript API client types without running the full dev server:
 ```bash
-timeout 2 uv run main.py || true
+AGNO_GENERATE_TS=1 timeout 2 uv run main.py
 ```
 This works even if it crashes due to port conflicts - the type generation happens before the server binds to ports.
 

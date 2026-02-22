@@ -3,7 +3,7 @@
 from typing import Any, Dict, List
 import httpx
 from agno.models.litellm import LiteLLM
-from . import get_api_key, get_extra_config, get_credentials
+from . import get_api_key, get_extra_config
 from .. import db
 
 ALIASES = ["gemini", "google_ai_studio"]
@@ -17,11 +17,16 @@ def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
     if not api_key and not extra.get("vertexai"):
         raise RuntimeError("Google API key not configured in Settings.")
 
+    request_params: Dict[str, Any] = dict(kwargs.get("request_params") or {})
     if extra.get("vertexai"):
-        kwargs["request_params"] = {
-            "vertex_project": extra.get("project_id"),
-            "vertex_location": extra.get("location"),
-        }
+        request_params.update(
+            {
+                "vertex_project": extra.get("project_id"),
+                "vertex_location": extra.get("location"),
+            }
+        )
+    if request_params:
+        kwargs["request_params"] = request_params
 
     return LiteLLM(id=f"gemini/{model_id}", api_key=api_key, **kwargs)
 
@@ -31,34 +36,6 @@ async def fetch_models() -> List[Dict[str, Any]]:
     api_key = get_api_key()
     if not api_key:
         return []
-
-    async with httpx.AsyncClient(timeout=5) as client:
-        response = await client.get(
-            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        )
-
-        if not response.is_success:
-            return []
-
-        models = []
-        for m in response.json().get("models", []):
-            model_id = m.get("name", "").split("/")[-1] or m.get("baseModelId", "")
-            if not model_id:
-                continue
-
-            supports_reasoning = m.get("thinking", False)
-            models.append(
-                {
-                    "id": model_id,
-                    "name": m.get("displayName", model_id),
-                    "supports_reasoning": supports_reasoning,
-                }
-            )
-
-            if supports_reasoning:
-                _save_reasoning_metadata(model_id)
-
-        return models
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -76,10 +53,15 @@ async def fetch_models() -> List[Dict[str, Any]]:
                 if not model_id:
                     continue
 
+                max_output_tokens = _coerce_positive_int(
+                    m.get("outputTokenLimit"),
+                    default=8192,
+                )
                 model_info = {
                     "id": model_id,
                     "name": m.get("displayName", model_id),
                     "supports_reasoning": m.get("thinking", False),
+                    "max_output_tokens": max_output_tokens,
                 }
                 models.append(model_info)
 
@@ -91,6 +73,76 @@ async def fetch_models() -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"[google] Failed to fetch models: {e}")
         return []
+
+
+def get_model_options(
+    model_id: str,
+    model_metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Return Google Gemini options for a model."""
+    metadata = model_metadata or {}
+    max_output_tokens = _coerce_positive_int(
+        metadata.get("max_output_tokens"),
+        default=8192,
+    )
+    supports_reasoning = bool(metadata.get("supports_reasoning", False))
+
+    main: list[dict[str, Any]] = []
+    if supports_reasoning:
+        main.append(
+            {
+                "key": "thinking_budget",
+                "label": "Thinking Budget",
+                "type": "slider",
+                "min": 0,
+                "max": 32768,
+                "step": 512,
+                "default": 8192,
+            }
+        )
+
+    return {
+        "main": main,
+        "advanced": [
+            {
+                "key": "temperature",
+                "label": "Temperature",
+                "type": "slider",
+                "min": 0,
+                "max": 2,
+                "step": 0.1,
+                "default": 1,
+            },
+            {
+                "key": "max_tokens",
+                "label": "Max Tokens",
+                "type": "number",
+                "min": 1,
+                "max": max_output_tokens,
+                "default": min(4096, max_output_tokens),
+            },
+        ],
+    }
+
+
+def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    """Map user options to Google-specific LiteLLM kwargs."""
+    _ = model_id
+    kwargs: Dict[str, Any] = {}
+    for key in ("temperature", "max_tokens"):
+        if key in options:
+            kwargs[key] = options[key]
+
+    if "thinking_budget" in options:
+        budget = _coerce_non_negative_int(options.get("thinking_budget"), default=0)
+        kwargs["request_params"] = {
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": budget,
+            }
+        }
+
+    return kwargs
 
 
 async def test_connection() -> tuple[bool, str | None]:
@@ -121,3 +173,19 @@ def _save_reasoning_metadata(model_id: str):
             model_id=model_id,
             reasoning={"supports": True, "isUserOverride": False},
         )
+
+
+def _coerce_positive_int(value: Any, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _coerce_non_negative_int(value: Any, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default

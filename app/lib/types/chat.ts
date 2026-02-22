@@ -1,8 +1,36 @@
+export interface OptionChoice {
+  value: unknown;
+  label: string;
+}
+
+export interface ShowWhen {
+  option: string;
+  values: unknown[];
+}
+
+export interface OptionDefinition {
+  key: string;
+  label: string;
+  type: "select" | "slider" | "number" | "boolean";
+  default: unknown;
+  options?: OptionChoice[];
+  min?: number;
+  max?: number;
+  step?: number;
+  showWhen?: ShowWhen;
+}
+
+export interface OptionSchema {
+  main: OptionDefinition[];
+  advanced: OptionDefinition[];
+}
+
 export interface ModelInfo {
   provider: string;
   modelId: string;
   displayName: string;
   isDefault?: boolean;
+  options?: OptionSchema;
 }
 
 export interface ToolInfo {

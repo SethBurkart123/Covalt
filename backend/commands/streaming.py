@@ -27,10 +27,13 @@ from ..services.chat_graph_runner import (
     FlowRunHandle,
 )
 from ..services.flow_executor import run_flow
+from ..services.option_validation import (
+    ModelResolutionError,
+    resolve_and_validate_model_options,
+)
 from ..services.tool_registry import get_tool_registry
 from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
-from ..services.workspace_manager import get_workspace_manager
 from nodes._types import NodeEvent
 
 import logging
@@ -64,6 +67,7 @@ class AttachmentMeta(BaseModel):
 class StreamChatRequest(BaseModel):
     messages: List[Dict[str, Any]]
     modelId: Optional[str] = None
+    modelOptions: Optional[Dict[str, Any]] = None
     chatId: Optional[str] = None
     toolIds: List[str] = []
     attachments: List[AttachmentMeta] = []
@@ -310,7 +314,32 @@ async def stream_chat(
         for m in body.messages
     ]
 
+    validated_model_options: Dict[str, Any] = {}
+
+    try:
+        if body.modelId:
+            validated_model_options = resolve_and_validate_model_options(
+                body.chatId,
+                body.modelId,
+                body.modelOptions,
+            )
+    except (ModelResolutionError, ValueError) as exc:
+        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        return
+
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
+
+    if not body.modelId:
+        try:
+            validated_model_options = resolve_and_validate_model_options(
+                chat_id,
+                None,
+                body.modelOptions,
+            )
+        except (ModelResolutionError, ValueError) as exc:
+            channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+            return
+
     saved_attachments = []
     manifest_id = None
     file_renames = {}
@@ -350,7 +379,11 @@ async def stream_chat(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        graph_data = get_graph_data_for_chat(chat_id, body.modelId)
+        graph_data = get_graph_data_for_chat(
+            chat_id,
+            body.modelId,
+            model_options=validated_model_options,
+        )
         logger.info("[stream] Unified chat runtime — running graph runtime")
         await run_graph_chat_runtime(
             graph_data,

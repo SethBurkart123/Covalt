@@ -106,6 +106,7 @@ async def stream_available_models(channel: Channel) -> None:
                 modelId=m["modelId"],
                 displayName=m["displayName"],
                 isDefault=False,
+                options=m.get("options"),
             )
             for m in models_data
         ]

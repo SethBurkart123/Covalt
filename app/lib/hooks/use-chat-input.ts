@@ -25,7 +25,10 @@ import type {
 } from "@/lib/types/chat";
 import { addRecentModel } from "@/lib/utils";
 
-export function useChatInput(onThinkTagDetected?: () => void) {
+export function useChatInput(
+  onThinkTagDetected?: () => void,
+  getVisibleModelOptions?: () => Record<string, unknown>,
+) {
   const { chatId, selectedModel, refreshChats } = useChat();
   const { activeToolIds, setChatToolIds } = useToolsActive();
   const { getStreamState, registerStream, unregisterStream, updateStreamContent, onStreamComplete } = useStreaming();
@@ -211,6 +214,7 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       setBaseMessages(newBaseMessages);
 
       let sessionId: string | null = null;
+      const modelOptions = getVisibleModelOptions?.();
 
       try {
         const { response, abort } = api.streamChat(
@@ -218,7 +222,8 @@ export function useChatInput(onThinkTagDetected?: () => void) {
           selectedModel,
           chatId || undefined,
           mergedToolIds,
-          attachments.length > 0 ? attachments : undefined
+          attachments.length > 0 ? attachments : undefined,
+          modelOptions,
         );
         streamAbortRef.current = abort;
 
@@ -279,7 +284,24 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         setSubmissionChatId(null);
       }
     },
-    [isLoading, canSendMessage, baseMessages, selectedModel, chatId, refreshChats, onThinkTagDetected, reloadMessages, trackModel, activeToolIds, setChatToolIds, registerStream, unregisterStream, updateStreamContent, preserveStreamingMessage],
+    [
+      isLoading,
+      canSendMessage,
+      baseMessages,
+      selectedModel,
+      chatId,
+      refreshChats,
+      onThinkTagDetected,
+      reloadMessages,
+      trackModel,
+      activeToolIds,
+      setChatToolIds,
+      registerStream,
+      unregisterStream,
+      updateStreamContent,
+      preserveStreamingMessage,
+      getVisibleModelOptions,
+    ],
   );
 
   const handleContinue = useCallback(
@@ -291,7 +313,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       try {
         const currentModel = selectedModelRef.current || undefined;
-        const { response, abort } = api.continueMessage(messageId, chatId, currentModel, activeToolIds);
+        const modelOptions = getVisibleModelOptions?.();
+        const { response, abort } = api.continueMessage(
+          messageId,
+          chatId,
+          currentModel,
+          activeToolIds,
+          modelOptions,
+        );
         streamAbortRef.current = abort;
         
         const result = await processMessageStream(response, {
@@ -313,7 +342,19 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         await reloadMessages(chatId).catch(() => {});
       }
     },
-    [chatId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent, preserveStreamingMessage],
+    [
+      chatId,
+      baseMessages,
+      reloadMessages,
+      trackModel,
+      activeToolIds,
+      registerStream,
+      unregisterStream,
+      onThinkTagDetected,
+      updateStreamContent,
+      preserveStreamingMessage,
+      getVisibleModelOptions,
+    ],
   );
 
   const handleRetry = useCallback(
@@ -327,7 +368,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
       try {
         const currentModel = selectedModelRef.current || undefined;
-        const { response, abort } = api.retryMessage(messageId, chatId, currentModel, activeToolIds);
+        const modelOptions = getVisibleModelOptions?.();
+        const { response, abort } = api.retryMessage(
+          messageId,
+          chatId,
+          currentModel,
+          activeToolIds,
+          modelOptions,
+        );
         streamAbortRef.current = abort;
         
         const result = await processMessageStream(response, {
@@ -350,7 +398,19 @@ export function useChatInput(onThinkTagDetected?: () => void) {
         await reloadMessages(chatId).catch(() => {});
       }
     },
-    [chatId, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent, preserveStreamingMessage],
+    [
+      chatId,
+      baseMessages,
+      reloadMessages,
+      trackModel,
+      activeToolIds,
+      registerStream,
+      unregisterStream,
+      onThinkTagDetected,
+      updateStreamContent,
+      preserveStreamingMessage,
+      getVisibleModelOptions,
+    ],
   );
 
   const handleEdit = useCallback(
@@ -388,12 +448,14 @@ export function useChatInput(onThinkTagDetected?: () => void) {
 
     try {
       const currentModel = selectedModelRef.current || undefined;
+      const modelOptions = getVisibleModelOptions?.();
       const { response, abort } = api.editUserMessage(
         messageId,
         newContent,
         chatId,
         currentModel,
         activeToolIds,
+        modelOptions,
         existingAttachments,
         newAttachments.length > 0 ? newAttachments : undefined
       );
@@ -418,7 +480,20 @@ export function useChatInput(onThinkTagDetected?: () => void) {
       unregisterStream(chatId);
       await reloadMessages(chatId).catch(() => {});
     }
-  }, [chatId, editing, baseMessages, reloadMessages, trackModel, activeToolIds, registerStream, unregisterStream, onThinkTagDetected, updateStreamContent, preserveStreamingMessage]);
+  }, [
+    chatId,
+    editing,
+    baseMessages,
+    reloadMessages,
+    trackModel,
+    activeToolIds,
+    registerStream,
+    unregisterStream,
+    onThinkTagDetected,
+    updateStreamContent,
+    preserveStreamingMessage,
+    getVisibleModelOptions,
+  ]);
 
   const handleNavigate = useCallback(
     async (messageId: string, siblingId: string) => {
