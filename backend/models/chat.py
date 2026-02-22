@@ -186,11 +186,6 @@ class ModelInfo(BaseModel):
     isDefault: bool = False
 
 
-class AvailableModelsResponse(BaseModel):
-    models: List[ModelInfo]
-    connectedProviders: List[str] = []
-
-
 class ProviderConfig(BaseModel):
     provider: str
     apiKey: Optional[str] = None
