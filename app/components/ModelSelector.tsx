@@ -84,6 +84,7 @@ const getProviderFromKey = (key: string) => key.split(":")[0];
 const AGENT_FILTER = "__agents__";
 const ITEM_HEIGHT = 32;
 const HEADING_HEIGHT = 28;
+const MODEL_OPTION_CLASS = "mx-2 hover:bg-accent/50 hover:text-accent-foreground transition-colors duration-100";
 
 type FlatRow =
   | { type: "heading"; label: string }
@@ -265,7 +266,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         className="w-full min-w-[var(--radix-popper-anchor-width)] border border-border bg-secondary shadow-lg rounded-2xl p-0"
         align="start"
       >
-        <Command className="rounded-2xl" shouldFilter={false}>
+        <Command className="rounded-2xl" shouldFilter={false} disablePointerSelection>
           <CommandInput placeholder="Search model or agent..." value={search} onValueChange={setSearch} />
 
           <div className="flex w-full min-w-0 max-w-full flex-nowrap gap-1 px-3 pt-2 pb-1 overflow-x-auto overflow-y-hidden scrollbar-hide">
@@ -291,7 +292,11 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
 
               if (row.type === "agent") {
                 return (
-                  <CommandItem value={row.key} onSelect={() => handleSelect(row.key)} className="mx-2">
+                  <CommandItem
+                    value={row.key}
+                    onSelect={() => handleSelect(row.key)}
+                    className={MODEL_OPTION_CLASS}
+                  >
                     <span className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="shrink-0 flex items-center">
                         <AgentIconSmall icon={row.agent.icon} agentId={row.agent.id} />
@@ -307,7 +312,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
                 <CommandItem
                   value={row.isRecent ? `recent:${row.model.modelId}` : row.model.modelId}
                   onSelect={() => handleSelect(row.key)}
-                  className="mx-2"
+                  className={MODEL_OPTION_CLASS}
                 >
                   <span className="flex items-center gap-2 flex-1 min-w-0">
                     {row.ProviderIcon && (
