@@ -23,6 +23,10 @@ from ..services.chat_graph_runner import (
     update_chat_model_selection,
 )
 from ..services.workspace_manager import get_workspace_manager
+from ..services.option_validation import (
+    ModelResolutionError,
+    resolve_and_validate_model_options,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,7 @@ class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
     modelId: Optional[str] = None
+    modelOptions: Optional[Dict[str, Any]] = None
     toolIds: List[str] = []
 
 
@@ -38,6 +43,7 @@ class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
     modelId: Optional[str] = None
+    modelOptions: Optional[Dict[str, Any]] = None
     toolIds: List[str] = []
 
 
@@ -63,6 +69,7 @@ class EditUserMessageRequest(BaseModel):
     newContent: str
     chatId: str
     modelId: Optional[str] = None
+    modelOptions: Optional[Dict[str, Any]] = None
     toolIds: List[str] = []
     existingAttachments: List[ExistingAttachmentInput] = []
     newAttachments: List[AttachmentInput] = []
@@ -96,6 +103,17 @@ async def continue_message(
 ) -> None:
     existing_blocks: List[Dict[str, Any]] = []
     original_msg_id: Optional[str] = None
+    validated_model_options: Dict[str, Any] = {}
+
+    try:
+        validated_model_options = resolve_and_validate_model_options(
+            body.chatId,
+            body.modelId,
+            body.modelOptions,
+        )
+    except (ModelResolutionError, ValueError) as exc:
+        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        return
 
     with db.db_session() as sess:
         if body.modelId:
@@ -183,7 +201,11 @@ async def continue_message(
     )
 
     try:
-        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        graph_data = get_graph_data_for_chat(
+            body.chatId,
+            body.modelId,
+            model_options=validated_model_options,
+        )
         await run_graph_chat_runtime(
             graph_data,
             chat_messages,
@@ -206,6 +228,17 @@ async def retry_message(
     body: RetryMessageRequest,
 ) -> None:
     parent_msg_id: Optional[str] = None
+    validated_model_options: Dict[str, Any] = {}
+
+    try:
+        validated_model_options = resolve_and_validate_model_options(
+            body.chatId,
+            body.modelId,
+            body.modelOptions,
+        )
+    except (ModelResolutionError, ValueError) as exc:
+        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        return
     with db.db_session() as sess:
         if body.modelId:
             update_chat_model_selection(sess, body.chatId, body.modelId)
@@ -268,7 +301,11 @@ async def retry_message(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
 
     try:
-        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        graph_data = get_graph_data_for_chat(
+            body.chatId,
+            body.modelId,
+            model_options=validated_model_options,
+        )
         await run_graph_chat_runtime(
             graph_data,
             chat_messages,
@@ -292,6 +329,17 @@ async def edit_user_message(
 ) -> None:
     file_renames: Dict[str, str] = {}
     manifest_id: Optional[str] = None
+    validated_model_options: Dict[str, Any] = {}
+
+    try:
+        validated_model_options = resolve_and_validate_model_options(
+            body.chatId,
+            body.modelId,
+            body.modelOptions,
+        )
+    except (ModelResolutionError, ValueError) as exc:
+        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        return
 
     with db.db_session() as sess:
         if body.modelId:
@@ -455,7 +503,11 @@ async def edit_user_message(
     channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
 
     try:
-        graph_data = get_graph_data_for_chat(body.chatId, body.modelId)
+        graph_data = get_graph_data_for_chat(
+            body.chatId,
+            body.modelId,
+            model_options=validated_model_options,
+        )
         await run_graph_chat_runtime(
             graph_data,
             chat_messages,

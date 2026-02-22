@@ -384,6 +384,7 @@ def _build_canonical_chat_graph(
     instructions: list[str],
     name: str,
     description: str,
+    model_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     model_ref = _resolve_model_ref(provider, model_id)
 
@@ -397,6 +398,8 @@ def _build_canonical_chat_graph(
     }
     if prompt_sections:
         agent_data["instructions"] = "\n\n".join(prompt_sections)
+    if model_options is not None:
+        agent_data["model_options"] = dict(model_options)
 
     return {
         "nodes": [
@@ -433,6 +436,7 @@ def _build_canonical_chat_graph(
 def get_graph_data_for_chat(
     chat_id: str,
     model_id: Optional[str],
+    model_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id) or {}
@@ -461,6 +465,7 @@ def get_graph_data_for_chat(
                 instructions=instructions,
                 name=name,
                 description=description,
+                model_options=model_options,
             )
 
     if not agent_id and isinstance(config, dict):
@@ -488,6 +493,7 @@ def get_graph_data_for_chat(
         instructions=instructions,
         name=name,
         description=description,
+        model_options=model_options,
     )
 
 
@@ -1659,7 +1665,6 @@ async def handle_flow_stream(
                         )
 
                     event_name = str(event_data.get("event") or "")
-                    tool_payload = event_data.get("tool")
                     if event_name == "ToolApprovalRequired" and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
                     elif event_name == "ToolApprovalResolved" and chat_id:
@@ -2561,10 +2566,11 @@ async def handle_content_stream(
                         await asyncio.to_thread(
                             save_content, assistant_msg_id, save_state()
                         )
+                        approval_required_payload = {"runId": run_id, "tools": tools_info}
                         ch.send_model(
                             ChatEvent(
                                 event="ToolApprovalRequired",
-                                tool={"runId": run_id, "tools": tools_info},
+                                tool=approval_required_payload,
                             )
                         )
 

@@ -13,8 +13,10 @@ from agno.db.in_memory import InMemoryDb
 from agno.run.agent import BaseAgentRunEvent
 from agno.team import Team
 
+from backend.providers import map_provider_model_options
 from backend.services import run_control
 from backend.services.model_factory import get_model
+from backend.services.option_validation import merge_model_params, sanitize_final_kwargs
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 _agent_db = InMemoryDb()
@@ -95,7 +97,13 @@ class AgentExecutor:
         )
         instructions = [instructions_text] if instructions_text else None
 
-        model = _resolve_model(model_str, temperature)
+        model_options = _coerce_model_options(data.get("model_options"))
+        node_params = _build_node_model_params(data, temperature)
+        model = _resolve_model(
+            model_str,
+            node_params=node_params,
+            model_options=model_options,
+        )
         tools, sub_agents = await _resolve_link_dependencies(context, input_value)
         tool_node_lookup = _build_tool_node_lookup(tools)
         agent = _build_agent_or_team(
@@ -635,15 +643,49 @@ def _coerce_optional_float(value: Any) -> float | None:
     return float(value)
 
 
-def _resolve_model(model_str: str, temperature: float | None = None) -> Any:
+def _coerce_model_options(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return dict(value)
+
+
+def _build_node_model_params(
+    data: dict[str, Any],
+    temperature: float | None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    if temperature is not None:
+        params["temperature"] = temperature
+
+    for key in (
+        "max_tokens",
+        "top_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+    ):
+        value = data.get(key)
+        if value is not None and value != "":
+            params[key] = value
+
+    return params
+
+
+def _resolve_model(
+    model_str: str,
+    *,
+    node_params: dict[str, Any] | None = None,
+    model_options: dict[str, Any] | None = None,
+) -> Any:
     if ":" not in model_str:
         raise ValueError(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
     provider, model_id = model_str.split(":", 1)
-    if temperature is not None:
-        return get_model(provider, model_id, temperature=temperature)
-    return get_model(provider, model_id)
+    mapped_options = map_provider_model_options(provider, model_id, model_options or {})
+    merged_kwargs = merge_model_params(node_params or {}, mapped_options)
+    safe_kwargs = sanitize_final_kwargs(merged_kwargs)
+    return get_model(provider, model_id, **safe_kwargs)
 
 
 async def _resolve_flow_input(context: FlowContext, target_handle: str) -> Any | None:
@@ -1021,7 +1063,13 @@ async def _build_runtime_runnable(
     instructions: list[str] | None,
     input_value: dict[str, Any] | None,
 ) -> Agent | Team:
-    model = _resolve_model(model_str, temperature)
+    model_options = _coerce_model_options(data.get("model_options"))
+    node_params = _build_node_model_params(data, temperature)
+    model = _resolve_model(
+        model_str,
+        node_params=node_params,
+        model_options=model_options,
+    )
     tools, sub_agents = await _resolve_link_dependencies(context, input_value)
     return _build_agent_or_team(
         data,

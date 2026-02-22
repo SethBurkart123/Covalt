@@ -5,8 +5,10 @@ from collections.abc import AsyncIterator
 from typing import Any, Dict, List
 
 from ..providers import get_model as get_provider_model
-from ..providers import fetch_provider_models, list_providers
+from ..providers import fetch_provider_models, get_provider_model_options, list_providers
+from ..models.chat import OptionSchema
 from .. import db
+from .model_schema_cache import cache_model_metadata
 from .provider_oauth_manager import get_provider_oauth_manager
 
 PROVIDER_MODELS_TIMEOUT_SECONDS = 12
@@ -38,17 +40,43 @@ async def stream_available_model_batches() -> AsyncIterator[tuple[str, List[Dict
                 fetch_provider_models(provider),
                 timeout=PROVIDER_MODELS_TIMEOUT_SECONDS,
             )
-            return (
-                provider,
-                [
+            provider_models: list[dict[str, Any]] = []
+            for model in models:
+                model_id = str(model.get("id") or "").strip()
+                if not model_id:
+                    continue
+
+                metadata = {
+                    key: value for key, value in model.items() if key not in {"id", "name"}
+                }
+                cache_model_metadata(provider, model_id, metadata)
+
+                try:
+                    schema_dict = get_provider_model_options(
+                        provider,
+                        model_id,
+                        metadata or None,
+                    )
+                    options = OptionSchema.model_validate(schema_dict).model_dump()
+                except Exception as exc:
+                    print(
+                        f"[{provider}] Failed generating options schema for {model_id}: {exc}"
+                    )
+                    options = OptionSchema(main=[], advanced=[]).model_dump()
+
+                provider_models.append(
                     {
                         "provider": provider,
-                        "modelId": m["id"],
-                        "displayName": m["name"],
+                        "modelId": model_id,
+                        "displayName": str(model.get("name") or model_id),
                         "isDefault": False,
+                        "options": options,
                     }
-                    for m in models
-                ],
+                )
+
+            return (
+                provider,
+                provider_models,
                 False,
             )
         except asyncio.TimeoutError:

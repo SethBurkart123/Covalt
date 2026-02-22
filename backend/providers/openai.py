@@ -40,23 +40,52 @@ async def fetch_models() -> List[Dict[str, str]]:
         print(f"[openai] Failed to fetch models: {e}")
         return []
 
-    base = (base_url or "https://api.openai.com").rstrip("/")
-    url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
 
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get(
-                url, headers={"Authorization": f"Bearer {api_key}"}
-            )
+def get_model_options(
+    model_id: str,
+    model_metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    _ = model_id, model_metadata
+    return {
+        "main": [],
+        "advanced": [
+            {
+                "key": "temperature",
+                "label": "Temperature",
+                "type": "slider",
+                "min": 0,
+                "max": 2,
+                "step": 0.1,
+                "default": 1,
+            },
+            {
+                "key": "top_p",
+                "label": "Top P",
+                "type": "slider",
+                "min": 0,
+                "max": 1,
+                "step": 0.05,
+                "default": 1,
+            },
+            {
+                "key": "max_tokens",
+                "label": "Max Tokens",
+                "type": "number",
+                "min": 1,
+                "max": 128000,
+                "default": 4096,
+            },
+        ],
+    }
 
-            if response.is_success:
-                models = response.json().get("data", [])
-                return [{"id": m["id"], "name": m["id"]} for m in models]
 
-    except Exception as e:
-        print(f"[openai] Failed to fetch models: {e}")
-
-    return []
+def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    _ = model_id
+    kwargs: Dict[str, Any] = {}
+    for key in ("temperature", "top_p", "max_tokens"):
+        if key in options:
+            kwargs[key] = options[key]
+    return kwargs
 
 
 async def test_connection() -> tuple[bool, str | None]:

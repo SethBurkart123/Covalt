@@ -17,11 +17,19 @@ import { Button } from "@/components/ui/button";
 import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
 import { LayoutGroup } from "framer-motion";
-import type { ModelInfo, AttachmentType, UploadingAttachment, Attachment } from "@/lib/types/chat";
+import type {
+  ModelInfo,
+  OptionSchema,
+  AttachmentType,
+  UploadingAttachment,
+  Attachment,
+} from "@/lib/types/chat";
 import { ToolSelector } from "@/components/ToolSelector";
 import { useToolsCatalog } from "@/contexts/tools-context";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
+import MainModelOptions from "@/components/MainModelOptions";
+import AdvancedOptionsPopover from "@/components/AdvancedOptionsPopover";
 import {
   FileDropZone,
   FileDropZoneTrigger,
@@ -44,6 +52,10 @@ interface LeftToolbarProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
+  optionSchema?: OptionSchema;
+  optionValues?: Record<string, unknown>;
+  onOptionChange?: (key: string, value: unknown) => void;
+  onResetOptions?: () => void;
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
 }
@@ -53,6 +65,10 @@ const LeftToolbar = memo(function LeftToolbar({
   selectedModel,
   setSelectedModel,
   models,
+  optionSchema,
+  optionValues,
+  onOptionChange,
+  onResetOptions,
   hideModelSelector,
   hideToolSelector,
 }: LeftToolbarProps) {
@@ -75,6 +91,24 @@ const LeftToolbar = memo(function LeftToolbar({
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           models={models}
+        />
+      )}
+
+      {optionSchema && optionValues && onOptionChange && (
+        <MainModelOptions
+          schema={optionSchema}
+          values={optionValues}
+          onChange={onOptionChange}
+        />
+      )}
+
+      {optionSchema && optionValues && onOptionChange && onResetOptions && (
+        <AdvancedOptionsPopover
+          schema={optionSchema}
+          values={optionValues}
+          onChange={onOptionChange}
+          onReset={onResetOptions}
+          disabled={isLoading}
         />
       )}
 
@@ -140,6 +174,10 @@ interface ChatInputFormProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
+  optionSchema?: OptionSchema;
+  optionValues?: Record<string, unknown>;
+  onOptionChange?: (key: string, value: unknown) => void;
+  onResetOptions?: () => void;
   canSendMessage?: boolean;
   onStop?: () => void;
   hideModelSelector?: boolean;
@@ -160,6 +198,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     selectedModel,
     setSelectedModel,
     models,
+    optionSchema,
+    optionValues,
+    onOptionChange,
+    onResetOptions,
     canSendMessage = true,
     onStop,
     hideModelSelector,
@@ -617,6 +659,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
                 models={models}
+                optionSchema={optionSchema}
+                optionValues={optionValues}
+                onOptionChange={onOptionChange}
+                onResetOptions={onResetOptions}
                 hideModelSelector={hideModelSelector}
                 hideToolSelector={hideToolSelector}
               />

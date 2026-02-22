@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
+import { useModelOptions } from "@/lib/hooks/use-model-options";
 import { api } from "@/lib/services/api";
 import { shouldParseThinkTags, processMessageContent } from "@/lib/utils/think-tag-parser";
 import { getModelSettings } from "@/python/api";
@@ -61,6 +62,14 @@ export default function ChatPanel() {
   }, [selectedModel]);
 
   const {
+    schema: modelOptionSchema,
+    values: modelOptionValues,
+    setValue: setModelOptionValue,
+    reset: resetModelOptions,
+    getVisibleValues: getVisibleModelOptions,
+  } = useModelOptions(selectedModel, availableModels);
+
+  const {
     handleSubmit,
     isLoading,
     messages: rawMessages,
@@ -81,7 +90,7 @@ export default function ChatPanel() {
     editingAttachments,
     addEditingAttachment,
     removeEditingAttachment,
-  } = useChatInput(handleThinkTagDetected);
+  } = useChatInput(handleThinkTagDetected, getVisibleModelOptions);
 
   const messages = useMemo(() => {
     if (!modelSettings?.models) return rawMessages;
@@ -190,6 +199,10 @@ export default function ChatPanel() {
                   selectedModel={selectedModel}
                   setSelectedModel={stableSetSelectedModel}
                   models={availableModels}
+                  optionSchema={modelOptionSchema}
+                  optionValues={modelOptionValues}
+                  onOptionChange={setModelOptionValue}
+                  onResetOptions={resetModelOptions}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                   hideToolSelector={hideToolSelector}
@@ -208,6 +221,10 @@ export default function ChatPanel() {
                   selectedModel={selectedModel}
                   setSelectedModel={stableSetSelectedModel}
                   models={availableModels}
+                  optionSchema={modelOptionSchema}
+                  optionValues={modelOptionValues}
+                  onOptionChange={setModelOptionValue}
+                  onResetOptions={resetModelOptions}
                   canSendMessage={canSendMessage}
                   onStop={stableHandleStop}
                   hideToolSelector={hideToolSelector}

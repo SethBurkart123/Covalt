@@ -179,11 +179,39 @@ class AvailableToolsResponse(BaseModel):
     tools: List[ToolInfo] = Field(default_factory=list)
 
 
+class OptionChoice(BaseModel):
+    value: Any
+    label: str
+
+
+class ShowWhen(BaseModel):
+    option: str
+    values: List[Any] = Field(default_factory=list)
+
+
+class OptionDefinition(BaseModel):
+    key: str
+    label: str
+    type: Literal["select", "slider", "number", "boolean"]
+    default: Any
+    options: Optional[List[OptionChoice]] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+    step: Optional[float] = None
+    showWhen: Optional[ShowWhen] = None
+
+
+class OptionSchema(BaseModel):
+    main: List[OptionDefinition] = Field(default_factory=list)
+    advanced: List[OptionDefinition] = Field(default_factory=list)
+
+
 class ModelInfo(BaseModel):
     provider: str
     modelId: str
     displayName: str
     isDefault: bool = False
+    options: Optional[OptionSchema] = None
 
 
 class ProviderConfig(BaseModel):
