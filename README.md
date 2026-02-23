@@ -1,7 +1,28 @@
-# Tauri + React + Typescript
+# Agno Desktop
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+> [!WARNING]
+> This project is a work in progress. It is not yet ready for production use.
 
-## Recommended IDE Setup
+## Quick Start
+Prerequisites:
+- Bun
+- Python `3.12+`
+- `uv`
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Install dependencies:
+```bash
+bun install
+```
+
+Start dev mode:
+```bash
+bun run dev
+```
+
+## Contributing
+- Run quality checks before PRs.
+- Keep fixes at root cause level (avoid symptom-only workarounds).
+- Keep functions small, explicit, and composable.
+
+## Status
+Active development; breaking changes are expected before initial release.
