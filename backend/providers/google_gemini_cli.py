@@ -14,7 +14,10 @@ def _get_gemini_cli_credentials() -> Dict[str, Any]:
     return creds
 
 
-def get_google_gemini_cli_model(model_id: str, **kwargs: Any) -> CloudCodeAssistModel:
+def get_google_gemini_cli_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> CloudCodeAssistModel:
     creds = _get_gemini_cli_credentials()
     access_token = creds.get("access_token")
     extra = creds.get("extra") or {}
@@ -30,7 +33,6 @@ def get_google_gemini_cli_model(model_id: str, **kwargs: Any) -> CloudCodeAssist
         project_id=project_id,
         base_url="https://cloudcode-pa.googleapis.com",
         is_antigravity=False,
-        **kwargs,
     )
 
 

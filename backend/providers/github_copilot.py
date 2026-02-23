@@ -737,7 +737,10 @@ async def _fetch_copilot_models_from_api(
     return []
 
 
-def get_github_copilot_model(model_id: str, **kwargs: Any) -> Any:
+def get_github_copilot_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> Any:
     creds = _get_copilot_credentials()
     token = creds.get("access_token")
     if not token:
@@ -745,18 +748,17 @@ def get_github_copilot_model(model_id: str, **kwargs: Any) -> Any:
 
     api = _resolve_copilot_api(model_id)
     base_url = _get_copilot_base_url(creds)
-
     if api == "openai-responses":
         return CopilotOpenAIResponses(
             id=model_id,
             api_key=token,
             base_url=base_url,
             default_headers=COPILOT_HEADERS,
-            **kwargs,
+            **provider_options,
         )
 
     if api == "anthropic-messages":
-        max_tokens = kwargs.pop("max_tokens", None) or kwargs.pop(
+        max_tokens = provider_options.pop("max_tokens", None) or provider_options.pop(
             "max_output_tokens", None
         )
         model = CopilotAnthropicModel(
@@ -765,7 +767,7 @@ def get_github_copilot_model(model_id: str, **kwargs: Any) -> Any:
             base_url=base_url,
             max_tokens=max_tokens or 4096,
         )
-        for key, value in kwargs.items():
+        for key, value in provider_options.items():
             if hasattr(model, key):
                 setattr(model, key, value)
         return model
@@ -775,7 +777,7 @@ def get_github_copilot_model(model_id: str, **kwargs: Any) -> Any:
         api_key=token,
         api_base=base_url,
         extra_headers=COPILOT_HEADERS,
-        **kwargs,
+        **provider_options,
     )
 
 

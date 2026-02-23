@@ -8,7 +8,10 @@ from . import get_credentials
 ALIASES = ["openai_compatible", "openai-compatible", "custom"]
 
 
-def get_openai_like_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_openai_like_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not base_url:
         raise RuntimeError("Base URL required for OpenAI-compatible provider.")
@@ -17,7 +20,7 @@ def get_openai_like_model(model_id: str, **kwargs: Any) -> LiteLLM:
         id=f"openai/{model_id}",
         api_key=api_key or "custom",
         api_base=base_url,
-        **kwargs,
+        **provider_options,
     )
 
 

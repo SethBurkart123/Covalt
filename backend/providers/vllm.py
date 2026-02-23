@@ -6,13 +6,19 @@ from agno.models.litellm import LiteLLM
 from . import get_credentials, get_base_url
 
 
-def get_vllm_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_vllm_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not base_url:
         raise RuntimeError("vLLM base URL not configured in Settings.")
 
     return LiteLLM(
-        id=f"openai/{model_id}", api_key=api_key or "dummy", api_base=base_url, **kwargs
+        id=f"openai/{model_id}",
+        api_key=api_key or "dummy",
+        api_base=base_url,
+        **provider_options,
     )
 
 

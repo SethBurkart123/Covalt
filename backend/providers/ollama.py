@@ -6,12 +6,15 @@ from agno.models.litellm import LiteLLM
 from . import get_base_url
 
 
-def get_ollama_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_ollama_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     host = get_base_url()
     if not host:
         raise RuntimeError("Ollama host not configured in Settings.")
 
-    return LiteLLM(id=f"ollama/{model_id}", api_base=host, **kwargs)
+    return LiteLLM(id=f"ollama/{model_id}", api_base=host, **provider_options)
 
 
 async def fetch_models() -> List[Dict[str, str]]:

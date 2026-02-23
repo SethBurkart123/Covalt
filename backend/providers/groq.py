@@ -3,17 +3,20 @@
 from typing import Any, Dict, List
 import httpx
 from agno.models.litellm import LiteLLM
-from . import get_api_key, get_credentials
+from . import get_api_key
 
 
-def get_groq_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_groq_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     """Create a Groq model instance."""
     api_key = get_api_key()
 
     if not api_key:
         raise RuntimeError("Groq API key not configured in Settings.")
 
-    return LiteLLM(id=f"groq/{model_id}", api_key=api_key, **kwargs)
+    return LiteLLM(id=f"groq/{model_id}", api_key=api_key, **provider_options)
 
 
 async def fetch_models() -> List[Dict[str, str]]:

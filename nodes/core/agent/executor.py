@@ -13,10 +13,9 @@ from agno.db.in_memory import InMemoryDb
 from agno.run.agent import BaseAgentRunEvent
 from agno.team import Team
 
-from backend.providers import map_provider_model_options
 from backend.services import run_control
 from backend.services.model_factory import get_model
-from backend.services.option_validation import merge_model_params, sanitize_final_kwargs
+from backend.providers import resolve_provider_options
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 _agent_db = InMemoryDb()
@@ -682,10 +681,13 @@ def _resolve_model(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
     provider, model_id = model_str.split(":", 1)
-    mapped_options = map_provider_model_options(provider, model_id, model_options or {})
-    merged_kwargs = merge_model_params(node_params or {}, mapped_options)
-    safe_kwargs = sanitize_final_kwargs(merged_kwargs)
-    return get_model(provider, model_id, **safe_kwargs)
+    provider_options = resolve_provider_options(
+        provider,
+        model_id,
+        model_options,
+        node_params,
+    )
+    return get_model(provider, model_id, provider_options=provider_options)
 
 
 async def _resolve_flow_input(context: FlowContext, target_handle: str) -> Any | None:

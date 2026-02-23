@@ -11,35 +11,6 @@ from .model_schema_cache import get_effective_option_schema
 MAX_OPTION_KEYS = 20
 MAX_PAYLOAD_SIZE = 2048  # bytes
 
-RESERVED_KWARGS = frozenset(
-    {
-        "api_key",
-        "apiKey",
-        "api_key_env",
-        "api_base",
-        "base_url",
-        "baseUrl",
-        "timeout",
-        "max_retries",
-        "retry_on_status",
-        "http_client",
-        "transport",
-        "proxy",
-        "organization",
-        "project",
-    }
-)
-
-ALLOWED_NODE_PARAMS = frozenset(
-    {
-        "temperature",
-        "max_tokens",
-        "top_p",
-        "frequency_penalty",
-        "presence_penalty",
-        "stop",
-    }
-)
 
 
 class ModelResolutionError(ValueError):
@@ -171,26 +142,3 @@ def validate_model_options(options: Any, schema: OptionSchema) -> dict[str, Any]
 
     return validated
 
-
-def merge_model_params(node_params: Any, mapped_options: Any) -> dict[str, Any]:
-    """Merge allowlisted node params over provider-mapped model options."""
-    base_kwargs = _ensure_dict("mapped options", mapped_options)
-    node_kwargs = _ensure_dict("node params", node_params)
-
-    result = dict(base_kwargs)
-    for key, value in node_kwargs.items():
-        if key in ALLOWED_NODE_PARAMS and value is not None:
-            result[key] = value
-
-    return result
-
-
-def sanitize_final_kwargs(kwargs: Any) -> dict[str, Any]:
-    """Reject reserved/internal kwargs before provider model creation."""
-    final_kwargs = _ensure_dict("kwargs", kwargs)
-
-    for key in final_kwargs:
-        if key in RESERVED_KWARGS or key.startswith("_"):
-            raise ValueError(f"Reserved parameter in final kwargs: {key}")
-
-    return final_kwargs

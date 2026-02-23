@@ -5,7 +5,7 @@ import backend.providers.google as google_provider
 
 
 def test_anthropic_map_model_options_maps_thinking_budget_to_request_params() -> None:
-    mapped = anthropic_provider.map_model_options(
+    mapped = anthropic_provider.resolve_options(
         "claude-3-7-sonnet",
         {
             "thinking": "high",
@@ -13,6 +13,7 @@ def test_anthropic_map_model_options_maps_thinking_budget_to_request_params() ->
             "temperature": 0.6,
             "max_tokens": 4096,
         },
+        None,
     )
 
     assert mapped["temperature"] == 0.6
@@ -24,24 +25,26 @@ def test_anthropic_map_model_options_maps_thinking_budget_to_request_params() ->
 
 def test_anthropic_map_model_options_omits_thinking_for_auto_and_none() -> None:
     for thinking in ("auto", "none"):
-        mapped = anthropic_provider.map_model_options(
+        mapped = anthropic_provider.resolve_options(
             "claude-3-7-sonnet",
             {
                 "thinking": thinking,
                 "thinking_budget": 8192,
             },
+            None,
         )
         assert "request_params" not in mapped
 
 
 def test_google_map_model_options_maps_thinking_budget_to_request_params() -> None:
-    mapped = google_provider.map_model_options(
+    mapped = google_provider.resolve_options(
         "gemini-2.5-pro",
         {
             "temperature": 0.3,
             "max_tokens": 2048,
             "thinking_budget": 4096,
         },
+        None,
     )
 
     assert mapped["temperature"] == 0.3
@@ -59,9 +62,10 @@ def test_google_map_model_options_clamps_vertex_thinking_budget(
         "get_extra_config",
         lambda: {"vertexai": True},
     )
-    mapped = google_provider.map_model_options(
+    mapped = google_provider.resolve_options(
         "gemini-2.5-flash",
         {"thinking_budget": 32768},
+        None,
     )
 
     assert mapped["request_params"] == {
@@ -102,7 +106,7 @@ def test_google_get_model_merges_vertex_and_existing_request_params(
 
     model = google_provider.get_google_model(
         "gemini-2.5-pro",
-        request_params={"thinking": {"type": "enabled", "budget_tokens": 2048}},
+        {"request_params": {"thinking": {"type": "enabled", "budget_tokens": 2048}}},
     )
 
     assert model.request_params == {
@@ -128,7 +132,7 @@ def test_google_get_model_ignores_vertex_when_extra_is_string_false(
 
     model = google_provider.get_google_model(
         "gemini-2.5-flash",
-        request_params={"thinking": {"type": "enabled", "budget_tokens": 2048}},
+        {"request_params": {"thinking": {"type": "enabled", "budget_tokens": 2048}}},
     )
 
     assert model.request_params == {
