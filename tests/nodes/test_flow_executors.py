@@ -426,7 +426,11 @@ class TestAgentExecutor:
         assert isinstance(result, ExecutionResult)
         assert result.outputs["output"].value["response"] == "ok"
 
-        resolve_model.assert_called_once_with("google:gemini-2.5-flash", 0.3)
+        resolve_model.assert_called_once_with(
+            "google:gemini-2.5-flash",
+            node_params={"temperature": 0.3},
+            model_options={},
+        )
         build_agent.assert_called_once()
         build_args = build_agent.call_args
         assert build_args is not None

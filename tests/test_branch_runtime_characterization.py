@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.commands import branches
+from backend.services import option_validation as option_validation_service
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 
@@ -44,15 +45,27 @@ def _db_mock_for_branch(
 ) -> MagicMock:
     db_mock = MagicMock()
     db_mock.Message = type("Message", (), {})
+    db_mock.Chat = type("Chat", (), {})
 
     session = MagicMock()
-    session.get.return_value = original_message
+    def _get_side_effect(model: object, _id: object):
+        if model is db_mock.Message:
+            return original_message
+        if model is db_mock.Chat:
+            return SimpleNamespace(model="openai:gpt-4o")
+        return None
+
+    session.get.side_effect = _get_side_effect
 
     db_mock.db_session.return_value.__enter__.return_value = session
     db_mock.db_session.return_value.__exit__.return_value = False
     db_mock.get_message_path.return_value = history
     db_mock.create_branch_message.side_effect = branch_ids
     db_mock.get_manifest_for_message.return_value = None
+    db_mock.get_chat_agent_config.return_value = {
+        "provider": "openai",
+        "model_id": "gpt-4o",
+    }
 
     return db_mock
 
@@ -92,6 +105,7 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
 
     with (
         patch.object(branches, "db", db_mock),
+        patch.object(option_validation_service, "db", db_mock),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
@@ -148,6 +162,7 @@ async def test_retry_message_current_event_and_delegation_shape() -> None:
 
     with (
         patch.object(branches, "db", db_mock),
+        patch.object(option_validation_service, "db", db_mock),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
@@ -208,6 +223,7 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
 
     with (
         patch.object(branches, "db", db_mock),
+        patch.object(option_validation_service, "db", db_mock),
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):

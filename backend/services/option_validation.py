@@ -11,8 +11,6 @@ from .model_schema_cache import get_effective_option_schema
 MAX_OPTION_KEYS = 20
 MAX_PAYLOAD_SIZE = 2048  # bytes
 
-
-
 class ModelResolutionError(ValueError):
     """Raised when model ID cannot be resolved for a chat request."""
 
@@ -141,4 +139,3 @@ def validate_model_options(options: Any, schema: OptionSchema) -> dict[str, Any]
         validated[key] = value
 
     return validated
-

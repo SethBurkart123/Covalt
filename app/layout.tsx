@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Minimal Chat Interface",
+  title: "Covalt",
   description: "Elegant",
 };
 
