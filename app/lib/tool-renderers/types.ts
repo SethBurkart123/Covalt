@@ -1,16 +1,8 @@
-import type { RenderPlan } from "@/lib/types/chat";
+import type { RenderPlan, ToolCallPayload } from "@/lib/types/chat";
 import type { CollapsibleMode } from "@/components/ui/collapsible";
 
-export interface ToolCallRendererProps {
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  toolResult?: string;
+export interface ToolCallRendererProps extends ToolCallPayload {
   isCompleted: boolean;
-  requiresApproval?: boolean;
-  runId?: string;
-  toolCallId?: string;
-  approvalStatus?: "pending" | "approved" | "denied" | "timeout";
-  editableArgs?: string[] | boolean;
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;

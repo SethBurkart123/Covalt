@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable
 
 from agno.tools import tool as agno_tool
@@ -192,6 +193,7 @@ class ToolRegistry:
 
 
 _tool_registry: ToolRegistry | None = None
+_e2e_tools_loaded = False
 
 
 def get_mcp_manager() -> "MCPManager":
@@ -210,7 +212,18 @@ def get_tool_registry() -> ToolRegistry:
     global _tool_registry
     if _tool_registry is None:
         _tool_registry = ToolRegistry()
+    _load_e2e_tools_if_enabled()
     return _tool_registry
+
+
+def _load_e2e_tools_if_enabled() -> None:
+    global _e2e_tools_loaded
+    if _e2e_tools_loaded:
+        return
+    if os.getenv("AGNO_E2E_TESTS") != "1":
+        return
+    _e2e_tools_loaded = True
+    from ..tools import e2e_tools  # noqa: F401
 
 
 def tool(

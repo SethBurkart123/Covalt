@@ -79,23 +79,37 @@ export interface RenderPlan {
   };
 }
 
+export interface ToolCallPayload {
+  id: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  toolResult?: string;
+  isCompleted?: boolean;
+  providerData?: Record<string, unknown>;
+  renderPlan?: RenderPlan;
+  requiresApproval?: boolean;
+  runId?: string;
+  toolCallId?: string;
+  approvalStatus?: "pending" | "approved" | "denied" | "timeout";
+  editableArgs?: string[] | boolean;
+  isDelegation?: boolean;
+}
+
+export interface ToolApprovalTool {
+  id: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  editableArgs?: string[] | boolean;
+}
+
+export interface ToolApprovalRequiredPayload {
+  runId?: string;
+  tools: ToolApprovalTool[];
+}
+
 export type ContentBlock =
   | { type: "text"; content: string }
-  | {
-      type: "tool_call";
-      id: string;
-      toolName: string;
-      toolArgs: Record<string, unknown>;
-      toolResult?: string;
-      isCompleted: boolean;
-      requiresApproval?: boolean;
-      runId?: string;
-      toolCallId?: string;
-      approvalStatus?: "pending" | "approved" | "denied" | "timeout";
-      editableArgs?: string[] | boolean;
-      renderPlan?: RenderPlan;
-      isDelegation?: boolean;
-    }
+  | ({ type: "tool_call" } & ToolCallPayload & { isCompleted: boolean })
   | { type: "reasoning"; content: string; isCompleted: boolean }
   | {
       type: "member_run";
