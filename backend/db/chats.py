@@ -42,6 +42,9 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
             except Exception:
                 pass
 
+        if isinstance(content, list):
+            _normalize_render_plan_blocks(content)
+
         attachments = None
         if r.attachments:
             raw_attachments = json.loads(r.attachments)
@@ -62,8 +65,34 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
         if attachments:
             msg_data["attachments"] = attachments
 
+        if isinstance(msg_data.get("content"), list):
+            _normalize_render_plan_blocks(msg_data["content"])
+
         messages.append(msg_data)
     return messages
+
+
+def _normalize_render_plan_blocks(blocks: List[Dict[str, Any]]) -> None:
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "tool_call":
+            render_plan = block.get("renderPlan")
+            if isinstance(render_plan, dict):
+                renderer = render_plan.get("renderer")
+                if renderer == "markdown":
+                    render_plan["renderer"] = "document"
+            else:
+                renderer = block.get("renderer")
+                if renderer:
+                    if renderer == "markdown":
+                        renderer = "document"
+                    block["renderPlan"] = {"renderer": renderer, "config": {}}
+
+        if block.get("type") == "member_run":
+            nested = block.get("content")
+            if isinstance(nested, list):
+                _normalize_render_plan_blocks(nested)
 
 
 def create_chat(
@@ -322,4 +351,3 @@ def set_message_manifest(sess: Session, message_id: str, manifest_id: str) -> No
     if message:
         message.manifest_id = manifest_id
         sess.commit()
-

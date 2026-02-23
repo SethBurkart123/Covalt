@@ -63,11 +63,13 @@ class ToolRegistry:
     def get_renderer(self, tool_id: str) -> str | None:
         metadata = self._metadata.get(tool_id, {})
         if "renderer" in metadata:
-            return metadata.get("renderer")
+            renderer = metadata.get("renderer")
+            return "document" if renderer == "markdown" else renderer
 
         mcp_tool_info = self._get_mcp_tool_info(tool_id)
         if mcp_tool_info:
-            return mcp_tool_info.get("renderer")
+            renderer = mcp_tool_info.get("renderer")
+            return "document" if renderer == "markdown" else renderer
 
         return None
 

@@ -109,4 +109,8 @@ The `app/python/api.ts` file has relaxed rules (auto-generated).
 
 **If it feels messy, it probably is!** Refactor with joy. Future you will high-five present you.
 
+## Standardization First
+
+When a concept exists in multiple shapes (for example, both a single field and a structured object), standardize on one canonical form and remove all legacy shapes. Prefer a single source of truth in runtime paths, and eliminate duplicate wiring whenever possible.
+
 Code is read WAY more than it's written - make it a pleasure to read.

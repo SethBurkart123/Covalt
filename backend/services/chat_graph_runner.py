@@ -22,6 +22,7 @@ from zynk import Channel
 
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall
+from ..db.models import ToolCall as DbToolCall
 from .agent_manager import get_agent_manager
 from . import run_control
 from . import stream_broadcaster as broadcaster
@@ -29,8 +30,8 @@ from .flow_executor import run_flow
 from .execution_trace import ExecutionTraceRecorder
 from .tool_registry import get_tool_registry
 from .mcp_manager import ensure_mcp_initialized
-from .toolset_executor import get_toolset_executor
 from .workspace_manager import get_workspace_manager
+from .toolset_executor import get_toolset_executor
 
 FlowStreamHandler = Callable[..., Awaitable[None]]
 ContentMessageConverter = Callable[[ChatMessage, Optional[str]], list[Any]]
@@ -833,16 +834,109 @@ def is_toolset_tool(tool_name: str) -> bool:
     )
 
 
-def parse_tool_result(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        return result
-    if isinstance(result, str):
+def _load_tool_call_render_plan(tool_call_id: str | None) -> dict[str, Any] | None:
+    if not tool_call_id:
+        return None
+    try:
+        with db.db_session() as sess:
+            tool_call = (
+                sess.query(DbToolCall).filter(DbToolCall.id == tool_call_id).first()
+            )
+            if tool_call and tool_call.render_plan:
+                return json.loads(tool_call.render_plan)
+            if tool_call and not tool_call.render_plan:
+                logger.warning(
+                    f"Tool call {tool_call_id} missing render_plan in db."
+                )
+            if not tool_call:
+                logger.warning(f"Tool call {tool_call_id} not found in db.")
+    except Exception as exc:
+        logger.warning(f"Failed to load render plan for tool call {tool_call_id}: {exc}")
+    return None
+
+
+def _parse_tool_result(tool_result: Any) -> Any:
+    if tool_result is None:
+        return None
+    if isinstance(tool_result, str):
         try:
-            parsed = json.loads(result)
-            return parsed if isinstance(parsed, dict) else {"result": parsed}
+            return json.loads(tool_result)
         except json.JSONDecodeError:
-            return {"result": result}
-    return {"result": result}
+            return tool_result
+    return tool_result
+
+
+def _ensure_tool_render_plan(
+    payload: dict[str, Any], chat_id: str | None
+) -> None:
+    event_name = str(payload.get("event") or "")
+    if event_name != "ToolCallCompleted":
+        return
+
+    tool = payload.get("tool")
+    if not isinstance(tool, dict):
+        return
+    if tool.get("renderPlan"):
+        return
+
+    tool_name_value = tool.get("toolName")
+    tool_name = (
+        tool_name_value
+        if isinstance(tool_name_value, str)
+        else str(tool_name_value or "")
+    )
+    tool_args = tool.get("toolArgs")
+    if not isinstance(tool_args, dict):
+        tool_args = None
+
+    render_plan = None
+    if is_toolset_tool(tool_name):
+        tool_id = str(tool.get("id") or "")
+        if tool_id:
+            render_plan = get_toolset_executor().consume_render_plan(tool_id)
+        if render_plan is None and tool_id:
+            render_plan = _load_tool_call_render_plan(tool_id)
+        if render_plan is None:
+            render_plan = _generate_toolset_render_plan(
+                tool_name=tool_name,
+                tool_args=tool_args,
+                tool_result=tool.get("toolResult"),
+                chat_id=chat_id,
+            )
+
+    if render_plan is None:
+        renderer = registry.get_renderer(tool_name)
+        if renderer:
+            render_plan = {"renderer": renderer, "config": {}}
+
+    if render_plan is not None:
+        tool["renderPlan"] = render_plan
+        payload["tool"] = tool
+
+
+def _generate_toolset_render_plan(
+    *,
+    tool_name: str | None,
+    tool_args: dict[str, Any] | None,
+    tool_result: Any,
+    chat_id: str | None,
+) -> dict[str, Any] | None:
+    if not tool_name or not chat_id:
+        return None
+    try:
+        executor = get_toolset_executor()
+        plan = executor.generate_render_plan(
+            tool_name,
+            tool_args or {},
+            _parse_tool_result(tool_result),
+            chat_id,
+        )
+        if plan is None:
+            logger.warning(f"No render plan available for toolset tool {tool_name}")
+        return plan
+    except Exception as exc:
+        logger.warning(f"Failed to generate render plan for tool {tool_name}: {exc}")
+        return None
 
 
 class BroadcastingChannel:
@@ -1422,6 +1516,8 @@ async def handle_flow_stream(
                     return False
                 tool_block["isCompleted"] = True
                 tool_block["toolResult"] = tool.get("toolResult")
+                if "renderPlan" in tool:
+                    tool_block["renderPlan"] = tool.get("renderPlan")
                 return True
 
             if event_name == "ToolApprovalRequired":
@@ -1551,6 +1647,8 @@ async def handle_flow_stream(
                 return False
             tool_block["isCompleted"] = True
             tool_block["toolResult"] = tool.get("toolResult")
+            if "renderPlan" in tool:
+                tool_block["renderPlan"] = tool.get("renderPlan")
             provider_data = tool.get("providerData") if isinstance(tool, dict) else None
             if isinstance(provider_data, dict) and provider_data:
                 tool_block["providerData"] = provider_data
@@ -1655,6 +1753,7 @@ async def handle_flow_stream(
                         and not event_data.get("memberRunId")
                     ):
                         continue
+                    _ensure_tool_render_plan(event_data, chat_id or None)
                     chat_event = _chat_event_from_agent_runtime_event(event_data)
                     if chat_event is not None:
                         ch.send_model(chat_event)
@@ -2073,6 +2172,26 @@ async def handle_content_stream(
                     if provider_data:
                         block.setdefault("providerData", provider_data)
                     break
+            render_plan = None
+            if is_toolset_tool(chunk.tool.tool_name):
+                render_plan = get_toolset_executor().consume_render_plan(
+                    chunk.tool.tool_call_id
+                )
+                if render_plan is None:
+                    render_plan = _load_tool_call_render_plan(
+                        chunk.tool.tool_call_id
+                    )
+                if render_plan is None:
+                    render_plan = _generate_toolset_render_plan(
+                        tool_name=chunk.tool.tool_name,
+                        tool_args=chunk.tool.tool_args,
+                        tool_result=chunk.tool.result,
+                        chat_id=chat_id,
+                    )
+            if render_plan is None:
+                renderer = registry.get_renderer(chunk.tool.tool_name)
+                if renderer:
+                    render_plan = {"renderer": renderer, "config": {}}
             ch.send_model(
                 _make_event(
                     event="ToolCallCompleted",
@@ -2080,6 +2199,7 @@ async def handle_content_stream(
                         "id": chunk.tool.tool_call_id,
                         "toolName": chunk.tool.tool_name,
                         "toolResult": tool_result,
+                        **({"renderPlan": render_plan} if render_plan else {}),
                         **({"providerData": provider_data} if provider_data else {}),
                     },
                 )
@@ -2390,14 +2510,20 @@ async def handle_content_stream(
 
                     render_plan = None
                     if is_toolset_tool(chunk.tool.tool_name):
-                        toolset_executor = get_toolset_executor()
-                        parsed_result = parse_tool_result(chunk.tool.result)
-                        render_plan = toolset_executor.generate_render_plan(
-                            chunk.tool.tool_name,
-                            chunk.tool.tool_args or {},
-                            parsed_result,
-                            chat_id,
+                        render_plan = get_toolset_executor().consume_render_plan(
+                            chunk.tool.tool_call_id
                         )
+                        if render_plan is None:
+                            render_plan = _load_tool_call_render_plan(
+                                chunk.tool.tool_call_id
+                            )
+                        if render_plan is None:
+                            render_plan = _generate_toolset_render_plan(
+                                tool_name=chunk.tool.tool_name,
+                                tool_args=chunk.tool.tool_args,
+                                tool_result=chunk.tool.result,
+                                chat_id=chat_id,
+                            )
 
                     provider_data = _get_tool_provider_data(chunk.tool)
                     tool_block = {
@@ -2409,11 +2535,17 @@ async def handle_content_stream(
                         if chunk.tool.result is not None
                         else None,
                         "isCompleted": True,
-                        "renderer": registry.get_renderer(chunk.tool.tool_name),
                         **({"providerData": provider_data} if provider_data else {}),
                     }
                     if render_plan is not None:
                         tool_block["renderPlan"] = render_plan
+                    else:
+                        renderer = registry.get_renderer(chunk.tool.tool_name)
+                        if renderer:
+                            tool_block["renderPlan"] = {
+                                "renderer": renderer,
+                                "config": {},
+                            }
 
                     existing_index = next(
                         (

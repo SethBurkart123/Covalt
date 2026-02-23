@@ -30,6 +30,7 @@ class ToolsetExecutor:
     def __init__(self) -> None:
         self._loaded_tools: dict[str, tuple[Callable, str, dict[str, Any] | None]] = {}
         self._tool_metadata: dict[str, dict[str, Any]] = {}
+        self._render_plan_cache: dict[str, dict[str, Any]] = {}
 
     def _load_tool_module(
         self, toolset_id: str, entrypoint: str
@@ -87,7 +88,9 @@ class ToolsetExecutor:
 
     def _get_tool_from_db(self, tool_id: str) -> dict[str, Any] | None:
         if tool_id in self._tool_metadata:
-            return self._tool_metadata[tool_id]
+            cached = self._tool_metadata[tool_id]
+            if cached.get("render_config") is not None:
+                return cached
 
         with db_session() as sess:
             tool = sess.query(Tool).filter(Tool.tool_id == tool_id).first()
@@ -149,7 +152,7 @@ class ToolsetExecutor:
 
         tool_fn, _, decorator_data = self._loaded_tools[cache_key]
 
-        async def toolset_tool_entrypoint(**kwargs: Any) -> str:
+        async def toolset_tool_entrypoint(fc: Any | None = None, **kwargs: Any) -> str:
             return await self._execute_tool(
                 tool_id=tool_id,
                 toolset_id=toolset_id,
@@ -157,6 +160,7 @@ class ToolsetExecutor:
                 chat_id=chat_id,
                 message_id=message_id,
                 args=kwargs,
+                tool_call_id=getattr(fc, "call_id", None) if fc else None,
             )
 
         if decorator_data:
@@ -196,9 +200,10 @@ class ToolsetExecutor:
         chat_id: str,
         args: dict[str, Any],
         message_id: str | None = None,
+        tool_call_id: str | None = None,
     ) -> str:
         workspace_manager = get_workspace_manager(chat_id)
-        tool_call_id = str(uuid.uuid4())
+        tool_call_id = tool_call_id or str(uuid.uuid4())
         started_at = datetime.now().isoformat()
 
         actual_message_id = message_id
@@ -243,9 +248,6 @@ class ToolsetExecutor:
                     None, lambda: ctx_copy.run(tool_fn, **args)
                 )
 
-            if not isinstance(result, dict):
-                result = {"result": result}
-
             post_manifest_id = workspace_manager.snapshot(
                 source="tool_run",
                 source_ref=tool_call_id,
@@ -256,6 +258,8 @@ class ToolsetExecutor:
                     db.set_message_manifest(sess, actual_message_id, post_manifest_id)
 
             render_plan = self._generate_render_plan(tool_id, args, result, chat_id)
+            if render_plan is not None:
+                self._render_plan_cache[tool_call_id] = render_plan
 
             self._update_tool_call(
                 tool_call_id=tool_call_id,
@@ -310,6 +314,25 @@ class ToolsetExecutor:
         message_id: str | None = None,
     ) -> None:
         with db_session() as session:
+            existing = (
+                session.query(ToolCall).filter(ToolCall.id == tool_call_id).first()
+            )
+            if existing:
+                existing.chat_id = chat_id
+                existing.message_id = message_id or ""
+                existing.tool_id = tool_id
+                existing.args = json.dumps(args)
+                existing.status = status
+                existing.started_at = started_at
+                existing.finished_at = None
+                existing.pre_manifest_id = pre_manifest_id
+                existing.post_manifest_id = None
+                existing.result = None
+                existing.render_plan = None
+                existing.error = None
+                session.commit()
+                return
+
             tool_call = ToolCall(
                 id=tool_call_id,
                 chat_id=chat_id,
@@ -360,11 +383,16 @@ class ToolsetExecutor:
     ) -> dict[str, Any] | None:
         return self._generate_render_plan(tool_id, args, result, chat_id)
 
+    def consume_render_plan(self, tool_call_id: str | None) -> dict[str, Any] | None:
+        if not tool_call_id:
+            return None
+        return self._render_plan_cache.pop(tool_call_id, None)
+
     def _generate_render_plan(
         self,
         tool_id: str,
         args: dict[str, Any],
-        result: dict[str, Any],
+        result: Any,
         chat_id: str,
     ) -> dict[str, Any] | None:
         tool_info = self._get_tool_from_db(tool_id)
@@ -385,6 +413,8 @@ class ToolsetExecutor:
         interpolated_config = self._interpolate(config, context)
 
         renderer_type = render_config["renderer"]
+        if renderer_type == "markdown":
+            renderer_type = "document"
         if renderer_type == "html" and "artifact" in interpolated_config:
             artifact_path = interpolated_config["artifact"]
             html_content = self._load_artifact_content(
@@ -483,6 +513,7 @@ class ToolsetExecutor:
     def clear_cache(self) -> None:
         self._loaded_tools.clear()
         self._tool_metadata.clear()
+        self._render_plan_cache.clear()
 
 
 _toolset_executor: ToolsetExecutor | None = None
