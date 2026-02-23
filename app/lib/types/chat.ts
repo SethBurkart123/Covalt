@@ -88,7 +88,6 @@ export type ContentBlock =
       toolArgs: Record<string, unknown>;
       toolResult?: string;
       isCompleted: boolean;
-      renderer?: string;
       requiresApproval?: boolean;
       runId?: string;
       toolCallId?: string;

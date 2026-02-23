@@ -82,7 +82,15 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
         const eventData = data as Record<string, unknown>;
         const eventType = eventData.event as string;
         
-        console.log(`[StreamingContext] Received event for ${chatId}:`, eventType);
+        if (eventType === "ToolCallCompleted") {
+          try {
+            console.log(
+              `[StreamingContext] ToolCallCompleted payload for ${chatId}: ${JSON.stringify(eventData)}`
+            );
+          } catch (err) {
+            console.warn("[StreamingContext] Failed to serialize ToolCallCompleted payload", err);
+          }
+        }
 
         const streamState = streamStateRefs.current.get(chatId) ?? createInitialState();
         if (!streamStateRefs.current.has(chatId)) {

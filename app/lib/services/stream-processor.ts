@@ -1,13 +1,13 @@
 "use client";
 
-import type { ContentBlock } from "@/lib/types/chat";
+import type { ContentBlock, RenderPlan } from "@/lib/types/chat";
 
 interface ToolData {
   id: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
   toolResult?: string;
-  renderer?: string;
+  renderPlan?: RenderPlan;
   editableArgs?: string[] | boolean;
   approvalStatus?: string;
 }
@@ -236,8 +236,8 @@ function handleToolCallCompleted(state: StreamState, tool: unknown): void {
   if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
     toolBlock.approvalStatus = "approved";
   }
-  if (t.renderer) {
-    toolBlock.renderer = t.renderer;
+  if (t.renderPlan) {
+    toolBlock.renderPlan = t.renderPlan;
   }
 }
 
@@ -359,6 +359,9 @@ function processMemberEvent(
       if (tc) {
         tc.isCompleted = true;
         tc.toolResult = t.toolResult;
+        if (t.renderPlan) {
+          tc.renderPlan = t.renderPlan;
+        }
       }
       break;
     }

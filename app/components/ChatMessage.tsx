@@ -249,7 +249,6 @@ function ChatMessage({
                                   toolArgs={b.toolArgs}
                                   toolResult={b.toolResult}
                                   isCompleted={b.isCompleted}
-                                  renderer={b.renderer}
                                   requiresApproval={b.requiresApproval}
                                   runId={b.runId}
                                   toolCallId={b.toolCallId}
