@@ -666,7 +666,11 @@ class CopilotAnthropicModel(Model):
 
 
 def _get_copilot_credentials() -> Dict[str, Any]:
-    creds = get_provider_oauth_manager().get_valid_credentials("github_copilot")
+    creds = get_provider_oauth_manager().get_valid_credentials(
+        "github_copilot",
+        refresh_if_missing_expiry=True,
+        allow_stale_on_refresh_failure=False,
+    )
     if not creds:
         raise RuntimeError("GitHub Copilot OAuth not connected in Settings.")
     return creds
@@ -782,8 +786,9 @@ def get_github_copilot_model(
 
 
 async def fetch_models() -> List[Dict[str, str]]:
-    creds = get_provider_oauth_manager().get_valid_credentials("github_copilot")
-    if not creds:
+    try:
+        creds = _get_copilot_credentials()
+    except RuntimeError:
         return []
     access_token = creds.get("access_token")
     if not access_token:
@@ -802,7 +807,8 @@ async def fetch_models() -> List[Dict[str, str]]:
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    creds = get_provider_oauth_manager().get_valid_credentials("github_copilot")
-    if not creds:
+    try:
+        _get_copilot_credentials()
+    except RuntimeError:
         return False, "OAuth not connected"
     return True, None
