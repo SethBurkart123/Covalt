@@ -1,20 +1,51 @@
 "use client";
 
-import type { ContentBlock, RenderPlan } from "@/lib/types/chat";
+import type { ContentBlock, ToolApprovalRequiredPayload, ToolCallPayload } from "@/lib/types/chat";
 
-interface ToolData {
-  id: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  toolResult?: string;
-  renderPlan?: RenderPlan;
-  editableArgs?: string[] | boolean;
-  approvalStatus?: string;
+const warnedPayloads = new Set<string>();
+
+function warnInvalidPayload(context: string, payload: unknown): void {
+  if (warnedPayloads.has(context)) return;
+  warnedPayloads.add(context);
+  try {
+    console.warn(
+      `[StreamProcessor] Invalid ${context} payload: ${JSON.stringify(payload)}`
+    );
+  } catch (err) {
+    console.warn(`[StreamProcessor] Invalid ${context} payload`, err);
+  }
 }
 
-interface ToolApprovalData {
-  runId: string;
-  tools: ToolData[];
+function coerceToolCallPayload(tool: unknown, context: string): ToolCallPayload | null {
+  if (!tool || typeof tool !== "object") {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+
+  const t = tool as ToolCallPayload;
+  if (typeof t.id !== "string" || typeof t.toolName !== "string") {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+  if (!t.toolArgs || typeof t.toolArgs !== "object") {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+  return t;
+}
+
+function coerceToolApprovalPayload(tool: unknown, context: string): ToolApprovalRequiredPayload | null {
+  if (!tool || typeof tool !== "object") {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+
+  const payload = tool as ToolApprovalRequiredPayload;
+  if (!Array.isArray(payload.tools)) {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+  return payload;
 }
 
 interface MemberBuffers {
@@ -181,7 +212,8 @@ function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
 
-  const t = tool as ToolData;
+  const t = coerceToolCallPayload(tool, "ToolCallStarted");
+  if (!t) return;
   const existingBlock = state.contentBlocks.find(
     (b) => b.type === "tool_call" && b.id === t.id,
   );
@@ -203,7 +235,8 @@ function handleToolApprovalRequired(state: StreamState, toolData: unknown): void
   flushTextBlock(state);
   flushReasoningBlock(state);
 
-  const data = toolData as ToolApprovalData;
+  const data = coerceToolApprovalPayload(toolData, "ToolApprovalRequired");
+  if (!data) return;
   const { runId, tools } = data;
 
   for (const tool of tools) {
@@ -224,7 +257,8 @@ function handleToolApprovalRequired(state: StreamState, toolData: unknown): void
 }
 
 function handleToolCallCompleted(state: StreamState, tool: unknown): void {
-  const t = tool as ToolData;
+  const t = coerceToolCallPayload(tool, "ToolCallCompleted");
+  if (!t) return;
   const toolBlock = state.contentBlocks.find(
     (b) => b.type === "tool_call" && b.id === t.id,
   );
@@ -242,7 +276,8 @@ function handleToolCallCompleted(state: StreamState, tool: unknown): void {
 }
 
 function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
-  const t = tool as ToolData;
+  const t = coerceToolCallPayload(tool, "ToolApprovalResolved");
+  if (!t) return;
   const toolBlock = state.contentBlocks.find(
     (b) => b.type === "tool_call" && b.id === t.id,
   );
@@ -329,7 +364,8 @@ function processMemberEvent(
     case "ToolCallStarted": {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
-      const t = d.tool as ToolData;
+      const t = coerceToolCallPayload(d.tool, "Member.ToolCallStarted");
+      if (!t) break;
       const existing = block.content.find(
         (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
           b.type === "tool_call" && b.id === t.id,
@@ -351,7 +387,8 @@ function processMemberEvent(
     }
 
     case "ToolCallCompleted": {
-      const t = d.tool as ToolData;
+      const t = coerceToolCallPayload(d.tool, "Member.ToolCallCompleted");
+      if (!t) break;
       const tc = block.content.find(
         (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
           b.type === "tool_call" && b.id === t.id,
@@ -369,7 +406,8 @@ function processMemberEvent(
     case "ToolApprovalRequired": {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
-      const payload = d.tool as ToolApprovalData;
+      const payload = coerceToolApprovalPayload(d.tool, "Member.ToolApprovalRequired");
+      if (!payload) break;
       const tools = payload?.tools || [];
       for (const tool of tools) {
         block.content.push({
@@ -389,7 +427,8 @@ function processMemberEvent(
     }
 
     case "ToolApprovalResolved": {
-      const t = d.tool as ToolData;
+      const t = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolved");
+      if (!t) break;
       const tc = block.content.find(
         (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
           b.type === "tool_call" && b.id === t.id,
@@ -552,7 +591,7 @@ export function processEvent(
     case "ToolApprovalResolved":
       handleToolApprovalResolved(state, d.tool);
       if (d.memberRunId) {
-        const toolId = (d.tool as ToolData | undefined)?.id;
+        const toolId = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolvedCleanup")?.id;
         if (toolId) {
           const idx = state.contentBlocks.findIndex(
             (b) => b.type === "tool_call" && b.id === toolId,

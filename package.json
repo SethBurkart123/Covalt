@@ -18,7 +18,8 @@
     "start": "next start -p 4096",
     "lint": "next lint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run && uv run pytest && bun run test:e2e",
+    "test:e2e": "bun tests/e2e/toolset-suite.ts"
   },
   "dependencies": {
     "@ai-sdk/groq": "^1.2.8",

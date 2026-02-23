@@ -15,6 +15,29 @@ class ToolCall(BaseModel):
     providerData: Optional[Dict[str, Any]] = None
 
 
+class RenderPlan(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    renderer: str
+    config: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolCallPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    toolName: str
+    toolArgs: Dict[str, Any] = Field(default_factory=dict)
+    toolResult: Optional[str] = None
+    isCompleted: Optional[bool] = None
+    providerData: Optional[Dict[str, Any]] = None
+    renderPlan: Optional[RenderPlan] = None
+    requiresApproval: Optional[bool] = None
+    runId: Optional[str] = None
+    toolCallId: Optional[str] = None
+    approvalStatus: Optional[str] = None
+    editableArgs: Optional[Union[List[str], bool]] = None
+    isDelegation: Optional[bool] = None
+
+
 class ContentBlock(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
