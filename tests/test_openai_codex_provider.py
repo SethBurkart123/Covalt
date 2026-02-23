@@ -124,7 +124,7 @@ def test_map_model_options_maps_reasoning_effort_to_request_params() -> None:
 def test_get_codex_client_version_uses_minimum_for_old_package_version(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGNO_CODEX_CLIENT_VERSION", "")
+    monkeypatch.setenv("COVALT_CODEX_CLIENT_VERSION", "")
     monkeypatch.setattr(openai_codex_provider, "_read_package_version", lambda: "0.1.0")
     openai_codex_provider._CLIENT_VERSION_CACHE = None
 
@@ -136,7 +136,7 @@ def test_get_codex_client_version_uses_minimum_for_old_package_version(
 def test_get_codex_client_version_prefers_newer_package_version(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGNO_CODEX_CLIENT_VERSION", "")
+    monkeypatch.setenv("COVALT_CODEX_CLIENT_VERSION", "")
     monkeypatch.setattr(openai_codex_provider, "_read_package_version", lambda: "2.3.4")
     openai_codex_provider._CLIENT_VERSION_CACHE = None
 

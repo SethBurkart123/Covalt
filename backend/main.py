@@ -25,9 +25,9 @@ def main() -> int:
     rebuild_node_route_index()
 
     output_dir = Path(__file__).parent.parent / "app" / "python"
-    dev_mode = os.environ.get("AGNO_DEV_MODE") == "1"
-    generate_ts = os.environ.get("AGNO_GENERATE_TS") == "1"
-    port = int(os.environ.get("AGNO_BACKEND_PORT", "8000"))
+    dev_mode = os.environ.get("COVALT_DEV_MODE") == "1"
+    generate_ts = os.environ.get("COVALT_GENERATE_TS") == "1"
+    port = int(os.environ.get("COVALT_BACKEND_PORT", "8000"))
     bridge_kwargs: dict[str, Any] = {
         "generate_ts": str(output_dir / "api.ts") if generate_ts else None,
         "port": port,

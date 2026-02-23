@@ -1,21 +1,21 @@
-# agno-toolset
+# covalt-toolset
 
-SDK for building Agno toolsets.
+SDK for building Covalt toolsets.
 
 ## Installation
 
 ```bash
 # From git (recommended during development)
-pip install git+https://github.com/your-org/agno-toolset.git
+pip install git+https://github.com/your-org/covalt-toolset.git
 
 # With Pydantic support (for complex schemas)
-pip install "git+https://github.com/your-org/agno-toolset.git#egg=agno-toolset[pydantic]"
+pip install "git+https://github.com/your-org/covalt-toolset.git#egg=covalt-toolset[pydantic]"
 ```
 
 ## Quick Start
 
 ```python
-from agno_toolset import tool, get_context
+from covalt_toolset import tool, get_context
 
 @tool(name="Write File", description="Write content to a file in the workspace")
 def write_file(path: str, content: str) -> dict:
@@ -35,7 +35,7 @@ def write_file(path: str, content: str) -> dict:
 
 ```python
 from pydantic import BaseModel, Field
-from agno_toolset import tool
+from covalt_toolset import tool
 
 class QuizQuestion(BaseModel):
     question: str = Field(description="The question text")
@@ -60,7 +60,7 @@ def create_quiz(title: str, questions: list[QuizQuestion]) -> dict:
 Tools can access execution context via `get_context()`:
 
 ```python
-from agno_toolset import tool, get_context
+from covalt_toolset import tool, get_context
 
 @tool(name="List Files")
 def list_files(directory: str = "") -> dict:

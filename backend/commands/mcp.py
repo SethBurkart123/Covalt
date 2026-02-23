@@ -220,7 +220,7 @@ def _detect_mcp_transport(
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "agno-probe", "version": "1.0.0"},
+            "clientInfo": {"name": "covalt-probe", "version": "1.0.0"},
         },
     }
 

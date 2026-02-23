@@ -220,11 +220,11 @@ class ProviderOAuthManager:
         self._active_flows: Dict[str, OAuthFlowState] = {}
         # When true, attempt refresh for credentials missing expires_at.
         self._refresh_if_missing_expiry = _env_flag(
-            "AGNO_OAUTH_REFRESH_IF_MISSING_EXPIRY", False
+            "COVALT_OAUTH_REFRESH_IF_MISSING_EXPIRY", False
         )
         # When false, return None instead of stale credentials if refresh fails.
         self._allow_stale_on_refresh_failure = _env_flag(
-            "AGNO_OAUTH_ALLOW_STALE_ON_REFRESH_FAILURE", True
+            "COVALT_OAUTH_ALLOW_STALE_ON_REFRESH_FAILURE", True
         )
 
     async def start_oauth(
@@ -456,7 +456,7 @@ class ProviderOAuthManager:
             "state": flow.state,
             "id_token_add_organizations": "true",
             "codex_cli_simplified_flow": "true",
-            "originator": "agno",
+            "originator": "covalt",
         }
         flow.auth_url = f"https://auth.openai.com/oauth/authorize?{urlencode(params)}"
         flow.instructions = "Complete login in the browser, then return here"

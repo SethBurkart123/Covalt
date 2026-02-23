@@ -1,6 +1,6 @@
 # Toolset & MCP Unification
 
-This document explains the conceptual model for how toolsets and MCP servers work together in Agno Desktop.
+This document explains the conceptual model for how toolsets and MCP servers work together in Covalt Desktop.
 
 ## Core Concepts
 

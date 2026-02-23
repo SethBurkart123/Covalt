@@ -191,8 +191,8 @@ async function run(): Promise<void> {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      AGNO_BACKEND_PORT: "8123",
-      AGNO_E2E_TESTS: "1",
+      COVALT_BACKEND_PORT: "8123",
+      COVALT_E2E_TESTS: "1",
       PYTHONUNBUFFERED: "1",
     },
     stdout: "inherit",

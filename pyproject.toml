@@ -19,7 +19,7 @@ dependencies = [
     "httpx>=0.28.1",
     "agno>=2.3.20",
     "zynk",
-    "agno-toolset",
+    "covalt-toolset",
     "cryptography>=46.0.3",
     "quickjs>=1.19.4",
     "jsonschema>=4.23.0",
@@ -35,7 +35,7 @@ dev = [
 
 [tool.uv.sources]
 agno = { git = "https://github.com/SethBurkart123/agno.git", branch = "fix/delegation-error-propagation", subdirectory = "libs/agno" }
-agno-toolset = { path = "agno-toolset" }
+covalt-toolset = { path = "covalt-toolset" }
 zynk = { git = "https://github.com/SethBurkart123/zynk" }
 
 [tool.ruff]

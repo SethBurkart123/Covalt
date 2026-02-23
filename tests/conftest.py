@@ -1,4 +1,4 @@
-"""Shared test fixtures and mock models for the Agno app test suite."""
+"""Shared test fixtures and mock models for the Covalt app test suite."""
 
 from __future__ import annotations
 

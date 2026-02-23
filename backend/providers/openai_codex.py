@@ -279,8 +279,8 @@ def _build_codex_headers(access_token: str, account_id: str | None) -> Dict[str,
     headers = {
         "Authorization": f"Bearer {access_token}",
         "OpenAI-Beta": "responses=experimental",
-        "originator": "agno",
-        "User-Agent": f"Agno Desktop/{client_version}",
+        "originator": "covalt",
+        "User-Agent": f"Covalt Desktop/{client_version}",
     }
     if account_id:
         headers["ChatGPT-Account-Id"] = account_id
@@ -424,7 +424,7 @@ def _get_codex_client_version() -> str:
     if _CLIENT_VERSION_CACHE:
         return _CLIENT_VERSION_CACHE
 
-    env_version = _normalize_client_version(os.getenv("AGNO_CODEX_CLIENT_VERSION"))
+    env_version = _normalize_client_version(os.getenv("COVALT_CODEX_CLIENT_VERSION"))
     if env_version:
         _CLIENT_VERSION_CACHE = env_version
         return _CLIENT_VERSION_CACHE

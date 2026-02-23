@@ -1,4 +1,4 @@
-"""Agno Toolset SDK - Build tools for Agno."""
+"""Covalt Toolset SDK - Build tools for Covalt."""
 
 from .context import ToolContext, clear_context, get_context, set_context
 from .decorator import ToolMetadata, get_tool_metadata, is_tool, tool

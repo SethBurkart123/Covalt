@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is **Agno Desktop**, an Electron/Web Hybrid (can be built as a desktop app or a web app) AI chat application built with Next.js 15, React 19, TypeScript, and a Python (FastAPI) backend via the zynk library available at `./zynk`. It features an artifact panel system for displaying code, markdown, and HTML with real-time file sync via WebSocket.
+This is **Covalt Desktop**, an Electron/Web Hybrid (can be built as a desktop app or a web app) AI chat application built with Next.js 15, React 19, TypeScript, and a Python (FastAPI) backend via the zynk library available at `./zynk`. It features an artifact panel system for displaying code, markdown, and HTML with real-time file sync via WebSocket.
 
 ## Build & Development Commands
 
@@ -22,7 +22,7 @@ bun run lint           # Run linting
 ### Regenerating TypeScript Types
 If you need to regenerate the TypeScript API client types without running the full dev server:
 ```bash
-AGNO_GENERATE_TS=1 timeout 2 uv run main.py
+COVALT_GENERATE_TS=1 timeout 2 uv run main.py
 ```
 This works even if it crashes due to port conflicts - the type generation happens before the server binds to ports.
 

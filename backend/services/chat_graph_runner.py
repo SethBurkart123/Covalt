@@ -49,7 +49,7 @@ DELEGATION_TOOL_NAMES = {"delegate_task_to_member", "delegate_task_to_members"}
 
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
-AGNO_ALLOWED_ATTACHMENT_MIME_TYPES = [
+COVALT_ALLOWED_ATTACHMENT_MIME_TYPES = [
     "image/*",
     "audio/*",
     "video/*",
@@ -635,9 +635,9 @@ def is_allowed_attachment_mime(mime_type: str) -> bool:
         ("video/", "video/*"),
     ]:
         if mime_type.startswith(prefix):
-            return wildcard in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+            return wildcard in COVALT_ALLOWED_ATTACHMENT_MIME_TYPES
 
-    return mime_type in AGNO_ALLOWED_ATTACHMENT_MIME_TYPES
+    return mime_type in COVALT_ALLOWED_ATTACHMENT_MIME_TYPES
 
 
 def load_attachments_as_agno_media(
@@ -659,7 +659,7 @@ def load_attachments_as_agno_media(
 
         if not is_allowed_attachment_mime(attachment.mimeType):
             logger.warning(
-                f"[attachments] Skipping {attachment.id} ({attachment.name}): MIME '{attachment.mimeType}' not allowed for Agno"
+                f"[attachments] Skipping {attachment.id} ({attachment.name}): MIME '{attachment.mimeType}' not allowed for Covalt"
             )
             continue
 
