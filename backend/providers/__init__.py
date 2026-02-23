@@ -9,6 +9,7 @@ import pkgutil
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import db
+from .options import resolve_common_options
 
 PROVIDERS: Dict[str, Dict[str, Any]] = {}
 ALIASES: Dict[str, str] = {}
@@ -25,8 +26,12 @@ def _default_get_model_options(
     return {"main": [], "advanced": []}
 
 
-def _default_map_model_options(_model_id: str, _options: Dict[str, Any]) -> Dict[str, Any]:
-    return {}
+def _default_resolve_options(
+    _model_id: str,
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    return resolve_common_options(model_options, node_params)
 
 
 def get_credentials() -> Tuple[Optional[str], Optional[str]]:
@@ -87,15 +92,14 @@ for _, name, _ in pkgutil.iter_modules(__path__):
         fetch_func = getattr(module, "fetch_models", None)
         test_func = getattr(module, "test_connection", None)
         model_options_func = getattr(module, "get_model_options", None)
-        map_options_func = getattr(module, "map_model_options", None)
-
+        resolve_options_func = getattr(module, "resolve_options", None)
         if get_func and fetch_func:
             PROVIDERS[name] = {
                 "get_model": get_func,
                 "fetch_models": fetch_func,
                 "test_connection": test_func,
                 "get_model_options": model_options_func or _default_get_model_options,
-                "map_model_options": map_options_func or _default_map_model_options,
+                "resolve_options": resolve_options_func or _default_resolve_options,
             }
 
             if hasattr(module, "ALIASES"):
@@ -110,13 +114,18 @@ for _, name, _ in pkgutil.iter_modules(__path__):
         print(f"✗ {name}: {e}")
 
 
-def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
+def get_model(
+    provider: str,
+    model_id: str,
+    provider_options: Dict[str, Any] | None = None,
+) -> Any:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
         raise ValueError(
             f"Unknown provider '{provider}'. Available: {', '.join(PROVIDERS.keys())}"
         )
-    return PROVIDERS[provider]["get_model"](model_id, **kwargs)
+    options = provider_options or {}
+    return PROVIDERS[provider]["get_model"](model_id, provider_options=options)
 
 
 async def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
@@ -137,15 +146,16 @@ def get_provider_model_options(
     return PROVIDERS[provider]["get_model_options"](model_id, model_metadata)
 
 
-def map_provider_model_options(
+def resolve_provider_options(
     provider: str,
     model_id: str,
-    options: Dict[str, Any],
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
 ) -> Dict[str, Any]:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
-        return _default_map_model_options(model_id, options)
-    return PROVIDERS[provider]["map_model_options"](model_id, options)
+        return _default_resolve_options(model_id, model_options, node_params)
+    return PROVIDERS[provider]["resolve_options"](model_id, model_options, node_params)
 
 
 def list_providers() -> List[str]:
@@ -185,9 +195,9 @@ __all__ = [
     "get_model",
     "fetch_provider_models",
     "get_provider_model_options",
-    "map_provider_model_options",
     "test_provider_connection",
     "list_providers",
+    "resolve_provider_options",
     "get_credentials",
     "get_api_key",
     "get_base_url",

@@ -6,13 +6,19 @@ from agno.models.litellm import LiteLLM
 from . import get_credentials
 
 
-def get_openai_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_openai_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not api_key:
         raise RuntimeError("OpenAI API key not configured in Settings.")
 
     return LiteLLM(
-        id=f"openai/{model_id}", api_key=api_key, api_base=base_url, **kwargs
+        id=f"openai/{model_id}",
+        api_key=api_key,
+        api_base=base_url,
+        **provider_options,
     )
 
 
@@ -77,15 +83,6 @@ def get_model_options(
             },
         ],
     }
-
-
-def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
-    _ = model_id
-    kwargs: Dict[str, Any] = {}
-    for key in ("temperature", "top_p", "max_tokens"):
-        if key in options:
-            kwargs[key] = options[key]
-    return kwargs
 
 
 async def test_connection() -> tuple[bool, str | None]:

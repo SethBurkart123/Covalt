@@ -4,18 +4,44 @@ from typing import Any, Dict, List
 import httpx
 from agno.models.litellm import LiteLLM
 from . import get_api_key
+from .options import resolve_common_options
 
 ALIASES = ["claude"]
 
 
-def get_anthropic_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def resolve_options(
+    model_id: str,
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    _ = model_id
+    options = model_options or {}
+    resolved = resolve_common_options(model_options, node_params)
+
+    thinking = str(options.get("thinking", "auto"))
+    if thinking == "high":
+        budget = _coerce_positive_int(options.get("thinking_budget"), default=8000)
+        resolved["request_params"] = {
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": budget,
+            }
+        }
+
+    return resolved
+
+
+def get_anthropic_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     """Create an Anthropic Claude model instance."""
     api_key = get_api_key()
 
     if not api_key:
         raise RuntimeError("Anthropic API key not configured in Settings.")
 
-    return LiteLLM(id=f"anthropic/{model_id}", api_key=api_key, **kwargs)
+    return LiteLLM(id=f"anthropic/{model_id}", api_key=api_key, **provider_options)
 
 
 async def fetch_models() -> List[Dict[str, Any]]:
@@ -108,30 +134,6 @@ def get_model_options(
         ],
         "advanced": advanced,
     }
-
-
-def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
-    """Map user-visible options into Anthropic LiteLLM kwargs."""
-    _ = model_id
-    kwargs: Dict[str, Any] = {}
-
-    if "temperature" in options:
-        kwargs["temperature"] = options["temperature"]
-    if "max_tokens" in options:
-        kwargs["max_tokens"] = options["max_tokens"]
-
-    thinking = str(options.get("thinking", "auto"))
-    if thinking == "high":
-        budget = _coerce_positive_int(options.get("thinking_budget"), default=8000)
-        # litellm.completion() accepts provider reasoning controls via `thinking`.
-        kwargs["request_params"] = {
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": budget,
-            }
-        }
-
-    return kwargs
 
 
 async def test_connection() -> tuple[bool, str | None]:

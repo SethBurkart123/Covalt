@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 import httpx
 from agno.models.litellm import LiteLLM
 from . import get_api_key, get_extra_config
+from .options import resolve_common_options
 from .. import db
 
 ALIASES = ["gemini", "google_ai_studio"]
@@ -11,7 +12,10 @@ GOOGLE_THINKING_BUDGET_MAX = 32768
 VERTEX_THINKING_BUDGET_MAX = 24576
 
 
-def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_google_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     """Create a Google Gemini model instance."""
     api_key = get_api_key()
     extra = get_extra_config()
@@ -20,7 +24,8 @@ def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
     if not api_key and not is_vertex_enabled:
         raise RuntimeError("Google API key not configured in Settings.")
 
-    request_params: Dict[str, Any] = dict(kwargs.get("request_params") or {})
+    options = provider_options
+    request_params: Dict[str, Any] = dict(options.get("request_params") or {})
     if is_vertex_enabled:
         thinking = request_params.get("thinking")
         if isinstance(thinking, dict):
@@ -39,9 +44,31 @@ def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
             }
         )
     if request_params:
-        kwargs["request_params"] = request_params
+        options["request_params"] = request_params
 
-    return LiteLLM(id=f"gemini/{model_id}", api_key=api_key, **kwargs)
+    return LiteLLM(id=f"gemini/{model_id}", api_key=api_key, **options)
+
+
+def resolve_options(
+    model_id: str,
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    _ = model_id
+    options = model_options or {}
+    resolved = resolve_common_options(model_options, node_params)
+
+    if "thinking_budget" in options:
+        budget = _coerce_non_negative_int(options.get("thinking_budget"), default=0)
+        budget = min(budget, _max_thinking_budget())
+        resolved["request_params"] = {
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": budget,
+            }
+        }
+
+    return resolved
 
 
 async def fetch_models() -> List[Dict[str, Any]]:
@@ -137,27 +164,6 @@ def get_model_options(
             },
         ],
     }
-
-
-def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
-    """Map user options to Google-specific LiteLLM kwargs."""
-    _ = model_id
-    kwargs: Dict[str, Any] = {}
-    for key in ("temperature", "max_tokens"):
-        if key in options:
-            kwargs[key] = options[key]
-
-    if "thinking_budget" in options:
-        budget = _coerce_non_negative_int(options.get("thinking_budget"), default=0)
-        budget = min(budget, _max_thinking_budget())
-        kwargs["request_params"] = {
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": budget,
-            }
-        }
-
-    return kwargs
 
 
 async def test_connection() -> tuple[bool, str | None]:

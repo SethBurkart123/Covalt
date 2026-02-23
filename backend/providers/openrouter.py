@@ -6,7 +6,10 @@ from agno.models.litellm import LiteLLM
 from . import get_api_key
 
 
-def get_openrouter_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_openrouter_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError("OpenRouter API key not configured in Settings.")
@@ -15,7 +18,7 @@ def get_openrouter_model(model_id: str, **kwargs: Any) -> LiteLLM:
         id=f"openrouter/{model_id}",
         api_key=api_key,
         api_base="https://openrouter.ai/api/v1",
-        **kwargs,
+        **provider_options,
     )
 
 

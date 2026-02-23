@@ -12,6 +12,7 @@ from agno.models.openai.responses import OpenAIResponses
 from openai.types.responses import ResponseReasoningItem
 
 from ..services.provider_oauth_manager import get_provider_oauth_manager
+from .options import resolve_common_options
 
 
 def _get_codex_credentials() -> Dict[str, Any]:
@@ -439,7 +440,10 @@ def _get_codex_client_version() -> str:
     return _CLIENT_VERSION_CACHE
 
 
-def get_openai_codex_model(model_id: str, **kwargs: Any) -> OpenAIResponses:
+def get_openai_codex_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> OpenAIResponses:
     creds = _get_codex_credentials()
     access_token = creds.get("access_token")
     account_id = None
@@ -457,8 +461,26 @@ def get_openai_codex_model(model_id: str, **kwargs: Any) -> OpenAIResponses:
         base_url="https://chatgpt.com/backend-api/codex",
         default_headers=headers,
         store=False,
-        **kwargs,
+        **provider_options,
     )
+
+
+def resolve_options(
+    model_id: str,
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    _ = model_id
+    options = model_options or {}
+    resolved = resolve_common_options(model_options, node_params)
+
+    reasoning_effort = options.get("reasoning_effort")
+    if isinstance(reasoning_effort, str) and reasoning_effort:
+        resolved["reasoning_effort"] = reasoning_effort
+        resolved["reasoning_summary"] = "auto"
+        resolved["include"] = ["reasoning.encrypted_content"]
+
+    return resolved
 
 
 async def fetch_models() -> List[Dict[str, Any]]:
@@ -516,19 +538,6 @@ def get_model_options(
         ],
         "advanced": [],
     }
-
-
-def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
-    _ = model_id
-    kwargs: Dict[str, Any] = {}
-
-    reasoning_effort = options.get("reasoning_effort")
-    if isinstance(reasoning_effort, str) and reasoning_effort:
-        kwargs["reasoning_effort"] = reasoning_effort
-        kwargs["reasoning_summary"] = "auto"
-        kwargs["include"] = ["reasoning.encrypted_content"]
-
-    return kwargs
 
 
 def _format_reasoning_level_label(level: str) -> str:

@@ -108,9 +108,10 @@ def test_get_model_options_uses_reasoning_levels_from_metadata() -> None:
 
 
 def test_map_model_options_maps_reasoning_effort_to_request_params() -> None:
-    mapped = openai_codex_provider.map_model_options(
+    mapped = openai_codex_provider.resolve_options(
         "gpt-5.2-codex",
         {"reasoning_effort": "xhigh"},
+        None,
     )
 
     assert mapped == {

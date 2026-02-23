@@ -14,8 +14,12 @@ from .provider_oauth_manager import get_provider_oauth_manager
 PROVIDER_MODELS_TIMEOUT_SECONDS = 12
 
 
-def get_model(provider: str, model_id: str, **kwargs: Any) -> Any:
-    return get_provider_model(provider, model_id, **kwargs)
+def get_model(
+    provider: str,
+    model_id: str,
+    provider_options: Dict[str, Any] | None = None,
+) -> Any:
+    return get_provider_model(provider, model_id, provider_options=provider_options)
 
 
 def list_supported_providers() -> List[str]:

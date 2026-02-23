@@ -625,19 +625,24 @@ class AnthropicOAuthModel(Model):
             return
 
 
-def get_anthropic_oauth_model(model_id: str, **kwargs: Any) -> Model:
+def get_anthropic_oauth_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> Model:
     creds = _get_anthropic_credentials()
     access_token = creds.get("access_token")
     if not access_token:
         raise RuntimeError("Anthropic OAuth credentials are incomplete.")
 
-    max_tokens = kwargs.pop("max_tokens", None) or kwargs.pop("max_output_tokens", None)
+    max_tokens = provider_options.pop("max_tokens", None) or provider_options.pop(
+        "max_output_tokens", None
+    )
     model = AnthropicOAuthModel(
         id=model_id,
         access_token=access_token,
         max_tokens=max_tokens or 4096,
     )
-    for key, value in kwargs.items():
+    for key, value in provider_options.items():
         if hasattr(model, key):
             setattr(model, key, value)
     return model

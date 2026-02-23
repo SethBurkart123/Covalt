@@ -6,7 +6,10 @@ from agno.models.litellm import LiteLLM
 from . import get_credentials, get_base_url
 
 
-def get_lmstudio_model(model_id: str, **kwargs: Any) -> LiteLLM:
+def get_lmstudio_model(
+    model_id: str,
+    provider_options: Dict[str, Any],
+) -> LiteLLM:
     """Create an LM Studio model instance."""
     api_key, base_url = get_credentials()
 
@@ -17,7 +20,7 @@ def get_lmstudio_model(model_id: str, **kwargs: Any) -> LiteLLM:
         id=f"openai/{model_id}",
         api_key=api_key or "lm-studio",
         api_base=base_url,
-        **kwargs,
+        **provider_options,
     )
 
 
