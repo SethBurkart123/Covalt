@@ -245,6 +245,7 @@ function ChatMessage({
                               return (
                                 <ToolCall
                                   key={b.id}
+                                  id={b.id}
                                   toolName={b.toolName}
                                   toolArgs={b.toolArgs}
                                   toolResult={b.toolResult}
