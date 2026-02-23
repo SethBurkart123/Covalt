@@ -776,7 +776,7 @@ class TestAgentExecutor:
         tool = SimpleNamespace(
             tool_call_id="tool-1",
             tool_name="search_docs",
-            tool_args={"query": "agno"},
+            tool_args={"query": "covalt"},
         )
         fake_agent = _ApprovalStreamingAgent(
             paused_tools=[tool],

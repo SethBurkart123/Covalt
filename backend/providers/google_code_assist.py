@@ -432,14 +432,14 @@ class CloudCodeAssistModel(Model):
                 "functionCallingConfig": {"mode": tool_choice_mode}
             }
 
-        request_id = f"agno-{int(time.time() * 1000)}"
+        request_id = f"covalt-{int(time.time() * 1000)}"
         if self.is_antigravity:
             request_id = f"agent-{int(time.time() * 1000)}-{uuid.uuid4().hex[:9]}"
         payload: Dict[str, Any] = {
             "project": self.project_id,
             "model": self.id,
             "request": request,
-            "userAgent": "antigravity" if self.is_antigravity else "agno",
+            "userAgent": "antigravity" if self.is_antigravity else "covalt",
             "requestId": request_id,
         }
         if self.is_antigravity:

@@ -45,12 +45,12 @@ def _get_fernet() -> Fernet:
     if _fernet is not None:
         return _fernet
 
-    key_env = os.environ.get("AGNO_ENCRYPTION_KEY")
+    key_env = os.environ.get("COVALT_ENCRYPTION_KEY")
     if key_env:
         _fernet = Fernet(key_env.encode())
         return _fernet
 
-    key_file = os.path.expanduser("~/.agno/encryption.key")
+    key_file = os.path.expanduser("~/.covalt/encryption.key")
     os.makedirs(os.path.dirname(key_file), exist_ok=True)
 
     if os.path.exists(key_file):
@@ -386,7 +386,7 @@ class OAuthManager:
         oauth_provider = OAuthClientProvider(
             server_url=server_url,
             client_metadata=OAuthClientMetadata(
-                client_name="Agno Desktop",
+                client_name="Covalt Desktop",
                 redirect_uris=[AnyUrl(redirect_uri)],
                 grant_types=["authorization_code", "refresh_token"],
                 response_types=["code"],
@@ -476,7 +476,7 @@ class OAuthManager:
         return OAuthClientProvider(
             server_url=server_url,
             client_metadata=OAuthClientMetadata(
-                client_name="Agno Desktop",
+                client_name="Covalt Desktop",
                 redirect_uris=[AnyUrl(_redirect_uri())],
                 grant_types=["authorization_code", "refresh_token"],
                 response_types=["code"],

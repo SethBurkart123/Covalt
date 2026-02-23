@@ -220,7 +220,7 @@ def _load_e2e_tools_if_enabled() -> None:
     global _e2e_tools_loaded
     if _e2e_tools_loaded:
         return
-    if os.getenv("AGNO_E2E_TESTS") != "1":
+    if os.getenv("COVALT_E2E_TESTS") != "1":
         return
     _e2e_tools_loaded = True
     from ..tools import e2e_tools  # noqa: F401

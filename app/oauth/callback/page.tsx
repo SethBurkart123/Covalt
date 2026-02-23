@@ -100,7 +100,7 @@ function OAuthCallbackPageContent() {
               Authentication Successful!
             </h1>
             <p className="text-muted-foreground">
-              You can close this window and return to Agno.
+              You can close this window and return to Covalt.
             </p>
           </>
         )}

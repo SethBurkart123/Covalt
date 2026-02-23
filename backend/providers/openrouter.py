@@ -33,7 +33,7 @@ async def fetch_models() -> List[Dict[str, str]]:
                 "https://openrouter.ai/api/v1/models",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://github.com/agno-ai/agno",
+                    "HTTP-Referer": "https://github.com/sethburkart123/Covalt",
                 },
             )
             if not response.is_success:
@@ -53,7 +53,7 @@ async def fetch_models() -> List[Dict[str, str]]:
                 "https://openrouter.ai/api/v1/models",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://github.com/agno-ai/agno",  # Optional: for analytics
+                    "HTTP-Referer": "https://github.com/sethburkart123/Covalt",  # Optional: for analytics
                 },
             )
 
@@ -78,7 +78,7 @@ async def test_connection() -> tuple[bool, str | None]:
                 "https://openrouter.ai/api/v1/models",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://github.com/agno-ai/agno",
+                    "HTTP-Referer": "https://github.com/sethburkart123/Covalt",
                 },
             )
 

@@ -45,7 +45,7 @@ async def test_respond_to_tool_approval_sets_response_and_signals_waiter() -> No
             runId="run-1",
             approved=True,
             toolDecisions={"tool-1": True},
-            editedArgs={"tool-1": {"query": "agno"}},
+            editedArgs={"tool-1": {"query": "covalt"}},
         )
     )
 

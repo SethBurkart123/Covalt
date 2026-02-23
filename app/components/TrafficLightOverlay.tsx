@@ -6,8 +6,8 @@ import { SIDEBAR_TRANSITION, useSidebar } from "@/components/ui/sidebar";
 
 function isElectrobunMac(): boolean {
   if (typeof window === "undefined") return false;
-  const platform = (window as unknown as { __AGNO_ELECTROBUN_PLATFORM?: string })
-    .__AGNO_ELECTROBUN_PLATFORM;
+  const platform = (window as unknown as { __COVALT_ELECTROBUN_PLATFORM?: string })
+    .__COVALT_ELECTROBUN_PLATFORM;
   if (platform) return platform === "darwin";
   return document.documentElement.classList.contains("electrobun-macos");
 }

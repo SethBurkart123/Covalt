@@ -141,12 +141,12 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
     tool_started = ToolExecution(
         tool_call_id="tool-1",
         tool_name="search_docs",
-        tool_args={"query": "agno"},
+        tool_args={"query": "covalt"},
     )
     tool_completed = ToolExecution(
         tool_call_id="tool-1",
         tool_name="search_docs",
-        tool_args={"query": "agno"},
+        tool_args={"query": "covalt"},
         result='{"hits": 3}',
     )
 

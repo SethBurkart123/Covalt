@@ -129,7 +129,7 @@ async def test_handle_flow_stream_forwards_agent_runtime_events() -> None:
                 "tool": {
                     "id": "tool-1",
                     "toolName": "search_docs",
-                    "toolArgs": {"query": "agno"},
+                    "toolArgs": {"query": "covalt"},
                     "isCompleted": False,
                 },
             },
@@ -290,7 +290,7 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
 async def test_handle_flow_stream_exposes_agno_messages_in_chat_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sentinel = [AgnoMessage(role="user", content="hello from agno")]
+    sentinel = [AgnoMessage(role="user", content="hello from covalt")]
     captured: dict[str, Any] = {}
 
     monkeypatch.setattr(

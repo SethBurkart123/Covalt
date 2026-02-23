@@ -7,7 +7,7 @@ automatically inferred as JSON Schema by the @tool decorator.
 
 from pydantic import BaseModel, Field
 
-from agno_toolset import tool
+from covalt_toolset import tool
 
 
 class QuizQuestion(BaseModel):

@@ -289,7 +289,7 @@ Tools are discovered by their `entrypoint` in the `tools` table:
 
 ### 4.2 Tool Function Signature
 
-Tools are defined using the `@tool` decorator from `agno_toolset`. The decorator:
+Tools are defined using the `@tool` decorator from `covalt_toolset`. The decorator:
 - Infers JSON Schema from type hints (including Pydantic models)
 - Captures metadata (name, description, requires_confirmation, category)
 - Makes the function discoverable by the executor
@@ -297,7 +297,7 @@ Tools are defined using the `@tool` decorator from `agno_toolset`. The decorator
 Context (workspace, chat_id, etc.) is accessed via `get_context()` instead of function arguments.
 
 ```python
-from agno_toolset import tool, get_context
+from covalt_toolset import tool, get_context
 
 @tool(
     name="Analyze Data",
@@ -332,7 +332,7 @@ For complex input schemas, use Pydantic models:
 
 ```python
 from pydantic import BaseModel, Field
-from agno_toolset import tool
+from covalt_toolset import tool
 
 class TransformConfig(BaseModel):
     input: str = Field(description="Input file path")

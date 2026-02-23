@@ -5,7 +5,7 @@ These tools allow the AI to create markdown documents and interactive HTML
 content that renders in a dedicated panel.
 """
 
-from agno_toolset import tool
+from covalt_toolset import tool
 
 
 @tool(

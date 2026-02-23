@@ -146,16 +146,16 @@ async function getAvailablePort(): Promise<number> {
 }
 
 async function resolveBackendPort(): Promise<number> {
-  const envPort = parsePort(process.env.AGNO_BACKEND_PORT);
+  const envPort = parsePort(process.env.COVALT_BACKEND_PORT);
   if (envPort) return envPort;
   return getAvailablePort();
 }
 
 function getBackendBinaryPath(): string {
-  const binaryName = process.platform === "win32" ? "agno-backend.exe" : "agno-backend";
+  const binaryName = process.platform === "win32" ? "covalt-backend.exe" : "covalt-backend";
   const candidates = [
-    path.resolve(PATHS.VIEWS_FOLDER, "..", "backend", "agno-backend", binaryName),
-    path.resolve(PATHS.VIEWS_FOLDER, "..", "..", "backend", "agno-backend", binaryName),
+    path.resolve(PATHS.VIEWS_FOLDER, "..", "backend", "covalt-backend", binaryName),
+    path.resolve(PATHS.VIEWS_FOLDER, "..", "..", "backend", "covalt-backend", binaryName),
     path.resolve(PATHS.VIEWS_FOLDER, "..", "backend", binaryName),
     path.resolve(PATHS.VIEWS_FOLDER, "..", "..", "backend", binaryName),
   ];
@@ -182,15 +182,15 @@ function startBackendProcess(options: {
 
   const env = {
     ...process.env,
-    AGNO_BACKEND_PORT: String(port),
-    AGNO_DEV_MODE: devMode ? "1" : "0",
-    AGNO_GENERATE_TS: devMode ? "1" : "0",
+    COVALT_BACKEND_PORT: String(port),
+    COVALT_DEV_MODE: devMode ? "1" : "0",
+    COVALT_GENERATE_TS: devMode ? "1" : "0",
     ...(userDataDir ? { USER_DATA_DIR: userDataDir } : {}),
   };
 
   if (devMode) {
-    const command = process.env.AGNO_BACKEND_COMMAND || "uv";
-    const args = process.env.AGNO_BACKEND_ARGS?.split(" ").filter(Boolean) ?? ["run", "main.py"];
+    const command = process.env.COVALT_BACKEND_COMMAND || "uv";
+    const args = process.env.COVALT_BACKEND_ARGS?.split(" ").filter(Boolean) ?? ["run", "main.py"];
     const cwd = getProjectRoot();
 
     const processHandle = spawn(command, args, {
@@ -334,12 +334,12 @@ function injectBackendBaseUrl(mainWindow: BrowserWindowInstance, baseUrl: string
     try {
       document.documentElement?.classList?.add("electrobun");
       ${isMac ? 'document.documentElement?.classList?.add("electrobun-macos");' : ""}
-      window.__AGNO_ELECTROBUN_PLATFORM = ${JSON.stringify(platform)};
-      if (typeof window.__AGNO_SET_BACKEND_BASE_URL === "function") {
-        window.__AGNO_SET_BACKEND_BASE_URL(${payload});
+      window.__COVALT_ELECTROBUN_PLATFORM = ${JSON.stringify(platform)};
+      if (typeof window.__COVALT_SET_BACKEND_BASE_URL === "function") {
+        window.__COVALT_SET_BACKEND_BASE_URL(${payload});
       } else {
-        window.__AGNO_BACKEND_BASE_URL = ${payload};
-        window.localStorage?.setItem("agno:backendBaseUrl", ${payload});
+        window.__COVALT_BACKEND_BASE_URL = ${payload};
+        window.localStorage?.setItem("covalt:backendBaseUrl", ${payload});
       }
     } catch {}
   `;
@@ -487,7 +487,7 @@ async function main(): Promise<void> {
   ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
   const mainWindow = new BrowserWindow({
-    title: "Agno",
+    title: "Covalt",
     url: appUrl,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     frame: {
@@ -510,6 +510,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("Failed to launch Agno:", error);
+  console.error("Failed to launch Covalt:", error);
   Utils.quit();
 });

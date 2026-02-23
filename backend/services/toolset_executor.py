@@ -14,8 +14,8 @@ from typing import Any, Callable
 
 from agno.tools.function import Function
 
-# Import agno_toolset for context management and decorator metadata
-from agno_toolset import ToolContext, clear_context, get_tool_metadata, set_context
+# Import covalt_toolset for context management and decorator metadata
+from covalt_toolset import ToolContext, clear_context, get_tool_metadata, set_context
 
 from .. import db
 from ..db import db_session

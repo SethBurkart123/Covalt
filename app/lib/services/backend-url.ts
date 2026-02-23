@@ -1,12 +1,12 @@
 import { initBridge } from "@/python/_internal";
 
-const STORAGE_KEY = "agno:backendBaseUrl";
+const STORAGE_KEY = "covalt:backendBaseUrl";
 let cachedBaseUrl: string | null = null;
 const listeners = new Set<(value: string) => void>();
 
 type BackendWindow = Window & {
-  __AGNO_BACKEND_BASE_URL?: string;
-  __AGNO_SET_BACKEND_BASE_URL?: (value: string) => void;
+  __COVALT_BACKEND_BASE_URL?: string;
+  __COVALT_SET_BACKEND_BASE_URL?: (value: string) => void;
 };
 
 function normalizeBaseUrl(value: string): string {
@@ -16,7 +16,7 @@ function normalizeBaseUrl(value: string): string {
 export function getBackendBaseUrl(): string {
   if (typeof window !== "undefined") {
     const backendWindow = window as BackendWindow;
-    const globalUrl = backendWindow.__AGNO_BACKEND_BASE_URL;
+    const globalUrl = backendWindow.__COVALT_BACKEND_BASE_URL;
 
     if (typeof globalUrl === "string" && globalUrl.trim()) {
       cachedBaseUrl = normalizeBaseUrl(globalUrl);
@@ -28,7 +28,7 @@ export function getBackendBaseUrl(): string {
 
     if (paramUrl) {
       cachedBaseUrl = normalizeBaseUrl(decodeURIComponent(paramUrl));
-      backendWindow.__AGNO_BACKEND_BASE_URL = cachedBaseUrl;
+      backendWindow.__COVALT_BACKEND_BASE_URL = cachedBaseUrl;
       try {
         window.localStorage.setItem(STORAGE_KEY, cachedBaseUrl);
       } catch {}
@@ -39,7 +39,7 @@ export function getBackendBaseUrl(): string {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
         cachedBaseUrl = normalizeBaseUrl(stored);
-        backendWindow.__AGNO_BACKEND_BASE_URL = cachedBaseUrl;
+        backendWindow.__COVALT_BACKEND_BASE_URL = cachedBaseUrl;
         return cachedBaseUrl;
       }
     } catch {}
@@ -63,7 +63,7 @@ export function setBackendBaseUrl(value: string): void {
   if (typeof window === "undefined") return;
 
   const backendWindow = window as BackendWindow;
-  backendWindow.__AGNO_BACKEND_BASE_URL = cachedBaseUrl;
+  backendWindow.__COVALT_BACKEND_BASE_URL = cachedBaseUrl;
 
   try {
     window.localStorage.setItem(STORAGE_KEY, cachedBaseUrl);
@@ -88,7 +88,7 @@ export function subscribeBackendBaseUrl(listener: (value: string) => void): () =
 
 if (typeof window !== "undefined") {
   const backendWindow = window as BackendWindow;
-  backendWindow.__AGNO_SET_BACKEND_BASE_URL = (value: string) => {
+  backendWindow.__COVALT_SET_BACKEND_BASE_URL = (value: string) => {
     setBackendBaseUrl(value);
   };
 }
