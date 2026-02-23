@@ -24,6 +24,12 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          uv --version
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
