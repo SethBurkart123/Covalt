@@ -18,6 +18,7 @@ from agno.models.response import ModelResponse
 
 from ..services.models_dev import fetch_models_dev_provider
 from ..services.provider_oauth_manager import get_provider_oauth_manager
+from .options import resolve_common_options
 
 ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_OAUTH_BETA = (
@@ -28,10 +29,23 @@ CLAUDE_CODE_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude."
 CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.2 (external, cli)"
 TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 DEFAULT_CACHE_CONTROL = {"type": "ephemeral"}
+REASONING_BUDGETS = {
+    "minimal": 1024,
+    "low": 2048,
+    "medium": 8192,
+    "high": 16384,
+    "max": 32000,
+    # Backward compatibility for previously persisted values.
+    "xhigh": 32000,
+}
 
 
 def _get_anthropic_credentials() -> Dict[str, Any]:
-    creds = get_provider_oauth_manager().get_valid_credentials("anthropic_oauth")
+    creds = get_provider_oauth_manager().get_valid_credentials(
+        "anthropic_oauth",
+        refresh_if_missing_expiry=True,
+        allow_stale_on_refresh_failure=False,
+    )
     if not creds:
         raise RuntimeError("Anthropic OAuth not connected in Settings.")
     return creds
@@ -244,6 +258,7 @@ class AnthropicOAuthModel(Model):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     cache_retention: str = "short"
+    request_params: Optional[Dict[str, Any]] = None
     _tool_name_map: Optional[Dict[str, str]] = None
     _tool_name_reverse_map: Optional[Dict[str, str]] = None
 
@@ -396,6 +411,16 @@ class AnthropicOAuthModel(Model):
             payload["temperature"] = self.temperature
         if self.top_p is not None:
             payload["top_p"] = self.top_p
+
+        request_params = (
+            self.request_params if isinstance(self.request_params, dict) else {}
+        )
+        thinking = request_params.get("thinking")
+        if isinstance(thinking, dict):
+            payload["thinking"] = thinking
+        output_config = request_params.get("output_config")
+        if isinstance(output_config, dict):
+            payload["output_config"] = output_config
 
         return payload
 
@@ -625,6 +650,208 @@ class AnthropicOAuthModel(Model):
             return
 
 
+def _normalize_reasoning_effort(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"none", "off"}:
+        return "none"
+    if normalized == "xhigh":
+        return "max"
+    if normalized in {"auto", "minimal", "low", "medium", "high", "max"}:
+        return normalized
+    return None
+
+
+def _supports_reasoning(model_id: str) -> bool:
+    model = model_id.lower()
+    return (
+        "claude-3-7" in model
+        or bool(re.search(r"claude-(haiku|sonnet|opus)-4([.\-]|$)", model))
+        or bool(re.search(r"claude-opus-4\.\d+", model))
+    )
+
+
+def _supports_adaptive_reasoning(model_id: str) -> bool:
+    model = model_id.lower()
+    return "opus-4-6" in model or "opus-4.6" in model
+
+
+def _map_effort_to_anthropic(effort: str) -> str:
+    if effort == "max":
+        return "max"
+    if effort in {"minimal", "low"}:
+        return "low"
+    if effort == "medium":
+        return "medium"
+    return "high"
+
+
+def _coerce_positive_int(value: Any, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def resolve_options(
+    model_id: str,
+    model_options: Dict[str, Any] | None,
+    node_params: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    options = model_options or {}
+    resolved = resolve_common_options(model_options, node_params)
+
+    effort = _normalize_reasoning_effort(options.get("reasoning_effort"))
+    if effort in {None, "none", "auto"}:
+        return resolved
+    if not _supports_reasoning(model_id):
+        return resolved
+
+    if _supports_adaptive_reasoning(model_id):
+        resolved["request_params"] = {
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": _map_effort_to_anthropic(effort)},
+        }
+        return resolved
+
+    fallback_budget = REASONING_BUDGETS.get(effort, REASONING_BUDGETS["medium"])
+    budget = _coerce_positive_int(options.get("thinking_budget"), default=fallback_budget)
+    resolved["request_params"] = {
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": budget,
+        }
+    }
+    return resolved
+
+
+def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    parsed: List[Dict[str, str]] = []
+    seen_efforts: set[str] = set()
+
+    for item in value:
+        effort: str | None = None
+        description: str | None = None
+
+        if isinstance(item, dict):
+            effort_value = item.get("effort") or item.get("value")
+            if isinstance(effort_value, str):
+                effort = effort_value.strip().lower()
+            description_value = item.get("description")
+            if isinstance(description_value, str) and description_value.strip():
+                description = description_value.strip()
+        elif isinstance(item, str):
+            effort = item.strip().lower()
+
+        if not effort or effort in seen_efforts:
+            continue
+
+        seen_efforts.add(effort)
+        level: Dict[str, str] = {"effort": effort}
+        if description:
+            level["description"] = description
+        parsed.append(level)
+
+    return parsed
+
+
+def _extract_reasoning_levels(model: Dict[str, Any]) -> List[Dict[str, str]]:
+    for key in (
+        "supported_reasoning_levels",
+        "supported_reasoning_efforts",
+        "supported_thinking_levels",
+        "reasoning_levels",
+        "thinking_levels",
+    ):
+        parsed = _parse_reasoning_levels(model.get(key))
+        if parsed:
+            return parsed
+
+    thinking = model.get("thinking")
+    if isinstance(thinking, dict):
+        parsed = _parse_reasoning_levels(
+            thinking.get("supported_levels")
+            or thinking.get("levels")
+            or thinking.get("efforts")
+        )
+        if parsed:
+            return parsed
+
+    return []
+
+
+def _default_reasoning_levels(model_id: str) -> List[Dict[str, str]]:
+    if not _supports_reasoning(model_id):
+        return []
+    efforts = ["low", "medium", "high"]
+    if _supports_adaptive_reasoning(model_id):
+        efforts.append("max")
+    return [{"effort": effort} for effort in efforts]
+
+
+def _normalize_default_reasoning(
+    raw_default: Any,
+    allowed_efforts: set[str],
+) -> str | None:
+    if not isinstance(raw_default, str):
+        return None
+    normalized = raw_default.strip().lower()
+    if normalized in allowed_efforts:
+        return normalized
+    return None
+
+
+def get_model_options(
+    model_id: str,
+    model_metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    metadata = model_metadata or {}
+    reasoning_levels = _parse_reasoning_levels(
+        metadata.get("supported_reasoning_levels")
+    )
+    if not reasoning_levels:
+        reasoning_levels = _default_reasoning_levels(model_id)
+    if not reasoning_levels:
+        return {"main": [], "advanced": []}
+
+    options = [
+        {
+            "value": level["effort"],
+            "label": level.get("description") or level["effort"],
+        }
+        for level in reasoning_levels
+    ]
+    allowed_efforts = {option["value"] for option in options}
+    if "auto" not in allowed_efforts:
+        options.insert(0, {"value": "auto", "label": "auto"})
+        allowed_efforts.add("auto")
+
+    default_effort = _normalize_default_reasoning(
+        metadata.get("default_reasoning_level"),
+        allowed_efforts,
+    )
+    if default_effort is None:
+        default_effort = "auto"
+
+    return {
+        "main": [
+            {
+                "key": "reasoning_effort",
+                "label": "Reasoning Effort",
+                "type": "select",
+                "default": default_effort,
+                "options": options,
+            }
+        ],
+        "advanced": [],
+    }
+
+
 def get_anthropic_oauth_model(
     model_id: str,
     provider_options: Dict[str, Any],
@@ -648,9 +875,37 @@ def get_anthropic_oauth_model(
     return model
 
 
-async def fetch_models() -> List[Dict[str, str]]:
-    creds = get_provider_oauth_manager().get_valid_credentials("anthropic_oauth")
-    if not creds:
+def _format_anthropic_model_info(model: Dict[str, Any]) -> Dict[str, Any] | None:
+    model_id = model.get("id")
+    if not isinstance(model_id, str) or not model_id:
+        return None
+
+    model_info: Dict[str, Any] = {
+        "id": model_id,
+        "name": model.get("display_name", model_id),
+    }
+
+    reasoning_levels = _extract_reasoning_levels(model)
+    if not reasoning_levels:
+        reasoning_levels = _default_reasoning_levels(model_id)
+    if reasoning_levels:
+        model_info["supported_reasoning_levels"] = reasoning_levels
+        allowed_efforts = {level["effort"] for level in reasoning_levels}
+        default_reasoning = _normalize_default_reasoning(
+            model.get("default_reasoning_level")
+            or model.get("default_reasoning_effort")
+            or model.get("default_thinking_level"),
+            allowed_efforts,
+        )
+        model_info["default_reasoning_level"] = default_reasoning or "auto"
+
+    return model_info
+
+
+async def fetch_models() -> List[Dict[str, Any]]:
+    try:
+        creds = _get_anthropic_credentials()
+    except RuntimeError:
         return []
     access_token = creds.get("access_token")
     if not access_token:
@@ -668,22 +923,40 @@ async def fetch_models() -> List[Dict[str, str]]:
             )
             if response.is_success:
                 models = response.json().get("data", [])
-                return [
-                    {"id": m["id"], "name": m.get("display_name", m["id"])}
-                    for m in models
-                    if isinstance(m, dict) and isinstance(m.get("id"), str)
-                ]
+                results: List[Dict[str, Any]] = []
+                for model in models:
+                    if not isinstance(model, dict):
+                        continue
+                    formatted = _format_anthropic_model_info(model)
+                    if formatted is not None:
+                        results.append(formatted)
+                return results
     except Exception as exc:
         print(f"[anthropic_oauth] Failed to fetch models: {exc}")
 
-    return await fetch_models_dev_provider(
+    fallback = await fetch_models_dev_provider(
         "anthropic",
         predicate=lambda _id, info: info.get("tool_call") is True,
     )
+    results: List[Dict[str, Any]] = []
+    for model in fallback:
+        model_id = model.get("id")
+        if not isinstance(model_id, str) or not model_id:
+            continue
+        results.append(
+            {
+                "id": model_id,
+                "name": model.get("name", model_id),
+                "supported_reasoning_levels": _default_reasoning_levels(model_id),
+                "default_reasoning_level": "auto",
+            }
+        )
+    return results
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    creds = get_provider_oauth_manager().get_valid_credentials("anthropic_oauth")
-    if not creds:
+    try:
+        _get_anthropic_credentials()
+    except RuntimeError:
         return False, "OAuth not connected"
     return True, None

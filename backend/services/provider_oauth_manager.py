@@ -58,6 +58,26 @@ def _is_expired(expires_at: Optional[str]) -> bool:
         return False
 
 
+def _is_missing_expiry(expires_at: Optional[str]) -> bool:
+    if expires_at is None:
+        return True
+    if isinstance(expires_at, str) and not expires_at.strip():
+        return True
+    return False
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def _parse_url_params(input_value: str) -> tuple[Optional[str], Optional[str]]:
     try:
         parsed = urlparse(input_value)
@@ -198,6 +218,14 @@ class OAuthFlowState:
 class ProviderOAuthManager:
     def __init__(self) -> None:
         self._active_flows: Dict[str, OAuthFlowState] = {}
+        # When true, attempt refresh for credentials missing expires_at.
+        self._refresh_if_missing_expiry = _env_flag(
+            "AGNO_OAUTH_REFRESH_IF_MISSING_EXPIRY", False
+        )
+        # When false, return None instead of stale credentials if refresh fails.
+        self._allow_stale_on_refresh_failure = _env_flag(
+            "AGNO_OAUTH_ALLOW_STALE_ON_REFRESH_FAILURE", True
+        )
 
     async def start_oauth(
         self, provider: str, options: Optional[Dict[str, Any]] = None
@@ -292,18 +320,44 @@ class ProviderOAuthManager:
             return False
         return True
 
-    def get_valid_credentials(self, provider: str) -> Optional[Dict[str, Any]]:
+    def get_valid_credentials(
+        self,
+        provider: str,
+        *,
+        refresh_if_missing_expiry: Optional[bool] = None,
+        allow_stale_on_refresh_failure: Optional[bool] = None,
+    ) -> Optional[Dict[str, Any]]:
         provider = _normalize_provider(provider)
+        refresh_missing = (
+            self._refresh_if_missing_expiry
+            if refresh_if_missing_expiry is None
+            else refresh_if_missing_expiry
+        )
+        allow_stale = (
+            self._allow_stale_on_refresh_failure
+            if allow_stale_on_refresh_failure is None
+            else allow_stale_on_refresh_failure
+        )
         with db_session() as sess:
             data = get_provider_oauth(sess, provider)
         if not data:
             return None
-        if not _is_expired(data.get("expires_at")):
+        expires_at = data.get("expires_at")
+        expired = _is_expired(expires_at)
+        missing_expiry = _is_missing_expiry(expires_at)
+
+        if not expired and not (refresh_missing and missing_expiry):
             return data
+
         refreshed = self._refresh_credentials(provider, data)
         if refreshed:
-            return refreshed
-        return data
+            merged = dict(data)
+            merged.update(refreshed)
+            return merged
+
+        if allow_stale:
+            return data
+        return None
 
     def _refresh_credentials(
         self, provider: str, data: Dict[str, Any]

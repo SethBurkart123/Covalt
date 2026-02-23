@@ -8,7 +8,11 @@ from ..services.provider_oauth_manager import get_provider_oauth_manager
 
 
 def _get_gemini_cli_credentials() -> Dict[str, Any]:
-    creds = get_provider_oauth_manager().get_valid_credentials("google_gemini_cli")
+    creds = get_provider_oauth_manager().get_valid_credentials(
+        "google_gemini_cli",
+        refresh_if_missing_expiry=True,
+        allow_stale_on_refresh_failure=False,
+    )
     if not creds:
         raise RuntimeError("Google Gemini CLI OAuth not connected in Settings.")
     return creds
@@ -37,8 +41,9 @@ def get_google_gemini_cli_model(
 
 
 async def fetch_models() -> List[Dict[str, str]]:
-    creds = get_provider_oauth_manager().get_valid_credentials("google_gemini_cli")
-    if not creds:
+    try:
+        _get_gemini_cli_credentials()
+    except RuntimeError:
         return []
     return await fetch_models_dev_provider(
         "google",
@@ -48,7 +53,8 @@ async def fetch_models() -> List[Dict[str, str]]:
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    creds = get_provider_oauth_manager().get_valid_credentials("google_gemini_cli")
-    if not creds:
+    try:
+        _get_gemini_cli_credentials()
+    except RuntimeError:
         return False, "OAuth not connected"
     return True, None

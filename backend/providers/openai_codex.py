@@ -16,7 +16,11 @@ from .options import resolve_common_options
 
 
 def _get_codex_credentials() -> Dict[str, Any]:
-    creds = get_provider_oauth_manager().get_valid_credentials("openai_codex")
+    creds = get_provider_oauth_manager().get_valid_credentials(
+        "openai_codex",
+        refresh_if_missing_expiry=True,
+        allow_stale_on_refresh_failure=False,
+    )
     if not creds:
         raise RuntimeError("OpenAI Codex OAuth not connected in Settings.")
     return creds
@@ -484,8 +488,9 @@ def resolve_options(
 
 
 async def fetch_models() -> List[Dict[str, Any]]:
-    creds = get_provider_oauth_manager().get_valid_credentials("openai_codex")
-    if not creds:
+    try:
+        creds = _get_codex_credentials()
+    except RuntimeError:
         return []
     access_token = creds.get("access_token")
     extra = creds.get("extra")
@@ -550,7 +555,8 @@ def _format_reasoning_level_label(level: str) -> str:
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    creds = get_provider_oauth_manager().get_valid_credentials("openai_codex")
-    if not creds:
+    try:
+        _get_codex_credentials()
+    except RuntimeError:
         return False, "OAuth not connected"
     return True, None
