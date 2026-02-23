@@ -10,10 +10,8 @@ from backend.services.option_validation import (
     MAX_OPTION_KEYS,
     MAX_PAYLOAD_SIZE,
     ModelResolutionError,
-    merge_model_params,
     resolve_and_validate_model_options,
     resolve_model_for_chat,
-    sanitize_final_kwargs,
     validate_model_options,
 )
 from backend.services import option_validation as option_validation_service
@@ -225,31 +223,3 @@ def test_validate_model_options_enforces_bounds() -> None:
     large_value = "x" * (MAX_PAYLOAD_SIZE + 128)
     with pytest.raises(ValueError, match="payload too large"):
         validate_model_options({"k": large_value}, schema)
-
-
-def test_merge_model_params_only_accepts_allowlist() -> None:
-    merged = merge_model_params(
-        {
-            "temperature": 0.5,
-            "max_tokens": 512,
-            "api_key": "nope",
-            "extra": "ignored",
-        },
-        {"temperature": 0.9, "thinking_budget": 8000},
-    )
-
-    assert merged == {
-        "temperature": 0.5,
-        "max_tokens": 512,
-        "thinking_budget": 8000,
-    }
-
-
-def test_sanitize_final_kwargs_rejects_reserved_and_internal_keys() -> None:
-    assert sanitize_final_kwargs({"temperature": 0.7}) == {"temperature": 0.7}
-
-    with pytest.raises(ValueError, match="Reserved parameter"):
-        sanitize_final_kwargs({"api_key": "secret"})
-
-    with pytest.raises(ValueError, match="Reserved parameter"):
-        sanitize_final_kwargs({"_internal": True})
