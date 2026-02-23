@@ -7,18 +7,31 @@ from . import get_api_key, get_extra_config
 from .. import db
 
 ALIASES = ["gemini", "google_ai_studio"]
+GOOGLE_THINKING_BUDGET_MAX = 32768
+VERTEX_THINKING_BUDGET_MAX = 24576
 
 
 def get_google_model(model_id: str, **kwargs: Any) -> LiteLLM:
     """Create a Google Gemini model instance."""
     api_key = get_api_key()
     extra = get_extra_config()
+    is_vertex_enabled = _is_vertex_enabled(extra)
 
-    if not api_key and not extra.get("vertexai"):
+    if not api_key and not is_vertex_enabled:
         raise RuntimeError("Google API key not configured in Settings.")
 
     request_params: Dict[str, Any] = dict(kwargs.get("request_params") or {})
-    if extra.get("vertexai"):
+    if is_vertex_enabled:
+        thinking = request_params.get("thinking")
+        if isinstance(thinking, dict):
+            budget = _coerce_non_negative_int(
+                thinking.get("budget_tokens"),
+                default=0,
+            )
+            request_params["thinking"] = {
+                **thinking,
+                "budget_tokens": min(budget, VERTEX_THINKING_BUDGET_MAX),
+            }
         request_params.update(
             {
                 "vertex_project": extra.get("project_id"),
@@ -86,6 +99,7 @@ def get_model_options(
         default=8192,
     )
     supports_reasoning = bool(metadata.get("supports_reasoning", False))
+    thinking_budget_max = _max_thinking_budget()
 
     main: list[dict[str, Any]] = []
     if supports_reasoning:
@@ -95,7 +109,7 @@ def get_model_options(
                 "label": "Thinking Budget",
                 "type": "slider",
                 "min": 0,
-                "max": 32768,
+                "max": thinking_budget_max,
                 "step": 512,
                 "default": 8192,
             }
@@ -135,6 +149,7 @@ def map_model_options(model_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
 
     if "thinking_budget" in options:
         budget = _coerce_non_negative_int(options.get("thinking_budget"), default=0)
+        budget = min(budget, _max_thinking_budget())
         kwargs["request_params"] = {
             "thinking": {
                 "type": "enabled",
@@ -189,3 +204,19 @@ def _coerce_non_negative_int(value: Any, *, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed >= 0 else default
+
+
+def _max_thinking_budget() -> int:
+    extra = get_extra_config()
+    if _is_vertex_enabled(extra):
+        return VERTEX_THINKING_BUDGET_MAX
+    return GOOGLE_THINKING_BUDGET_MAX
+
+
+def _is_vertex_enabled(extra: Dict[str, Any]) -> bool:
+    raw = extra.get("vertexai")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(raw)

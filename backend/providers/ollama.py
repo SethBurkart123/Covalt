@@ -34,24 +34,6 @@ async def fetch_models() -> List[Dict[str, str]]:
         print(f"[ollama] Failed to fetch models: {e}")
         return []
 
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get(f"{host}/api/tags")
-
-            if response.is_success:
-                models = response.json().get("models", [])
-                return [
-                    {"id": m["name"], "name": m["name"].split(":")[0].title()}
-                    for m in models
-                    if m.get("name")
-                ]
-
-    except Exception as e:
-        print(f"[ollama] Failed to fetch models: {e}")
-
-    return []
-
-
 async def test_connection() -> tuple[bool, str | None]:
     host = get_base_url()
     if not host:

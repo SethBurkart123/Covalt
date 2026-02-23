@@ -51,6 +51,41 @@ def test_google_map_model_options_maps_thinking_budget_to_request_params() -> No
     }
 
 
+def test_google_map_model_options_clamps_vertex_thinking_budget(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        google_provider,
+        "get_extra_config",
+        lambda: {"vertexai": True},
+    )
+    mapped = google_provider.map_model_options(
+        "gemini-2.5-flash",
+        {"thinking_budget": 32768},
+    )
+
+    assert mapped["request_params"] == {
+        "thinking": {"type": "enabled", "budget_tokens": 24576}
+    }
+
+
+def test_google_get_model_options_uses_vertex_thinking_budget_max(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        google_provider,
+        "get_extra_config",
+        lambda: {"vertexai": True},
+    )
+
+    schema = google_provider.get_model_options(
+        "gemini-2.5-flash",
+        model_metadata={"supports_reasoning": True},
+    )
+
+    assert schema["main"][0]["max"] == 24576
+
+
 def test_google_get_model_merges_vertex_and_existing_request_params(
     monkeypatch,
 ) -> None:
@@ -74,4 +109,28 @@ def test_google_get_model_merges_vertex_and_existing_request_params(
         "thinking": {"type": "enabled", "budget_tokens": 2048},
         "vertex_project": "proj-123",
         "vertex_location": "us-central1",
+    }
+
+
+def test_google_get_model_ignores_vertex_when_extra_is_string_false(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(google_provider, "get_api_key", lambda: "test-key")
+    monkeypatch.setattr(
+        google_provider,
+        "get_extra_config",
+        lambda: {
+            "vertexai": "false",
+            "project_id": "proj-123",
+            "location": "us-central1",
+        },
+    )
+
+    model = google_provider.get_google_model(
+        "gemini-2.5-flash",
+        request_params={"thinking": {"type": "enabled", "budget_tokens": 2048}},
+    )
+
+    assert model.request_params == {
+        "thinking": {"type": "enabled", "budget_tokens": 2048},
     }
