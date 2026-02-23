@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import os
 import sys
 from typing import Any
@@ -16,12 +17,29 @@ from zynk import Bridge
 from .db import init_database
 from .services.mcp_manager import shutdown_mcp
 from .services.node_route_index import rebuild_node_route_index
+from .services.toolset_manager import get_toolset_manager
 from .services.http_routes import register_http_routes
 from . import commands  # noqa: F401
+
+logger = logging.getLogger(__name__)
+
+
+def _ensure_e2e_toolset() -> None:
+    if os.environ.get("COVALT_E2E_TESTS") != "1":
+        return
+    manager = get_toolset_manager()
+    if manager.get_toolset("artifact-tools"):
+        return
+    toolset_dir = Path(__file__).parent.parent / "examples" / "artifact-tools-toolset"
+    if not toolset_dir.exists():
+        logger.warning(f"E2E toolset directory missing: {toolset_dir}")
+        return
+    manager.import_from_directory(toolset_dir)
 
 
 def main() -> int:
     init_database()
+    _ensure_e2e_toolset()
     rebuild_node_route_index()
 
     output_dir = Path(__file__).parent.parent / "app" / "python"
