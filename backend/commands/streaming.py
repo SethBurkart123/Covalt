@@ -310,6 +310,7 @@ async def stream_chat(
             content=m.get("content", ""),
             createdAt=m.get("createdAt"),
             toolCalls=m.get("toolCalls"),
+            attachments=m.get("attachments"),
         )
         for m in body.messages
     ]
@@ -490,6 +491,7 @@ async def stream_agent_chat(
             content=m.get("content", ""),
             createdAt=m.get("createdAt"),
             toolCalls=m.get("toolCalls"),
+            attachments=m.get("attachments"),
         )
         for m in body.messages
     ]

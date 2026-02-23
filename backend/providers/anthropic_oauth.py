@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Union
+from urllib.parse import urlparse
 
 import httpx
 
@@ -37,6 +41,26 @@ REASONING_BUDGETS = {
     "max": 32000,
     # Backward compatibility for previously persisted values.
     "xhigh": 32000,
+}
+
+SUPPORTED_IMAGE_MEDIA_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+}
+TEXT_LIKE_MEDIA_TYPES = {
+    "application/json",
+    "application/xml",
+    "image/svg+xml",
+    "text/xml",
+}
+IMAGE_EXTENSION_MEDIA_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
 }
 
 
@@ -148,9 +172,27 @@ def _convert_messages(
             i += 1
             continue
         if message.role == "user":
-            content = message.get_content_string()
-            if content:
-                params.append({"role": "user", "content": content})
+            blocks: List[Dict[str, Any]] = []
+            text = message.get_content_string()
+            if text:
+                blocks.append({"type": "text", "text": text})
+
+            images = getattr(message, "images", None)
+            if images:
+                for image in images:
+                    image_block = _build_image_block(image)
+                    if image_block:
+                        blocks.append(image_block)
+                        continue
+                    fallback_document = _build_document_block_from_image(image)
+                    if fallback_document:
+                        blocks.append(fallback_document)
+
+            if blocks:
+                if len(blocks) == 1 and blocks[0].get("type") == "text":
+                    params.append({"role": "user", "content": text})
+                else:
+                    params.append({"role": "user", "content": blocks})
             i += 1
             continue
         if message.role == "assistant":
@@ -221,15 +263,135 @@ def _apply_cache_control(
             continue
         content = message.get("content")
         if isinstance(content, list) and content:
-            last_block = content[-1]
-            if isinstance(last_block, dict):
-                last_block["cache_control"] = cache_control
-            return
+            for block in reversed(content):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") in {"text", "tool_result", "document"}:
+                    block["cache_control"] = cache_control
+                    return
         if isinstance(content, str) and content:
             message["content"] = [
                 {"type": "text", "text": content, "cache_control": cache_control}
             ]
             return
+        return
+
+
+def _normalize_image_media_type(value: Any) -> Optional[str]:
+    if not isinstance(value, str) or not value:
+        return None
+    normalized = value.split(";")[0].strip().lower()
+    if normalized == "image/jpg":
+        normalized = "image/jpeg"
+    return normalized if normalized in SUPPORTED_IMAGE_MEDIA_TYPES else None
+
+
+def _normalize_media_type(value: Any) -> Optional[str]:
+    if not isinstance(value, str) or not value:
+        return None
+    return value.split(";")[0].strip().lower() or None
+
+
+def _guess_media_type(image: Any) -> Optional[str]:
+    media_type = _normalize_media_type(getattr(image, "mime_type", None))
+    if media_type:
+        return media_type
+
+    image_format = getattr(image, "format", None)
+    if isinstance(image_format, str):
+        from_format = IMAGE_EXTENSION_MEDIA_TYPES.get(image_format.lower().strip())
+        if from_format:
+            return from_format
+
+    filepath = getattr(image, "filepath", None)
+    if filepath:
+        guessed = mimetypes.guess_type(str(filepath))[0]
+        media_type = _normalize_media_type(guessed)
+        if media_type:
+            return media_type
+
+    image_url = getattr(image, "url", None)
+    if isinstance(image_url, str) and image_url:
+        parsed_path = urlparse(image_url).path
+        guessed = mimetypes.guess_type(parsed_path)[0]
+        media_type = _normalize_media_type(guessed)
+        if media_type:
+            return media_type
+
+    return None
+
+
+def _guess_image_media_type(image: Any) -> Optional[str]:
+    media_type = _normalize_image_media_type(getattr(image, "mime_type", None))
+    if media_type:
+        return media_type
+
+    guessed = _guess_media_type(image)
+    return _normalize_image_media_type(guessed)
+
+
+def _load_image_bytes(image: Any) -> Optional[bytes]:
+    content = getattr(image, "content", None)
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content)
+
+    filepath = getattr(image, "filepath", None)
+    if filepath:
+        path = Path(filepath)
+        if path.exists() and path.is_file():
+            try:
+                return path.read_bytes()
+            except Exception:
+                return None
+
+    return None
+
+
+def _build_image_block(image: Any) -> Optional[Dict[str, Any]]:
+    media_type = _guess_image_media_type(image)
+    if not media_type:
+        return None
+
+    raw_bytes = _load_image_bytes(image)
+    if not raw_bytes:
+        return None
+
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": base64.b64encode(raw_bytes).decode("utf-8"),
+        },
+    }
+
+
+def _build_document_block_from_image(image: Any) -> Optional[Dict[str, Any]]:
+    raw_bytes = _load_image_bytes(image)
+    if not raw_bytes:
+        return None
+
+    media_type = _guess_media_type(image) or "application/octet-stream"
+    if media_type.startswith("text/") or media_type in TEXT_LIKE_MEDIA_TYPES:
+        return {
+            "type": "document",
+            "source": {
+                "type": "text",
+                "media_type": "text/plain",
+                "data": raw_bytes.decode("utf-8", errors="replace"),
+            },
+            "citations": {"enabled": True},
+        }
+
+    return {
+        "type": "document",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": base64.b64encode(raw_bytes).decode("utf-8"),
+        },
+        "citations": {"enabled": True},
+    }
 
 
 def _build_metrics(usage: Dict[str, Any]) -> Metrics:

@@ -102,6 +102,16 @@ class ChatStartExecutor:
 
         return []
 
+    def _get_agno_messages(self, context: FlowContext) -> list[Any]:
+        chat_input = self._get_chat_input(context)
+        if chat_input is None:
+            return []
+
+        agno_messages = getattr(chat_input, "agno_messages", None)
+        if not isinstance(agno_messages, list):
+            return []
+        return list(agno_messages)
+
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
@@ -111,6 +121,7 @@ class ChatStartExecutor:
         chat_history = self._get_chat_history(context)
         attachments = self._get_last_user_attachments(context)
         messages = self._get_messages(context)
+        agno_messages = self._get_agno_messages(context)
         include_user_tools = bool(data.get("includeUserTools", False))
 
         return ExecutionResult(
@@ -122,6 +133,7 @@ class ChatStartExecutor:
                         "last_user_message": user_message,
                         "history": chat_history,
                         "messages": messages,
+                        "agno_messages": agno_messages,
                         "attachments": attachments,
                         "include_user_tools": include_user_tools,
                     },

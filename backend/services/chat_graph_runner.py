@@ -1122,6 +1122,7 @@ async def handle_flow_stream(
 
     chat_history = build_chat_runtime_history(messages)
     openai_messages = build_openai_messages_for_chat(messages)
+    agno_messages = build_agno_messages_for_chat(messages, chat_id)
     entry_node_ids = _build_entry_node_ids(graph_data)
     trigger_payload = _build_trigger_payload(
         user_message,
@@ -1141,6 +1142,7 @@ async def handle_flow_stream(
             last_user_attachments=last_user_attachments,
             history=chat_history,
             messages=openai_messages,
+            agno_messages=agno_messages,
         ),
         expression_context={"trigger": trigger_payload},
         execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),

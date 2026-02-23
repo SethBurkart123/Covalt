@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
+from agno.media import Image
+from agno.models.message import Message
 
 import backend.providers.anthropic_oauth as anthropic_oauth_provider
 
@@ -77,7 +80,7 @@ def test_fetch_models_includes_reasoning_metadata_from_listing(monkeypatch) -> N
     captured: dict[str, str] = {}
 
     class FakeOauthManager:
-        def get_valid_credentials(self, provider: str):
+        def get_valid_credentials(self, provider: str, **kwargs):
             if provider == "anthropic_oauth":
                 return {"access_token": "token"}
             return None
@@ -143,3 +146,91 @@ def test_fetch_models_includes_reasoning_metadata_from_listing(monkeypatch) -> N
         {"effort": "medium"},
         {"effort": "high"},
     ]
+
+
+def test_convert_messages_includes_user_images(tmp_path) -> None:
+    image_path = tmp_path / "screenshot.png"
+    image_bytes = b"\x89PNG\r\n\x1a\nfake"
+    image_path.write_bytes(image_bytes)
+    message = Message(
+        role="user",
+        content="what is in this screenshot?",
+        images=[Image(filepath=image_path)],
+    )
+
+    converted = anthropic_oauth_provider._convert_messages([message])
+
+    assert len(converted) == 1
+    assert converted[0]["role"] == "user"
+    blocks = converted[0]["content"]
+    assert isinstance(blocks, list)
+    assert blocks[0] == {"type": "text", "text": "what is in this screenshot?"}
+    assert blocks[1]["type"] == "image"
+    assert blocks[1]["source"]["type"] == "base64"
+    assert blocks[1]["source"]["media_type"] == "image/png"
+
+
+def test_convert_messages_falls_back_svg_image_to_document(tmp_path) -> None:
+    image_path = tmp_path / "diagram.svg"
+    image_path.write_text("<svg xmlns='http://www.w3.org/2000/svg'></svg>")
+    message = Message(
+        role="user",
+        content="please inspect this asset",
+        images=[Image(filepath=image_path)],
+    )
+
+    converted = anthropic_oauth_provider._convert_messages([message])
+
+    assert len(converted) == 1
+    blocks = converted[0]["content"]
+    assert isinstance(blocks, list)
+    assert blocks[1]["type"] == "document"
+    assert blocks[1]["source"]["type"] == "text"
+    assert blocks[1]["source"]["media_type"] == "text/plain"
+
+
+def test_convert_messages_does_not_fetch_remote_image_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = {"count": 0}
+
+    def fail_get(*_args, **_kwargs):
+        called["count"] += 1
+        raise AssertionError("httpx.get should not be called for image URL loading")
+
+    monkeypatch.setattr(anthropic_oauth_provider.httpx, "get", fail_get)
+    message = Message(
+        role="user",
+        content="describe this URL image",
+        images=[Image(url="https://example.com/screenshot.png")],
+    )
+
+    converted = anthropic_oauth_provider._convert_messages([message])
+
+    assert len(converted) == 1
+    assert converted[0]["content"] == "describe this URL image"
+    assert called["count"] == 0
+
+
+def test_apply_cache_control_skips_image_only_latest_user_message() -> None:
+    params = [
+        {"role": "user", "content": [{"type": "text", "text": "older"}]},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "AAAA",
+                    },
+                }
+            ],
+        },
+    ]
+
+    anthropic_oauth_provider._apply_cache_control(params, {"type": "ephemeral"})
+
+    assert "cache_control" not in params[0]["content"][0]
+    assert "cache_control" not in params[1]["content"][0]

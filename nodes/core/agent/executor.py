@@ -785,7 +785,9 @@ def _resolve_run_input(
         if parsed_override:
             return parsed_override
 
-    for key in ("messages", "agno_messages"):
+    # Prefer agno-native message objects so multimodal inputs (e.g. images)
+    # are preserved through chat-start -> agent execution.
+    for key in ("agno_messages", "messages"):
         parsed_messages = _coerce_messages(input_value.get(key))
         if parsed_messages:
             return parsed_messages
@@ -850,6 +852,10 @@ def _coerce_message_item(item: Any) -> list[Message]:
         role = str(item.get("role") or "user")
         content = _content_to_text(item.get("content"))
         payload: dict[str, Any] = {"role": role, "content": content}
+        for field in ("images", "files", "audio", "videos"):
+            value = item.get(field)
+            if isinstance(value, list) and value:
+                payload[field] = value
 
         tool_call_id = item.get("tool_call_id") or item.get("toolCallId")
         if role == "tool" and tool_call_id:
