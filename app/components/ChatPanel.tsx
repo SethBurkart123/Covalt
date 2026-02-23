@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
@@ -16,7 +16,7 @@ import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
 import "@/components/tool-renderers";
 import type { AllModelSettingsResponse } from "@/python/api";
-import type { Attachment, Message } from "@/lib/types/chat";
+import type { Message } from "@/lib/types/chat";
 
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
@@ -129,26 +129,6 @@ export default function ChatPanel() {
     setModelSettings(await getModelSettings());
   }, [selectedModel]);
 
-  const submitRef = useRef(handleSubmit);
-  const setSelectedModelRef = useRef(setSelectedModel);
-  const handleStopRef = useRef(handleStop);
-
-  useEffect(() => { submitRef.current = handleSubmit; }, [handleSubmit]);
-  useEffect(() => { setSelectedModelRef.current = setSelectedModel; }, [setSelectedModel]);
-  useEffect(() => { handleStopRef.current = handleStop; }, [handleStop]);
-
-  const stableHandleSubmit = useCallback(
-    (input: string, attachments: Attachment[], toolIds?: string[]) =>
-      submitRef.current(input, attachments, toolIds),
-    []
-  );
-
-  const stableSetSelectedModel = useCallback((model: string) => 
-    setSelectedModelRef.current(model), []);
-
-  const stableHandleStop = useCallback(() => 
-    handleStopRef.current(), []);
-
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good Morning";
@@ -194,17 +174,17 @@ export default function ChatPanel() {
               </div>
               <div className="px-4 pb-4">
                 <ChatInputForm
-                  onSubmit={stableHandleSubmit}
+                  onSubmit={handleSubmit}
                   isLoading={isLoading}
                   selectedModel={selectedModel}
-                  setSelectedModel={stableSetSelectedModel}
+                  setSelectedModel={setSelectedModel}
                   models={availableModels}
                   optionSchema={modelOptionSchema}
                   optionValues={modelOptionValues}
                   onOptionChange={setModelOptionValue}
                   onResetOptions={resetModelOptions}
                   canSendMessage={canSendMessage}
-                  onStop={stableHandleStop}
+                  onStop={handleStop}
                   hideToolSelector={hideToolSelector}
                 />
               </div>
@@ -216,17 +196,17 @@ export default function ChatPanel() {
               </h1>
               <div className="w-full max-w-4xl">
                 <ChatInputForm
-                  onSubmit={stableHandleSubmit}
+                  onSubmit={handleSubmit}
                   isLoading={isLoading}
                   selectedModel={selectedModel}
-                  setSelectedModel={stableSetSelectedModel}
+                  setSelectedModel={setSelectedModel}
                   models={availableModels}
                   optionSchema={modelOptionSchema}
                   optionValues={modelOptionValues}
                   onOptionChange={setModelOptionValue}
                   onResetOptions={resetModelOptions}
                   canSendMessage={canSendMessage}
-                  onStop={stableHandleStop}
+                  onStop={handleStop}
                   hideToolSelector={hideToolSelector}
                 />
               </div>
