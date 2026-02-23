@@ -118,6 +118,14 @@ export const api = {
         role: m.role,
         content: m.content,
         createdAt: m.createdAt,
+        attachments:
+          m.attachments?.map((a) => ({
+            id: a.id,
+            type: a.type,
+            name: a.name,
+            mimeType: a.mimeType,
+            size: a.size,
+          })) || [],
       })),
       modelId,
       chatId,
@@ -146,6 +154,14 @@ export const api = {
         role: m.role,
         content: m.content,
         createdAt: m.createdAt,
+        attachments:
+          m.attachments?.map((a) => ({
+            id: a.id,
+            type: a.type,
+            name: a.name,
+            mimeType: a.mimeType,
+            size: a.size,
+          })) || [],
       })),
       chatId,
       ephemeral: ephemeral ?? false,

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import pytest
+from agno.models.message import Message as AgnoMessage
 
 from backend import db
 from backend.commands import chats as chats_commands
@@ -14,6 +15,7 @@ from backend.services.chat_graph_runner import (
     parse_message_blocks,
     run_graph_chat_runtime,
 )
+import backend.services.chat_graph_runner as chat_graph_runner
 from nodes._types import DataValue, ExecutionResult, NodeEvent
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
 
@@ -248,6 +250,10 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         captured["message_roles"] = [
             str(message.get("role", "")) for message in chat_input.messages
         ]
+        captured["agno_message_roles"] = [
+            str(getattr(message, "role", ""))
+            for message in getattr(chat_input, "agno_messages", [])
+        ]
         captured["entry_scope"] = list(context.services.execution.entry_node_ids)
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
@@ -276,7 +282,43 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     assert captured["history_len"] == 3
     assert captured["last_user_message"] == "final"
     assert captured["message_roles"] == ["user", "assistant", "user"]
+    assert captured["agno_message_roles"] == ["user", "assistant", "user"]
     assert captured["entry_scope"] == ["cs"]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_exposes_agno_messages_in_chat_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = [AgnoMessage(role="user", content="hello from agno")]
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        chat_graph_runner,
+        "build_agno_messages_for_chat",
+        lambda _messages, _chat_id: sentinel,
+    )
+
+    async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
+        chat_input = context.services.chat_input
+        captured["agno_messages"] = chat_input.agno_messages
+        captured["messages"] = chat_input.messages
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ok"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=True,
+        run_flow_impl=fake_run_flow,
+    )
+
+    assert captured["agno_messages"] is sentinel
+    assert isinstance(captured["messages"], list)
 
 
 @pytest.mark.asyncio
