@@ -161,6 +161,7 @@ export default function MemberRunCall({
               return (
                 <ToolCall
                   key={block.id || `tool-${i}`}
+                  id={block.id}
                   toolName={block.toolName}
                   toolArgs={block.toolArgs}
                   toolResult={block.toolResult}
