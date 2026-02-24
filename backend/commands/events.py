@@ -17,6 +17,9 @@ _clients_lock = asyncio.Lock()
 
 class McpServerStatus(BaseModel):
     id: str
+    server_id: str | None = None
+    toolset_id: str | None = None
+    toolset_name: str | None = None
     status: str
     error: str | None = None
     tool_count: int = 0
@@ -69,6 +72,9 @@ async def _broadcast_mcp_status(
 
     status_update = McpServerStatus(
         id=server_id,
+        server_id=server_data.get("serverId") if server_data else None,
+        toolset_id=server_data.get("toolsetId") if server_data else None,
+        toolset_name=server_data.get("toolsetName") if server_data else None,
         status=status,
         error=error,
         tool_count=tool_count,
@@ -127,6 +133,9 @@ def _get_mcp_servers_snapshot() -> McpServersSnapshot:
         servers=[
             McpServerStatus(
                 id=s["id"],
+                server_id=s.get("serverId"),
+                toolset_id=s.get("toolsetId"),
+                toolset_name=s.get("toolsetName"),
                 status=s["status"],
                 error=s.get("error"),
                 tool_count=s.get("toolCount", 0),

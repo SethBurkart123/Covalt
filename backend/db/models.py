@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -137,7 +145,10 @@ class ToolsetMcpServer(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     toolset_id: Mapped[str] = mapped_column(
-        String, ForeignKey("toolsets.id", ondelete="CASCADE"), nullable=False
+        String,
+        ForeignKey("toolsets.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
     )
     server_type: Mapped[str] = mapped_column(String, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -257,9 +268,8 @@ class OAuthToken(Base):
     __tablename__ = "oauth_tokens"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    server_id: Mapped[str] = mapped_column(
-        String, ForeignKey("toolset_mcp_servers.id", ondelete="CASCADE"), nullable=False
-    )
+    server_id: Mapped[str] = mapped_column(String, nullable=False)
+    toolset_id: Mapped[str] = mapped_column(String, nullable=False)
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     token_type: Mapped[str] = mapped_column(String, default="Bearer", nullable=False)
@@ -270,6 +280,14 @@ class OAuthToken(Base):
     client_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["toolset_id", "server_id"],
+            ["toolset_mcp_servers.toolset_id", "toolset_mcp_servers.id"],
+            ondelete="CASCADE",
+        ),
+    )
 
 
 class ProviderOAuthCredential(Base):

@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/collapsible";
 import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
+import { buildMcpServerLabelMap, getMcpServerLabel } from "@/lib/mcp";
 
 function ToolCard({ tool }: { tool: ToolsetToolInfo }) {
   const toolLabel = useMemo(() => {
@@ -246,8 +247,8 @@ function UninstallDialog({
 }
 
 interface InstalledPanelProps {
-  onEditServer: (serverId: string) => void;
-  onDeleteServer: (serverId: string) => void;
+  onEditServer: (serverKey: string, serverId: string, serverName: string) => void;
+  onDeleteServer: (serverKey: string, serverLabel: string) => void;
 }
 
 export default function InstalledPanel({
@@ -265,24 +266,26 @@ export default function InstalledPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectingServerId, setInspectingServerId] = useState<string | null>(null);
+  const [inspectingServerKey, setInspectingServerKey] = useState<string | null>(null);
   const [inspectorTools, setInspectorTools] = useState<MCPToolInfo[]>([]);
 
   const mcpTools = useMemo(() => {
     const byServer: Record<string, ChatToolInfo[]> = {};
     availableTools.forEach((tool) => {
       if (tool.id.startsWith("mcp:")) {
-        const serverId = tool.id.split(":")[1];
-        if (!byServer[serverId]) byServer[serverId] = [];
-        byServer[serverId].push(tool);
+        const serverKey = tool.id.split(":")[1];
+        if (!byServer[serverKey]) byServer[serverKey] = [];
+        byServer[serverKey].push(tool);
       }
     });
     return byServer;
   }, [availableTools]);
 
+  const mcpServerLabels = useMemo(() => buildMcpServerLabelMap(mcpServers), [mcpServers]);
+
   const inspectingServer = useMemo(
-    () => mcpServers.find((s) => s.id === inspectingServerId) || null,
-    [mcpServers, inspectingServerId]
+    () => mcpServers.find((s) => s.id === inspectingServerKey) || null,
+    [mcpServers, inspectingServerKey]
   );
 
   const reloadInspectorTools = useCallback(async (serverId: string) => {
@@ -296,17 +299,17 @@ export default function InstalledPanel({
     }
   }, []);
 
-  const handleInspectServer = useCallback(async (serverId: string) => {
-    setInspectingServerId(serverId);
+  const handleInspectServer = useCallback(async (serverKey: string) => {
+    setInspectingServerKey(serverKey);
     setInspectorOpen(true);
-    await reloadInspectorTools(serverId);
+    await reloadInspectorTools(serverKey);
   }, [reloadInspectorTools]);
 
   const handleInspectorReconnect = useCallback(async () => {
-    if (!inspectingServerId) return;
-    await reconnectMcpServer({ body: { id: inspectingServerId } });
-    await reloadInspectorTools(inspectingServerId);
-  }, [inspectingServerId, reloadInspectorTools]);
+    if (!inspectingServerKey) return;
+    await reconnectMcpServer({ body: { id: inspectingServerKey } });
+    await reloadInspectorTools(inspectingServerKey);
+  }, [inspectingServerKey, reloadInspectorTools]);
 
   const handleTestTool = useCallback(
     async (
@@ -476,16 +479,22 @@ export default function InstalledPanel({
 
         {mcpServers.length > 0 ? (
           <div className="space-y-2">
-            {mcpServers.map((server) => (
-              <McpServerCard
-                key={server.id}
-                server={server}
-                toolCount={mcpTools[server.id]?.length || 0}
-                onEdit={() => onEditServer(server.id)}
-                onDelete={() => onDeleteServer(server.id)}
-                onInspect={() => handleInspectServer(server.id)}
-              />
-            ))}
+            {mcpServers.map((server) => {
+              const serverLabel = getMcpServerLabel(server, mcpServerLabels);
+              const serverId = server.serverId ?? server.id;
+              const serverName = server.toolsetName ?? serverId;
+              return (
+                <McpServerCard
+                  key={server.id}
+                  server={server}
+                  label={serverLabel}
+                  toolCount={mcpTools[server.id]?.length || 0}
+                  onEdit={() => onEditServer(server.id, serverId, serverName)}
+                  onDelete={() => onDeleteServer(server.id, serverLabel)}
+                  onInspect={() => handleInspectServer(server.id)}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="border border-dashed border-border rounded-lg p-6 text-center">
@@ -573,11 +582,19 @@ export default function InstalledPanel({
         server={inspectingServer}
         tools={inspectorTools}
         onEdit={() => {
-          if (inspectingServerId) onEditServer(inspectingServerId);
+          if (inspectingServer) {
+            const serverId = inspectingServer.serverId ?? inspectingServer.id;
+            const serverName = inspectingServer.toolsetName ?? serverId;
+            onEditServer(inspectingServer.id, serverId, serverName);
+          }
         }}
         onDelete={() => {
-          if (inspectingServerId) onDeleteServer(inspectingServerId);
+          if (inspectingServer) {
+            const serverLabel = getMcpServerLabel(inspectingServer, mcpServerLabels);
+            onDeleteServer(inspectingServer.id, serverLabel);
+          }
         }}
+        serverLabel={inspectingServer ? getMcpServerLabel(inspectingServer, mcpServerLabels) : undefined}
         onReconnect={handleInspectorReconnect}
         onTestTool={handleTestTool}
       />

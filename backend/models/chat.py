@@ -181,7 +181,8 @@ class ToolInfo(BaseModel):
     id: str
     name: Optional[str] = None
     description: Optional[str] = None
-    category: Optional[str] = None
+    toolsetId: Optional[str] = None
+    toolsetName: Optional[str] = None
     inputSchema: Optional[Dict[str, Any]] = None
     renderer: Optional[str] = None
     editable_args: Optional[List[str]] = None

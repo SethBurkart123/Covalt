@@ -3,12 +3,14 @@ import { defaultRenderer } from "@/components/tool-renderers/default";
 import { codeRenderer } from "@/components/tool-renderers/code";
 import { markdownRenderer } from "@/components/tool-renderers/markdown";
 import { htmlRenderer } from "@/components/tool-renderers/html";
+import { frameRenderer } from "@/components/tool-renderers/frame";
 
 export const RENDERERS: RendererDefinition[] = [
   defaultRenderer,
   codeRenderer,
   markdownRenderer,
   htmlRenderer,
+  frameRenderer,
 ];
 
 const rendererMap = new Map<string, ToolCallRenderer>(

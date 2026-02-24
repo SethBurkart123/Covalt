@@ -4,6 +4,5 @@ from .core import _get_engine
 
 
 def run_migrations() -> None:
-    engine = _get_engine()
-    if engine is None:
-        return
+    # Migrations to be implemented when moving to alpha release.
+    _get_engine()

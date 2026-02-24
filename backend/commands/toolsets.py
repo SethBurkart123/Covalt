@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from ..services.mcp_manager import get_mcp_manager
+from ..services.toolset_executor import get_toolset_executor
 from ..services.toolset_manager import get_toolset_manager
 from ..services.workspace_manager import get_workspace_manager
 
@@ -133,7 +134,7 @@ async def list_toolsets(body: Optional[ListToolsetsRequest] = None) -> ToolsetsR
                 user_mcp=t.get("user_mcp", False),
                 installed_at=t.get("installed_at"),
                 source_type=t.get("source_type"),
-                tool_count=0,
+                tool_count=t.get("tool_count", 0),
             )
             for t in toolsets
         ]
@@ -189,6 +190,7 @@ async def import_toolset(file: UploadFile) -> ImportToolsetResult:
     if new_servers:
         logger.info(f"Started {len(new_servers)} MCP server(s) from toolset")
     logger.info(f"Imported toolset '{toolset_id}' from {file.filename}")
+    get_toolset_executor().clear_cache()
 
     return ImportToolsetResult(
         id=toolset["id"],
@@ -222,13 +224,17 @@ async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
     else:
         await mcp_manager.disconnect_toolset_servers(body.id)
 
+    get_toolset_executor().clear_cache()
     return {"success": True, "enabled": body.enabled}
 
 
 @command
 async def uninstall_toolset(body: ToolsetIdRequest) -> Dict[str, bool]:
+    mcp_manager = get_mcp_manager()
+    await mcp_manager.disconnect_toolset_servers(body.id)
     if not get_toolset_manager().uninstall(body.id):
         raise ValueError(f"Toolset '{body.id}' not found")
+    get_toolset_executor().clear_cache()
     return {"success": True}
 
 
@@ -389,6 +395,8 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
 
         sess.commit()
         sess.refresh(override)
+
+        get_toolset_executor().clear_cache()
 
         return ToolOverrideResponse(
             toolset_id=override.toolset_id,

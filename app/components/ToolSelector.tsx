@@ -24,10 +24,6 @@ import {
 } from "@/python/api";
 import { ServerFormDialog } from "@/components/mcp";
 
-function formatCategoryName(category: string): string {
-  return category.charAt(0).toUpperCase() + category.slice(1);
-}
-
 function McpStatusIndicator({
   status,
 }: {
@@ -52,6 +48,17 @@ function McpStatusIndicator({
   );
 }
 
+function getAggregateStatus(
+  servers: McpServerStatus[]
+): McpServerStatus["status"] | null {
+  if (servers.length === 0) return null;
+  if (servers.some((s) => s.status === "requires_auth")) return "requires_auth";
+  if (servers.some((s) => s.status === "error")) return "error";
+  if (servers.some((s) => s.status === "connecting")) return "connecting";
+  if (servers.some((s) => s.status === "disconnected")) return "disconnected";
+  return "connected";
+}
+
 interface ToolSelectorProps {
   children: React.ReactNode;
 }
@@ -70,7 +77,9 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
   } = useTools();
 
   const [authenticatingId, setAuthenticatingId] = useState<string | null>(null);
+  const [editingServerKey, setEditingServerKey] = useState<string | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
+  const [editingServerName, setEditingServerName] = useState<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -150,20 +159,43 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
     }
   }, [pollOauthStatus, stopPolling]);
 
-  const mcpStatusMap = useMemo(() => {
-    return mcpServers.reduce(
-      (acc, s) => ({ ...acc, [s.id]: s }),
-      {} as Record<string, McpServerStatus>
-    );
+  const openEditServer = useCallback((server: McpServerStatus) => {
+    setEditingServerKey(server.id);
+    setEditingServerId(server.serverId ?? server.id);
+    setEditingServerName(server.toolsetName ?? server.serverId ?? server.id);
+  }, []);
+
+  const serversByToolset = useMemo(() => {
+    const map = new Map<string, McpServerStatus[]>();
+    mcpServers.forEach((server) => {
+      const toolsetId = server.toolsetId;
+      if (!toolsetId) return;
+      const list = map.get(toolsetId) ?? [];
+      list.push(server);
+      map.set(toolsetId, list);
+    });
+    return map;
   }, [mcpServers]);
 
-  const categories = useMemo(() => {
-    const categorySet = new Set([
-      ...Object.keys(groupedTools.byCategory),
-      ...mcpServers.map((s) => s.id),
+  const toolsetNameById = useMemo(() => {
+    const map: Record<string, string> = { ...groupedTools.toolsetNames };
+    mcpServers.forEach((server) => {
+      if (server.toolsetId && !map[server.toolsetId]) {
+        map[server.toolsetId] = server.toolsetName || server.toolsetId;
+      }
+    });
+    return map;
+  }, [groupedTools.toolsetNames, mcpServers]);
+
+  const toolsetIds = useMemo(() => {
+    const idSet = new Set([
+      ...Object.keys(groupedTools.byToolset),
+      ...mcpServers.map((s) => s.toolsetId).filter((id): id is string => !!id),
     ]);
-    return Array.from(categorySet).sort();
-  }, [groupedTools.byCategory, mcpServers]);
+    return Array.from(idSet).sort((a, b) =>
+      (toolsetNameById[a] || a).localeCompare(toolsetNameById[b] || b)
+    );
+  }, [groupedTools.byToolset, mcpServers, toolsetNameById]);
 
 
 
@@ -185,7 +217,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
           <div className="flex items-center justify-center py-6">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
-        ) : groupedTools.ungrouped.length === 0 && categories.length === 0 ? (
+        ) : groupedTools.ungrouped.length === 0 && toolsetIds.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
             No tools available
           </div>
@@ -209,39 +241,44 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
               );
             })}
 
-            {groupedTools.ungrouped.length > 0 && categories.length > 0 && (
+            {groupedTools.ungrouped.length > 0 && toolsetIds.length > 0 && (
               <DropdownMenuSeparator />
             )}
 
-            {categories.map((category) => {
-              const tools = groupedTools.byCategory[category] || [];
-              const mcpServer = mcpStatusMap[category] || null;
-              const mcpStatus = mcpServer?.status || null;
-              const isErrorOrLoading = mcpStatus === "error" || mcpStatus === "connecting" || mcpStatus === "disconnected";
+            {toolsetIds.map((toolsetId) => {
+              const tools = groupedTools.byToolset[toolsetId] || [];
+              const toolsetName = toolsetNameById[toolsetId] || toolsetId;
+              const servers = serversByToolset.get(toolsetId) || [];
+              const mcpStatus = getAggregateStatus(servers);
+              const primaryServer = servers.length === 1 ? servers[0] : null;
+              const isErrorOrLoading =
+                mcpStatus === "error" ||
+                mcpStatus === "connecting" ||
+                mcpStatus === "disconnected";
               const needsAuth = mcpStatus === "requires_auth";
-              const isUnavailable = isErrorOrLoading || needsAuth;
+              const isUnavailable = (isErrorOrLoading || needsAuth) && tools.length === 0;
               const activeCount = tools.filter((t) => activeToolIds.includes(t.id)).length;
 
               // Server needs authentication - show auth button
-              if (needsAuth && mcpServer) {
-                const isAuthenticating = authenticatingId === mcpServer.id;
-                const showOauthButton = mcpServer.authHint !== "token";
+              if (needsAuth && primaryServer && tools.length === 0) {
+                const isAuthenticating = authenticatingId === primaryServer.id;
+                const showOauthButton = primaryServer.authHint !== "token";
                 
                 return (
                   <DropdownMenuItem
-                    key={category}
+                    key={toolsetId}
                     className="gap-2 py-2 cursor-default"
                     onSelect={(e) => e.preventDefault()}
                   >
-                    <McpStatusIndicator status={mcpStatus} />
-                    <span className="flex-1 truncate">{formatCategoryName(category)}</span>
+                    {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
+                    <span className="flex-1 truncate">{toolsetName}</span>
                     {showOauthButton ? (
                       <Button
                         size="sm"
                         variant="default"
                         className="h-6 text-xs px-2"
                         disabled={isAuthenticating}
-                        onClick={(e) => handleAuthenticate(mcpServer, e)}
+                        onClick={(e) => handleAuthenticate(primaryServer, e)}
                       >
                         {isAuthenticating ? (
                           <>
@@ -263,7 +300,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          setEditingServerId(mcpServer.id);
+                          openEditServer(primaryServer);
                         }}
                       >
                         <Settings className="size-3 mr-1" />
@@ -278,7 +315,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
               if (isErrorOrLoading && tools.length === 0) {
                 return (
                   <DropdownMenuItem
-                    key={category}
+                    key={toolsetId}
                     disabled
                     className={cn(
                       "gap-2 py-2",
@@ -287,7 +324,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                     )}
                   >
                     {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
-                    <span className="flex-1 truncate">{formatCategoryName(category)}</span>
+                    <span className="flex-1 truncate">{toolsetName}</span>
                     <Switch
                       checked={false}
                       disabled
@@ -299,7 +336,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
               }
 
               return (
-                <DropdownMenuSub key={category}>
+                <DropdownMenuSub key={toolsetId}>
                   <DropdownMenuSubTrigger 
                     className={cn(
                       "gap-2 py-2",
@@ -308,7 +345,7 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                   >
                     {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
                     <span className="flex-1 truncate flex items-center gap-1.5">
-                      {formatCategoryName(category)}
+                      {toolsetName}
                     </span>
                     {tools.length > 0 && activeCount > 0 && (
                       <span className="text-xs text-muted-foreground mr-1">
@@ -316,16 +353,16 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
                       </span>
                     )}
                     <Switch
-                      checked={isToolsetActive(category)}
+                      checked={isToolsetActive(toolsetId)}
                       data-state={
-                        isToolsetPartiallyActive(category)
+                        isToolsetPartiallyActive(toolsetId)
                           ? "indeterminate"
-                          : isToolsetActive(category)
+                          : isToolsetActive(toolsetId)
                             ? "checked"
                             : "unchecked"
                       }
                       className={cn(isUnavailable && "opacity-50")}
-                      onCheckedChange={() => toggleToolset(category)}
+                      onCheckedChange={() => toggleToolset(toolsetId)}
                       onClick={(e) => e.stopPropagation()}
                       disabled={isUnavailable}
                     />
@@ -378,9 +415,17 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
       </DropdownMenuContent>
 
       <ServerFormDialog
-        open={!!editingServerId}
-        onOpenChange={(open) => !open && setEditingServerId(null)}
+        open={!!editingServerKey}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingServerKey(null);
+            setEditingServerId(null);
+            setEditingServerName(null);
+          }
+        }}
+        editingServerKey={editingServerKey}
         editingServerId={editingServerId}
+        editingServerName={editingServerName}
         onSuccess={refreshTools}
       />
     </DropdownMenu>

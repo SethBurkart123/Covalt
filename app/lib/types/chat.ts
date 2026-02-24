@@ -37,7 +37,8 @@ export interface ToolInfo {
   id: string;
   name?: string | null;
   description?: string | null;
-  category?: string | null;
+  toolsetId?: string | null;
+  toolsetName?: string | null;
 }
 
 export type AttachmentType = "image" | "file" | "audio" | "video";

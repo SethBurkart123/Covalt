@@ -29,6 +29,15 @@ A **tool provider** is a source of tools. Different providers have different mec
 
 Tool providers are implementation details - the toolset abstraction unifies them.
 
+### MCP Server Identity
+
+Each MCP server is uniquely identified by a **server key**: `{toolset_id}~{server_id}`. API responses expose:
+- `id` = server key (unique)
+- `serverId` = original server ID from manifest/UI
+- `toolsetId` = owning toolset
+
+This allows duplicate server IDs across different toolsets without collisions.
+
 ### Tool Override
 
 A **tool override** customizes how a tool appears and behaves without modifying the underlying provider. Overrides are stored per-toolset, meaning the same MCP server could have different configurations in different toolsets.
@@ -46,12 +55,12 @@ Overridable properties:
 Tool IDs follow a consistent format regardless of provider:
 
 ```
-{server_id}:{tool_name}    # MCP tools
+ mcp:{server_key}:{tool_name}  # MCP tools
 {toolset_id}:{tool_id}     # Python toolset tools
 {builtin_name}             # Built-in tools (no namespace)
 ```
 
-For MCP tools, the `server_id` is the ID of the MCP server entry, which for user_mcp toolsets equals the toolset ID.
+For MCP tools, the `server_key` is `{toolset_id}~{server_id}`. The original `server_id` from the manifest/UI is exposed separately as `serverId`. Legacy `mcp:{server_id}:{tool_name}` identifiers are accepted only when the `server_id` maps unambiguously to a single server.
 
 ## Data Model
 
@@ -119,7 +128,7 @@ For MCP tools, the `server_id` is the ID of the MCP server entry, which for user
    - Query enabled toolsets
    - For each MCP server: get discovered tools, apply overrides
    - For each Python tool: load from `tools` table, apply overrides
-2. Tool IDs remain consistent (`server_id:tool_name`)
+2. Tool IDs remain consistent (`mcp:{server_key}:{tool_name}`)
 3. Overrides affect display/behavior but not the model's view of tool IDs
 
 ## Key Design Decisions

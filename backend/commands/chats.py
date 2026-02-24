@@ -193,6 +193,8 @@ async def get_available_tools() -> AvailableToolsResponse:
             renderer=tool.get("renderer"),
             editable_args=tool.get("editable_args"),
             requires_confirmation=tool.get("requires_confirmation"),
+            toolsetId="builtin",
+            toolsetName="Built-in",
         )
         for tool in builtin_data
     ]
@@ -202,16 +204,19 @@ async def get_available_tools() -> AvailableToolsResponse:
 
     for server in mcp.get_servers():
         server_id = server["id"]
+        toolset_id = server.get("toolsetId") or ""
+        toolset_name = server.get("toolsetName") or toolset_id or server.get("serverId") or ""
         tools = [
             ToolInfo(
                 id=t["id"],
                 name=t["name"],
                 description=t.get("description"),
-                category=f"{server_id}",
                 inputSchema=t.get("inputSchema"),
                 renderer=t.get("renderer"),
                 editable_args=t.get("editable_args"),
                 requires_confirmation=t.get("requires_confirmation", True),
+                toolsetId=toolset_id or None,
+                toolsetName=toolset_name or None,
             )
             for t in mcp.get_server_tools(server_id)
         ]
@@ -235,8 +240,9 @@ async def get_available_tools() -> AvailableToolsResponse:
             id=tool["id"],
             name=tool.get("name"),
             description=tool.get("description"),
-            category=tool.get("toolset_name") or tool.get("toolset_id"),
             requires_confirmation=tool.get("requires_confirmation", False),
+            toolsetId=tool.get("toolset_id"),
+            toolsetName=tool.get("toolset_name") or tool.get("toolset_id"),
         )
         for tool in toolset_data
     ]

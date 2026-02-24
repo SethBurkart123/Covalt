@@ -5,6 +5,9 @@ import { getBaseUrl } from "@/python/_internal";
 
 export interface McpServerStatus {
   id: string;
+  serverId?: string;
+  toolsetId?: string;
+  toolsetName?: string;
   status: "connecting" | "connected" | "error" | "disconnected" | "requires_auth";
   error?: string | null;
   toolCount: number;

@@ -45,8 +45,10 @@ class ToolRegistry:
             return None
 
         mcp = get_mcp_manager()
+        server_key = mcp.resolve_server_key(server_id) or server_id
+        tool_id_full = f"mcp:{server_key}:{tool_name}"
         return next(
-            (t for t in mcp.get_server_tools(server_id) if t["name"] == tool_name),
+            (t for t in mcp.get_server_tools(server_key) if t.get("id") == tool_id_full),
             None,
         )
 
@@ -134,24 +136,52 @@ class ToolRegistry:
             if tool_name in self._tools:
                 result.append(self._tools[tool_name])
 
+        resolved_toolsets: set[str] = set()
         for server_id in include_mcp_toolsets:
+            resolved = mcp.resolve_server_key(server_id)
+            if resolved is None:
+                continue
+            resolved_toolsets.add(resolved)
+
+        resolved_blacklist: set[tuple[str, str]] = set()
+        for server_id, tool_name in blacklist:
+            resolved = mcp.resolve_server_key(server_id)
+            if resolved is None:
+                continue
+            resolved_blacklist.add((resolved, tool_name))
+
+        def _tool_name_from_info(tool_info: dict[str, Any]) -> str | None:
+            tool_id = tool_info.get("id") or ""
+            if isinstance(tool_id, str) and tool_id.startswith("mcp:"):
+                parts = tool_id.split(":", 2)
+                if len(parts) == 3:
+                    return parts[2]
+            return tool_info.get("name")
+
+        for server_id in resolved_toolsets:
             server_tools = mcp.get_server_tools(server_id)
             for tool_info in server_tools:
-                mcp_tool_name = tool_info["name"]
-                if (server_id, mcp_tool_name) not in blacklist:
+                mcp_tool_name = _tool_name_from_info(tool_info)
+                if not mcp_tool_name:
+                    continue
+                if (server_id, mcp_tool_name) not in resolved_blacklist:
                     fn = mcp.create_tool_function(server_id, mcp_tool_name)
                     if fn:
                         result.append(fn)
 
         added_mcp = {
-            (sid, tool_info["name"])
-            for sid in include_mcp_toolsets
+            (sid, _tool_name_from_info(tool_info))
+            for sid in resolved_toolsets
             for tool_info in mcp.get_server_tools(sid)
+            if _tool_name_from_info(tool_info)
         }
         for server_id, tool_name in include_mcp_tools:
-            if (server_id, tool_name) not in added_mcp:
-                if (server_id, tool_name) not in blacklist:
-                    fn = mcp.create_tool_function(server_id, tool_name)
+            resolved = mcp.resolve_server_key(server_id)
+            if resolved is None:
+                continue
+            if (resolved, tool_name) not in added_mcp:
+                if (resolved, tool_name) not in resolved_blacklist:
+                    fn = mcp.create_tool_function(resolved, tool_name)
                     if fn:
                         result.append(fn)
 

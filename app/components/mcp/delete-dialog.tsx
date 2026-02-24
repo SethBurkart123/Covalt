@@ -16,14 +16,16 @@ import {
 interface DeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  serverId: string;
+  serverKey: string;
+  serverLabel?: string;
   onSuccess: () => void;
 }
 
 export function DeleteDialog({
   open,
   onOpenChange,
-  serverId,
+  serverKey,
+  serverLabel,
   onSuccess,
 }: DeleteDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,7 +33,7 @@ export function DeleteDialog({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await removeMcpServer({ body: { id: serverId } });
+      await removeMcpServer({ body: { id: serverKey } });
       onSuccess();
       onOpenChange(false);
     } catch (error) {
@@ -48,7 +50,10 @@ export function DeleteDialog({
           <DialogTitle>Delete MCP Server</DialogTitle>
           <DialogDescription>
             Are you sure you want to delete{" "}
-            <span className="font-semibold text-foreground">{serverId}</span>?
+            <span className="font-semibold text-foreground">
+              {serverLabel ?? serverKey}
+            </span>
+            ?
             This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
