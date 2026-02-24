@@ -66,6 +66,7 @@ interface McpServerInspectorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   server: McpServerStatus | null;
+  serverLabel?: string;
   tools: MCPToolInfo[];
   onEdit: () => void;
   onDelete: () => void;
@@ -81,6 +82,7 @@ export function McpServerInspectorDialog({
   open,
   onOpenChange,
   server,
+  serverLabel,
   tools,
   onEdit,
   onDelete,
@@ -93,7 +95,16 @@ export function McpServerInspectorDialog({
   useEffect(() => {
     if (!open) {
       setSelectedToolId(null);
-    } else if (tools.length > 0 && !selectedToolId) {
+      return;
+    }
+    if (tools.length === 0) {
+      setSelectedToolId(null);
+      return;
+    }
+    const hasSelected = selectedToolId
+      ? tools.some((tool) => tool.id === selectedToolId)
+      : false;
+    if (!hasSelected) {
       setSelectedToolId(tools[0].id);
     }
   }, [open, tools, selectedToolId]);
@@ -118,6 +129,12 @@ export function McpServerInspectorDialog({
   }, [onOpenChange, onDelete]);
 
   if (!server) return null;
+  const serverId = server.serverId ?? server.id;
+  const displayName = serverLabel ?? serverId;
+  const showId = displayName !== serverId;
+  const selectedTool = selectedToolId
+    ? tools.find((tool) => tool.id === selectedToolId)
+    : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -130,16 +147,21 @@ export function McpServerInspectorDialog({
             <div className="min-w-0">
               <div className="flex items-center gap-2 mt-0.5">
                 <DialogTitle className="text-base font-semibold truncate">
-                  {server.id}
+                  {displayName}
                 </DialogTitle>
                 <StatusBadge
                   config={STATUS_CONFIG[server.status]}
                   animate={server.status === "connecting"}
                 />
               </div>
-              <span className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 {tools.length} tool{tools.length !== 1 ? "s" : ""}
-              </span>
+              </div>
+              {showId && (
+                <div className="text-xs text-muted-foreground">
+                  ID: {serverId}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -205,9 +227,9 @@ export function McpServerInspectorDialog({
             <ResizableHandle />
 
             <ResizablePanel defaultSize="75%" minSize="30%">
-              {selectedToolId ? (
+              {selectedTool ? (
                 <ToolTester
-                  tool={tools.find((t) => t.id === selectedToolId)!}
+                  tool={selectedTool}
                   serverId={server.id}
                   onTest={onTestTool}
                 />

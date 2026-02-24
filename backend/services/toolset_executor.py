@@ -82,7 +82,6 @@ class ToolsetExecutor:
                 "description": tool_meta.description,
                 "schema": tool_meta.schema,
                 "requires_confirmation": tool_meta.requires_confirmation,
-                "category": tool_meta.category,
             },
         )
 
@@ -104,16 +103,33 @@ class ToolsetExecutor:
                 .first()
             )
 
+            toolset_enabled = tool.toolset.enabled if tool.toolset else True
+            name = override.name_override if override and override.name_override else tool.name
+            description = (
+                override.description_override
+                if override and override.description_override
+                else tool.description
+            )
+            requires_confirmation = (
+                override.requires_confirmation
+                if override and override.requires_confirmation is not None
+                else tool.requires_confirmation
+            )
+            enabled = (
+                override.enabled if override is not None else tool.enabled
+            )
+
             metadata = {
                 "tool_id": tool.tool_id,
                 "toolset_id": tool.toolset_id,
-                "name": tool.name,
-                "description": tool.description,
+                "toolset_enabled": toolset_enabled,
+                "name": name,
+                "description": description,
                 "input_schema": json.loads(tool.input_schema)
                 if tool.input_schema
                 else None,
-                "requires_confirmation": tool.requires_confirmation,
-                "enabled": tool.enabled,
+                "requires_confirmation": requires_confirmation,
+                "enabled": enabled,
                 "entrypoint": tool.entrypoint,
                 "render_config": {
                     "renderer": override.renderer,
@@ -133,6 +149,11 @@ class ToolsetExecutor:
     ) -> Function | None:
         tool_info = self._get_tool_from_db(tool_id)
         if not tool_info:
+            return None
+        if not tool_info.get("enabled", True) or not tool_info.get(
+            "toolset_enabled", True
+        ):
+            logger.info(f"Tool {tool_id} is disabled")
             return None
 
         toolset_id = tool_info.get("toolset_id")
@@ -164,14 +185,17 @@ class ToolsetExecutor:
             )
 
         if decorator_data:
-            description = decorator_data.get("description") or tool_info.get(
+            description = tool_info.get("description") or decorator_data.get(
                 "description"
             )
             schema = decorator_data.get("schema") or {
                 "type": "object",
                 "properties": {},
             }
-            requires_confirmation = decorator_data.get("requires_confirmation", False)
+            requires_confirmation = tool_info.get(
+                "requires_confirmation",
+                decorator_data.get("requires_confirmation", False),
+            )
         else:
             description = tool_info.get("description")
             schema = tool_info.get("input_schema") or {
@@ -498,17 +522,44 @@ class ToolsetExecutor:
                 .all()
             )
 
-            return [
-                {
-                    "id": t.tool_id,
-                    "name": t.name,
-                    "description": t.description,
-                    "requires_confirmation": t.requires_confirmation,
-                    "toolset_id": t.toolset_id,
-                    "toolset_name": t.toolset.name if t.toolset else t.toolset_id,
-                }
-                for t in tools
-            ]
+            toolset_ids = {t.toolset_id for t in tools if t.toolset_id}
+            overrides = (
+                session.query(ToolOverride)
+                .filter(ToolOverride.toolset_id.in_(toolset_ids))
+                .all()
+            )
+            override_map = {o.tool_id: o for o in overrides}
+
+            results: list[dict[str, Any]] = []
+            for t in tools:
+                override = override_map.get(t.tool_id)
+                if override and override.enabled is False:
+                    continue
+
+                name = override.name_override if override and override.name_override else t.name
+                description = (
+                    override.description_override
+                    if override and override.description_override
+                    else t.description
+                )
+                requires_confirmation = (
+                    override.requires_confirmation
+                    if override and override.requires_confirmation is not None
+                    else t.requires_confirmation
+                )
+
+                results.append(
+                    {
+                        "id": t.tool_id,
+                        "name": name,
+                        "description": description,
+                        "requires_confirmation": requires_confirmation,
+                        "toolset_id": t.toolset_id,
+                        "toolset_name": t.toolset.name if t.toolset else t.toolset_id,
+                    }
+                )
+
+            return results
 
     def clear_cache(self) -> None:
         self._loaded_tools.clear()

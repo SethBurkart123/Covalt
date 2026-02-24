@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { CheckIcon, ChevronDownIcon, Loader2, KeyRound, Plug, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMcpStatus, type McpServerStatus } from '@/contexts/websocket-context';
@@ -9,6 +9,7 @@ import {
   getMcpOauthStatus,
   reconnectMcpServer,
 } from '@/python/api';
+import { buildMcpServerLabelMap, getMcpServerLabel } from '@/lib/mcp';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -150,6 +151,7 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
   );
 
   const selectedServer = mcpServers.find(s => s.id === value);
+  const serverLabels = useMemo(() => buildMcpServerLabelMap(mcpServers), [mcpServers]);
   const hasNoServers = mcpServers.length === 0;
 
   return (
@@ -167,7 +169,7 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
           {selectedServer ? (
             <span className="flex items-center gap-1.5 min-w-0">
               {getStatusIcon(selectedServer.status)}
-              <span className="truncate">{selectedServer.id}</span>
+              <span className="truncate">{getMcpServerLabel(selectedServer, serverLabels)}</span>
             </span>
           ) : (
             <span className="text-muted-foreground">Select server...</span>
@@ -193,7 +195,7 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
                 {connectedServers.map((server) => (
                   <CommandItem
                     key={server.id}
-                    value={server.id}
+                    value={getMcpServerLabel(server, serverLabels)}
                     onSelect={() => {
                       onChange(server.id);
                       setOpen(false);
@@ -202,7 +204,7 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
                   >
                     <span className="flex items-center gap-2 flex-1 min-w-0">
                       {getStatusIcon(server.status)}
-                      <span className="truncate">{server.id}</span>
+                      <span className="truncate">{getMcpServerLabel(server, serverLabels)}</span>
                       <span className="text-xs text-muted-foreground ml-auto">
                         {server.toolCount} tools
                       </span>
@@ -220,17 +222,18 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
                 {authRequiredServers.map((server) => {
                   const isAuthenticating = authenticatingId === server.id;
                   const showOauthButton = server.authHint !== 'token';
+                  const serverLabel = getMcpServerLabel(server, serverLabels);
                   
                   return (
                     <CommandItem
                       key={server.id}
-                      value={server.id}
+                      value={serverLabel}
                       className="cursor-default flex items-center justify-between"
                       onSelect={() => {}}
                     >
                       <span className="flex items-center gap-2 min-w-0">
                         {getStatusIcon(server.status)}
-                        <span className="truncate">{server.id}</span>
+                        <span className="truncate">{serverLabel}</span>
                       </span>
                       {showOauthButton && (
                         <Button
@@ -269,18 +272,19 @@ export function McpServerPicker({ value, onChange, compact }: McpServerPickerPro
                 {otherServers.map((server) => {
                   const isReconnecting = reconnectingId === server.id;
                   const canRetry = server.status === 'error' || server.status === 'disconnected';
+                  const serverLabel = getMcpServerLabel(server, serverLabels);
 
                   return (
                     <CommandItem
                       key={server.id}
-                      value={server.id}
+                      value={serverLabel}
                       disabled={!canRetry}
                       className={cn(!canRetry && "opacity-50", "flex items-center justify-between")}
                       onSelect={() => {}}
                     >
                       <span className="flex items-center gap-2 min-w-0">
                         {getStatusIcon(server.status)}
-                        <span className="truncate opacity-50">{server.id}</span>
+                        <span className="truncate opacity-50">{serverLabel}</span>
                       </span>
                       {canRetry ? (
                         <Button

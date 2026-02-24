@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,48 @@ ServerStatus = Literal[
 ]
 OAuthStatus = Literal["none", "pending", "authenticated", "error"]
 
+SERVER_KEY_DELIMITER = "~"
+
+
+def build_server_key(toolset_id: str, server_id: str) -> str:
+    if SERVER_KEY_DELIMITER in toolset_id:
+        raise ValueError(f"Toolset id cannot contain '{SERVER_KEY_DELIMITER}'")
+    if SERVER_KEY_DELIMITER in server_id:
+        raise ValueError(f"Server id cannot contain '{SERVER_KEY_DELIMITER}'")
+    return f"{toolset_id}{SERVER_KEY_DELIMITER}{server_id}"
+
+
+def split_server_key(server_key: str) -> tuple[str, str]:
+    if SERVER_KEY_DELIMITER not in server_key:
+        raise ValueError("Invalid server key format")
+    toolset_id, server_id = server_key.split(SERVER_KEY_DELIMITER, 1)
+    return toolset_id, server_id
+
+
+def _resolve_env_vars(env: dict[str, str] | None, server_label: str) -> dict[str, str] | None:
+    if not env:
+        return env
+    resolved: dict[str, str] = {}
+    for key, value in env.items():
+        if not isinstance(value, str):
+            resolved[key] = value  # type: ignore[assignment]
+            continue
+        matches = re.findall(r"\$\{([A-Z0-9_]+)\}", value)
+        if not matches:
+            resolved[key] = value
+            continue
+        resolved_value = value
+        for var_name in matches:
+            env_value = os.environ.get(var_name)
+            if env_value is None:
+                logger.warning(
+                    f"MCP server {server_label} env var '{var_name}' not set; "
+                    "leaving placeholder as-is"
+                )
+                continue
+            resolved_value = resolved_value.replace(f"${{{var_name}}}", env_value)
+        resolved[key] = resolved_value
+    return resolved
 
 def _extract_error_message(e: BaseException) -> str:
     if isinstance(e, BaseExceptionGroup):
@@ -43,8 +86,10 @@ AUTO_RECONNECT_DELAYS = [1, 3, 10, 15, 60]
 @dataclass
 class MCPServerState:
     id: str
+    server_id: str
     server_type: str
     toolset_id: str
+    toolset_name: str | None = None
     enabled: bool = True
     command: str | None = None
     args: list[str] | None = None
@@ -67,10 +112,13 @@ class MCPServerState:
 
 
 def _db_row_to_state(row: ToolsetMcpServer) -> MCPServerState:
+    server_key = build_server_key(row.toolset_id, row.id)
     return MCPServerState(
-        id=row.id,
+        id=server_key,
+        server_id=row.id,
         server_type=row.server_type,
         toolset_id=row.toolset_id,
+        toolset_name=row.toolset.name if getattr(row, "toolset", None) else None,
         enabled=row.enabled,
         command=row.command,
         args=json.loads(row.args) if row.args else None,
@@ -133,19 +181,20 @@ class MCPManager:
                 .all()
             )
             for row in rows:
-                servers[row.id] = _db_row_to_state(row)
+                state = _db_row_to_state(row)
+                servers[state.id] = state
         return servers
 
     def _save_server_to_db(self, state: MCPServerState) -> None:
         with db_session() as sess:
             existing = (
                 sess.query(ToolsetMcpServer)
-                .filter(ToolsetMcpServer.id == state.id)
+                .filter(ToolsetMcpServer.id == state.server_id)
+                .filter(ToolsetMcpServer.toolset_id == state.toolset_id)
                 .first()
             )
             if existing:
                 existing.server_type = state.server_type
-                existing.toolset_id = state.toolset_id
                 existing.enabled = state.enabled
                 existing.command = state.command
                 existing.args = json.dumps(state.args) if state.args else None
@@ -156,7 +205,7 @@ class MCPManager:
                 existing.requires_confirmation = state.requires_confirmation
             else:
                 new_server = ToolsetMcpServer(
-                    id=state.id,
+                    id=state.server_id,
                     toolset_id=state.toolset_id,
                     server_type=state.server_type,
                     enabled=state.enabled,
@@ -172,10 +221,12 @@ class MCPManager:
                 sess.add(new_server)
             sess.commit()
 
-    def _delete_server_from_db(self, server_id: str) -> None:
+    def _delete_server_from_db(self, server_key: str) -> None:
+        toolset_id, server_id = split_server_key(server_key)
         with db_session() as sess:
             sess.query(ToolsetMcpServer).filter(
-                ToolsetMcpServer.id == server_id
+                ToolsetMcpServer.id == server_id,
+                ToolsetMcpServer.toolset_id == toolset_id,
             ).delete()
             sess.commit()
 
@@ -199,6 +250,35 @@ class MCPManager:
                     "enabled": row.enabled,
                 }
         return overrides
+
+    def _get_toolset_name(self, toolset_id: str) -> str | None:
+        with db_session() as sess:
+            toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
+            return toolset.name if toolset else None
+
+    def resolve_server_key(self, server_id_or_key: str) -> str | None:
+        if server_id_or_key in self._servers:
+            return server_id_or_key
+
+        matches = [
+            key
+            for key, state in self._servers.items()
+            if state.server_id == server_id_or_key
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(
+                f"Ambiguous MCP server id '{server_id_or_key}'. "
+                "Use the toolset-qualified server key."
+            )
+        return None
+
+    def get_server_state(self, server_key: str) -> MCPServerState | None:
+        return self._servers.get(server_key)
+
+    def _format_server_label(self, state: MCPServerState) -> str:
+        return f"{state.toolset_id}/{state.server_id}"
 
     async def initialize(self) -> None:
         async with self._lock:
@@ -343,38 +423,40 @@ class MCPManager:
         state.tools = []
         await self._connect_server(server_id)
 
-    async def _connect_server(self, server_id: str) -> None:
-        state = self._servers.get(server_id)
+    async def _connect_server(self, server_key: str) -> None:
+        state = self._servers.get(server_key)
         if not state:
             return
 
-        self._set_status(server_id, "connecting")
+        self._set_status(server_key, "connecting")
+        server_label = self._format_server_label(state)
 
         try:
             if state.command:
-                await self._connect_stdio(server_id)
+                await self._connect_stdio(server_key)
             elif state.url:
                 if state.server_type == "sse":
-                    await self._connect_sse(server_id)
+                    await self._connect_sse(server_key)
                 else:
-                    await self._connect_streamable_http(server_id)
+                    await self._connect_streamable_http(server_key)
             else:
                 raise ValueError("Server must have 'command' or 'url'")
 
         except Exception as e:
-            logger.error(f"Failed to connect to MCP server {server_id}: {e}")
-            self._set_status(server_id, "error", _extract_error_message(e))
+            logger.error(f"Failed to connect to MCP server {server_label}: {e}")
+            self._set_status(server_key, "error", _extract_error_message(e))
             state.session = None
             state.tools = []
 
-    async def _connect_stdio(self, server_id: str) -> None:
-        state = self._servers[server_id]
+    async def _connect_stdio(self, server_key: str) -> None:
+        state = self._servers[server_key]
         state._connection_event.clear()
+        server_label = self._format_server_label(state)
 
         params = StdioServerParameters(
             command=state.command or "",
             args=state.args or [],
-            env=state.env,
+            env=_resolve_env_vars(state.env, server_label),
             cwd=state.cwd,
         )
 
@@ -399,7 +481,7 @@ class MCPManager:
                         text = line.decode(errors="replace").rstrip("\n")
                         if text:
                             captured_stderr.append(text)
-                            logger.debug(f"MCP {server_id} stderr: {text}")
+                            logger.debug(f"MCP {server_label} stderr: {text}")
                 except Exception:
                     pass
                 finally:
@@ -414,9 +496,9 @@ class MCPManager:
                         state.session = session
                         tools_result = await session.list_tools()
                         state.tools = tools_result.tools
-                        self._set_status(server_id, "connected")
+                        self._set_status(server_key, "connected")
                         logger.info(
-                            f"MCP server {server_id} connected with "
+                            f"MCP server {server_label} connected with "
                             f"{len(state.tools)} tool(s)"
                         )
                         state._connection_event.set()
@@ -431,7 +513,7 @@ class MCPManager:
                                     if captured_stderr
                                     else "Connection lost"
                                 )
-                                self._set_status(server_id, "error", error_msg)
+                                self._set_status(server_key, "error", error_msg)
                                 break
 
             except asyncio.CancelledError:
@@ -442,8 +524,8 @@ class MCPManager:
                     if captured_stderr
                     else _extract_error_message(e)
                 )
-                logger.error(f"MCP connection {server_id} error: {error_msg}")
-                self._set_status(server_id, "error", error_msg)
+                logger.error(f"MCP connection {server_label} error: {error_msg}")
+                self._set_status(server_key, "error", error_msg)
                 state.session = None
                 state._connection_event.set()
             finally:
@@ -462,11 +544,12 @@ class MCPManager:
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=5.0)
         except asyncio.TimeoutError:
-            logger.warning(f"MCP server {server_id} connection timeout")
+            logger.warning(f"MCP server {server_label} connection timeout")
 
-    async def _connect_sse(self, server_id: str) -> None:
-        state = self._servers[server_id]
+    async def _connect_sse(self, server_key: str) -> None:
+        state = self._servers[server_key]
         state._connection_event.clear()
+        server_label = self._format_server_label(state)
 
         async def run_connection():
             try:
@@ -479,9 +562,9 @@ class MCPManager:
                         state.session = session
                         tools_result = await session.list_tools()
                         state.tools = tools_result.tools
-                        self._set_status(server_id, "connected")
+                        self._set_status(server_key, "connected")
                         logger.info(
-                            f"MCP server {server_id} (SSE) connected with "
+                            f"MCP server {server_label} (SSE) connected with "
                             f"{len(state.tools)} tool(s)"
                         )
                         state._connection_event.set()
@@ -492,7 +575,7 @@ class MCPManager:
                                 await asyncio.wait_for(session.send_ping(), timeout=5.0)
                             except Exception as e:
                                 self._set_status(
-                                    server_id,
+                                    server_key,
                                     "error",
                                     _extract_error_message(e),
                                 )
@@ -501,8 +584,8 @@ class MCPManager:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.error(f"MCP SSE connection {server_id} error: {e}")
-                self._set_status(server_id, "error", _extract_error_message(e))
+                logger.error(f"MCP SSE connection {server_label} error: {e}")
+                self._set_status(server_key, "error", _extract_error_message(e))
                 state.session = None
                 state._connection_event.set()
 
@@ -511,14 +594,15 @@ class MCPManager:
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=5.0)
         except asyncio.TimeoutError:
-            logger.warning(f"MCP server {server_id} connection timeout")
+            logger.warning(f"MCP server {server_label} connection timeout")
 
-    async def _connect_streamable_http(self, server_id: str) -> None:
-        state = self._servers[server_id]
+    async def _connect_streamable_http(self, server_key: str) -> None:
+        state = self._servers[server_key]
         state._connection_event.clear()
+        server_label = self._format_server_label(state)
 
         oauth = get_oauth_manager()
-        has_oauth_tokens = oauth.has_valid_tokens(server_id)
+        has_oauth_tokens = oauth.has_valid_tokens(state.server_id, state.toolset_id)
 
         async def require_auth() -> bool:
             if not state.url:
@@ -529,7 +613,7 @@ class MCPManager:
             state.oauth_status = "none"
             state.oauth_provider_name = probe.get("providerName")
             state.auth_hint = probe.get("authHint")
-            self._set_status(server_id, "requires_auth")
+            self._set_status(server_key, "requires_auth")
             state._connection_event.set()
             return True
 
@@ -540,7 +624,7 @@ class MCPManager:
 
                 if has_oauth_tokens:
                     oauth_provider = oauth.create_oauth_provider(
-                        server_id, state.url or ""
+                        state.server_id, state.toolset_id, state.url or ""
                     )
                     state.oauth_status = "authenticated"
                     async with httpx.AsyncClient(
@@ -549,14 +633,14 @@ class MCPManager:
                         async with streamable_http_client(
                             state.url or "", http_client=http_client
                         ) as (read, write, _):
-                            await self._run_mcp_session(server_id, state, read, write)
+                            await self._run_mcp_session(server_key, state, read, write)
                 else:
                     async with streamable_http_client(state.url or "") as (
                         read,
                         write,
                         _,
                     ):
-                        await self._run_mcp_session(server_id, state, read, write)
+                        await self._run_mcp_session(server_key, state, read, write)
 
             except asyncio.CancelledError:
                 raise
@@ -569,8 +653,8 @@ class MCPManager:
                 ):
                     return
 
-                logger.error(f"MCP HTTP connection {server_id} error: {e}")
-                self._set_status(server_id, "error", _extract_error_message(e))
+                logger.error(f"MCP HTTP connection {server_label} error: {e}")
+                self._set_status(server_key, "error", _extract_error_message(e))
                 state.session = None
                 state._connection_event.set()
 
@@ -579,19 +663,19 @@ class MCPManager:
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            logger.warning(f"MCP server {server_id} connection timeout")
+            logger.warning(f"MCP server {server_label} connection timeout")
 
     async def _run_mcp_session(
-        self, server_id: str, state: MCPServerState, read: Any, write: Any
+        self, server_key: str, state: MCPServerState, read: Any, write: Any
     ) -> None:
         async with ClientSession(read, write) as session:
             await session.initialize()
             state.session = session
             tools_result = await session.list_tools()
             state.tools = tools_result.tools
-            self._set_status(server_id, "connected")
+            self._set_status(server_key, "connected")
             logger.info(
-                f"MCP server {server_id} (HTTP) connected with "
+                f"MCP server {self._format_server_label(state)} (HTTP) connected with "
                 f"{len(state.tools)} tool(s)"
             )
             state._connection_event.set()
@@ -601,11 +685,12 @@ class MCPManager:
                 try:
                     await asyncio.wait_for(session.send_ping(), timeout=5.0)
                 except Exception as e:
-                    self._set_status(server_id, "error", _extract_error_message(e))
+                    self._set_status(server_key, "error", _extract_error_message(e))
                     break
 
     async def reconnect(self, server_id: str) -> None:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state:
             raise ValueError(f"Unknown server: {server_id}")
 
@@ -619,18 +704,19 @@ class MCPManager:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        self._set_status(server_id, "disconnected")
+        self._set_status(server_key, "disconnected")
         state.session = None
         state.tools = []
 
-        await self._connect_server(server_id)
+        await self._connect_server(server_key)
 
     async def disconnect(self, server_id: str) -> None:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state:
             return
 
-        self._set_status(server_id, "disconnected")
+        self._set_status(server_key, "disconnected")
 
         if state._cleanup_task and not state._cleanup_task.done():
             state._cleanup_task.cancel()
@@ -668,6 +754,9 @@ class MCPManager:
             result.append(
                 {
                     "id": server_id,
+                    "serverId": state.server_id,
+                    "toolsetId": state.toolset_id,
+                    "toolsetName": state.toolset_name or state.toolset_id,
                     "status": state.status,
                     "error": state.error,
                     "toolCount": len(state.tools),
@@ -683,7 +772,8 @@ class MCPManager:
     def get_server_config(
         self, server_id: str, sanitize: bool = True
     ) -> dict[str, Any] | None:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state:
             return None
 
@@ -694,7 +784,8 @@ class MCPManager:
         return config
 
     def get_server_tools(self, server_id: str) -> list[dict[str, Any]]:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state or state.status != "connected":
             return []
 
@@ -702,14 +793,14 @@ class MCPManager:
 
         result = []
         for tool in state.tools:
-            tool_id = f"{server_id}:{tool.name}"
-            overrides = tool_overrides.get(tool_id, {})
+            override_id = f"{state.server_id}:{tool.name}"
+            overrides = tool_overrides.get(override_id, {})
 
             if not overrides.get("enabled", True):
                 continue
 
             tool_info = {
-                "id": f"mcp:{tool_id}",
+                "id": f"mcp:{server_key}:{tool.name}",
                 "name": overrides.get("name_override") or tool.name,
                 "description": overrides.get("description_override")
                 or tool.description,
@@ -731,7 +822,8 @@ class MCPManager:
         return all_tools
 
     def get_mcp_tool(self, server_id: str, tool_name: str) -> MCPTool | None:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state:
             return None
 
@@ -741,35 +833,36 @@ class MCPManager:
         return None
 
     def create_tool_function(self, server_id: str, tool_name: str) -> Function | None:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state or state.status != "connected":
             return None
 
-        mcp_tool = self.get_mcp_tool(server_id, tool_name)
+        mcp_tool = self.get_mcp_tool(server_key, tool_name)
         if not mcp_tool:
             return None
 
         tool_overrides = self._get_tool_overrides(state.toolset_id)
-        tool_id = f"{server_id}:{tool_name}"
-        overrides = tool_overrides.get(tool_id, {})
+        override_id = f"{state.server_id}:{tool_name}"
+        overrides = tool_overrides.get(override_id, {})
 
         if not overrides.get("enabled", True):
             return None
 
         async def mcp_tool_entrypoint(**kwargs: Any) -> str:
             try:
-                return await self.call_tool(server_id, tool_name, kwargs)
+                return await self.call_tool(server_key, tool_name, kwargs)
             except Exception as e:
-                logger.error(f"MCP tool {server_id}:{tool_name} error: {e}")
+                logger.error(f"MCP tool {server_key}:{tool_name} error: {e}")
                 return f"Error calling tool: {e}"
 
-        mcp_tool_entrypoint.__name__ = tool_id
+        mcp_tool_entrypoint.__name__ = f"{server_key}:{tool_name}"
         mcp_tool_entrypoint.__doc__ = (
             overrides.get("description_override") or mcp_tool.description
         )
 
         return Function(
-            name=tool_id,
+            name=f"{server_key}:{tool_name}",
             description=overrides.get("description_override") or mcp_tool.description,
             parameters=mcp_tool.inputSchema,
             entrypoint=mcp_tool_entrypoint,
@@ -782,13 +875,14 @@ class MCPManager:
     async def call_tool(
         self, server_id: str, tool_name: str, args: dict[str, Any]
     ) -> str:
-        state = self._servers.get(server_id)
+        server_key = self.resolve_server_key(server_id) or server_id
+        state = self._servers.get(server_key)
         if not state:
             raise ValueError(f"Unknown MCP server: {server_id}")
 
         if state.status != "connected" or not state.session:
             raise RuntimeError(
-                f"MCP server {server_id} is not connected (status: {state.status})"
+                f"MCP server {server_key} is not connected (status: {state.status})"
             )
 
         try:
@@ -808,25 +902,28 @@ class MCPManager:
             return str(result)
 
         except Exception as e:
-            logger.error(f"MCP tool call failed: {server_id}:{tool_name}: {e}")
+            logger.error(f"MCP tool call failed: {server_key}:{tool_name}: {e}")
             if "connection" in str(e).lower() or "closed" in str(e).lower():
-                self._set_status(server_id, "error", _extract_error_message(e))
+                self._set_status(server_key, "error", _extract_error_message(e))
             raise
 
     async def add_server(
         self, server_id: str, config: dict[str, Any], toolset_id: str
     ) -> None:
-        if server_id in self._servers:
-            raise ValueError(f"Server {server_id} already exists")
+        server_key = build_server_key(toolset_id, server_id)
+        if server_key in self._servers:
+            raise ValueError(f"Server {server_id} already exists in toolset {toolset_id}")
 
         server_type = config.get("type", "stdio")
         if "transport" in config:
             server_type = config["transport"]
 
         state = MCPServerState(
-            id=server_id,
+            id=server_key,
+            server_id=server_id,
             server_type=server_type,
             toolset_id=toolset_id,
+            toolset_name=self._get_toolset_name(toolset_id),
             enabled=True,
             command=config.get("command"),
             args=config.get("args"),
@@ -838,23 +935,24 @@ class MCPManager:
             status="connecting",
         )
 
-        self._servers[server_id] = state
+        self._servers[server_key] = state
         self._save_server_to_db(state)
-        self._notify_status_change(server_id, "connecting", None, 0)
+        self._notify_status_change(server_key, "connecting", None, 0)
 
-        await self._connect_server(server_id)
+        await self._connect_server(server_key)
 
     async def update_server(self, server_id: str, config: dict[str, Any]) -> None:
-        if server_id not in self._servers:
+        server_key = self.resolve_server_key(server_id) or server_id
+        if server_key not in self._servers:
             raise ValueError(f"Unknown server: {server_id}")
 
-        await self.disconnect(server_id)
+        await self.disconnect(server_key)
 
         server_type = config.get("type", "stdio")
         if "transport" in config:
             server_type = config["transport"]
 
-        state = self._servers[server_id]
+        state = self._servers[server_key]
         state.server_type = server_type
         state.command = config.get("command")
         state.args = config.get("args")
@@ -865,15 +963,43 @@ class MCPManager:
         state.requires_confirmation = config.get("requiresConfirmation", True)
 
         self._save_server_to_db(state)
-        await self._connect_server(server_id)
+        await self._connect_server(server_key)
 
     async def remove_server(self, server_id: str) -> None:
-        if server_id not in self._servers:
+        server_key = self.resolve_server_key(server_id) or server_id
+        if server_key not in self._servers:
             return
 
-        await self.disconnect(server_id)
-        del self._servers[server_id]
-        self._delete_server_from_db(server_id)
+        await self.disconnect(server_key)
+        del self._servers[server_key]
+        self._delete_server_from_db(server_key)
+
+    async def rename_server(
+        self,
+        old_server_key: str,
+        new_toolset_id: str,
+        new_server_id: str,
+        new_toolset_name: str | None = None,
+    ) -> str:
+        if old_server_key not in self._servers:
+            raise ValueError(f"Unknown server: {old_server_key}")
+
+        await self.disconnect(old_server_key)
+
+        state = self._servers.pop(old_server_key)
+        new_server_key = build_server_key(new_toolset_id, new_server_id)
+        state.id = new_server_key
+        state.server_id = new_server_id
+        state.toolset_id = new_toolset_id
+        if new_toolset_name is not None:
+            state.toolset_name = new_toolset_name
+        state.status = "disconnected"
+        state.error = None
+
+        self._servers[new_server_key] = state
+        self._save_server_to_db(state)
+        self._notify_status_change(new_server_key, "disconnected", None, 0)
+        return new_server_key
 
     async def shutdown(self) -> None:
         for server_id in list(self._servers.keys()):

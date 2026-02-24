@@ -54,26 +54,30 @@ Logical tool registry (builtin + toolset tools).
 | `toolset_id` | TEXT FK NULL | NULL for builtin tools |
 | `name` | TEXT | Display name (can be overridden by YAML) |
 | `description` | TEXT | Tool description (can be overridden by YAML) |
-| `category` | TEXT | Grouping category |
 | `input_schema` | TEXT | DEPRECATED - schema is now inferred from @tool decorator |
 | `requires_confirmation` | BOOL | Needs user approval before run |
 | `enabled` | BOOL | Tool is active |
 | `entrypoint` | TEXT | For python tools: `module:function` |
 
-### 1.4 `tool_render_configs` table
+### 1.4 `tool_overrides` table
 
-Renderer configuration per tool.
+Override configuration per tool (per toolset). This is the canonical place for renderer overrides and other tool metadata tweaks.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `tool_id` | TEXT FK | References tools.tool_id |
+| `id` | TEXT PK | Override row id |
+| `toolset_id` | TEXT FK | References toolsets.id |
+| `tool_id` | TEXT | Tool identifier within toolset (`toolset_id:tool_id` for Python tools, `server_id:tool_name` for MCP) |
 | `renderer` | TEXT | `code`, `document`, `html`, `frame` |
-| `config` | TEXT | JSON config object |
-| `priority` | INT | Higher wins (for overrides) |
+| `renderer_config` | TEXT | JSON config object |
+| `name_override` | TEXT | Optional display name override |
+| `description_override` | TEXT | Optional description override |
+| `requires_confirmation` | BOOL | Optional override for confirmation |
+| `enabled` | BOOL | Disable tool when false |
 
-PK: (`tool_id`, `priority`)
+Unique: (`toolset_id`, `tool_id`)
 
-Config schema per renderer type (stored as JSON):
+`renderer_config` schema per renderer type (stored as JSON):
 
 ```yaml
 # code renderer
@@ -91,6 +95,8 @@ data: "$return"                     # JSON injected as window.__TOOL_DATA__
 
 # frame renderer
 url: "http://localhost:$return.port"
+# or
+port: "$return.port"
 ```
 
 ### 1.5 `toolset_mcp_servers` table
@@ -99,14 +105,20 @@ MCP servers declared by toolsets.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| `id` | TEXT | MCP server identifier |
 | `toolset_id` | TEXT FK | References toolsets.id |
-| `server_id` | TEXT | MCP server identifier |
-| `config` | TEXT | JSON config (command/args/url/etc) |
-| `auto_enabled` | BOOL | Enable on install |
+| `server_type` | TEXT | `stdio`, `sse`, `streamable-http` |
+| `enabled` | BOOL | Enable/disable server |
+| `command` | TEXT | Command for stdio servers |
+| `args` | TEXT | JSON args array |
+| `cwd` | TEXT | Working directory |
+| `url` | TEXT | URL for HTTP/SSE servers |
+| `headers` | TEXT | JSON headers map |
+| `env` | TEXT | JSON env map |
+| `requires_confirmation` | BOOL | Default confirmation for tools |
+| `created_at` | TEXT | ISO timestamp |
 
-PK: (`toolset_id`, `server_id`)
-
-On toolset install, these are synced to `mcp_servers` table.
+PK: (`toolset_id`, `id`)
 
 ### 1.6 `workspace_manifests` table
 
@@ -250,6 +262,17 @@ tools:
       language: auto
       editable: true
 
+# Canonical overrides (preferred over tools[].renderer)
+tool_overrides:
+  - tool_id: analyze_data
+    renderer: html
+    renderer_config:
+      artifact: artifacts/results.html
+      data: "$return"
+  - tool_id: my-mcp-server:search
+    name_override: Web Search
+    requires_confirmation: false
+
 # Optional: MCP servers to install
 mcp_servers:
   - id: my-mcp-server
@@ -259,6 +282,10 @@ mcp_servers:
       API_KEY: "${MY_API_KEY}"  # Reference environment variable
 ```
 
+Notes:
+- `tool_overrides` is the canonical override mechanism.
+- `tools[].renderer` is a legacy alias for renderer overrides only.
+
 ### 3.3 Import Process
 
 1. Validate manifest schema
@@ -266,13 +293,13 @@ mcp_servers:
 3. Unpack files to `data/toolsets/<toolset_id>/`
 4. Create `toolset_files` rows with hashes
 5. Create `tools` rows for each declared tool
-6. Create `tool_render_configs` rows
-7. If `mcp_servers` declared: create `toolset_mcp_servers` rows and sync to `mcp_servers`
+6. Create `tool_overrides` rows (including legacy `tools[].renderer`)
+7. If `mcp_servers` declared: create `toolset_mcp_servers` rows and reload MCPManager
 8. Initialize MCP connections for new servers
 
 ### 3.4 Export Process
 
-1. Query `toolsets`, `toolset_files`, `tools`, `tool_render_configs`, `toolset_mcp_servers`
+1. Query `toolsets`, `toolset_files`, `tools`, `tool_overrides`, `toolset_mcp_servers`
 2. Regenerate `toolset.yaml` from DB state
 3. Pack stored files into ZIP
 4. Strip sensitive data (env values become `${VAR}` placeholders)
@@ -291,7 +318,7 @@ Tools are discovered by their `entrypoint` in the `tools` table:
 
 Tools are defined using the `@tool` decorator from `covalt_toolset`. The decorator:
 - Infers JSON Schema from type hints (including Pydantic models)
-- Captures metadata (name, description, requires_confirmation, category)
+- Captures metadata (name, description, requires_confirmation)
 - Makes the function discoverable by the executor
 
 Context (workspace, chat_id, etc.) is accessed via `get_context()` instead of function arguments.
@@ -302,7 +329,6 @@ from covalt_toolset import tool, get_context
 @tool(
     name="Analyze Data",
     description="Analyze a data file and return statistics",
-    category="analysis",
 )
 def analyze_data(filename: str) -> dict:
     """
@@ -376,7 +402,7 @@ def transform_file(config: TransformConfig) -> dict:
 | `code` | Code editor/viewer | `file` or `content`, `language`, `editable` |
 | `document` | Markdown/text editor | `file` or `content`, `editable` |
 | `html` | HTML template with data | `artifact`, `data` |
-| `frame` | Iframe embed | `url` (future) |
+| `frame` | Iframe embed | `url` or `port` |
 
 ### 5.2 Interpolation
 
@@ -403,10 +429,10 @@ def generate_render_plan(
     result: dict,
     context: dict  # chat_id, workspace, toolset paths
 ) -> dict:
-    config = get_tool_render_config(tool_id)
+    override = get_tool_override(tool_id)
     return {
-        "renderer": config.renderer,
-        "config": interpolate(config.config, args, result, context)
+        "renderer": override.renderer,
+        "config": interpolate(override.renderer_config, args, result, context)
     }
 ```
 
@@ -440,7 +466,6 @@ Toolsets can declare MCP servers in their manifest. On install:
 1. Parse `mcp_servers` section
 2. For each server:
    - Create `toolset_mcp_servers` row
-   - Upsert `mcp_servers` row (existing `McpServer` model)
    - Set `enabled = true` (auto-enable per spec)
 3. Trigger MCPManager reload/reconnect
 
@@ -456,7 +481,6 @@ MCP configs can reference environment variables:
 When uninstalling a toolset:
 1. Disconnect and remove MCP servers declared by that toolset
 2. Remove `toolset_mcp_servers` rows
-3. Remove corresponding `mcp_servers` rows (if not shared)
 
 ---
 
@@ -531,7 +555,7 @@ When uninstalling a toolset:
 ## 9. Implementation Milestones
 
 ### Milestone 1: Foundation
-- [ ] DB schema (toolsets, tools, tool_render_configs, workspace_manifests, tool_calls)
+- [ ] DB schema (toolsets, tools, tool_overrides, workspace_manifests, tool_calls)
 - [ ] Workspace CAS implementation (store, materialize, snapshot)
 - [ ] Basic toolset import (parse manifest, store files, register tools)
 
@@ -569,7 +593,6 @@ tools:
     name: Write File
     description: Write content to a file in the workspace
     entrypoint: tools.files:write_file
-    category: files
     input_schema:
       type: object
       properties:
@@ -590,7 +613,6 @@ tools:
     name: Read File
     description: Read a file from the workspace
     entrypoint: tools.files:read_file
-    category: files
     input_schema:
       type: object
       properties:
@@ -606,7 +628,6 @@ tools:
     name: Run Command
     description: Run a shell command in the workspace
     entrypoint: tools.shell:run_command
-    category: shell
     input_schema:
       type: object
       properties:

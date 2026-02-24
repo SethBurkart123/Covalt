@@ -15,26 +15,34 @@ export default function ToolsetsPage() {
   const { refreshTools, removeMcpServer } = useTools();
   const [activeTab, setActiveTab] = useState<TabKey>("installed");
   const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingServerKey, setEditingServerKey] = useState<string | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
+  const [editingServerName, setEditingServerName] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingServerId, setDeletingServerId] = useState("");
+  const [deletingServerKey, setDeletingServerKey] = useState("");
+  const [deletingServerLabel, setDeletingServerLabel] = useState<string | null>(null);
 
   useEffect(() => {
     setTitle("Toolsets");
   }, [setTitle]);
 
   const handleAddServer = () => {
+    setEditingServerKey(null);
     setEditingServerId(null);
+    setEditingServerName(null);
     setFormDialogOpen(true);
   };
 
-  const handleEditServer = (serverId: string) => {
+  const handleEditServer = (serverKey: string, serverId: string, serverName: string) => {
+    setEditingServerKey(serverKey);
     setEditingServerId(serverId);
+    setEditingServerName(serverName);
     setFormDialogOpen(true);
   };
 
-  const handleDeleteServer = (serverId: string) => {
-    setDeletingServerId(serverId);
+  const handleDeleteServer = (serverKey: string, serverLabel: string) => {
+    setDeletingServerKey(serverKey);
+    setDeletingServerLabel(serverLabel);
     setDeleteDialogOpen(true);
   };
 
@@ -43,7 +51,7 @@ export default function ToolsetsPage() {
   };
 
   const handleDeleteSuccess = () => {
-    removeMcpServer(deletingServerId);
+    removeMcpServer(deletingServerKey);
     refreshTools();
   };
 
@@ -85,13 +93,16 @@ export default function ToolsetsPage() {
       <ServerFormDialog
         open={formDialogOpen}
         onOpenChange={setFormDialogOpen}
+        editingServerKey={editingServerKey}
         editingServerId={editingServerId}
+        editingServerName={editingServerName}
         onSuccess={handleSuccess}
       />
       <DeleteDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        serverId={deletingServerId}
+        serverKey={deletingServerKey}
+        serverLabel={deletingServerLabel ?? undefined}
         onSuccess={handleDeleteSuccess}
       />
     </div>

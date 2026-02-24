@@ -115,6 +115,7 @@ _pending_callbacks = PendingOAuthCallbacks()
 @dataclass
 class OAuthFlowState:
     server_id: str
+    toolset_id: str
     server_url: str
     status: OAuthStatus = "pending"
     error: str | None = None
@@ -124,14 +125,16 @@ class OAuthFlowState:
 
 
 class DatabaseTokenStorage(TokenStorage):
-    def __init__(self, server_id: str) -> None:
+    def __init__(self, server_id: str, toolset_id: str) -> None:
         self.server_id = server_id
+        self.toolset_id = toolset_id
 
     async def get_tokens(self) -> OAuthToken | None:
         with db_session() as sess:
             row = (
                 sess.query(OAuthTokenModel)
                 .filter(OAuthTokenModel.server_id == self.server_id)
+                .filter(OAuthTokenModel.toolset_id == self.toolset_id)
                 .first()
             )
 
@@ -170,6 +173,7 @@ class DatabaseTokenStorage(TokenStorage):
             existing = (
                 sess.query(OAuthTokenModel)
                 .filter(OAuthTokenModel.server_id == self.server_id)
+                .filter(OAuthTokenModel.toolset_id == self.toolset_id)
                 .first()
             )
 
@@ -187,6 +191,7 @@ class DatabaseTokenStorage(TokenStorage):
                     OAuthTokenModel(
                         id=str(uuid.uuid4()),
                         server_id=self.server_id,
+                        toolset_id=self.toolset_id,
                         access_token=_encrypt(tokens.access_token),
                         refresh_token=_encrypt(tokens.refresh_token)
                         if tokens.refresh_token
@@ -206,6 +211,7 @@ class DatabaseTokenStorage(TokenStorage):
             row = (
                 sess.query(OAuthTokenModel)
                 .filter(OAuthTokenModel.server_id == self.server_id)
+                .filter(OAuthTokenModel.toolset_id == self.toolset_id)
                 .first()
             )
 
@@ -240,6 +246,7 @@ class DatabaseTokenStorage(TokenStorage):
             existing = (
                 sess.query(OAuthTokenModel)
                 .filter(OAuthTokenModel.server_id == self.server_id)
+                .filter(OAuthTokenModel.toolset_id == self.toolset_id)
                 .first()
             )
 
@@ -257,6 +264,7 @@ class DatabaseTokenStorage(TokenStorage):
                     OAuthTokenModel(
                         id=str(uuid.uuid4()),
                         server_id=self.server_id,
+                        toolset_id=self.toolset_id,
                         access_token=_encrypt(""),
                         client_id=client_info.client_id,
                         client_secret=_encrypt(client_info.client_secret)
@@ -354,16 +362,24 @@ class OAuthManager:
             return {"requiresOAuth": False, "error": str(e)}
 
     async def start_oauth_flow(
-        self, server_id: str, server_url: str, callback_port: int = OAUTH_CALLBACK_PORT
+        self,
+        server_key: str,
+        server_id: str,
+        toolset_id: str,
+        server_url: str,
+        callback_port: int = OAUTH_CALLBACK_PORT,
     ) -> dict[str, Any]:
         flow = OAuthFlowState(
-            server_id=server_id, server_url=server_url, status="pending"
+            server_id=server_id,
+            toolset_id=toolset_id,
+            server_url=server_url,
+            status="pending",
         )
-        self._active_flows[server_id] = flow
+        self._active_flows[server_key] = flow
 
         auth_url_ready = asyncio.Event()
         redirect_uri = _redirect_uri(callback_port)
-        storage = DatabaseTokenStorage(server_id)
+        storage = DatabaseTokenStorage(server_id, toolset_id)
 
         async def redirect_handler(auth_url: str) -> None:
             flow.auth_url = auth_url
@@ -415,33 +431,39 @@ class OAuthManager:
 
         return {"authUrl": flow.auth_url, "state": flow.state}
 
-    def get_oauth_status(self, server_id: str) -> dict[str, Any]:
-        flow = self._active_flows.get(server_id)
+    def get_oauth_status(
+        self, server_key: str, server_id: str, toolset_id: str
+    ) -> dict[str, Any]:
+        flow = self._active_flows.get(server_key)
         if flow:
-            has_tokens = self.has_valid_tokens(server_id)
+            has_tokens = self.has_valid_tokens(server_id, toolset_id)
             return {"status": flow.status, "hasTokens": has_tokens, "error": flow.error}
-        has_tokens = self.has_valid_tokens(server_id)
+        has_tokens = self.has_valid_tokens(server_id, toolset_id)
         return {
             "status": "authenticated" if has_tokens else "none",
             "hasTokens": has_tokens,
         }
 
-    async def revoke_oauth(self, server_id: str) -> None:
-        flow = self._active_flows.pop(server_id, None)
+    async def revoke_oauth(
+        self, server_key: str, server_id: str, toolset_id: str
+    ) -> None:
+        flow = self._active_flows.pop(server_key, None)
         if flow and flow.state:
             _pending_callbacks.cancel(flow.state)
 
         with db_session() as sess:
             sess.query(OAuthTokenModel).filter(
-                OAuthTokenModel.server_id == server_id
+                OAuthTokenModel.server_id == server_id,
+                OAuthTokenModel.toolset_id == toolset_id,
             ).delete()
             sess.commit()
 
-    def has_valid_tokens(self, server_id: str) -> bool:
+    def has_valid_tokens(self, server_id: str, toolset_id: str) -> bool:
         with db_session() as sess:
             token = (
                 sess.query(OAuthTokenModel)
                 .filter(OAuthTokenModel.server_id == server_id)
+                .filter(OAuthTokenModel.toolset_id == toolset_id)
                 .first()
             )
             if not token or not token.access_token:
@@ -463,9 +485,9 @@ class OAuthManager:
             return True
 
     def create_oauth_provider(
-        self, server_id: str, server_url: str
+        self, server_id: str, toolset_id: str, server_url: str
     ) -> OAuthClientProvider:
-        storage = DatabaseTokenStorage(server_id)
+        storage = DatabaseTokenStorage(server_id, toolset_id)
 
         async def noop_redirect_handler(_: str) -> None:
             pass

@@ -36,8 +36,8 @@ The PRD envisions Docker-based MCP servers with full container lifecycle managem
 - Container state persistence across app restarts
 - Graceful shutdown on chat close/app exit
 
-**`frame` Renderer**
-- Render iframe pointing to container service URL
+**`frame` Renderer** ✅
+- Implemented with sandboxed iframe
 - Config: `render: frame` with `url` or `port`
   ```yaml
   tools:
@@ -49,7 +49,6 @@ The PRD envisions Docker-based MCP servers with full container lifecycle managem
       render: frame
       port: 6080  # noVNC
   ```
-- Dynamic port interpolation from tool return values
 
 ### Use Cases Blocked
 
@@ -83,10 +82,9 @@ The config layer supports `editable: true` and the UI now provides full editing 
 
 ### Remaining Features
 
-**Editable Document Renderer**
-- Rich text / Markdown editor (currently read-only)
-- Save to workspace file
-- Support for `file` or `content` source
+**Document Renderer** ✅ (read-only)
+- Renders Markdown/text in the artifact panel
+- Editing is not yet implemented
 
 ### Config Supported
 

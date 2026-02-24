@@ -3,6 +3,7 @@ import type { KeyValuePair } from "@/components/ui/key-value-input";
 
 export function configToFormData(
   id: string,
+  name: string | undefined,
   config: Record<string, unknown>
 ): ServerFormData {
   const serverType: ServerType =
@@ -25,6 +26,7 @@ export function configToFormData(
 
   return {
     id,
+    name: name ?? id,
     type: serverType,
     command: fullCommand,
     cwd: (config.cwd as string) || "",
@@ -33,6 +35,31 @@ export function configToFormData(
     headers: config.headers ? JSON.stringify(config.headers, null, 2) : "",
     requiresConfirmation: config.requiresConfirmation !== false,
   };
+}
+
+export function slugifyServerId(name: string): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "mcp-server";
+}
+
+export function ensureUniqueServerId(
+  baseId: string,
+  existingIds: Set<string>,
+  currentId?: string | null
+): string {
+  if (currentId && baseId === currentId) return baseId;
+  if (!existingIds.has(baseId)) return baseId;
+  let suffix = 1;
+  let candidate = `${baseId}-${suffix}`;
+  while (existingIds.has(candidate) && candidate !== currentId) {
+    suffix += 1;
+    candidate = `${baseId}-${suffix}`;
+  }
+  return candidate;
 }
 
 export function parseCommandString(cmdStr: string): {

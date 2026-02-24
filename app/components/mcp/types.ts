@@ -4,6 +4,7 @@ export type ServerType = "stdio" | "sse" | "streamable-http";
 
 export interface ServerFormData {
   id: string;
+  name: string;
   type: ServerType;
   command: string;
   cwd: string;
@@ -15,6 +16,7 @@ export interface ServerFormData {
 
 export const emptyFormData: ServerFormData = {
   id: "",
+  name: "",
   type: "stdio",
   command: "",
   cwd: "",

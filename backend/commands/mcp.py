@@ -11,7 +11,13 @@ import httpx
 from pydantic import BaseModel, Field
 from zynk import command
 
-from ..services.mcp_manager import get_mcp_manager
+from ..db import db_session
+from ..db.models import Toolset
+from ..services.mcp_manager import (
+    build_server_key,
+    get_mcp_manager,
+    split_server_key,
+)
 from ..services.oauth_manager import get_oauth_manager
 from ..services.toolset_manager import get_toolset_manager
 
@@ -40,6 +46,9 @@ class MCPToolInfo(BaseModel):
 
 class MCPServerInfo(BaseModel):
     id: str
+    serverId: str
+    toolsetId: str
+    toolsetName: Optional[str] = None
     status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]
     error: Optional[str] = None
     toolCount: int = 0
@@ -68,6 +77,9 @@ def _server_info(mcp: Any, server_data: Dict[str, Any]) -> MCPServerInfo:
     tools = [_tool_info(t) for t in mcp.get_server_tools(server_id)]
     return MCPServerInfo(
         id=server_id,
+        serverId=server_data.get("serverId") or server_id,
+        toolsetId=server_data.get("toolsetId") or "",
+        toolsetName=server_data.get("toolsetName"),
         status=server_data["status"],
         error=server_data.get("error"),
         toolCount=server_data["toolCount"],
@@ -76,13 +88,23 @@ def _server_info(mcp: Any, server_data: Dict[str, Any]) -> MCPServerInfo:
     )
 
 
+def _resolve_server_key(server_id: str) -> str:
+    mcp = get_mcp_manager()
+    resolved = mcp.resolve_server_key(server_id)
+    if not resolved:
+        raise ValueError(f"Server {server_id} not found")
+    return resolved
+
+
 class AddMCPServerInput(BaseModel):
-    id: str
+    id: Optional[str] = None
+    name: Optional[str] = None
     config: MCPServerConfig
 
 
 class UpdateMCPServerInput(BaseModel):
     id: str
+    name: Optional[str] = None
     config: MCPServerConfig
 
 
@@ -100,16 +122,20 @@ async def get_mcp_servers() -> MCPServersResponse:
 
 @command
 async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
-    get_toolset_manager().create_user_mcp_toolset(body.id)
+    display_name = body.name or body.id or "MCP Server"
+    toolset_id = get_toolset_manager().create_user_mcp_toolset(display_name)
 
     mcp = get_mcp_manager()
     await mcp.add_server(
-        body.id, body.config.model_dump(exclude_none=True), toolset_id=body.id
+        toolset_id,
+        body.config.model_dump(exclude_none=True),
+        toolset_id=toolset_id,
     )
 
-    server_data = next((s for s in mcp.get_servers() if s["id"] == body.id), None)
+    server_key = build_server_key(toolset_id, toolset_id)
+    server_data = next((s for s in mcp.get_servers() if s["id"] == server_key), None)
     if not server_data:
-        raise RuntimeError(f"Server {body.id} not found after adding")
+        raise RuntimeError(f"Server {toolset_id} not found after adding")
 
     return _server_info(mcp, server_data)
 
@@ -117,9 +143,45 @@ async def add_mcp_server(body: AddMCPServerInput) -> MCPServerInfo:
 @command
 async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
     mcp = get_mcp_manager()
-    await mcp.update_server(body.id, body.config.model_dump(exclude_none=True))
+    server_key = _resolve_server_key(body.id)
+    state = mcp.get_server_state(server_key)
+    if not state:
+        raise ValueError(f"Server {body.id} not found")
 
-    server_data = next((s for s in mcp.get_servers() if s["id"] == body.id), None)
+    if body.name is not None:
+        toolset_id, _ = split_server_key(server_key)
+        user_mcp = False
+        with db_session() as sess:
+            toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
+            if toolset:
+                user_mcp = toolset.user_mcp
+        if user_mcp:
+            (
+                _,
+                new_toolset_id,
+                new_server_id,
+                clean_name,
+            ) = get_toolset_manager().rename_user_mcp_toolset(toolset_id, body.name)
+            if new_toolset_id != toolset_id or new_server_id != state.server_id:
+                server_key = await mcp.rename_server(
+                    server_key,
+                    new_toolset_id,
+                    new_server_id,
+                    clean_name,
+                )
+            else:
+                state.toolset_name = clean_name
+        else:
+            with db_session() as sess:
+                toolset = sess.query(Toolset).filter(Toolset.id == toolset_id).first()
+                if toolset:
+                    toolset.name = body.name
+                    sess.commit()
+                    state.toolset_name = body.name
+
+    await mcp.update_server(server_key, body.config.model_dump(exclude_none=True))
+
+    server_data = next((s for s in mcp.get_servers() if s["id"] == server_key), None)
     if not server_data:
         raise RuntimeError(f"Server {body.id} not found after updating")
 
@@ -128,14 +190,23 @@ async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
 
 @command
 async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
-    await get_mcp_manager().remove_server(body.id)
-    get_toolset_manager().uninstall(body.id)
+    mcp = get_mcp_manager()
+    server_key = _resolve_server_key(body.id)
+    state = mcp.get_server_state(server_key)
+    if not state:
+        raise ValueError(f"Server {body.id} not found")
+
+    await mcp.remove_server(server_key)
+    toolset = get_toolset_manager().get_toolset(state.toolset_id)
+    if toolset and toolset.get("user_mcp", False):
+        get_toolset_manager().uninstall(state.toolset_id)
     return {"success": True}
 
 
 @command
 async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
-    config = get_mcp_manager().get_server_config(body.id, sanitize=False)
+    server_key = _resolve_server_key(body.id)
+    config = get_mcp_manager().get_server_config(server_key, sanitize=False)
     if config is None:
         raise ValueError(f"Server {body.id} not found")
     return config
@@ -144,9 +215,10 @@ async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
 @command
 async def reconnect_mcp_server(body: MCPServerId) -> MCPServerInfo:
     mcp = get_mcp_manager()
-    await mcp.reconnect(body.id)
+    server_key = _resolve_server_key(body.id)
+    await mcp.reconnect(server_key)
 
-    server_data = next((s for s in mcp.get_servers() if s["id"] == body.id), None)
+    server_data = next((s for s in mcp.get_servers() if s["id"] == server_key), None)
     if not server_data:
         raise RuntimeError(f"Server {body.id} not found")
 
@@ -399,8 +471,9 @@ class TestMCPToolResult(BaseModel):
 async def test_mcp_tool(body: TestMCPToolInput) -> TestMCPToolResult:
     start = time.perf_counter()
     try:
+        server_key = _resolve_server_key(body.serverId)
         result = await get_mcp_manager().call_tool(
-            body.serverId, body.toolName, body.arguments
+            server_key, body.toolName, body.arguments
         )
         return TestMCPToolResult(
             success=True,
@@ -453,8 +526,16 @@ class StartOAuthResult(BaseModel):
 @command
 async def start_mcp_oauth(body: StartOAuthInput) -> StartOAuthResult:
     try:
+        mcp = get_mcp_manager()
+        server_key = _resolve_server_key(body.serverId)
+        state = mcp.get_server_state(server_key)
+        if not state:
+            raise ValueError(f"Server {body.serverId} not found")
+
         result = await get_oauth_manager().start_oauth_flow(
-            server_id=body.serverId,
+            server_key=server_key,
+            server_id=state.server_id,
+            toolset_id=state.toolset_id,
             server_url=body.serverUrl,
             callback_port=body.callbackPort,
         )
@@ -475,7 +556,14 @@ class OAuthStatusResult(BaseModel):
 
 @command
 async def get_mcp_oauth_status(body: MCPServerId) -> OAuthStatusResult:
-    result = get_oauth_manager().get_oauth_status(body.id)
+    mcp = get_mcp_manager()
+    server_key = _resolve_server_key(body.id)
+    state = mcp.get_server_state(server_key)
+    if not state:
+        raise ValueError(f"Server {body.id} not found")
+    result = get_oauth_manager().get_oauth_status(
+        server_key, state.server_id, state.toolset_id
+    )
     return OAuthStatusResult(
         status=result.get("status", "none"),
         hasTokens=result.get("hasTokens", False),
@@ -491,7 +579,14 @@ class RevokeOAuthResult(BaseModel):
 @command
 async def revoke_mcp_oauth(body: MCPServerId) -> RevokeOAuthResult:
     try:
-        await get_oauth_manager().revoke_oauth(body.id)
+        mcp = get_mcp_manager()
+        server_key = _resolve_server_key(body.id)
+        state = mcp.get_server_state(server_key)
+        if not state:
+            raise ValueError(f"Server {body.id} not found")
+        await get_oauth_manager().revoke_oauth(
+            server_key, state.server_id, state.toolset_id
+        )
         return RevokeOAuthResult(success=True)
     except Exception as e:
         return RevokeOAuthResult(success=False, error=str(e))

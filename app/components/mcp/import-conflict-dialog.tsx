@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ensureUniqueServerId, slugifyServerId } from "./utils";
 
 export type ConflictResolution = "skip" | "rename" | "overwrite";
 
@@ -80,11 +81,6 @@ export function ImportConflictDialog({
 }
 
 export function generateUniqueName(baseName: string, existingIds: Set<string>): string {
-  let suffix = 2;
-  let newName = `${baseName}-${suffix}`;
-  while (existingIds.has(newName)) {
-    suffix++;
-    newName = `${baseName}-${suffix}`;
-  }
-  return newName;
+  const baseId = slugifyServerId(baseName);
+  return ensureUniqueServerId(baseId, existingIds);
 }

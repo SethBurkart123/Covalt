@@ -40,6 +40,7 @@ import {
   type MentionAttrs,
   type MentionItem,
 } from "@/components/chat-input/at-mention-extension";
+import { buildMcpServerLabelMap, getMcpServerLabel } from "@/lib/mcp";
 import {
   hasMentionNodes,
   serializeChatInputMarkdown,
@@ -238,12 +239,13 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     }, [pendingAttachments]);
 
     const mentionItems = useMemo<MentionItem[]>(() => {
-      const mcpServerIds = new Set(mcpServers.map((server) => server.id));
+      const serverLabelByKey = buildMcpServerLabelMap(mcpServers);
       const toolItems = availableTools.map((tool) => {
         if (tool.id.startsWith("mcp:")) {
           const parts = tool.id.split(":");
-          const serverLabel = parts[1] ?? "";
-          const label = parts.slice(2).join(":") || tool.id;
+          const serverKey = parts[1] ?? "";
+          const serverLabel = serverLabelByKey.get(serverKey) ?? serverKey;
+          const label = tool.name || parts.slice(2).join(":") || tool.id;
           return {
             id: tool.id,
             label,
@@ -259,22 +261,22 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         };
       });
 
-      const toolsetItems = Object.entries(groupedTools.byCategory)
-        .filter(([category]) => !mcpServerIds.has(category))
-        .map(([category]) => ({
-          id: category,
-          label: category,
+      const toolsetItems = Object.entries(groupedTools.byToolset).map(
+        ([toolsetId]) => ({
+          id: toolsetId,
+          label: groupedTools.toolsetNames[toolsetId] ?? toolsetId,
           type: "toolset" as const,
-        }));
+        })
+      );
 
       const mcpItems = mcpServers.map((server) => ({
         id: server.id,
-        label: server.id,
+        label: getMcpServerLabel(server, serverLabelByKey),
         type: "mcp" as const,
       }));
 
       return [...toolItems, ...toolsetItems, ...mcpItems];
-    }, [availableTools, groupedTools.byCategory, mcpServers]);
+    }, [availableTools, groupedTools.byToolset, groupedTools.toolsetNames, mcpServers]);
 
     useEffect(() => {
       mentionItemsRef.current = mentionItems;
@@ -395,13 +397,21 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           return false;
         }
 
-        const tools = groupedTools.byCategory[attrs.id] || [];
+        if (attrs.type === "mcp") {
+          const prefix = `mcp:${attrs.id}:`;
+          availableTools
+            .filter((tool) => tool.id.startsWith(prefix))
+            .forEach((tool) => toolIds.add(tool.id));
+          return false;
+        }
+
+        const tools = groupedTools.byToolset[attrs.id] || [];
         tools.forEach((tool) => toolIds.add(tool.id));
         return false;
       });
 
       return Array.from(toolIds);
-    }, [editor, availableTools, groupedTools.byCategory]);
+    }, [editor, availableTools, groupedTools.byToolset]);
 
     const submitMessage = useCallback(() => {
       if (!editor) return;

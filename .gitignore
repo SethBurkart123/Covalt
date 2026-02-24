@@ -14,6 +14,7 @@ dist-ssr
 build/
 backend/build/
 backend/dist/
+website/
 *.local
 
 # Editor directories and files

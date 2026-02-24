@@ -56,6 +56,7 @@ const STATUS_CONFIG: Record<McpServerStatus["status"], StatusConfig> = {
 
 interface McpServerCardProps {
   server: McpServerStatus;
+  label?: string;
   toolCount?: number;
   onEdit: () => void;
   onDelete: () => void;
@@ -64,6 +65,7 @@ interface McpServerCardProps {
 
 export function McpServerCard({
   server,
+  label,
   toolCount,
   onEdit,
   onDelete,
@@ -192,6 +194,9 @@ export function McpServerCard({
     server.status === "requires_auth" && server.authHint === "token";
   const showRevokeButton =
     server.oauthStatus === "authenticated" && server.status === "connected";
+  const serverId = server.serverId ?? server.id;
+  const displayName = label ?? serverId;
+  const showId = displayName !== serverId;
 
 
 
@@ -237,12 +242,17 @@ export function McpServerCard({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-medium">{server.id}</span>
+              <span className="font-medium">{displayName}</span>
               <StatusBadge
                 config={STATUS_CONFIG[server.status]}
                 animate={server.status === "connecting"}
               />
             </div>
+            {showId && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                ID: {serverId}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground mt-0.5">
               {server.status === "connected"
                 ? `${toolCount ?? server.toolCount ?? 0} tool${(toolCount ?? server.toolCount ?? 0) !== 1 ? "s" : ""}`
