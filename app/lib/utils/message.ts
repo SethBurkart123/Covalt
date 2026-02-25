@@ -58,10 +58,16 @@ export function createUserMessage(
 }
 
 export function createErrorMessage(error: unknown): Message {
+  void error;
   return {
     id: crypto.randomUUID(),
     role: "assistant",
-    content: [{ type: "error", content: `Sorry, there was an error: ${error}` }],
+    content: [
+      {
+        type: "error",
+        content: "Sorry, something went wrong. Please try again.",
+      },
+    ],
     isComplete: false,
     sequence: 1,
   };

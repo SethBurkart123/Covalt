@@ -809,21 +809,36 @@ def build_agno_messages_for_chat(
 
 def extract_error_message(error_content: str) -> str:
     if not error_content:
-        return "Unknown error"
+        return "Something went wrong. Please try again."
 
-    json_start = error_content.find("{")
+    text = str(error_content).strip()
+
+    json_start = text.find("{")
     if json_start != -1:
         try:
-            data = json.loads(error_content[json_start:])
+            data = json.loads(text[json_start:])
             if isinstance(data, dict):
                 if "error" in data and isinstance(data["error"], dict):
-                    return data["error"].get("message", error_content)
-                if "message" in data:
-                    return data["message"]
+                    msg = data["error"].get("message")
+                    if isinstance(msg, str) and msg.strip():
+                        text = msg.strip()
+                elif "message" in data and isinstance(data["message"], str):
+                    text = data["message"].strip()
         except json.JSONDecodeError:
             pass
 
-    return error_content
+    first_line = text.splitlines()[0].strip()
+    if first_line:
+        text = first_line
+
+    if not text:
+        return "Something went wrong. Please try again."
+
+    max_len = 1000
+    if len(text) > max_len:
+        text = text[: max_len - 3].rstrip() + "..."
+
+    return text
 
 
 def is_toolset_tool(tool_name: str) -> bool:

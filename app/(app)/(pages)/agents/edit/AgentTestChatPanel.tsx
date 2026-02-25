@@ -16,7 +16,7 @@ import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { cn } from "@/lib/utils";
 import "@/components/tool-renderers";
 
-const TRANSITION = {
+export const TEST_CHAT_PANEL_TRANSITION = {
   type: "spring" as const,
   stiffness: 231,
   damping: 28,
@@ -60,7 +60,7 @@ function TestChatInner() {
       className="overflow-hidden h-full shrink-0"
       initial={false}
       animate={{ width: isOpen ? effectiveWidth : 0 }}
-      transition={isResizing ? { duration: 0 } : TRANSITION}
+      transition={isResizing ? { duration: 0 } : TEST_CHAT_PANEL_TRANSITION}
     >
       <div
         className="h-full bg-card/80 backdrop-blur-sm border-l border-border rounded-l-xl overflow-hidden relative"

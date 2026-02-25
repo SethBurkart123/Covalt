@@ -202,7 +202,10 @@ function handleRunContent(state: StreamState, content: string, callbacks: Stream
     state.textBlockBoundary = false;
   }
 
-  if (!state.thinkTagDetected && state.currentTextBlock.includes("<think>")) {
+  if (
+    !state.thinkTagDetected &&
+    state.currentTextBlock.toLowerCase().includes("<think>")
+  ) {
     state.thinkTagDetected = true;
     callbacks.onThinkTagDetected?.();
   }
