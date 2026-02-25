@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { AllChatsData } from "@/lib/types/chat";
 import { api } from "@/lib/services/api";
@@ -6,7 +6,7 @@ import { prefetchChat } from "@/lib/services/chat-prefetch";
 
 interface UseChatOperationsProps {
   allChatsData: AllChatsData;
-  setAllChatsData: (data: AllChatsData) => void;
+  setAllChatsData: Dispatch<SetStateAction<AllChatsData>>;
   currentChatId: string;
   setCurrentChatId: (id: string) => void;
 }
@@ -44,62 +44,78 @@ export function useChatOperations({
     async (id: string) => {
       await api.deleteChat(id);
 
-      const remainingChats = { ...allChatsData.chats };
-      delete remainingChats[id];
-      setAllChatsData({
-        ...allChatsData,
-        chats: remainingChats,
+      let nextChatId: string | null = null;
+      let shouldSwitch = false;
+
+      setAllChatsData((prev) => {
+        if (!prev.chats[id]) return prev;
+        const remainingChats = { ...prev.chats };
+        delete remainingChats[id];
+
+        if (id === currentChatId) {
+          shouldSwitch = true;
+          const remainingIds = Object.keys(remainingChats);
+          nextChatId = remainingIds.length > 0 ? remainingIds[0] : null;
+        }
+
+        return {
+          ...prev,
+          chats: remainingChats,
+        };
       });
 
-      if (id === currentChatId) {
-        const remainingIds = Object.keys(remainingChats);
-        if (remainingIds.length > 0) {
-          switchChat(remainingIds[0]);
+      if (shouldSwitch) {
+        if (nextChatId) {
+          switchChat(nextChatId);
         } else {
           startNewChat();
         }
       }
     },
-    [allChatsData, currentChatId, setAllChatsData, switchChat, startNewChat],
+    [currentChatId, setAllChatsData, switchChat, startNewChat],
   );
 
   const renameChat = useCallback(
     async (id: string, newTitle: string) => {
       const trimmedTitle = newTitle.trim();
-      if (!trimmedTitle || !allChatsData.chats[id]) return;
+      if (!trimmedTitle) return;
 
       await api.renameChat(id, trimmedTitle);
-      setAllChatsData({
-        ...allChatsData,
-        chats: {
-          ...allChatsData.chats,
-          [id]: {
-            ...allChatsData.chats[id],
-            title: trimmedTitle,
+      setAllChatsData((prev) => {
+        if (!prev.chats[id]) return prev;
+        return {
+          ...prev,
+          chats: {
+            ...prev.chats,
+            [id]: {
+              ...prev.chats[id],
+              title: trimmedTitle,
+            },
           },
-        },
+        };
       });
     },
-    [allChatsData, setAllChatsData],
+    [setAllChatsData],
   );
 
   const toggleStarChat = useCallback(
     async (id: string) => {
-      if (!allChatsData.chats[id]) return;
-
       const updatedChat = await api.toggleStarChat(id);
-      setAllChatsData({
-        ...allChatsData,
-        chats: {
-          ...allChatsData.chats,
-          [id]: {
-            ...allChatsData.chats[id],
-            starred: updatedChat.starred,
+      setAllChatsData((prev) => {
+        if (!prev.chats[id]) return prev;
+        return {
+          ...prev,
+          chats: {
+            ...prev.chats,
+            [id]: {
+              ...prev.chats[id],
+              starred: updatedChat.starred,
+            },
           },
-        },
+        };
       });
     },
-    [allChatsData, setAllChatsData],
+    [setAllChatsData],
   );
 
   return {
