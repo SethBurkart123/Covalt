@@ -81,6 +81,7 @@ class OpenAICodexResponses(OpenAIResponses):
             tools=tools,
             tool_choice=tool_choice,
         )
+        params.pop("temperature", None)  # Codex API does not support temperature
         params["instructions"] = _extract_system_instructions(messages)
         params["store"] = False
         return params

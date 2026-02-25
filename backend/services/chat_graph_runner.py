@@ -28,7 +28,7 @@ from . import run_control
 from . import stream_broadcaster as broadcaster
 from .flow_executor import run_flow
 from .execution_trace import ExecutionTraceRecorder
-from .tool_registry import get_tool_registry
+from .tool_registry import get_tool_registry, get_original_tool_name
 from .mcp_manager import ensure_mcp_initialized
 from .workspace_manager import get_workspace_manager
 from .toolset_executor import get_toolset_executor
@@ -2192,11 +2192,12 @@ async def handle_content_stream(
                 )
                 member_state.current_reasoning = ""
             provider_data = _get_tool_provider_data(chunk.tool)
+            tool_name = get_original_tool_name(chunk.tool.tool_name)
             member_content.append(
                 {
                     "type": "tool_call",
                     "id": chunk.tool.tool_call_id,
-                    "toolName": chunk.tool.tool_name,
+                    "toolName": tool_name,
                     "toolArgs": chunk.tool.tool_args,
                     "isCompleted": False,
                     **({"providerData": provider_data} if provider_data else {}),
@@ -2207,7 +2208,7 @@ async def handle_content_stream(
                     event="ToolCallStarted",
                     tool={
                         "id": chunk.tool.tool_call_id,
-                        "toolName": chunk.tool.tool_name,
+                        "toolName": tool_name,
                         "toolArgs": chunk.tool.tool_args,
                         "isCompleted": False,
                         **({"providerData": provider_data} if provider_data else {}),
@@ -2219,7 +2220,7 @@ async def handle_content_stream(
             provider_data = _get_tool_provider_data(chunk.tool)
             tool_payload = _build_tool_call_completed_payload(
                 tool_id=chunk.tool.tool_call_id,
-                tool_name=chunk.tool.tool_name,
+                tool_name=get_original_tool_name(chunk.tool.tool_name),
                 tool_args=chunk.tool.tool_args,
                 tool_result=chunk.tool.result,
                 provider_data=provider_data,
@@ -2466,9 +2467,8 @@ async def handle_content_stream(
                         )
 
                 elif evt == RunEvent.tool_call_started:
-                    if _is_team_event(chunk) and _is_delegation_tool(
-                        chunk.tool.tool_name
-                    ):
+                    tool_name = get_original_tool_name(chunk.tool.tool_name)
+                    if _is_team_event(chunk) and _is_delegation_tool(tool_name):
                         flush_text()
                         flush_reasoning()
                         active_delegation_tool_id = chunk.tool.tool_call_id
@@ -2478,7 +2478,7 @@ async def handle_content_stream(
                             {
                                 "type": "tool_call",
                                 "id": chunk.tool.tool_call_id,
-                                "toolName": chunk.tool.tool_name,
+                                "toolName": tool_name,
                                 "toolArgs": chunk.tool.tool_args,
                                 "isCompleted": False,
                                 "isDelegation": True,
@@ -2499,7 +2499,7 @@ async def handle_content_stream(
                             event="ToolCallStarted",
                             tool={
                                 "id": chunk.tool.tool_call_id,
-                                "toolName": chunk.tool.tool_name,
+                                "toolName": tool_name,
                                 "toolArgs": chunk.tool.tool_args,
                                 "isCompleted": False,
                                 **(
@@ -2512,10 +2512,11 @@ async def handle_content_stream(
                     )
 
                 elif evt == RunEvent.tool_call_completed:
+                    tool_name = get_original_tool_name(chunk.tool.tool_name)
                     if (
                         active_delegation_tool_id
                         and _is_team_event(chunk)
-                        and _is_delegation_tool(chunk.tool.tool_name)
+                        and _is_delegation_tool(tool_name)
                         and chunk.tool.tool_call_id == active_delegation_tool_id
                     ):
                         _flush_all_member_runs()
@@ -2544,7 +2545,7 @@ async def handle_content_stream(
                     provider_data = _get_tool_provider_data(chunk.tool)
                     tool_payload = _build_tool_call_completed_payload(
                         tool_id=chunk.tool.tool_call_id,
-                        tool_name=chunk.tool.tool_name,
+                        tool_name=tool_name,
                         tool_args=chunk.tool.tool_args,
                         tool_result=chunk.tool.result,
                         provider_data=provider_data,
@@ -2685,11 +2686,12 @@ async def handle_content_stream(
                     ):
                         tools_info = []
                         for tool in chunk.tools_requiring_confirmation:
-                            editable_args = registry.get_editable_args(tool.tool_name)
+                            original_tool_name = get_original_tool_name(tool.tool_name)
+                            editable_args = registry.get_editable_args(original_tool_name)
                             tool_block = {
                                 "type": "tool_call",
                                 "id": tool.tool_call_id,
-                                "toolName": tool.tool_name,
+                                "toolName": original_tool_name,
                                 "toolArgs": tool.tool_args,
                                 "isCompleted": False,
                                 "requiresApproval": True,
@@ -2698,7 +2700,7 @@ async def handle_content_stream(
                             content_blocks.append(tool_block)
                             tool_info = {
                                 "id": tool.tool_call_id,
-                                "toolName": tool.tool_name,
+                                "toolName": original_tool_name,
                                 "toolArgs": tool.tool_args,
                             }
                             if editable_args:

@@ -29,7 +29,8 @@ export function DefaultToolCall({
   isLast = false,
   mode = "regular",
 }: ToolCallRendererProps) {
-  const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus || "pending");
+  const defaultApprovalStatus = requiresApproval ? "pending" : "approved";
+  const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus ?? defaultApprovalStatus);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
   const [editedValues, setEditedValues] = useState<Record<string, unknown>>({});
@@ -110,7 +111,7 @@ export function DefaultToolCall({
               <>
                 <span>{toolName.split(":").slice(1).join(":")}</span>
                 <span className="px-2 italic text-muted-foreground align-middle">
-                  {toolName.split(":")[0]}
+                  {toolName.split(":")[0].split("~").pop()}
                 </span>
               </>
             ) : (
