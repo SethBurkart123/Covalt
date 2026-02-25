@@ -200,7 +200,10 @@ export default function ProviderItem({
                     Waiting...
                   </>
                 ) : (
-                  'Sign in'
+                  <>
+                    Sign in
+                    <span className="sr-only"> to {def.name}</span>
+                  </>
                 )}
               </Button>
             )}
@@ -295,7 +298,10 @@ export default function ProviderItem({
                     Waiting...
                   </>
                 ) : (
-                  'Sign in'
+                  <>
+                    Sign in
+                    <span className="sr-only"> to {def.name}</span>
+                  </>
                 )}
               </Button>
             )}
@@ -598,7 +604,10 @@ export default function ProviderItem({
                                 Waiting...
                               </>
                             ) : (
-                              'Sign in'
+                              <>
+                                Sign in
+                                <span className="sr-only"> to {def.name}</span>
+                              </>
                             )}
                           </Button>
                         )

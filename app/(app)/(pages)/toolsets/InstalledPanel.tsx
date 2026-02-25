@@ -120,6 +120,7 @@ function ToolsetCard({
               size="icon"
               onClick={onToggle}
               disabled={isToggling}
+              aria-label={`${toolset.enabled ? "Disable" : "Enable"} ${toolset.name}`}
               title={toolset.enabled ? "Disable" : "Enable"}
             >
               {isToggling ? (
@@ -130,13 +131,20 @@ function ToolsetCard({
                 <PowerOff className="size-4 text-muted-foreground" />
               )}
             </Button>
-            <Button variant="ghost" size="icon" onClick={onExport} title="Export">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onExport}
+              aria-label={`Export ${toolset.name}`}
+              title="Export"
+            >
               <Download className="size-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={onUninstall}
+              aria-label={`Uninstall ${toolset.name}`}
               className="text-destructive hover:text-destructive"
               title="Uninstall"
             >
