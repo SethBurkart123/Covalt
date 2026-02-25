@@ -34,7 +34,13 @@ export default function ModelSettingsPanel() {
   const parseThinkTagsModels = useMemo(
     () =>
       models.filter(
-        (model) => getModelSetting(model.provider, model.modelId)?.parseThinkTags ?? false
+        (model) => {
+          const setting = getModelSetting(model.provider, model.modelId);
+          if (!setting) return false;
+          if (setting.parseThinkTags) return true;
+          if (setting.thinkingTagPrompted?.declined) return false;
+          return setting.reasoning?.supports ?? false;
+        }
       ),
     [models, getModelSetting]
   );

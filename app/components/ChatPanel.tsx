@@ -49,6 +49,11 @@ export default function ChatPanel() {
       (m) => m.provider === provider && m.modelId === modelId
     );
 
+    if (setting?.reasoning?.supports === true && !setting?.thinkingTagPrompted?.declined) {
+      setHasCheckedThinkingPrompt(true);
+      return;
+    }
+
     if (setting?.parseThinkTags !== true && setting?.thinkingTagPrompted?.prompted !== true) {
       setShowThinkingPrompt(true);
     }

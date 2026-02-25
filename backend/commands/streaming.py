@@ -34,6 +34,7 @@ from ..services.option_validation import (
 from ..services.tool_registry import get_tool_registry
 from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
+from ..services.chat_graph_runner import extract_error_message
 from nodes._types import NodeEvent
 
 import logging
@@ -398,15 +399,16 @@ async def stream_chat(
         return
     except Exception as e:
         logger.info(f"[stream] Error: {e}")
+        error_message = extract_error_message(str(e))
 
         if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.update_stream_status(chat_id, "error", error_message)
             await broadcaster.unregister_stream(chat_id)
 
         try:
             append_error_block_to_message(
                 assistant_msg_id,
-                error_message=str(e),
+                error_message=error_message,
                 traceback_text=traceback.format_exc(),
             )
         except Exception as e2:
@@ -417,14 +419,14 @@ async def stream_chat(
                     [
                         {
                             "type": "error",
-                            "content": str(e),
+                            "content": error_message,
                             "traceback": traceback.format_exc(),
                             "timestamp": datetime.now(UTC).isoformat(),
                         }
                     ]
                 ),
             )
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        channel.send_model(ChatEvent(event="RunError", content=error_message))
 
 
 class StreamAgentChatRequest(BaseModel):
@@ -537,16 +539,17 @@ async def stream_agent_chat(
     except Exception as e:
         logger.error(f"[stream_agent] Error: {e}")
         traceback.print_exc()
+        error_message = extract_error_message(str(e))
 
         if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.update_stream_status(chat_id, "error", error_message)
             await broadcaster.unregister_stream(chat_id)
 
         if not ephemeral:
             try:
                 append_error_block_to_message(
                     assistant_msg_id,
-                    error_message=str(e),
+                    error_message=error_message,
                     traceback_text=traceback.format_exc(),
                 )
             except Exception as e2:
@@ -557,14 +560,14 @@ async def stream_agent_chat(
                         [
                             {
                                 "type": "error",
-                                "content": str(e),
+                                "content": error_message,
                                 "traceback": traceback.format_exc(),
                                 "timestamp": datetime.now(UTC).isoformat(),
                             }
                         ]
                     ),
                 )
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        channel.send_model(ChatEvent(event="RunError", content=error_message))
 
 
 @command

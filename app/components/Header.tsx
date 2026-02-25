@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { SIDEBAR_TRANSITION, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { TEST_CHAT_PANEL_TRANSITION } from "@/(app)/(pages)/agents/edit/AgentTestChatPanel";
 
 const TITLEBAR_OFFSET_PX = 74;
 const DEFAULT_PADDING_PX = 16;
@@ -47,7 +48,10 @@ function HeaderInner() {
         className="absolute inset-x-0 top-0 z-10 pointer-events-none p-4 flex items-start justify-between gap-4"
         initial={false}
         animate={{ paddingRight: rightOffset + DEFAULT_PADDING_PX, paddingLeft: leftPadding }}
-        transition={SIDEBAR_TRANSITION}
+        transition={{
+          paddingLeft: SIDEBAR_TRANSITION,
+          paddingRight: TEST_CHAT_PANEL_TRANSITION,
+        }}
       >
         <div className="pointer-events-auto flex items-center gap-2 min-w-0 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-border shadow-sm">
           <SidebarTrigger />
@@ -66,8 +70,11 @@ function HeaderInner() {
     <motion.header
       className={`z-10 flex shrink-0 items-center rounded-tr-2xl gap-2 px-4 py-3 sticky top-0 w-full h-14 ${hasRightContent ? "justify-between" : ""}`}
       initial={false}
-      animate={{ paddingLeft: leftPadding }}
-      transition={SIDEBAR_TRANSITION}
+      animate={{ paddingLeft: leftPadding, paddingRight: rightOffset + DEFAULT_PADDING_PX }}
+      transition={{
+        paddingLeft: SIDEBAR_TRANSITION,
+        paddingRight: TEST_CHAT_PANEL_TRANSITION,
+      }}
     >
       <div className="flex items-center gap-2 min-w-0">
         <SidebarTrigger />
