@@ -34,13 +34,19 @@ def _default_resolve_options(
     return resolve_common_options(model_options, node_params)
 
 
-def get_credentials() -> Tuple[Optional[str], Optional[str]]:
-    """Get API credentials for the calling provider. Auto-detects provider from filename."""
+def get_credentials(
+    provider_name: str | None = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Get API credentials for a provider.
+
+    If *provider_name* is given it is used directly; otherwise the provider is
+    auto-detected from the caller's filename (legacy behaviour).
+    """
     override = _credential_override.get()
     if override is not None:
         return override
 
-    provider = _get_caller_provider()
+    provider = provider_name or _get_caller_provider()
 
     with db.db_session() as sess:
         settings = db.get_provider_settings(sess, provider)
@@ -50,19 +56,21 @@ def get_credentials() -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def get_api_key() -> Optional[str]:
-    return get_credentials()[0]
+def get_api_key(provider_name: str | None = None) -> Optional[str]:
+    return get_credentials(provider_name)[0]
 
 
-def get_base_url() -> Optional[str]:
-    return get_credentials()[1]
+def get_base_url(provider_name: str | None = None) -> Optional[str]:
+    return get_credentials(provider_name)[1]
 
 
-def get_extra_config() -> dict:
+def get_extra_config(provider_name: str | None = None) -> dict:
     import json
 
+    provider = provider_name or _get_caller_provider()
+
     with db.db_session() as sess:
-        settings = db.get_provider_settings(sess, _get_caller_provider())
+        settings = db.get_provider_settings(sess, provider)
         if settings and settings.get("extra"):
             extra = settings["extra"]
             return json.loads(extra) if isinstance(extra, str) else extra
@@ -112,6 +120,32 @@ for _, name, _ in pkgutil.iter_modules(__path__):
 
     except Exception as e:
         print(f"✗ {name}: {e}")
+
+
+# --- Manifest-driven providers (adapter system) ---
+import backend.providers.adapters.openai_compatible  # noqa: F401, E402 — triggers adapter registration
+
+from .adapters import ADAPTER_REGISTRY  # noqa: E402
+from ._manifest import MANIFEST_PROVIDERS  # noqa: E402
+
+for _cfg in MANIFEST_PROVIDERS:
+    _cfg = dict(_cfg)
+    _pid = _cfg.pop("id")
+    _adapter_name = _cfg.pop("adapter")
+    _aliases = _cfg.pop("aliases", [])
+    if _pid in PROVIDERS:
+        continue
+    _create = ADAPTER_REGISTRY.get(_adapter_name)
+    if _create is None:
+        print(f"✗ {_pid}: unknown adapter '{_adapter_name}'")
+        continue
+    _entry = _create(provider_id=_pid, **_cfg)
+    _entry.setdefault("get_model_options", _default_get_model_options)
+    _entry.setdefault("resolve_options", _default_resolve_options)
+    PROVIDERS[_pid] = _entry
+    for _alias in _aliases:
+        ALIASES[_alias] = _pid
+    print(f"✓ {_pid}")
 
 
 def get_model(

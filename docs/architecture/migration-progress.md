@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 0 (Quick Wins, Low Risk)
+## Current Phase: Phase 1 (Footprint Reduction)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -23,10 +23,6 @@ Size impact:
 - `branches.py`: 625 -> 522 LOC (-103)
 - `conversation_run_service.py`: 159 LOC (new)
 
-All 232 tests pass (43 skipped). Zero test changes needed.
-
-Note: `init_assistant_msg` and `get_graph_data_for_chat`/`run_graph_chat_runtime` calls remain inline in the command modules. Assistant msg creation differs enough between streaming and branches to not warrant unification yet. Runtime invocation calls stay inline because existing test mocks patch them at the command module level.
-
 ### Phase 0, Remaining Steps
 
 - [ ] Split `use-chat-input` into 3-4 focused hooks
@@ -34,12 +30,39 @@ Note: `init_assistant_msg` and `get_graph_data_for_chat`/`run_graph_chat_runtime
 
 ---
 
+### Phase 1, Step 1: Provider Manifest System -- DONE
+
+**Status:** Complete
+**Files changed:** 81 provider files deleted, 4 new files added
+
+Replaced 81 identical OpenAI-compatible provider modules with a modular adapter system:
+
+| Component | File | Purpose |
+|---|---|---|
+| Adapter registry | `backend/providers/adapters/__init__.py` | Contract + registry for adapter modules |
+| OpenAI adapter | `backend/providers/adapters/openai_compatible.py` | Factory for OpenAI-compatible providers |
+| Manifest | `backend/providers/_manifest.py` | Declarative list of 81 provider configs |
+| Credential fix | `backend/providers/__init__.py` | Added `provider_name` param to bypass stack inspection |
+
+Size impact:
+- Deleted 81 files (~4,400 LOC)
+- Added 4 files (~200 LOC)
+- Net reduction: ~4,200 LOC
+
+All 244 tests pass (43 skipped). 12 new adapter tests added.
+
+25 custom provider modules remain as code (Anthropic, Google, Copilot, Ollama, Groq, etc.).
+
+Adding a new OpenAI-compatible provider is now a single line in `_manifest.py`. Adding a new protocol family (e.g. Anthropic-compatible) means adding one adapter file in `adapters/`.
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
 |---|---|---|
-| **Phase 0** | Quick wins, low risk | In Progress |
-| **Phase 1** | Footprint reduction (provider manifests) | Not Started |
+| **Phase 0** | Quick wins, low risk | In Progress (2 frontend items remain) |
+| **Phase 1** | Footprint reduction (provider manifests) | Step 1 complete |
 | **Phase 2** | Event protocol hardening | Not Started |
 | **Phase 3** | Core boundaries (application-layer services) | Not Started |
 | **Phase 4** | Plugin maturity | Not Started |
