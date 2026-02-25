@@ -23,9 +23,10 @@ from ..services.chat_graph_runner import (
     update_chat_model_selection,
 )
 from ..services.workspace_manager import get_workspace_manager
-from ..services.option_validation import (
-    ModelResolutionError,
-    resolve_and_validate_model_options,
+from ..services.conversation_run_service import (
+    validate_model_options,
+    build_message_history,
+    emit_run_start_events,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,16 +104,11 @@ async def continue_message(
 ) -> None:
     existing_blocks: List[Dict[str, Any]] = []
     original_msg_id: Optional[str] = None
-    validated_model_options: Dict[str, Any] = {}
 
-    try:
-        validated_model_options = resolve_and_validate_model_options(
-            body.chatId,
-            body.modelId,
-            body.modelOptions,
-        )
-    except (ModelResolutionError, ValueError) as exc:
-        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+    validated_model_options = validate_model_options(
+        body.chatId, body.modelId, body.modelOptions, channel
+    )
+    if validated_model_options is None:
         return
 
     with db.db_session() as sess:
@@ -129,35 +125,7 @@ async def continue_message(
             if original_msg.parent_message_id
             else []
         )
-
-        chat_messages = []
-        for m in messages:
-            content = m.content
-            if isinstance(content, str) and content.strip().startswith("["):
-                try:
-                    content = json.loads(content)
-                except Exception:
-                    pass
-
-            attachments = None
-            if m.role == "user" and m.attachments:
-                try:
-                    attachments_data = json.loads(m.attachments)
-                    attachments = [
-                        Attachment(**att_data) for att_data in attachments_data
-                    ]
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    pass
-
-            chat_messages.append(
-                ChatMessage(
-                    id=m.id,
-                    role=m.role,
-                    content=content,
-                    createdAt=m.createdAt,
-                    attachments=attachments,
-                )
-            )
+        chat_messages = build_message_history(messages)
 
         if original_msg.content and isinstance(original_msg.content, str):
             raw = original_msg.content.strip()
@@ -191,13 +159,11 @@ async def continue_message(
 
     db.materialize_to_branch(body.chatId, original_msg_id)
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    channel.send_model(
-        ChatEvent(
-            event="AssistantMessageId",
-            content=new_msg_id,
-            blocks=existing_blocks if existing_blocks else None,
-        )
+    emit_run_start_events(
+        channel,
+        body.chatId,
+        new_msg_id,
+        blocks=existing_blocks if existing_blocks else None,
     )
 
     try:
@@ -228,17 +194,13 @@ async def retry_message(
     body: RetryMessageRequest,
 ) -> None:
     parent_msg_id: Optional[str] = None
-    validated_model_options: Dict[str, Any] = {}
 
-    try:
-        validated_model_options = resolve_and_validate_model_options(
-            body.chatId,
-            body.modelId,
-            body.modelOptions,
-        )
-    except (ModelResolutionError, ValueError) as exc:
-        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+    validated_model_options = validate_model_options(
+        body.chatId, body.modelId, body.modelOptions, channel
+    )
+    if validated_model_options is None:
         return
+
     with db.db_session() as sess:
         if body.modelId:
             update_chat_model_selection(sess, body.chatId, body.modelId)
@@ -252,35 +214,7 @@ async def retry_message(
             if original_msg.parent_message_id
             else []
         )
-
-        chat_messages = []
-        for m in messages:
-            content = m.content
-            if isinstance(content, str) and content.strip().startswith("["):
-                try:
-                    content = json.loads(content)
-                except Exception:
-                    pass
-
-            attachments = None
-            if m.role == "user" and m.attachments:
-                try:
-                    attachments_data = json.loads(m.attachments)
-                    attachments = [
-                        Attachment(**att_data) for att_data in attachments_data
-                    ]
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    pass
-
-            chat_messages.append(
-                ChatMessage(
-                    id=m.id,
-                    role=m.role,
-                    content=content,
-                    createdAt=m.createdAt,
-                    attachments=attachments,
-                )
-            )
+        chat_messages = build_message_history(messages)
 
         new_msg_id = db.create_branch_message(
             sess,
@@ -297,8 +231,7 @@ async def retry_message(
     if parent_msg_id:
         db.materialize_to_branch(body.chatId, parent_msg_id)
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    channel.send_model(ChatEvent(event="AssistantMessageId", content=new_msg_id))
+    emit_run_start_events(channel, body.chatId, new_msg_id)
 
     try:
         graph_data = get_graph_data_for_chat(
@@ -329,16 +262,11 @@ async def edit_user_message(
 ) -> None:
     file_renames: Dict[str, str] = {}
     manifest_id: Optional[str] = None
-    validated_model_options: Dict[str, Any] = {}
 
-    try:
-        validated_model_options = resolve_and_validate_model_options(
-            body.chatId,
-            body.modelId,
-            body.modelOptions,
-        )
-    except (ModelResolutionError, ValueError) as exc:
-        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+    validated_model_options = validate_model_options(
+        body.chatId, body.modelId, body.modelOptions, channel
+    )
+    if validated_model_options is None:
         return
 
     with db.db_session() as sess:
@@ -349,15 +277,9 @@ async def edit_user_message(
             channel.send_model(ChatEvent(event="RunError", content="Message not found"))
             return
 
-        messages = (
-            db.get_message_path(sess, original_msg.parent_message_id)
-            if original_msg.parent_message_id
-            else []
-        )
         original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
 
         all_attachments: List[Attachment] = []
-
         files_to_add: List[tuple[str, bytes]] = []
 
         for existing_att in body.existingAttachments:
@@ -447,35 +369,12 @@ async def edit_user_message(
 
         db.set_active_leaf(sess, body.chatId, new_user_msg_id)
 
-        chat_messages = []
-        for m in messages:
-            content = m.content
-            if isinstance(content, str) and content.strip().startswith("["):
-                try:
-                    content = json.loads(content)
-                except Exception:
-                    pass
-
-            msg_attachments = None
-            if m.role == "user" and m.attachments:
-                try:
-                    attachments_data = json.loads(m.attachments)
-                    msg_attachments = [
-                        Attachment(**att_data) for att_data in attachments_data
-                    ]
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    pass
-
-            chat_messages.append(
-                ChatMessage(
-                    id=m.id,
-                    role=m.role,
-                    content=content,
-                    createdAt=m.createdAt,
-                    attachments=msg_attachments,
-                )
-            )
-
+        messages = (
+            db.get_message_path(sess, original_msg.parent_message_id)
+            if original_msg.parent_message_id
+            else []
+        )
+        chat_messages = build_message_history(messages)
         chat_messages.append(
             ChatMessage(
                 id=new_user_msg_id,
@@ -499,8 +398,7 @@ async def edit_user_message(
 
     db.materialize_to_branch(body.chatId, new_user_msg_id)
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=body.chatId))
-    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+    emit_run_start_events(channel, body.chatId, assistant_msg_id)
 
     try:
         graph_data = get_graph_data_for_chat(

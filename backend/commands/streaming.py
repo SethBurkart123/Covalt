@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import traceback
 import uuid
 import types
 from datetime import UTC, datetime
@@ -18,7 +17,6 @@ from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.agent_manager import get_agent_manager
 from ..services.chat_attachments import prepare_stream_attachments
 from ..services.chat_graph_runner import (
-    append_error_block_to_message,
     get_graph_data_for_chat,
     parse_model_id,
     run_graph_chat_runtime,
@@ -27,14 +25,14 @@ from ..services.chat_graph_runner import (
     FlowRunHandle,
 )
 from ..services.flow_executor import run_flow
-from ..services.option_validation import (
-    ModelResolutionError,
-    resolve_and_validate_model_options,
-)
 from ..services.tool_registry import get_tool_registry
 from ..services import run_control
 from ..services import stream_broadcaster as broadcaster
-from ..services.chat_graph_runner import extract_error_message
+from ..services.conversation_run_service import (
+    validate_model_options,
+    emit_run_start_events,
+    handle_streaming_run_error,
+)
 from nodes._types import NodeEvent
 
 import logging
@@ -190,11 +188,6 @@ def init_assistant_msg(chat_id: str, parent_id: str) -> str:
     return msg_id
 
 
-def save_msg_content(msg_id: str, content: str):
-    with db.db_session() as sess:
-        db.update_message_content(sess, messageId=msg_id, content=content)
-
-
 class CancelRunRequest(BaseModel):
     messageId: str
 
@@ -318,29 +311,20 @@ async def stream_chat(
 
     validated_model_options: Dict[str, Any] = {}
 
-    try:
-        if body.modelId:
-            validated_model_options = resolve_and_validate_model_options(
-                body.chatId,
-                body.modelId,
-                body.modelOptions,
-            )
-    except (ModelResolutionError, ValueError) as exc:
-        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
-        return
+    if body.modelId:
+        validated_model_options = validate_model_options(
+            body.chatId, body.modelId, body.modelOptions, channel
+        )
+        if validated_model_options is None:
+            return
 
     chat_id = ensure_chat_initialized(body.chatId, body.modelId)
 
     if not body.modelId:
-        try:
-            validated_model_options = resolve_and_validate_model_options(
-                chat_id,
-                None,
-                body.modelOptions,
-            )
-        except (ModelResolutionError, ValueError) as exc:
-            channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        result = validate_model_options(chat_id, None, body.modelOptions, channel)
+        if result is None:
             return
+        validated_model_options = result
 
     saved_attachments = []
     manifest_id = None
@@ -398,35 +382,10 @@ async def stream_chat(
         )
         return
     except Exception as e:
-        logger.info(f"[stream] Error: {e}")
-        error_message = extract_error_message(str(e))
-
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", error_message)
-            await broadcaster.unregister_stream(chat_id)
-
-        try:
-            append_error_block_to_message(
-                assistant_msg_id,
-                error_message=error_message,
-                traceback_text=traceback.format_exc(),
-            )
-        except Exception as e2:
-            logger.info(f"[stream] Failed to append error block, falling back: {e2}")
-            save_msg_content(
-                assistant_msg_id,
-                json.dumps(
-                    [
-                        {
-                            "type": "error",
-                            "content": error_message,
-                            "traceback": traceback.format_exc(),
-                            "timestamp": datetime.now(UTC).isoformat(),
-                        }
-                    ]
-                ),
-            )
-        channel.send_model(ChatEvent(event="RunError", content=error_message))
+        await handle_streaming_run_error(
+            assistant_msg_id, e, channel,
+            chat_id=chat_id, label="[stream]",
+        )
 
 
 class StreamAgentChatRequest(BaseModel):
@@ -521,8 +480,7 @@ async def stream_agent_chat(
             parent_id = messages[-1].id
         assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=chat_id or None))
-    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+    emit_run_start_events(channel, chat_id, assistant_msg_id)
 
     try:
         graph_data = agent_data["graph_data"]
@@ -537,37 +495,10 @@ async def stream_agent_chat(
             agent_id=body.agentId,
         )
     except Exception as e:
-        logger.error(f"[stream_agent] Error: {e}")
-        traceback.print_exc()
-        error_message = extract_error_message(str(e))
-
-        if chat_id:
-            await broadcaster.update_stream_status(chat_id, "error", error_message)
-            await broadcaster.unregister_stream(chat_id)
-
-        if not ephemeral:
-            try:
-                append_error_block_to_message(
-                    assistant_msg_id,
-                    error_message=error_message,
-                    traceback_text=traceback.format_exc(),
-                )
-            except Exception as e2:
-                logger.error(f"[stream_agent] Failed to append error block: {e2}")
-                save_msg_content(
-                    assistant_msg_id,
-                    json.dumps(
-                        [
-                            {
-                                "type": "error",
-                                "content": error_message,
-                                "traceback": traceback.format_exc(),
-                                "timestamp": datetime.now(UTC).isoformat(),
-                            }
-                        ]
-                    ),
-                )
-        channel.send_model(ChatEvent(event="RunError", content=error_message))
+        await handle_streaming_run_error(
+            assistant_msg_id, e, channel,
+            chat_id=chat_id, ephemeral=ephemeral, label="[stream_agent]",
+        )
 
 
 @command
