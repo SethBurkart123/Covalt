@@ -29,20 +29,27 @@ This works even if it crashes due to port conflicts - the type generation happen
 ## Project Structure
 
 ```
-app/
-├── (app)/              # Next.js app router pages
-│   └── (pages)/        # Nested page routes (settings, tools, etc.)
-├── components/         # React components
-│   ├── ui/             # Reusable UI primitives (shadcn/ui style)
-│   └── tool-renderers/ # Artifact rendering components
-├── contexts/           # React context providers
-├── hooks/              # Custom React hooks
-├── lib/                # Utilities, types, and services
-│   ├── hooks/          # Domain-specific hooks
-│   ├── services/       # API and stream processing
-│   ├── types/          # TypeScript type definitions
-│   └── tool-renderers/ # Tool renderer registry
-└── python/             # Auto-generated Python API client
+covalt-desktop/
+├── src/bun/index.ts          # Electrobun shell entry point
+├── app/                      # Next.js frontend (pages, components, contexts)
+│   ├── components/           # UI components
+│   ├── contexts/             # React context providers
+│   ├── lib/                  # Services, hooks, types
+│   ├── oauth/callback/       # MCP OAuth callback page
+│   └── python/               # Auto-generated Zynk bridge client (api.ts)
+├── backend/                  # Python backend
+│   ├── main.py               # Backend entry point
+│   ├── config.py             # Data directory resolution
+│   ├── commands/             # Zynk @command modules
+│   ├── services/             # Business logic services
+│   ├── providers/            # AI provider integrations
+│   └── database/             # SQLAlchemy models and migrations
+├── nodes/                    # Node definitions for agent flow editor
+├── covalt-toolset/           # Built-in toolset package
+├── tests/                    # Python (pytest) and frontend (vitest) tests
+├── package.json              # JS dependencies and npm scripts
+├── pyproject.toml            # Python dependencies (managed by uv)
+└── electrobun.config.ts      # Electrobun app metadata and build config
 ```
 
 ## Code Style Guidelines
