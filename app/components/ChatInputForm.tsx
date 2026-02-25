@@ -59,6 +59,8 @@ interface LeftToolbarProps {
   onResetOptions?: () => void;
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
+  toolSelectorDisabled?: boolean;
+  toolSelectorDisabledReason?: string;
 }
 
 const LeftToolbar = memo(function LeftToolbar({
@@ -72,6 +74,8 @@ const LeftToolbar = memo(function LeftToolbar({
   onResetOptions,
   hideModelSelector,
   hideToolSelector,
+  toolSelectorDisabled,
+  toolSelectorDisabledReason,
 }: LeftToolbarProps) {
   return (
     <>
@@ -114,13 +118,17 @@ const LeftToolbar = memo(function LeftToolbar({
       )}
 
       {!hideToolSelector && (
-        <ToolSelector>
+        <ToolSelector
+          disabled={toolSelectorDisabled}
+          disabledReason={toolSelectorDisabledReason}
+        >
           <Button
             type="button"
             variant="secondary"
             size="icon"
             className="h-9 w-9 flex-shrink-0 rounded-full p-2"
-            disabled={isLoading}
+            disabled={isLoading || toolSelectorDisabled}
+            title={toolSelectorDisabledReason}
           >
             <MoreHorizontal className="size-5" />
           </Button>
@@ -212,6 +220,25 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     const [hasTextContent, setHasTextContent] = useState(false);
     const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
     
+    const toolSelectorState = useMemo(() => {
+      const schema = optionSchema;
+      if (!schema) return { disabled: false, reason: undefined };
+
+      const allDefs = [...schema.main, ...schema.advanced];
+      const disableDef = allDefs.find((def) => def.key === "disable_tools");
+      if (!disableDef) return { disabled: false, reason: undefined };
+
+      if (disableDef.default === true) {
+        return { disabled: true, reason: "Tools not supported by this model" };
+      }
+
+      if (optionValues?.disable_tools === true) {
+        return { disabled: true, reason: "Tools disabled in model options" };
+      }
+
+      return { disabled: false, reason: undefined };
+    }, [optionSchema, optionValues]);
+
     const formRef = useRef<HTMLFormElement>(null);
     const editorRef = useRef<Editor | null>(null);
     const mentionItemsRef = useRef<MentionItem[]>([]);
@@ -675,6 +702,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 onResetOptions={onResetOptions}
                 hideModelSelector={hideModelSelector}
                 hideToolSelector={hideToolSelector}
+                toolSelectorDisabled={toolSelectorState.disabled}
+                toolSelectorDisabledReason={toolSelectorState.reason}
               />
 
               <div className="flex-1" />

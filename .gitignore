@@ -16,6 +16,7 @@ backend/build/
 backend/dist/
 website/
 *.local
+dogfood-output/
 
 # Editor directories and files
 .vscode/*

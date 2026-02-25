@@ -15,6 +15,7 @@ from agno.team import Team
 
 from backend.services import run_control
 from backend.services.model_factory import get_model
+from backend.services.model_schema_cache import get_cached_model_metadata
 from backend.providers import resolve_provider_options
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
@@ -104,6 +105,8 @@ class AgentExecutor:
             model_options=model_options,
         )
         tools, sub_agents = await _resolve_link_dependencies(context, input_value)
+        if _should_disable_tools(model_str, model_options):
+            tools = []
         tool_node_lookup = _build_tool_node_lookup(tools)
         agent = _build_agent_or_team(
             data,
@@ -690,6 +693,36 @@ def _resolve_model(
     return get_model(provider, model_id, provider_options=provider_options)
 
 
+def _split_model_id(model_str: str) -> tuple[str | None, str | None]:
+    if ":" not in model_str:
+        return None, None
+    provider, model_id = model_str.split(":", 1)
+    provider = provider.strip()
+    model_id = model_id.strip()
+    if not provider or not model_id:
+        return None, None
+    return provider, model_id
+
+
+def _should_disable_tools(
+    model_str: str,
+    model_options: dict[str, Any] | None,
+) -> bool:
+    options = model_options or {}
+    if options.get("disable_tools") is True or options.get("disableTools") is True:
+        return True
+
+    provider, model_id = _split_model_id(model_str)
+    if not provider or not model_id:
+        return False
+
+    metadata = get_cached_model_metadata(provider, model_id)
+    supports_tools = metadata.get("supports_tools") if isinstance(metadata, dict) else None
+    if isinstance(supports_tools, bool):
+        return not supports_tools
+    return False
+
+
 async def _resolve_flow_input(context: FlowContext, target_handle: str) -> Any | None:
     runtime = context.runtime
     if runtime is None:
@@ -1079,6 +1112,8 @@ async def _build_runtime_runnable(
         model_options=model_options,
     )
     tools, sub_agents = await _resolve_link_dependencies(context, input_value)
+    if _should_disable_tools(model_str, model_options):
+        tools = []
     return _build_agent_or_team(
         data,
         model=model,
@@ -1086,6 +1121,7 @@ async def _build_runtime_runnable(
         sub_agents=sub_agents,
         instructions=instructions,
     )
+
 
 def _build_agent_or_team(
     data: dict[str, Any],

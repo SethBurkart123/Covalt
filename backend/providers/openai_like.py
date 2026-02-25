@@ -36,7 +36,7 @@ async def _fetch_from_openai_endpoint(
     base_url: str, api_key: str
 ) -> List[Dict[str, str]]:
     base = base_url.rstrip("/")
-    url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+    url = f"{base}/models" if (base.endswith("/v1") or base.endswith("/v2")) else f"{base}/v1/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     try:
