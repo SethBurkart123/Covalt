@@ -337,6 +337,7 @@ export function McpServerCard({
               e.stopPropagation();
               onEdit();
             }}
+            aria-label={`Edit ${displayName}`}
           >
             <Pencil className="size-4" />
           </Button>
@@ -347,6 +348,7 @@ export function McpServerCard({
               e.stopPropagation();
               onDelete();
             }}
+            aria-label={`Delete ${displayName}`}
             className="text-destructive hover:text-destructive"
           >
             <Trash2 className="size-4" />

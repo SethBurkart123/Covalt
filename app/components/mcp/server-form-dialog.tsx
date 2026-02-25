@@ -285,7 +285,8 @@ export function ServerFormDialog({
       if (args.length > 0) config.args = args;
       if (formData.cwd.trim()) config.cwd = formData.cwd;
     } else {
-      config.url = formData.url || undefined;
+      const trimmedUrl = formData.url.trim();
+      config.url = trimmedUrl || undefined;
       config.transport = formData.type;
       const headers = parseHeadersString(formData.headers);
       if (headers) config.headers = headers;
@@ -300,7 +301,44 @@ export function ServerFormDialog({
     return config;
   };
 
+  const validateFormData = useCallback((data: ServerFormData): string | null => {
+    if (data.type === "stdio") {
+      const { command } = parseCommandString(data.command);
+      if (!command.trim()) {
+        return "Command is required for stdio servers.";
+      }
+      return null;
+    }
+
+    const url = data.url.trim();
+    if (!url) {
+      return "URL is required for SSE or Streamable HTTP servers.";
+    }
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "URL must start with http:// or https://.";
+      }
+    } catch {
+      return "URL must be a valid absolute URL (e.g., http://localhost:8080/sse).";
+    }
+
+    return null;
+  }, []);
+
+  const formValidationError = useMemo(
+    () => (mode === "form" ? validateFormData(formData) : null),
+    [formData, mode, validateFormData]
+  );
+
   const handleFormSubmit = async () => {
+    const validationError = validateFormData(formData);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
 
@@ -471,7 +509,7 @@ export function ServerFormDialog({
           {mode !== "import" ? (
             <Button
               onClick={mode === "form" ? handleFormSubmit : handleJsonSubmit}
-              disabled={isSubmitting || isLoadingConfig}
+              disabled={isSubmitting || isLoadingConfig || (mode === "form" && !!formValidationError)}
             >
               {isSubmitting && <Loader2 className="size-4 animate-spin" />}
               {!!editingServerKey
