@@ -16,6 +16,7 @@ from agno.team import Team
 from backend.services import run_control
 from backend.services.model_factory import get_model
 from backend.services.model_schema_cache import get_cached_model_metadata
+from backend.services.tool_registry import get_original_tool_name
 from backend.providers import resolve_provider_options
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
@@ -176,7 +177,9 @@ class AgentExecutor:
                         data={"run_id": active_run_id},
                     )
 
-                member_fields = _member_event_fields(chunk) if emit_member_events else {}
+                member_fields = (
+                    _member_event_fields(chunk) if emit_member_events else {}
+                )
                 if force_member_output and not member_fields:
                     if not forced_member_run_id:
                         forced_member_run_id = (
@@ -348,7 +351,9 @@ class AgentExecutor:
                             setattr(tool, "confirmed", True)
                         for tool in tools:
                             tool_id = getattr(tool, "tool_call_id", "")
-                            tool_name = getattr(tool, "tool_name", "")
+                            tool_name = get_original_tool_name(
+                                getattr(tool, "tool_name", "")
+                            )
                             tool_info: dict[str, Any] = {
                                 "id": tool_id,
                                 "toolName": tool_name,
@@ -393,7 +398,9 @@ class AgentExecutor:
                     tools_info: list[dict[str, Any]] = []
                     for tool in tools:
                         tool_id = getattr(tool, "tool_call_id", "")
-                        tool_name = getattr(tool, "tool_name", "")
+                        tool_name = get_original_tool_name(
+                            getattr(tool, "tool_name", "")
+                        )
                         tool_args = getattr(tool, "tool_args", None)
                         tool_info: dict[str, Any] = {
                             "id": tool_id,
@@ -451,7 +458,9 @@ class AgentExecutor:
 
                     for tool in tools:
                         tool_id = getattr(tool, "tool_call_id", "")
-                        tool_name = getattr(tool, "tool_name", "")
+                        tool_name = get_original_tool_name(
+                            getattr(tool, "tool_name", "")
+                        )
                         status = (
                             "timeout"
                             if timed_out
@@ -538,7 +547,10 @@ class AgentExecutor:
                         )
                         if force_member_output:
                             raise RuntimeError(
-                                str(getattr(chunk, "content", None) or "Agent run failed")
+                                str(
+                                    getattr(chunk, "content", None)
+                                    or "Agent run failed"
+                                )
                             )
                         continue
                     raise RuntimeError(
@@ -717,7 +729,9 @@ def _should_disable_tools(
         return False
 
     metadata = get_cached_model_metadata(provider, model_id)
-    supports_tools = metadata.get("supports_tools") if isinstance(metadata, dict) else None
+    supports_tools = (
+        metadata.get("supports_tools") if isinstance(metadata, dict) else None
+    )
     if isinstance(supports_tools, bool):
         return not supports_tools
     return False
@@ -1060,9 +1074,10 @@ def _tool_started_payload(chunk: Any) -> dict[str, Any] | None:
     tool = getattr(chunk, "tool", None)
     if tool is None:
         return None
+    raw_name = getattr(tool, "tool_name", None)
     return {
         "id": getattr(tool, "tool_call_id", None),
-        "toolName": getattr(tool, "tool_name", None),
+        "toolName": get_original_tool_name(raw_name) if raw_name else raw_name,
         "toolArgs": getattr(tool, "tool_args", None),
         "isCompleted": False,
     }
@@ -1072,10 +1087,11 @@ def _tool_completed_payload(chunk: Any) -> dict[str, Any] | None:
     tool = getattr(chunk, "tool", None)
     if tool is None:
         return None
+    raw_name = getattr(tool, "tool_name", None)
     result = getattr(tool, "result", None)
     payload = {
         "id": getattr(tool, "tool_call_id", None),
-        "toolName": getattr(tool, "tool_name", None),
+        "toolName": get_original_tool_name(raw_name) if raw_name else raw_name,
         "toolResult": str(result) if result is not None else None,
     }
     error_value = getattr(tool, "error", None)

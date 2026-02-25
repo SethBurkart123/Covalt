@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, Any, Callable
 
 from agno.tools import tool as agno_tool
@@ -11,6 +12,44 @@ if TYPE_CHECKING:
     from .toolset_executor import ToolsetExecutor
 
 logger = logging.getLogger(__name__)
+
+# Global reverse map: sanitized Function.name → original tool id.
+# Populated by resolve_tool_ids so any stream consumer can restore the
+# original name without needing per-run state.
+_tool_name_restore_map: dict[str, str] = {}
+
+TOOL_NAME_CHARS = "a-zA-Z0-9_-"
+TOOL_NAME_MAX_LEN = 128
+_tool_name_replace_re = re.compile(rf"[^{TOOL_NAME_CHARS}]")
+
+
+def get_original_tool_name(name: str) -> str:
+    """Return the original (internal) tool name for a sanitized Function.name."""
+    return _tool_name_restore_map.get(name, name)
+
+
+def _to_toolset_scoped_name(name: str) -> str:
+    """Collapse MCP server-qualified names to toolset-scoped names.
+
+    Example: "toolset~server:list_books" -> "toolset:list_books"
+    """
+    if ":" not in name:
+        return name
+    namespace, tool_name = name.split(":", 1)
+    if "~" not in namespace:
+        return name
+    toolset_id, _ = namespace.split("~", 1)
+    if not toolset_id:
+        return name
+    return f"{toolset_id}:{tool_name}"
+
+
+def _to_safe_name(name: str) -> str:
+    """Create a provider-safe name using allowed chars only."""
+    base = _tool_name_replace_re.sub("_", name)
+    if not base:
+        base = "tool"
+    return base[:TOOL_NAME_MAX_LEN]
 
 
 class ToolRegistry:
@@ -48,7 +87,11 @@ class ToolRegistry:
         server_key = mcp.resolve_server_key(server_id) or server_id
         tool_id_full = f"mcp:{server_key}:{tool_name}"
         return next(
-            (t for t in mcp.get_server_tools(server_key) if t.get("id") == tool_id_full),
+            (
+                t
+                for t in mcp.get_server_tools(server_key)
+                if t.get("id") == tool_id_full
+            ),
             None,
         )
 
@@ -209,6 +252,7 @@ class ToolRegistry:
                 f"Toolset tools requested but no chat_id provided: {include_toolset_tools}"
             )
 
+        _sanitize_function_names(result)
         return result
 
     def list_builtin_tools(self) -> list[dict[str, Any]]:
@@ -220,6 +264,43 @@ class ToolRegistry:
     def list_toolset_tools(self) -> list[dict[str, Any]]:
         executor = get_toolset_executor()
         return executor.list_toolset_tools()
+
+
+def _sanitize_function_names(functions: list[Any]) -> None:
+    """Normalize Function.name to toolset-scoped names and sanitize deterministically.
+
+    - MCP tool names are collapsed from "toolset~server:tool" to "toolset:tool"
+    - Duplicate tool names within the same toolset are rejected
+    - Sanitized names are plain canonical names
+    """
+    seen_toolset_scoped: dict[str, str] = {}
+    seen_safe_names: dict[str, str] = {}
+
+    for fn in functions:
+        original = getattr(fn, "name", None)
+        if not isinstance(original, str) or not original:
+            continue
+
+        toolset_scoped_name = _to_toolset_scoped_name(original)
+        previous = seen_toolset_scoped.get(toolset_scoped_name)
+        if previous and previous != original:
+            raise ValueError(
+                "Duplicate tool name within toolset is not allowed: "
+                f"'{toolset_scoped_name}' from '{previous}' and '{original}'"
+            )
+        seen_toolset_scoped[toolset_scoped_name] = original
+
+        safe = _to_safe_name(toolset_scoped_name)
+        previous_safe = seen_safe_names.get(safe)
+        if previous_safe and previous_safe != toolset_scoped_name:
+            raise ValueError(
+                "Sanitized tool name collision: "
+                f"'{toolset_scoped_name}' and '{previous_safe}' both map to '{safe}'"
+            )
+        seen_safe_names[safe] = toolset_scoped_name
+
+        fn.name = safe
+        _tool_name_restore_map[safe] = toolset_scoped_name
 
 
 _tool_registry: ToolRegistry | None = None
