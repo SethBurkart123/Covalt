@@ -308,37 +308,52 @@ export default function ProvidersPanel() {
     }));
   };
 
-  const handleSave = async (key: string) => {
-    const def = PROVIDERS.find((p) => p.key === key);
-    if (def?.authType === 'oauth') {
-      return;
-    }
-    setSaving((s) => ({ ...s, [key]: true }));
-    setSaved((s) => ({ ...s, [key]: false }));
-    try {
-      const cfg = providerConfigs[key];
+  const saveProviderConfig = useCallback(
+    async (key: string, options?: { refreshConnectionStatus?: boolean }) => {
+      const def = PROVIDERS.find((p) => p.key === key);
+      if (def?.authType === 'oauth') {
+        return false;
+      }
+      setSaving((s) => ({ ...s, [key]: true }));
+      setSaved((s) => ({ ...s, [key]: false }));
+      try {
+        const cfg = providerConfigs[key];
 
-      await saveProviderSettings({
-        body: {
-          provider: key,
-          apiKey: cfg.apiKey || undefined,
-          baseUrl: cfg.baseUrl || undefined,
-          enabled: cfg.enabled,
-        },
-      });
-      setSaving((s) => ({ ...s, [key]: false }));
-      setSaved((s) => ({ ...s, [key]: true }));
-      setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
-      
-      setConnectionStatus((prev) => ({ ...prev, [key]: 'testing' }));
-      refreshModels?.();
-      refreshProviderStatus([key]).finally(() => {
-        setConnectionStatus((prev) => ({ ...prev, [key]: 'idle' }));
-      });
-    } catch (e) {
-      console.error('Failed to save provider settings', key, e);
-      setSaving((s) => ({ ...s, [key]: false }));
-    }
+        await saveProviderSettings({
+          body: {
+            provider: key,
+            apiKey: cfg.apiKey || undefined,
+            baseUrl: cfg.baseUrl || undefined,
+            enabled: cfg.enabled,
+          },
+        });
+        setSaved((s) => ({ ...s, [key]: true }));
+        setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 1500);
+
+        refreshModels?.();
+        if (options?.refreshConnectionStatus !== false) {
+          setConnectionStatus((prev) => ({ ...prev, [key]: 'testing' }));
+          refreshProviderStatus([key]).finally(() => {
+            setConnectionStatus((prev) => ({ ...prev, [key]: 'idle' }));
+          });
+        } else {
+          refreshProviderStatus([key]).catch((error) => {
+            console.error('Failed to refresh provider status', error);
+          });
+        }
+        return true;
+      } catch (error) {
+        console.error('Failed to save provider settings', key, error);
+        return false;
+      } finally {
+        setSaving((s) => ({ ...s, [key]: false }));
+      }
+    },
+    [providerConfigs, refreshModels, refreshProviderStatus]
+  );
+
+  const handleSave = async (key: string) => {
+    await saveProviderConfig(key);
   };
 
   const handleTestConnection = async (providerKey: string) => {
@@ -361,6 +376,7 @@ export default function ProvidersPanel() {
       if (result.success) {
         setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'success' }));
         setProviderConnections((prev) => ({ ...prev, [providerKey]: true }));
+        void saveProviderConfig(providerKey, { refreshConnectionStatus: false });
         setTimeout(() => {
           setConnectionStatus((prev) => ({ ...prev, [providerKey]: 'idle' }));
         }, 3000);
