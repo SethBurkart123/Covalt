@@ -263,7 +263,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-full min-w-[var(--radix-popper-anchor-width)] border border-border bg-secondary shadow-lg rounded-2xl p-0"
+        className="w-full min-w-[var(--radix-popper-anchor-width)] max-w-[min(var(--radix-popper-available-width),40rem)] overflow-hidden border border-border bg-secondary shadow-lg rounded-2xl p-0"
         align="start"
       >
         <Command className="rounded-2xl" shouldFilter={false} disablePointerSelection>
