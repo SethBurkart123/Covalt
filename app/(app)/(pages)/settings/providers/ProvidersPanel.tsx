@@ -40,7 +40,6 @@ interface ProviderOverview {
   provider: string;
   apiKey?: string | null;
   baseUrl?: string | null;
-  extra?: unknown;
   enabled?: boolean;
   connected?: boolean;
   oauth?: ProviderOAuthOverview | null;
@@ -158,14 +157,10 @@ export default function ProvidersPanel() {
   }, [refreshModels, stopPolling]);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
-
-  useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetchProviderOverview(PROVIDERS.map((p) => p.key));
@@ -174,17 +169,10 @@ export default function ProvidersPanel() {
       const connectionMap: Record<string, boolean> = {};
 
       (response?.providers || []).forEach((p: ProviderOverview) => {
-        const extra = typeof p.extra === 'string'
-          ? p.extra
-          : p.extra && typeof p.extra === 'object'
-          ? JSON.stringify(p.extra, null, 2)
-          : '';
-
         map[p.provider] = {
           provider: p.provider,
           apiKey: p.apiKey ?? '',
           baseUrl: p.baseUrl ?? '',
-          extra,
           enabled: Boolean(p.enabled ?? true),
         };
 
@@ -207,7 +195,6 @@ export default function ProvidersPanel() {
             provider: def.key,
             apiKey: '',
             baseUrl: def.defaults?.baseUrl,
-            extra: '',
             enabled: def.defaults?.enabled ?? true,
           };
         }
@@ -244,7 +231,11 @@ export default function ProvidersPanel() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchProviderOverview]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const applyOverviewStatus = useCallback((providers: ProviderOverview[]) => {
     setProviderConnections((prev) => {
@@ -291,13 +282,13 @@ export default function ProvidersPanel() {
     );
   }, [search]);
 
-  const isConnected = (key: string) => {
+  const isConnected = useCallback((key: string) => {
     const def = PROVIDERS.find((p) => p.key === key);
     if (def?.authType === 'oauth') {
       return oauthStatus[key]?.status === 'authenticated';
     }
     return Boolean(providerConnections[key]);
-  };
+  }, [oauthStatus, providerConnections]);
 
   const displayProviders = useMemo(() => 
     filtered
@@ -308,7 +299,7 @@ export default function ProvidersPanel() {
         if (aConnected !== bConnected) return aConnected - bConnected;
         return a.name.localeCompare(b.name);
       }),
-  [filtered, oauthStatus, providerConnections]);
+  [filtered, isConnected]);
 
   const updateProvider = (key: string, field: keyof ProviderConfig, value: string | boolean) => {
     setProviderConfigs((prev) => ({
@@ -326,21 +317,12 @@ export default function ProvidersPanel() {
     setSaved((s) => ({ ...s, [key]: false }));
     try {
       const cfg = providerConfigs[key];
-      let extra = undefined;
-      if (typeof cfg.extra === 'string' && cfg.extra.trim().length > 0) {
-        try {
-          extra = JSON.parse(cfg.extra);
-        } catch {
-          extra = cfg.extra;
-        }
-      }
 
       await saveProviderSettings({
         body: {
           provider: key,
           apiKey: cfg.apiKey || undefined,
           baseUrl: cfg.baseUrl || undefined,
-          extra,
           enabled: cfg.enabled,
         },
       });

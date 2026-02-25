@@ -61,9 +61,15 @@ function getAggregateStatus(
 
 interface ToolSelectorProps {
   children: React.ReactNode;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
-export const ToolSelector = memo(function ToolSelector({ children }: ToolSelectorProps) {
+export const ToolSelector = memo(function ToolSelector({
+  children,
+  disabled = false,
+  disabledReason,
+}: ToolSelectorProps) {
   const {
     groupedTools,
     activeToolIds,
@@ -198,6 +204,14 @@ export const ToolSelector = memo(function ToolSelector({ children }: ToolSelecto
   }, [groupedTools.byToolset, mcpServers, toolsetNameById]);
 
 
+
+  if (disabled) {
+    return (
+      <div className="pointer-events-none opacity-60" title={disabledReason}>
+        {children}
+      </div>
+    );
+  }
 
   return (
     <DropdownMenu>

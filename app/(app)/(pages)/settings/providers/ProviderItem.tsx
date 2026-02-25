@@ -412,24 +412,13 @@ export default function ProviderItem({
               {!isOauth && def.fields.map((field) => (
                 <div className="space-y-2" key={`${def.key}-${field.id}`}>
                   <Label htmlFor={`${def.key}-${field.id}`}>{field.label}</Label>
-                  {field.type === 'textarea' ? (
-                    <textarea
-                      id={`${def.key}-${field.id}`}
-                      placeholder={field.placeholder}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      rows={6}
-                      value={(config[field.id] as string) || ''}
-                      onChange={(e) => onChange(field.id, e.target.value)}
-                    />
-                  ) : (
-                    <Input
-                      id={`${def.key}-${field.id}`}
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      value={(config[field.id] as string) || ''}
-                      onChange={(e) => onChange(field.id, e.target.value)}
-                    />
-                  )}
+                  <Input
+                    id={`${def.key}-${field.id}`}
+                    type={field.type}
+                    placeholder={field.placeholder}
+                    value={(config[field.id] as string) || ''}
+                    onChange={(e) => onChange(field.id, e.target.value)}
+                  />
                 </div>
               ))}
 
