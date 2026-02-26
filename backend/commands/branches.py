@@ -11,7 +11,8 @@ from sqlalchemy import or_, select
 from zynk import Channel, command
 
 from .. import db
-from ..models.chat import Attachment, ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatMessage
+from ..services.runtime_events import EVENT_RUN_ERROR, emit_chat_event
 from ..services.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
@@ -117,7 +118,7 @@ async def continue_message(
 
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
-            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
+            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
             return
 
         messages = (
@@ -185,7 +186,7 @@ async def continue_message(
     except Exception as e:
         logger.error(f"continue_message error: {e}")
         append_error_block_to_message(new_msg_id, error_message=str(e))
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
 
 
 @command
@@ -206,7 +207,7 @@ async def retry_message(
             update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
-            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
+            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
             return
 
         messages = (
@@ -252,7 +253,7 @@ async def retry_message(
     except Exception as e:
         logger.error(f"retry_message error: {e}")
         append_error_block_to_message(new_msg_id, error_message=str(e))
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
 
 
 @command
@@ -274,7 +275,7 @@ async def edit_user_message(
             update_chat_model_selection(sess, body.chatId, body.modelId)
         original_msg = sess.get(db.Message, body.messageId)
         if not original_msg:
-            channel.send_model(ChatEvent(event="RunError", content="Message not found"))
+            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
             return
 
         original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
@@ -419,7 +420,7 @@ async def edit_user_message(
     except Exception as e:
         logger.error(f"edit_user_message error: {e}")
         append_error_block_to_message(assistant_msg_id, error_message=str(e))
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
 
 
 @command

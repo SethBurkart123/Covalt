@@ -13,7 +13,22 @@ from rich.logging import RichHandler
 from zynk import Channel, command
 
 from .. import db
-from ..models.chat import Attachment, ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatMessage
+from ..services.runtime_events import (
+    EVENT_ASSISTANT_MESSAGE_ID,
+    EVENT_FLOW_NODE_COMPLETED,
+    EVENT_FLOW_NODE_ERROR,
+    EVENT_FLOW_NODE_RESULT,
+    EVENT_FLOW_NODE_STARTED,
+    EVENT_RUN_CANCELLED,
+    EVENT_RUN_COMPLETED,
+    EVENT_RUN_CONTENT,
+    EVENT_RUN_ERROR,
+    EVENT_RUN_STARTED,
+    EVENT_STREAM_NOT_ACTIVE,
+    EVENT_STREAM_SUBSCRIBED,
+    emit_chat_event,
+)
 from ..services.agent_manager import get_agent_manager
 from ..services.chat_attachments import prepare_stream_attachments
 from ..services.chat_graph_runner import (
@@ -356,13 +371,16 @@ async def stream_chat(
         )
         parent_id = messages[-1].id
 
-    channel.send_model(
-        ChatEvent(event="RunStarted", sessionId=chat_id, fileRenames=file_renames)
+    emit_chat_event(
+        channel,
+        EVENT_RUN_STARTED,
+        sessionId=chat_id,
+        fileRenames=file_renames,
     )
 
     assistant_msg_id = init_assistant_msg(chat_id, parent_id)
 
-    channel.send_model(ChatEvent(event="AssistantMessageId", content=assistant_msg_id))
+    emit_chat_event(channel, EVENT_ASSISTANT_MESSAGE_ID, content=assistant_msg_id)
 
     try:
         graph_data = get_graph_data_for_chat(
@@ -460,8 +478,10 @@ async def stream_agent_chat(
     agent_manager = get_agent_manager()
     agent_data = agent_manager.get_agent(body.agentId)
     if not agent_data:
-        channel.send_model(
-            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        emit_chat_event(
+            channel,
+            EVENT_RUN_ERROR,
+            content=f"Agent '{body.agentId}' not found",
         )
         return
 
@@ -509,8 +529,10 @@ async def stream_flow_run(
     agent_manager = get_agent_manager()
     agent_data = agent_manager.get_agent(body.agentId)
     if not agent_data:
-        channel.send_model(
-            ChatEvent(event="RunError", content=f"Agent '{body.agentId}' not found")
+        emit_chat_event(
+            channel,
+            EVENT_RUN_ERROR,
+            content=f"Agent '{body.agentId}' not found",
         )
         return
 
@@ -565,11 +587,11 @@ async def stream_flow_run(
 
     run_control.register_active_run(run_id, cancel_handle)
 
-    channel.send_model(ChatEvent(event="RunStarted", sessionId=run_id))
+    emit_chat_event(channel, EVENT_RUN_STARTED, sessionId=run_id)
 
     try:
         if run_control.consume_early_cancel(run_id):
-            channel.send_model(ChatEvent(event="RunCancelled"))
+            emit_chat_event(channel, EVENT_RUN_CANCELLED)
             return
 
         async for item in run_flow(agent_data["graph_data"], context):
@@ -577,68 +599,69 @@ async def stream_flow_run(
                 if item.event_type == "agent_event":
                     payload = dict(item.data or {})
                     event_name = str(payload.pop("event", "agent_event"))
-                    channel.send_model(ChatEvent(event=event_name, **payload))
+                    emit_chat_event(
+                        channel,
+                        event_name,
+                        allow_unknown=True,
+                        **payload,
+                    )
                     continue
 
                 if item.event_type == "progress":
                     token = (item.data or {}).get("token", "")
                     if token:
-                        channel.send_model(ChatEvent(event="RunContent", content=token))
+                        emit_chat_event(channel, EVENT_RUN_CONTENT, content=token)
                     continue
 
                 if item.event_type == "cancelled":
-                    channel.send_model(ChatEvent(event="RunCancelled"))
+                    emit_chat_event(channel, EVENT_RUN_CANCELLED)
                     return
 
                 if item.event_type == "started":
-                    channel.send_model(
-                        ChatEvent(
-                            event="FlowNodeStarted",
-                            nodeId=item.node_id,
-                            nodeType=item.node_type,
-                        )
+                    emit_chat_event(
+                        channel,
+                        EVENT_FLOW_NODE_STARTED,
+                        nodeId=item.node_id,
+                        nodeType=item.node_type,
                     )
                     continue
 
                 if item.event_type == "completed":
-                    channel.send_model(
-                        ChatEvent(
-                            event="FlowNodeCompleted",
-                            nodeId=item.node_id,
-                            nodeType=item.node_type,
-                        )
+                    emit_chat_event(
+                        channel,
+                        EVENT_FLOW_NODE_COMPLETED,
+                        nodeId=item.node_id,
+                        nodeType=item.node_type,
                     )
                     continue
 
                 if item.event_type == "result":
-                    channel.send_model(
-                        ChatEvent(
-                            event="FlowNodeResult",
-                            nodeId=item.node_id,
-                            nodeType=item.node_type,
-                            outputs=(item.data or {}).get("outputs", {}),
-                        )
+                    emit_chat_event(
+                        channel,
+                        EVENT_FLOW_NODE_RESULT,
+                        nodeId=item.node_id,
+                        nodeType=item.node_type,
+                        outputs=(item.data or {}).get("outputs", {}),
                     )
                     continue
 
                 if item.event_type == "error":
-                    channel.send_model(
-                        ChatEvent(
-                            event="FlowNodeError",
-                            nodeId=item.node_id,
-                            nodeType=item.node_type,
-                            error=(item.data or {}).get("error", "Unknown node error"),
-                        )
+                    emit_chat_event(
+                        channel,
+                        EVENT_FLOW_NODE_ERROR,
+                        nodeId=item.node_id,
+                        nodeType=item.node_type,
+                        error=(item.data or {}).get("error", "Unknown node error"),
                     )
-                    channel.send_model(ChatEvent(event="RunError", content="Node error"))
+                    emit_chat_event(channel, EVENT_RUN_ERROR, content="Node error")
                     return
         if cancel_handle.is_cancel_requested() or execution_ctx.stop_run:
-            channel.send_model(ChatEvent(event="RunCancelled"))
+            emit_chat_event(channel, EVENT_RUN_CANCELLED)
         else:
-            channel.send_model(ChatEvent(event="RunCompleted"))
+            emit_chat_event(channel, EVENT_RUN_COMPLETED)
     except Exception as e:
         logger.error(f"[stream_flow_run] Error: {e}")
-        channel.send_model(ChatEvent(event="RunError", content=str(e)))
+        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
     finally:
         run_control.remove_active_run(run_id)
         run_control.clear_early_cancel(run_id)
@@ -683,16 +706,24 @@ async def get_active_streams() -> ActiveStreamsResponse:
 async def subscribe_to_stream(channel: Channel, body: SubscribeToStreamRequest) -> None:
     queue = await broadcaster.subscribe(body.chatId)
     if queue is None:
-        channel.send_model(ChatEvent(event="StreamNotActive", content=body.chatId))
+        emit_chat_event(channel, EVENT_STREAM_NOT_ACTIVE, content=body.chatId)
         return
 
-    channel.send_model(ChatEvent(event="StreamSubscribed", content=body.chatId))
+    emit_chat_event(channel, EVENT_STREAM_SUBSCRIBED, content=body.chatId)
     try:
         while True:
             event = await queue.get()
             if event is None:
                 break
-            channel.send_model(ChatEvent(**event))
+            event_name = str(event.get("event") or "")
+            if not event_name:
+                continue
+            emit_chat_event(
+                channel,
+                event_name,
+                allow_unknown=True,
+                **{k: v for k, v in event.items() if k != "event"},
+            )
     except asyncio.CancelledError:
         pass
     finally:

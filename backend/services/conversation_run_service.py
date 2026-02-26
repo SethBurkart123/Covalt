@@ -15,7 +15,13 @@ from typing import Any, Dict, List, Optional
 from zynk import Channel
 
 from .. import db
-from ..models.chat import Attachment, ChatEvent, ChatMessage
+from ..models.chat import Attachment, ChatMessage
+from ..services.runtime_events import (
+    EVENT_ASSISTANT_MESSAGE_ID,
+    EVENT_RUN_ERROR,
+    EVENT_RUN_STARTED,
+    emit_chat_event,
+)
 from ..services.chat_graph_runner import (
     append_error_block_to_message,
     extract_error_message,
@@ -42,7 +48,7 @@ def validate_model_options(
     try:
         return resolve_and_validate_model_options(chat_id, model_id, model_options)
     except (ModelResolutionError, ValueError) as exc:
-        channel.send_model(ChatEvent(event="RunError", content=str(exc)))
+        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(exc))
         return None
 
 
@@ -90,19 +96,17 @@ def emit_run_start_events(
     blocks: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """Send the RunStarted + AssistantMessageId event pair."""
-    channel.send_model(
-        ChatEvent(
-            event="RunStarted",
-            sessionId=chat_id or None,
-            fileRenames=file_renames,
-        )
+    emit_chat_event(
+        channel,
+        EVENT_RUN_STARTED,
+        sessionId=chat_id or None,
+        fileRenames=file_renames,
     )
-    channel.send_model(
-        ChatEvent(
-            event="AssistantMessageId",
-            content=assistant_msg_id,
-            blocks=blocks,
-        )
+    emit_chat_event(
+        channel,
+        EVENT_ASSISTANT_MESSAGE_ID,
+        content=assistant_msg_id,
+        blocks=blocks,
     )
 
 
@@ -155,4 +159,4 @@ async def handle_streaming_run_error(
                 ),
             )
 
-    channel.send_model(ChatEvent(event="RunError", content=error_message))
+    emit_chat_event(channel, EVENT_RUN_ERROR, content=error_message)
