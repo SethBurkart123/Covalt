@@ -58,6 +58,7 @@ from .models import (
 from .providers import (
     get_all_provider_settings,
     get_provider_settings,
+    normalize_provider,
     save_provider_settings,
 )
 from .settings import (
@@ -112,6 +113,7 @@ __all__ = [
     "set_message_manifest",
     "get_provider_settings",
     "get_all_provider_settings",
+    "normalize_provider",
     "save_provider_settings",
     "get_model_settings",
     "get_all_model_settings",

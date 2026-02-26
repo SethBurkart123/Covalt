@@ -15,6 +15,8 @@ from ..models.chat import (
     DefaultToolsResponse,
     ModelInfo,
     ModelSettingsInfo,
+    ProviderCatalogItem,
+    ProviderCatalogResponse,
     ProviderConfig,
     ProviderOverview,
     ProviderOverviewResponse,
@@ -34,6 +36,7 @@ from ..services.model_factory import (
 )
 from ..providers import test_provider_connection
 from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.provider_catalog import list_provider_catalog
 
 
 class Person(BaseModel):
@@ -152,6 +155,27 @@ async def get_provider_settings() -> AllProvidersResponse:
     )
 
 
+@command
+async def get_provider_catalog() -> ProviderCatalogResponse:
+    providers = [
+        ProviderCatalogItem(
+            key=entry.key,
+            provider=entry.provider,
+            name=entry.name,
+            description=entry.description,
+            icon=entry.icon,
+            authType=entry.auth_type,
+            defaultBaseUrl=entry.default_base_url,
+            defaultEnabled=entry.default_enabled,
+            oauthVariant=entry.oauth_variant,
+            oauthEnterpriseDomain=entry.oauth_enterprise_domain,
+            aliases=entry.aliases,
+        )
+        for entry in list_provider_catalog()
+    ]
+    return ProviderCatalogResponse(providers=providers)
+
+
 class ProviderOverviewInput(BaseModel):
     providers: list[str]
 
@@ -168,8 +192,9 @@ async def get_provider_overview(
     providers: list[ProviderOverview] = []
 
     for provider in provider_keys:
-        config = db_settings.get(provider, {})
-        oauth_status = oauth_manager.get_oauth_status(provider)
+        canonical_provider = db.normalize_provider(provider)
+        config = db_settings.get(canonical_provider, {})
+        oauth_status = oauth_manager.get_oauth_status(canonical_provider)
         oauth = ProviderOAuthInfo(
             status=oauth_status.get("status", "none"),
             hasTokens=oauth_status.get("hasTokens", False),
