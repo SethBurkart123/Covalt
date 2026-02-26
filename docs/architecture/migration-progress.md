@@ -93,6 +93,38 @@ Adding a new OpenAI-compatible provider is now a single line in `_manifest.py`. 
 
 ---
 
+### Phase 2, Step 1: Runtime Event Contract Hardening -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/services/runtime_events.py` (new)
+- `backend/services/chat_graph_runner.py`
+- `backend/commands/streaming.py`
+- `backend/services/conversation_run_service.py`
+- `backend/commands/branches.py`
+- `app/lib/services/runtime-events.ts` (new)
+- `app/lib/services/stream-processor.ts`
+- `app/lib/services/api.ts`
+- `app/contexts/streaming-context.tsx`
+- `app/contexts/flow-execution-context.tsx`
+- `app/lib/services/runtime-events.test.ts` (new)
+- `tests/test_runtime_events.py` (new)
+
+Introduced a canonical runtime event contract on backend/frontend and routed core runtime emit/consume paths through shared constants and helpers to reduce string drift and tighten protocol handling.
+
+Key outcomes:
+- Backend now emits most chat runtime events via `emit_chat_event()` and validates known event names (with explicit `allow_unknown=True` for passthrough agent/custom events).
+- Frontend stream processing now uses shared runtime event constants and ignores/logs unknown runtime events safely once.
+- Flow/stream contexts use shared runtime event classifiers for tool/member/flow-node routing.
+
+Verification:
+- `bun run lint` (warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (176 passed)
+- `uv run pytest tests` (248 passed, 43 skipped)
+
+---
+
 ### Phase 1, Step 2: Backend-Served Provider Catalog -- DONE
 
 **Status:** Complete  

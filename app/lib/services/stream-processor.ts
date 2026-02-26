@@ -1,8 +1,13 @@
 "use client";
 
 import type { ContentBlock, ToolApprovalRequiredPayload, ToolCallPayload } from "@/lib/types/chat";
+import {
+  RUNTIME_EVENT,
+  isKnownRuntimeEvent,
+} from "@/lib/services/runtime-events";
 
 const warnedPayloads = new Set<string>();
+const warnedUnknownEvents = new Set<string>();
 
 function warnInvalidPayload(context: string, payload: unknown): void {
   if (warnedPayloads.has(context)) return;
@@ -13,6 +18,18 @@ function warnInvalidPayload(context: string, payload: unknown): void {
     );
   } catch (err) {
     console.warn(`[StreamProcessor] Invalid ${context} payload`, err);
+  }
+}
+
+function warnUnknownRuntimeEvent(eventType: string, payload: unknown): void {
+  if (warnedUnknownEvents.has(eventType)) return;
+  warnedUnknownEvents.add(eventType);
+  try {
+    console.warn(
+      `[StreamProcessor] Unknown runtime event ${eventType}: ${JSON.stringify(payload)}`
+    );
+  } catch (err) {
+    console.warn(`[StreamProcessor] Unknown runtime event ${eventType}`, err);
   }
 }
 
@@ -336,7 +353,7 @@ function processMemberEvent(
   const ms = getMemberState(state, runId);
 
   switch (eventType) {
-    case "RunContent": {
+    case RUNTIME_EVENT.RUN_CONTENT: {
       const text = (d.content as string) || "";
       if (ms.currentReasoningBlock && !ms.currentTextBlock) {
         flushMemberReasoning(block, ms);
@@ -345,11 +362,11 @@ function processMemberEvent(
       break;
     }
 
-    case "ReasoningStarted":
+    case RUNTIME_EVENT.REASONING_STARTED:
       flushMemberText(block, ms);
       break;
 
-    case "ReasoningStep": {
+    case RUNTIME_EVENT.REASONING_STEP: {
       const text = (d.reasoningContent as string) || "";
       if (text) {
         if (ms.currentTextBlock && !ms.currentReasoningBlock) {
@@ -360,11 +377,11 @@ function processMemberEvent(
       break;
     }
 
-    case "ReasoningCompleted":
+    case RUNTIME_EVENT.REASONING_COMPLETED:
       flushMemberReasoning(block, ms);
       break;
 
-    case "ToolCallStarted": {
+    case RUNTIME_EVENT.TOOL_CALL_STARTED: {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
       const t = coerceToolCallPayload(d.tool, "Member.ToolCallStarted");
@@ -389,7 +406,7 @@ function processMemberEvent(
       break;
     }
 
-    case "ToolCallCompleted": {
+    case RUNTIME_EVENT.TOOL_CALL_COMPLETED: {
       const t = coerceToolCallPayload(d.tool, "Member.ToolCallCompleted");
       if (!t) break;
       const tc = block.content.find(
@@ -406,7 +423,7 @@ function processMemberEvent(
       break;
     }
 
-    case "ToolApprovalRequired": {
+    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED: {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
       const payload = coerceToolApprovalPayload(d.tool, "Member.ToolApprovalRequired");
@@ -429,7 +446,7 @@ function processMemberEvent(
       break;
     }
 
-    case "ToolApprovalResolved": {
+    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED: {
       const t = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolved");
       if (!t) break;
       const tc = block.content.find(
@@ -448,8 +465,8 @@ function processMemberEvent(
       break;
     }
 
-    case "RunError":
-    case "MemberRunError": {
+    case RUNTIME_EVENT.RUN_ERROR:
+    case RUNTIME_EVENT.MEMBER_RUN_ERROR: {
       flushMemberText(block, ms);
       flushMemberReasoning(block, ms);
       const errorContent = (d.content as string) || (d.error as string) || "Agent encountered an error.";
@@ -527,21 +544,24 @@ export function processEvent(
     callbacks.onSessionId?.(d.sessionId);
   }
 
-  callbacks.onEvent?.(eventType, d);
+  if (!isKnownRuntimeEvent(eventType)) {
+    warnUnknownRuntimeEvent(eventType, d);
+    return;
+  }
 
-  if (d.memberRunId && eventType !== "MemberRunStarted" && eventType !== "MemberRunCompleted") {
+  if (d.memberRunId && eventType !== RUNTIME_EVENT.MEMBER_RUN_STARTED && eventType !== RUNTIME_EVENT.MEMBER_RUN_COMPLETED) {
     processMemberEvent(eventType, d, state);
-    if (eventType !== "ToolApprovalRequired" && eventType !== "ToolApprovalResolved") {
+    if (eventType !== RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED && eventType !== RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) {
       scheduleUpdate(state, callbacks.onUpdate);
       return;
     }
   }
 
   switch (eventType) {
-    case "RunStarted":
+    case RUNTIME_EVENT.RUN_STARTED:
       break;
 
-    case "AssistantMessageId":
+    case RUNTIME_EVENT.ASSISTANT_MESSAGE_ID:
       if (Array.isArray(d.blocks)) {
         state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
         state.currentTextBlock = "";
@@ -551,11 +571,11 @@ export function processEvent(
       callbacks.onMessageId?.(d.content as string);
       break;
 
-    case "RunContent":
+    case RUNTIME_EVENT.RUN_CONTENT:
       handleRunContent(state, (d.content as string) || "", callbacks);
       break;
 
-    case "SeedBlocks":
+    case RUNTIME_EVENT.SEED_BLOCKS:
       if (Array.isArray(d.blocks)) {
         state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
         state.currentTextBlock = "";
@@ -564,34 +584,34 @@ export function processEvent(
       }
       break;
 
-    case "ReasoningStarted":
+    case RUNTIME_EVENT.REASONING_STARTED:
       flushTextBlock(state);
       break;
 
-    case "ReasoningStep":
+    case RUNTIME_EVENT.REASONING_STEP:
       if (state.currentTextBlock && !state.currentReasoningBlock) {
         flushTextBlock(state);
       }
       state.currentReasoningBlock += (d.reasoningContent as string) || "";
       break;
 
-    case "ReasoningCompleted":
+    case RUNTIME_EVENT.REASONING_COMPLETED:
       flushReasoningBlock(state);
       break;
 
-    case "ToolCallStarted":
+    case RUNTIME_EVENT.TOOL_CALL_STARTED:
       handleToolCallStarted(state, d.tool);
       break;
 
-    case "ToolApprovalRequired":
+    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
       handleToolApprovalRequired(state, d.tool);
       break;
 
-    case "ToolCallCompleted":
+    case RUNTIME_EVENT.TOOL_CALL_COMPLETED:
       handleToolCallCompleted(state, d.tool);
       break;
 
-    case "ToolApprovalResolved":
+    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
       handleToolApprovalResolved(state, d.tool);
       if (d.memberRunId) {
         const toolId = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolvedCleanup")?.id;
@@ -606,21 +626,21 @@ export function processEvent(
       }
       break;
 
-    case "FlowNodeStarted":
+    case RUNTIME_EVENT.FLOW_NODE_STARTED:
       flushTextBlock(state);
       flushReasoningBlock(state);
       state.textBlockBoundary = true;
       break;
 
-    case "MemberRunStarted":
+    case RUNTIME_EVENT.MEMBER_RUN_STARTED:
       handleMemberRunStarted(state, d);
       break;
 
-    case "MemberRunCompleted":
+    case RUNTIME_EVENT.MEMBER_RUN_COMPLETED:
       handleMemberRunCompleted(state, d);
       break;
 
-    case "MemberRunError": {
+    case RUNTIME_EVENT.MEMBER_RUN_ERROR: {
       const runId = (d.memberRunId as string) || "";
       if (runId) {
         const block = findMemberBlock(state, runId);
@@ -640,13 +660,13 @@ export function processEvent(
       break;
     }
 
-    case "RunCompleted":
-    case "RunCancelled":
+    case RUNTIME_EVENT.RUN_COMPLETED:
+    case RUNTIME_EVENT.RUN_CANCELLED:
       flushTextBlock(state);
       flushReasoningBlock(state);
       break;
 
-    case "RunError":
+    case RUNTIME_EVENT.RUN_ERROR:
       flushTextBlock(state);
       flushReasoningBlock(state);
       state.contentBlocks.push({

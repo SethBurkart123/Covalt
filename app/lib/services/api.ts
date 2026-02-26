@@ -24,6 +24,7 @@ import {
 } from "@/python/api";
 import { createChannel, type BridgeError } from "@/python/_internal";
 import { getBackendBaseUrl } from "@/lib/services/backend-url";
+import { RUNTIME_EVENT, isTerminalRuntimeEvent } from "@/lib/services/runtime-events";
 
 if (typeof window !== "undefined") {
   initBridge(getBackendBaseUrl());
@@ -53,9 +54,10 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
       channel.subscribe((evt: StreamingChatEvent) => {
         const { event, ...rest } = evt || {};
 
-        sendEvent(event || "RunContent", rest);
+        const eventName = typeof event === "string" && event ? event : RUNTIME_EVENT.RUN_CONTENT;
+        sendEvent(eventName, rest);
 
-        if (event === "RunCompleted" || event === "RunError" || event === "RunCancelled") {
+        if (isTerminalRuntimeEvent(eventName)) {
           controller.close();
           channel.close();
         }
@@ -63,7 +65,7 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
 
       channel.onClose(() => controller.close());
       channel.onError((error: BridgeError) => {
-        sendEvent("RunError", { error: error.message });
+        sendEvent(RUNTIME_EVENT.RUN_ERROR, { error: error.message });
         controller.close();
       });
     },

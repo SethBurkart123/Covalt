@@ -17,6 +17,12 @@ import type {
   FlowOutputPortSnapshot,
 } from "@/contexts/agent-test-chat-context";
 import { downstreamClosure, filterFlowEdges } from "@/lib/flow/graph-traversal";
+import {
+  RUNTIME_EVENT,
+  isFlowNodeRuntimeEvent,
+  isMemberRuntimeEvent,
+  isToolRuntimeEvent,
+} from "@/lib/services/runtime-events";
 
 export interface FlowRunPromptInput {
   message: string;
@@ -295,14 +301,7 @@ export function FlowExecutionProvider({
   }, [nodes, edges, flowEdges, pinnedByNodeId, executionByNode]);
 
   const recordFlowEvent = useCallback((event: string, payload: Record<string, unknown>) => {
-    if (
-      event === "ToolCallStarted" ||
-      event === "ToolCallCompleted" ||
-      event === "ToolCallFailed" ||
-      event === "ToolCallError" ||
-      event === "ToolApprovalRequired" ||
-      event === "ToolApprovalResolved"
-    ) {
+    if (isToolRuntimeEvent(event)) {
       const toolPayload = payload.tool;
       const refs = collectToolNodeRefs(toolPayload);
       if (refs.length === 0) return;
@@ -310,20 +309,20 @@ export function FlowExecutionProvider({
       let status: FlowNodeExecutionSnapshot["status"] | null = null;
       let error: string | undefined;
 
-      if (event === "ToolCallStarted" || event === "ToolApprovalRequired") {
+      if (event === RUNTIME_EVENT.TOOL_CALL_STARTED || event === RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED) {
         status = "running";
-      } else if (event === "ToolCallCompleted") {
+      } else if (event === RUNTIME_EVENT.TOOL_CALL_COMPLETED) {
         status = "completed";
         if (isRecord(toolPayload) && typeof toolPayload.error === "string" && toolPayload.error) {
           status = "error";
           error = toolPayload.error;
         }
-      } else if (event === "ToolCallFailed" || event === "ToolCallError") {
+      } else if (event === RUNTIME_EVENT.TOOL_CALL_FAILED || event === RUNTIME_EVENT.TOOL_CALL_ERROR) {
         status = "error";
         if (isRecord(toolPayload) && typeof toolPayload.error === "string") {
           error = toolPayload.error;
         }
-      } else if (event === "ToolApprovalResolved") {
+      } else if (event === RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) {
         if (isRecord(toolPayload)) {
           const approvalStatus = toolPayload.approvalStatus;
           if (approvalStatus === "denied" || approvalStatus === "timeout") {
@@ -358,11 +357,7 @@ export function FlowExecutionProvider({
       return;
     }
 
-    if (
-      event === "MemberRunStarted" ||
-      event === "MemberRunCompleted" ||
-      event === "MemberRunError"
-    ) {
+    if (isMemberRuntimeEvent(event)) {
       const nodeId = typeof payload.nodeId === "string" ? payload.nodeId : null;
       if (!nodeId) return;
       const nodeType = typeof payload.nodeType === "string" ? payload.nodeType : undefined;
@@ -370,11 +365,11 @@ export function FlowExecutionProvider({
       let status: FlowNodeExecutionSnapshot["status"] | null = null;
       let error: string | undefined;
 
-      if (event === "MemberRunStarted") {
+      if (event === RUNTIME_EVENT.MEMBER_RUN_STARTED) {
         status = "running";
-      } else if (event === "MemberRunCompleted") {
+      } else if (event === RUNTIME_EVENT.MEMBER_RUN_COMPLETED) {
         status = "completed";
-      } else if (event === "MemberRunError") {
+      } else if (event === RUNTIME_EVENT.MEMBER_RUN_ERROR) {
         status = "error";
         const content = payload.content;
         if (typeof content === "string") {
@@ -404,12 +399,7 @@ export function FlowExecutionProvider({
       return;
     }
 
-    if (
-      event !== "FlowNodeStarted" &&
-      event !== "FlowNodeCompleted" &&
-      event !== "FlowNodeResult" &&
-      event !== "FlowNodeError"
-    ) {
+    if (!isFlowNodeRuntimeEvent(event)) {
       return;
     }
 
@@ -428,11 +418,11 @@ export function FlowExecutionProvider({
         nodeId,
         nodeType: nodeType ?? previous?.nodeType,
         status:
-          event === "FlowNodeStarted"
+          event === RUNTIME_EVENT.FLOW_NODE_STARTED
             ? "running"
-            : event === "FlowNodeCompleted"
+            : event === RUNTIME_EVENT.FLOW_NODE_COMPLETED
               ? "completed"
-              : event === "FlowNodeError"
+              : event === RUNTIME_EVENT.FLOW_NODE_ERROR
                 ? "error"
                 : previous?.status ?? "idle",
         outputs: outputs ?? previous?.outputs,

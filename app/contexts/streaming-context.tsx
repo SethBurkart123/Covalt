@@ -4,6 +4,7 @@ import { createContext, useContext, useCallback, useEffect, useRef, useState, us
 import type { ContentBlock } from "@/lib/types/chat";
 import type { BridgeChannel } from "@/python/api";
 import { processEvent, createInitialState, type StreamState } from "@/lib/services/stream-processor";
+import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
 
 export type StreamStatus = 
   | "streaming" 
@@ -82,7 +83,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
         const eventData = data as Record<string, unknown>;
         const eventType = eventData.event as string;
         
-        if (eventType === "ToolCallCompleted") {
+        if (eventType === RUNTIME_EVENT.TOOL_CALL_COMPLETED) {
           try {
             console.log(
               `[StreamingContext] ToolCallCompleted payload for ${chatId}: ${JSON.stringify(eventData)}`
@@ -133,7 +134,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
         });
 
         switch (eventType) {
-          case "StreamNotActive":
+          case RUNTIME_EVENT.STREAM_NOT_ACTIVE:
             console.log(`[StreamingContext] Stream not active for ${chatId}`);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
@@ -145,7 +146,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             });
             break;
 
-          case "ToolApprovalRequired":
+          case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
             console.log(`[StreamingContext] Tool approval required for ${chatId}`);
             setStreamStates((prev) => {
               const current = prev.get(chatId);
@@ -162,7 +163,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             });
             break;
 
-          case "ToolApprovalResolved":
+          case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
             setStreamStates((prev) => {
               const current = prev.get(chatId);
               if (!current) return prev;
@@ -178,8 +179,8 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             });
             break;
 
-          case "RunCompleted":
-          case "RunCancelled":
+          case RUNTIME_EVENT.RUN_COMPLETED:
+          case RUNTIME_EVENT.RUN_CANCELLED:
             // Don't delete stream state here - let the original sender's code path
             // (handleSubmit/handleContinue/etc.) handle cleanup via unregisterStream().
             // This prevents a race condition where the WebSocket event arrives before
@@ -189,7 +190,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             subscriptionsRef.current.delete(chatId);
             break;
 
-          case "RunError":
+          case RUNTIME_EVENT.RUN_ERROR:
             console.log(`[StreamingContext] Stream error for ${chatId}:`, eventData.content);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
