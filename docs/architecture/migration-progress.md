@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 1 (Footprint Reduction)
+## Current Phase: Phase 2 (Event Protocol Hardening)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -93,12 +93,48 @@ Adding a new OpenAI-compatible provider is now a single line in `_manifest.py`. 
 
 ---
 
+### Phase 1, Step 2: Backend-Served Provider Catalog -- DONE
+
+**Status:** Complete  
+**Commit:** `fce1aa4`  
+**Files changed:**
+- `backend/services/provider_catalog.py` (new)
+- `backend/models/chat.py`
+- `backend/commands/system.py`
+- `backend/db/providers.py`
+- `backend/db/__init__.py`
+- `app/lib/types/provider-catalog.ts` (new)
+- `app/lib/services/provider-catalog.ts` (new)
+- `app/(app)/(pages)/settings/providers/provider-icons.ts` (new)
+- `app/(app)/(pages)/settings/providers/provider-registry.ts` (new dynamic accessor)
+- `app/(app)/(pages)/settings/providers/ProvidersPanel.tsx`
+- `app/components/ModelSelector.tsx`
+- `app/(app)/(pages)/settings/ModelChipSelector.tsx`
+- `app/(app)/(pages)/settings/providers/ProviderItem.tsx`
+- `app/python/api.ts` (regenerated)
+- `app/(app)/(pages)/settings/providers/ProviderRegistry.ts` (deleted)
+
+Replaced the static frontend provider registry with a backend-served provider catalog and migrated provider consumers to dynamic metadata.
+
+Follow-up fixes included in the same phase:
+- Reset provider catalog promise cache on rejection to avoid poisoned retries.
+- Added missing provider icon aliases/mappings for backend icon IDs.
+- Canonicalized provider keys in `get_provider_overview` for settings/OAuth consistency.
+
+Verification:
+- `bun run lint` (warnings only)
+- `bun run test` (173 passed)
+- `bun x tsc --noEmit` (passed)
+- `uv run pytest` (244 passed, 43 skipped)
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
 |---|---|---|
 | **Phase 0** | Quick wins, low risk | Complete |
-| **Phase 1** | Footprint reduction (provider manifests) | In Progress (Step 1 complete) |
-| **Phase 2** | Event protocol hardening | Not Started |
+| **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
+| **Phase 2** | Event protocol hardening | In Progress |
 | **Phase 3** | Core boundaries (application-layer services) | Not Started |
 | **Phase 4** | Plugin maturity | Not Started |
