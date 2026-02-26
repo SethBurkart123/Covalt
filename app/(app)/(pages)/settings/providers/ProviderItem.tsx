@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { ChevronDown, Loader2, CheckCircle, XCircle } from 'lucide-react';
-import type { ProviderConfig, ProviderDefinition } from './ProviderRegistry';
+import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 
 interface ProviderItemProps {
   def: ProviderDefinition;

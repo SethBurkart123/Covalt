@@ -12,10 +12,14 @@ import { VirtualizedCommandList } from "@/components/ui/virtualized-command-list
 import type { ModelInfo } from "@/lib/types/chat";
 import type { AgentInfo } from "@/python/api";
 import { agentFileUrl } from "@/python/api";
-import { PROVIDER_MAP } from "@/(app)/(pages)/settings/providers/ProviderRegistry";
+import { getProviderMap } from "@/(app)/(pages)/settings/providers/provider-registry";
 import { getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
 import { cn } from "@/lib/utils";
+import { getProviderIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
+import type { ProviderDefinition } from "@/lib/types/provider-catalog";
+
+const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
 
 function MiddleTruncate({ text, className }: { text: string; className?: string }) {
   const containerRef = useRef<HTMLSpanElement>(null);
@@ -103,7 +107,25 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   const [open, setOpen] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [providerMap, setProviderMap] = useState<Record<string, ProviderDefinition>>({});
   const { agents, refreshAgents, refreshModels } = useChat();
+
+  useEffect(() => {
+    let cancelled = false;
+    getProviderMap()
+      .then((map) => {
+        if (!cancelled) {
+          setProviderMap(map);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load provider map', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     preloadImages(
@@ -134,12 +156,23 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     };
   }, [open, refreshModels, refreshAgents, hideAgents]);
 
+  const getProviderDef = useCallback(
+    (provider: string) => providerMap[toProviderId(provider)] || providerMap[provider] || null,
+    [providerMap],
+  );
+
   const providers = useMemo(() => {
     const unique = [...new Set(models.map((m) => m.provider))];
     return unique
-      .map((p) => ({ id: p, name: PROVIDER_MAP[p]?.name || p }))
+      .map((provider) => {
+        const def = getProviderDef(provider);
+        return {
+          id: provider,
+          name: def?.name || provider,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [models]);
+  }, [models, getProviderDef]);
 
   const showAgents = !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
 
@@ -161,40 +194,54 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
       const filtered = providerFilter ? models.filter((m) => m.provider === providerFilter) : models;
       const available = new Map(filtered.map((m) => [getModelKey(m), m]));
 
-      // Recent
       if (!providerFilter) {
         for (const model of getRecentModels().map((k) => available.get(k)).filter((m): m is ModelInfo => !!m)) {
+          const def = getProviderDef(model.provider);
           entries.push({
             value: `recent:${model.modelId}`,
-            searchText: `${PROVIDER_MAP[model.provider]?.name || model.provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: true, ProviderIcon: PROVIDER_MAP[model.provider]?.icon },
+            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: true,
+              ProviderIcon: def?.icon || getProviderIcon(null),
+            },
           });
         }
       }
 
-      // By provider
       const groups = new Map<string, ModelInfo[]>();
       for (const model of filtered) {
-        const g = groups.get(model.provider) || [];
-        g.push(model);
-        groups.set(model.provider, g);
+        const group = groups.get(model.provider) || [];
+        group.push(model);
+        groups.set(model.provider, group);
       }
 
-      for (const [provider, providerModels] of [...groups.entries()].sort((a, b) =>
-        (PROVIDER_MAP[a[0]]?.name || a[0]).localeCompare(PROVIDER_MAP[b[0]]?.name || b[0]))
-      ) {
+      for (const [provider, providerModels] of [...groups.entries()].sort((a, b) => {
+        const aDef = getProviderDef(a[0]);
+        const bDef = getProviderDef(b[0]);
+        return (aDef?.name || a[0]).localeCompare(bDef?.name || b[0]);
+      })) {
+        const def = getProviderDef(provider);
         for (const model of providerModels) {
           entries.push({
             value: model.modelId,
-            searchText: `${PROVIDER_MAP[provider]?.name || provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: PROVIDER_MAP[provider]?.icon },
+            searchText: `${def?.name || provider} ${model.displayName} ${model.modelId}`,
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: false,
+              ProviderIcon: def?.icon || getProviderIcon(null),
+            },
           });
         }
       }
     }
 
     return entries;
-  }, [models, agents, providerFilter, showAgents]);
+  }, [models, agents, providerFilter, showAgents, getProviderDef]);
 
   const fuse = useMemo(
     () => new Fuse(allEntries, { keys: ["searchText"], threshold: 0.4, ignoreLocation: true, includeScore: true }),
@@ -211,7 +258,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     let lastGroup = "";
 
     for (const { row } of filteredEntries) {
-      const group = row.type === "agent" ? "Agents" : row.isRecent ? "Recent" : (PROVIDER_MAP[row.model.provider]?.name || row.model.provider);
+      const def = row.type === "model" ? getProviderDef(row.model.provider) : null;
+      const group = row.type === "agent" ? "Agents" : row.isRecent ? "Recent" : (def?.name || row.model.provider);
 
       if (group !== lastGroup) {
         rows.push({ type: "heading", label: group });
@@ -221,16 +269,20 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     }
 
     return rows;
-  }, [filteredEntries]);
+  }, [filteredEntries, getProviderDef]);
 
   const handleSelect = useCallback(
-    (key: string) => { setSelectedModel(key); setOpen(false); },
+    (key: string) => {
+      setSelectedModel(key);
+      setOpen(false);
+    },
     [setSelectedModel],
   );
 
   const selectedModelInfo = models.find((m) => getModelKey(m) === selectedModel);
   const selectedAgent = selectedModel.startsWith("agent:") ? agents.find((a) => `agent:${a.id}` === selectedModel) : null;
-  const SelectedProviderIcon = selectedModel && !selectedModel.startsWith("agent:") ? PROVIDER_MAP[getProviderFromKey(selectedModel)]?.icon : null;
+  const selectedProvider = selectedModel && !selectedModel.startsWith("agent:") ? getProviderDef(getProviderFromKey(selectedModel)) : null;
+  const SelectedProviderIcon = selectedProvider?.icon;
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -274,14 +326,16 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
             {!hideAgents && agents.length > 0 && (
               <FilterTab active={providerFilter === AGENT_FILTER} onClick={() => setProviderFilter(AGENT_FILTER)}>Agents</FilterTab>
             )}
-            {providers.map((p) => (
-              <FilterTab key={p.id} active={providerFilter === p.id} onClick={() => setProviderFilter(p.id)}>{p.name}</FilterTab>
+            {providers.map((provider) => (
+              <FilterTab key={provider.id} active={providerFilter === provider.id} onClick={() => setProviderFilter(provider.id)}>
+                {provider.name}
+              </FilterTab>
             ))}
           </div>
 
           <VirtualizedCommandList
             items={flatRows}
-            estimateSize={(i) => flatRows[i].type === "heading" ? HEADING_HEIGHT : ITEM_HEIGHT}
+            estimateSize={(i) => (flatRows[i].type === "heading" ? HEADING_HEIGHT : ITEM_HEIGHT)}
             emptyMessage="No model found."
             className="pb-2"
           >

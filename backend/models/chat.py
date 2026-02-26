@@ -266,6 +266,24 @@ class ProviderOAuthInfo(BaseModel):
     error: Optional[str] = None
 
 
+class ProviderCatalogItem(BaseModel):
+    key: str
+    provider: str
+    name: str
+    description: str
+    icon: str
+    authType: Literal["apiKey", "oauth"] = "apiKey"
+    defaultBaseUrl: Optional[str] = None
+    defaultEnabled: bool = True
+    oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
+    oauthEnterpriseDomain: bool = False
+    aliases: List[str] = Field(default_factory=list)
+
+
+class ProviderCatalogResponse(BaseModel):
+    providers: List[ProviderCatalogItem]
+
+
 class ProviderOverview(BaseModel):
     provider: str
     apiKey: Optional[str] = None

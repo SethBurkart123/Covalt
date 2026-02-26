@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PROVIDER_MAP } from "./providers/ProviderRegistry";
 import { useFuzzyFilter } from "@/lib/hooks/use-fuzzy-filter";
+import type { ProviderDefinition } from "@/lib/types/provider-catalog";
+import { getProviderMap } from "./providers/provider-registry";
+import { getProviderIcon } from "./providers/provider-icons";
 
 interface Model {
   provider: string;
@@ -36,6 +38,7 @@ interface ModelChipSelectorProps {
 
 const SHOW_MORE_THRESHOLD = 6;
 const COLLAPSED_HEIGHT = 115;
+const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
 
 function getModelKey(model: Model): string {
   return `${model.provider}:${model.modelId}`;
@@ -60,6 +63,29 @@ export default function ModelChipSelector({
 }: ModelChipSelectorProps) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [providerMap, setProviderMap] = useState<Record<string, ProviderDefinition>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getProviderMap()
+      .then((map) => {
+        if (!cancelled) {
+          setProviderMap(map);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load provider map', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getProviderDef = useMemo(
+    () => (provider: string) => providerMap[toProviderId(provider)] || providerMap[provider] || null,
+    [providerMap],
+  );
 
   const selectedKeys = useMemo(
     () => new Set(selectedModels.map(getModelKey)),
@@ -83,22 +109,22 @@ export default function ModelChipSelector({
       .map(([provider, models]) => ({
         provider,
         models,
-        providerDef: PROVIDER_MAP[provider],
+        providerDef: getProviderDef(provider),
       }))
       .sort((a, b) =>
         (a.providerDef?.name || a.provider).localeCompare(
-          b.providerDef?.name || b.provider
-        )
+          b.providerDef?.name || b.provider,
+        ),
       );
-  }, [unselectedModels]);
+  }, [getProviderDef, unselectedModels]);
 
   const fuzzyItems = useMemo(
     () =>
       unselectedModels.map((model) => ({
         value: `${model.provider}:${model.modelId}:${model.displayName}`,
-        searchText: `${PROVIDER_MAP[model.provider]?.name || model.provider} ${model.displayName} ${model.modelId}`,
+        searchText: `${getProviderDef(model.provider)?.name || model.provider} ${model.displayName} ${model.modelId}`,
       })),
-    [unselectedModels],
+    [getProviderDef, unselectedModels],
   );
 
   const fuzzyFilter = useFuzzyFilter(fuzzyItems);
@@ -148,7 +174,7 @@ export default function ModelChipSelector({
                       heading={group.providerDef?.name || group.provider}
                     >
                       {group.models.map((model) => {
-                        const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
+                        const ProviderIcon = group.providerDef?.icon || getProviderIcon(null);
                         return (
                           <CommandItem
                             key={getModelKey(model)}
@@ -187,7 +213,7 @@ export default function ModelChipSelector({
         ) : (
           <AnimatePresence mode="popLayout">
             {selectedModels.map((model) => {
-              const ProviderIcon = PROVIDER_MAP[model.provider]?.icon;
+              const ProviderIcon = getProviderDef(model.provider)?.icon || getProviderIcon(null);
 
               return (
                 <motion.div
