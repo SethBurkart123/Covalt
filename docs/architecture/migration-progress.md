@@ -23,10 +23,46 @@ Size impact:
 - `branches.py`: 625 -> 522 LOC (-103)
 - `conversation_run_service.py`: 159 LOC (new)
 
-### Phase 0, Remaining Steps
+### Phase 0, Step 2: Split use-chat-input into Focused Hooks -- DONE
 
-- [ ] Split `use-chat-input` into 3-4 focused hooks
-- [ ] Add lint rule for max file length warning (>500 LOC)
+**Status:** Complete  
+**Files changed:**
+- `app/lib/hooks/use-chat-input.ts` (refactored orchestrator)
+- `app/lib/hooks/use-chat-snapshot.ts` (new)
+- `app/lib/hooks/use-chat-stream-actions.ts` (new)
+- `app/lib/hooks/use-chat-branch-edit-actions.ts` (new)
+- `app/lib/hooks/use-chat-input.types.ts` (new)
+
+Extracted chat input responsibilities into focused modules:
+
+| Concern | Location |
+|---|---|
+| Snapshot loading/reload + prefetch guards | `use-chat-snapshot.ts` |
+| Stream submission/continue/retry/stop | `use-chat-stream-actions.ts` |
+| Edit + sibling navigation actions | `use-chat-branch-edit-actions.ts` |
+| Shared hook contracts | `use-chat-input.types.ts` |
+| Composition/orchestration | `use-chat-input.ts` |
+
+Size impact:
+- `use-chat-input.ts`: 563 -> 202 LOC (-361)
+- New extracted modules: +721 LOC across 4 files
+- Net: +360 LOC for this area (decomposition for separation of concerns, behavior preserved)
+
+---
+
+### Phase 0, Step 3: Add max-lines Lint Guardrail -- DONE
+
+**Status:** Complete  
+**Files changed:** `eslint.config.mjs`
+
+Added project-wide warning rule:
+- `max-lines`: warn at >500 LOC (ignores blank lines/comments)
+- Explicitly disabled for generated `app/python/api.ts`
+
+Verification:
+- `bun run lint` passes (warnings only; now surfaces oversized files)
+- `bun run test` passes (173/173)
+- `uv run pytest` passes (244 passed, 43 skipped)
 
 ---
 
@@ -61,8 +97,8 @@ Adding a new OpenAI-compatible provider is now a single line in `_manifest.py`. 
 
 | Phase | Description | Status |
 |---|---|---|
-| **Phase 0** | Quick wins, low risk | In Progress (2 frontend items remain) |
-| **Phase 1** | Footprint reduction (provider manifests) | Step 1 complete |
+| **Phase 0** | Quick wins, low risk | Complete |
+| **Phase 1** | Footprint reduction (provider manifests) | In Progress (Step 1 complete) |
 | **Phase 2** | Event protocol hardening | Not Started |
 | **Phase 3** | Core boundaries (application-layer services) | Not Started |
 | **Phase 4** | Plugin maturity | Not Started |
