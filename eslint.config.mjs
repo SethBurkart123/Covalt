@@ -19,6 +19,7 @@ const eslintConfig = [
       "react/no-unescaped-entities": "warn",
       "@next/next/no-img-element": "off",
       "@typescript-eslint/no-explicit-any": "warn",
+      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -32,6 +33,7 @@ const eslintConfig = [
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
+      "max-lines": "off",
     },
   },
 ];
