@@ -1,5 +1,6 @@
 """OpenAI Codex Provider - ChatGPT OAuth Codex models."""
 
+import hashlib
 import json
 import os
 import re
@@ -62,6 +63,15 @@ def _sanitize_tool_name(name: str, used: set[str]) -> str:
     return candidate
 
 
+def _normalize_codex_function_call_id(raw_id: Any) -> str:
+    if isinstance(raw_id, str) and raw_id.startswith("fc_") and len(raw_id) > 3:
+        return raw_id
+
+    source = str(raw_id) if raw_id is not None else ""
+    digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:24]
+    return f"fc_{digest}"
+
+
 class OpenAICodexResponses(OpenAIResponses):
     _codex_tool_name_map: Dict[str, str]
     _codex_tool_name_reverse_map: Dict[str, str]
@@ -120,42 +130,56 @@ class OpenAICodexResponses(OpenAIResponses):
         self, messages: List[Message], compress_tool_results: bool = False
     ) -> List[Dict[str, Any] | ResponseReasoningItem]:
         sanitized_messages: List[Message] = []
+        tool_call_id_map: Dict[str, str] = {}
+
         for message in messages:
             tool_calls = getattr(message, "tool_calls", None)
-            if not tool_calls:
-                sanitized_messages.append(message)
+            if tool_calls:
+                sanitized_tool_calls: List[Dict[str, Any]] = []
+                used: set[str] = set()
+                for tool_call in tool_calls:
+                    if (
+                        not isinstance(tool_call, dict)
+                        or tool_call.get("type") != "function"
+                    ):
+                        sanitized_tool_calls.append(tool_call)
+                        continue
+
+                    remapped = dict(tool_call)
+                    function = remapped.get("function")
+                    if isinstance(function, dict):
+                        remapped_function = dict(function)
+                        name = remapped_function.get("name")
+                        if isinstance(name, str):
+                            safe = self._get_safe_tool_name(name)
+                            if not TOOL_NAME_PATTERN.match(safe):
+                                safe = _sanitize_tool_name(safe, used)
+                            if safe != name:
+                                remapped_function["name"] = safe
+                        remapped["function"] = remapped_function
+
+                    original_id = remapped.get("id") or remapped.get("call_id")
+                    remapped_id = _normalize_codex_function_call_id(original_id)
+                    remapped["id"] = remapped_id
+                    remapped["call_id"] = remapped_id
+                    if isinstance(original_id, str) and original_id:
+                        tool_call_id_map[original_id] = remapped_id
+                    sanitized_tool_calls.append(remapped)
+
+                sanitized_messages.append(
+                    message.model_copy(update={"tool_calls": sanitized_tool_calls})
+                )
                 continue
 
-            sanitized_tool_calls: List[Dict[str, Any]] = []
-            used: set[str] = set()
-            for tool_call in tool_calls:
-                if (
-                    not isinstance(tool_call, dict)
-                    or tool_call.get("type") != "function"
-                ):
-                    sanitized_tool_calls.append(tool_call)
+            if message.role == "tool" and isinstance(message.tool_call_id, str):
+                mapped_id = tool_call_id_map.get(message.tool_call_id)
+                if mapped_id and mapped_id != message.tool_call_id:
+                    sanitized_messages.append(
+                        message.model_copy(update={"tool_call_id": mapped_id})
+                    )
                     continue
-                function = tool_call.get("function")
-                if not isinstance(function, dict):
-                    sanitized_tool_calls.append(tool_call)
-                    continue
-                name = function.get("name")
-                if isinstance(name, str):
-                    safe = self._get_safe_tool_name(name)
-                    if not TOOL_NAME_PATTERN.match(safe):
-                        safe = _sanitize_tool_name(safe, used)
-                    if safe != name:
-                        remapped = dict(tool_call)
-                        remapped_function = dict(function)
-                        remapped_function["name"] = safe
-                        remapped["function"] = remapped_function
-                        sanitized_tool_calls.append(remapped)
-                        continue
-                sanitized_tool_calls.append(tool_call)
 
-            sanitized_messages.append(
-                message.model_copy(update={"tool_calls": sanitized_tool_calls})
-            )
+            sanitized_messages.append(message)
 
         return super()._format_messages(sanitized_messages, compress_tool_results)
 
