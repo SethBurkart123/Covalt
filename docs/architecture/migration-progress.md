@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 3 (Core Boundaries)
+## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Not Started
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -197,6 +197,191 @@ Verification:
 
 ---
 
+### Phase 3, Step 1: Extract start_run Use-case + Thin stream_chat Adapter -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/application/__init__.py` (new)
+- `backend/application/conversation/__init__.py` (new)
+- `backend/application/conversation/start_run.py` (new)
+- `backend/commands/streaming.py`
+
+Moved stream-chat orchestration into a conversation application use-case and rewired `stream_chat` to a transport-focused adapter that maps request DTO -> use-case input.
+
+Key outcomes:
+- Added `execute_start_run()` as the Phase 3 `start_run` use-case with explicit injected dependencies for validation, persistence, event emission, runtime delegation, and error handling.
+- `stream_chat` now delegates runtime orchestration through `_build_start_run_dependencies()` + `StartRunInput`.
+- Preserved existing runtime/event behavior (including attachment staging, message persistence, run-start events, and graph runtime invocation).
+
+Size impact:
+- `backend/commands/streaming.py`: 737 -> 725 LOC (-12)
+- `backend/application/conversation/start_run.py`: +135 LOC (new)
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 3, Step 2 (`continue_run`)** in `backend/commands/branches.py`.
+
+---
+
+### Phase 3, Step 2: Extract continue_run Use-case + Thin continue_message Adapter -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/application/conversation/__init__.py`
+- `backend/application/conversation/continue_run.py` (new)
+- `backend/commands/branches.py`
+
+Moved `continue_message` orchestration into a dedicated conversation use-case and rewired command handler to transport mapping + delegation.
+
+Key outcomes:
+- Added `execute_continue_run()` with explicit dependency injection for validation, branch message lifecycle, event emission, runtime invocation, and failure reporting.
+- `continue_message` is now a thin adapter constructing `ContinueRunInput` and delegating to the use-case.
+- Preserved current runtime behavior: existing block recovery, trailing error-block stripping, branch materialization, event order (`RunStarted` -> `AssistantMessageId`), and graph runtime delegation shape.
+
+Size impact:
+- `backend/commands/branches.py`: 529 -> 517 LOC (-12)
+- `backend/application/conversation/continue_run.py`: +142 LOC (new)
+
+Verification:
+- `uv run pytest tests/test_branch_graph_routing.py tests/test_branch_runtime_characterization.py` (6 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 3, Step 3 (`retry_run`)**.
+
+---
+
+### Phase 3, Step 3: Extract retry_run Use-case + Thin retry_message Adapter -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/application/conversation/__init__.py`
+- `backend/application/conversation/retry_run.py` (new)
+- `backend/commands/branches.py`
+
+Moved `retry_message` orchestration into a dedicated conversation use-case and rewired command handler to transport mapping + delegation.
+
+Key outcomes:
+- Added `execute_retry_run()` with explicit dependency injection for validation, branch message lifecycle, event emission, runtime invocation, and failure reporting.
+- `retry_message` is now a thin adapter constructing `RetryRunInput` and delegating to the use-case.
+- Preserved current runtime behavior: parent-branch materialization semantics, event order (`RunStarted` -> `AssistantMessageId`), and graph runtime delegation shape.
+
+Size impact:
+- `backend/commands/branches.py`: 517 -> 506 LOC (-11)
+- `backend/application/conversation/retry_run.py`: +110 LOC (new)
+
+Verification:
+- `uv run pytest tests/test_branch_graph_routing.py tests/test_branch_runtime_characterization.py` (6 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 3, Step 4 (`edit_user_message_run`)**.
+
+---
+
+### Phase 3, Step 4: Extract edit_user_message_run Use-case + Thin edit_user_message Adapter -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/application/conversation/__init__.py`
+- `backend/application/conversation/edit_user_message_run.py` (new)
+- `backend/commands/branches.py`
+
+Moved `edit_user_message` orchestration into a dedicated conversation use-case and rewired command handler to transport mapping + delegation.
+
+Key outcomes:
+- Added `execute_edit_user_message_run()` with explicit dependency injection for validation, attachment handling, workspace updates, branch lifecycle, event emission, runtime invocation, and failure reporting.
+- `edit_user_message` is now a thin adapter that maps request payloads into use-case DTOs and delegates execution.
+- Preserved current runtime behavior: existing/new attachment handling, file rename propagation, branch materialization, event order (`RunStarted` -> `AssistantMessageId`), and graph runtime delegation shape.
+
+Size impact:
+- `backend/commands/branches.py`: 506 -> 470 LOC (-36)
+- `backend/application/conversation/edit_user_message_run.py`: +261 LOC (new)
+
+Verification:
+- `uv run pytest tests/test_branch_graph_routing.py tests/test_branch_runtime_characterization.py` (6 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 3, Step 5 (tooling boundaries)**.
+
+---
+
+### Phase 3, Step 5: Extract Tooling Run-Control Use-cases + Thin streaming Tooling Adapters -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/application/tooling/__init__.py` (new)
+- `backend/application/tooling/run_control_use_cases.py` (new)
+- `backend/commands/streaming.py`
+
+Moved tooling run-control command logic into application-layer use-cases and rewired command handlers to transport mapping + delegation.
+
+Key outcomes:
+- Added `execute_respond_to_tool_approval()`, `execute_cancel_run()`, and `execute_cancel_flow_run()` with injected dependencies for `run_control`/DB interactions.
+- Rewired `respond_to_tool_approval`, `cancel_run`, and `cancel_flow_run` command handlers to thin adapters with DTO mapping.
+- Preserved cancellation and approval behavior, including early-cancel intent handling and mark-message-complete flow.
+
+Size impact:
+- `backend/commands/streaming.py`: 725 -> 714 LOC (-11)
+- `backend/application/tooling/run_control_use_cases.py`: +163 LOC (new)
+
+Verification:
+- `uv run pytest tests/test_stream_run_control_commands.py` (6 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 3, Step 6 (consolidation cleanup)**.
+
+---
+
+### Phase 3, Step 6: Consolidation Cleanup for Thin Command Adapters -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/commands/streaming.py`
+- `backend/commands/branches.py`
+
+Applied non-behavioral cleanup after use-case extraction to reduce adapter duplication and normalize helper wiring.
+
+Key outcomes:
+- Introduced shared helper wrappers in command modules for graph-data lookup and error-block append wiring, removing repeated inline lambdas.
+- Kept command handlers transport-focused while preserving existing runtime/event contracts.
+- Finalized Phase 3 command-adapter shape for migrated conversation/tooling paths.
+
+Size impact:
+- `backend/commands/streaming.py`: 714 -> 718 LOC (+4, helper normalization)
+- `backend/commands/branches.py`: 470 -> 464 LOC (-6)
+
+Verification:
+- `uv run pytest tests/test_streaming_graph_routing.py tests/test_branch_graph_routing.py tests/test_branch_runtime_characterization.py tests/test_stream_run_control_commands.py` (17 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (251 passed, 43 skipped)
+
+Follow-up:
+- Phase 3 slice (conversation + tooling boundaries) is complete. Next logical phase is **Phase 4 (plugin maturity)**.
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
@@ -204,5 +389,5 @@ Verification:
 | **Phase 0** | Quick wins, low risk | Complete |
 | **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
 | **Phase 2** | Event protocol hardening | Complete |
-| **Phase 3** | Core boundaries (application-layer services) | In Progress |
+| **Phase 3** | Core boundaries (application-layer services) | Complete |
 | **Phase 4** | Plugin maturity | Not Started |

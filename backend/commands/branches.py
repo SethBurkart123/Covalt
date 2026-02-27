@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +9,19 @@ from sqlalchemy import or_, select
 
 from zynk import Channel, command
 
+from ..application.conversation import (
+    ContinueRunDependencies,
+    ContinueRunInput,
+    EditUserMessageRunDependencies,
+    EditUserMessageRunInput,
+    ExistingAttachmentInput as ExistingAttachmentInputDTO,
+    NewAttachmentInput as NewAttachmentInputDTO,
+    RetryRunDependencies,
+    RetryRunInput,
+    execute_continue_run,
+    execute_edit_user_message_run,
+    execute_retry_run,
+)
 from .. import db
 from ..models.chat import Attachment, ChatMessage
 from ..services.runtime_events import EVENT_RUN_ERROR, emit_chat_event
@@ -98,95 +110,120 @@ class GetMessageSiblingsBatchRequest(BaseModel):
     messageIds: List[str]
 
 
+def _get_original_message(sess: Any, message_id: str) -> Any:
+    return sess.get(db.Message, message_id)
+
+
+def _create_branch_message(
+    sess: Any,
+    parent_id: Optional[str],
+    role: str,
+    content: str,
+    chat_id: str,
+    is_complete: bool,
+) -> str:
+    return db.create_branch_message(
+        sess,
+        parent_id=parent_id,
+        role=role,
+        content=content,
+        chat_id=chat_id,
+        is_complete=is_complete,
+    )
+
+
+def _emit_continue_run_start_events(
+    channel: Channel,
+    chat_id: str,
+    message_id: str,
+    blocks: Optional[List[Dict[str, Any]]],
+) -> None:
+    emit_run_start_events(channel, chat_id, message_id, blocks=blocks)
+
+
+def _emit_branch_run_error(channel: Channel, content: str) -> None:
+    emit_chat_event(channel, EVENT_RUN_ERROR, content=content)
+
+
+def _get_graph_data(chat_id: str, model_id: Optional[str], model_options: Dict[str, Any]) -> Dict[str, Any]:
+    return get_graph_data_for_chat(
+        chat_id,
+        model_id,
+        model_options=model_options,
+    )
+
+
+def _append_error_block(message_id: str, error_message: str) -> None:
+    append_error_block_to_message(
+        message_id,
+        error_message=error_message,
+    )
+
+
+def _build_continue_run_dependencies() -> ContinueRunDependencies:
+    return ContinueRunDependencies(
+        validate_model_options=validate_model_options,
+        update_chat_model_selection=update_chat_model_selection,
+        get_session=db.db_session,
+        get_original_message=_get_original_message,
+        get_message_path=db.get_message_path,
+        build_message_history=build_message_history,
+        create_branch_message=_create_branch_message,
+        set_active_leaf=db.set_active_leaf,
+        materialize_to_branch=db.materialize_to_branch,
+        emit_run_start_events=_emit_continue_run_start_events,
+        get_graph_data_for_chat=_get_graph_data,
+        run_graph_chat_runtime=run_graph_chat_runtime,
+        append_error_block_to_message=_append_error_block,
+        emit_run_error=_emit_branch_run_error,
+        logger=logger,
+    )
+
+
 @command
 async def continue_message(
     channel: Channel,
     body: ContinueMessageRequest,
 ) -> None:
-    existing_blocks: List[Dict[str, Any]] = []
-    original_msg_id: Optional[str] = None
-
-    validated_model_options = validate_model_options(
-        body.chatId, body.modelId, body.modelOptions, channel
-    )
-    if validated_model_options is None:
-        return
-
-    with db.db_session() as sess:
-        if body.modelId:
-            update_chat_model_selection(sess, body.chatId, body.modelId)
-
-        original_msg = sess.get(db.Message, body.messageId)
-        if not original_msg:
-            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
-            return
-
-        messages = (
-            db.get_message_path(sess, original_msg.parent_message_id)
-            if original_msg.parent_message_id
-            else []
-        )
-        chat_messages = build_message_history(messages)
-
-        if original_msg.content and isinstance(original_msg.content, str):
-            raw = original_msg.content.strip()
-            if raw.startswith("["):
-                try:
-                    existing_blocks = json.loads(raw)
-                except Exception:
-                    existing_blocks = [
-                        {"type": "text", "content": original_msg.content}
-                    ]
-            else:
-                existing_blocks = [{"type": "text", "content": original_msg.content}]
-            while (
-                existing_blocks
-                and isinstance(existing_blocks[-1], dict)
-                and existing_blocks[-1].get("type") == "error"
-            ):
-                existing_blocks.pop()
-
-        new_msg_id = db.create_branch_message(
-            sess,
-            parent_id=original_msg.parent_message_id,
-            role="assistant",
-            content=json.dumps(existing_blocks) if existing_blocks else "",
+    await execute_continue_run(
+        ContinueRunInput(
+            channel=channel,
             chat_id=body.chatId,
-            is_complete=False,
-        )
-
-        db.set_active_leaf(sess, body.chatId, new_msg_id)
-        original_msg_id = original_msg.id
-
-    db.materialize_to_branch(body.chatId, original_msg_id)
-
-    emit_run_start_events(
-        channel,
-        body.chatId,
-        new_msg_id,
-        blocks=existing_blocks if existing_blocks else None,
+            message_id=body.messageId,
+            model_id=body.modelId,
+            model_options=body.modelOptions,
+            tool_ids=body.toolIds,
+        ),
+        _build_continue_run_dependencies(),
     )
 
-    try:
-        graph_data = get_graph_data_for_chat(
-            body.chatId,
-            body.modelId,
-            model_options=validated_model_options,
-        )
-        await run_graph_chat_runtime(
-            graph_data,
-            chat_messages,
-            new_msg_id,
-            channel,
-            chat_id=body.chatId,
-            ephemeral=False,
-            extra_tool_ids=body.toolIds or None,
-        )
 
-    except Exception as e:
-        logger.error(f"continue_message error: {e}")
-        append_error_block_to_message(new_msg_id, error_message=str(e))
-        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
+def _emit_retry_run_start_events(
+    channel: Channel,
+    chat_id: str,
+    message_id: str,
+) -> None:
+    emit_run_start_events(channel, chat_id, message_id)
+
+
+def _build_retry_run_dependencies() -> RetryRunDependencies:
+    return RetryRunDependencies(
+        validate_model_options=validate_model_options,
+        update_chat_model_selection=update_chat_model_selection,
+        get_session=db.db_session,
+        get_original_message=_get_original_message,
+        get_message_path=db.get_message_path,
+        build_message_history=build_message_history,
+        create_branch_message=_create_branch_message,
+        set_active_leaf=db.set_active_leaf,
+        materialize_to_branch=db.materialize_to_branch,
+        emit_run_start_events=_emit_retry_run_start_events,
+        get_graph_data_for_chat=_get_graph_data,
+        run_graph_chat_runtime=run_graph_chat_runtime,
+        append_error_block_to_message=_append_error_block,
+        emit_run_error=_emit_branch_run_error,
+        logger=logger,
+    )
 
 
 @command
@@ -194,66 +231,97 @@ async def retry_message(
     channel: Channel,
     body: RetryMessageRequest,
 ) -> None:
-    parent_msg_id: Optional[str] = None
-
-    validated_model_options = validate_model_options(
-        body.chatId, body.modelId, body.modelOptions, channel
+    await execute_retry_run(
+        RetryRunInput(
+            channel=channel,
+            chat_id=body.chatId,
+            message_id=body.messageId,
+            model_id=body.modelId,
+            model_options=body.modelOptions,
+            tool_ids=body.toolIds,
+        ),
+        _build_retry_run_dependencies(),
     )
-    if validated_model_options is None:
+
+
+def _create_attachment(
+    attachment_id: str,
+    attachment_type: str,
+    name: str,
+    mime_type: str,
+    size: int,
+) -> Attachment:
+    return Attachment(
+        id=attachment_id,
+        type=attachment_type,
+        name=name,
+        mimeType=mime_type,
+        size=size,
+    )
+
+
+def _update_message_attachments_and_manifest(
+    sess: Any,
+    message_id: str,
+    attachments_json: Optional[str],
+    manifest_id: Optional[str],
+) -> None:
+    user_msg = sess.get(db.Message, message_id)
+    if not user_msg:
         return
 
-    with db.db_session() as sess:
-        if body.modelId:
-            update_chat_model_selection(sess, body.chatId, body.modelId)
-        original_msg = sess.get(db.Message, body.messageId)
-        if not original_msg:
-            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
-            return
+    if attachments_json:
+        user_msg.attachments = attachments_json
+    if manifest_id:
+        user_msg.manifest_id = manifest_id
+    sess.commit()
 
-        messages = (
-            db.get_message_path(sess, original_msg.parent_message_id)
-            if original_msg.parent_message_id
-            else []
-        )
-        chat_messages = build_message_history(messages)
 
-        new_msg_id = db.create_branch_message(
-            sess,
-            parent_id=original_msg.parent_message_id,
-            role="assistant",
-            content="",
-            chat_id=body.chatId,
-            is_complete=False,
-        )
+def _create_chat_message(
+    message_id: str,
+    role: str,
+    content: str,
+    created_at: str,
+    attachments: Optional[List[Attachment]],
+) -> ChatMessage:
+    return ChatMessage(
+        id=message_id,
+        role=role,
+        content=content,
+        createdAt=created_at,
+        attachments=attachments,
+    )
 
-        db.set_active_leaf(sess, body.chatId, new_msg_id)
-        parent_msg_id = original_msg.parent_message_id
 
-    if parent_msg_id:
-        db.materialize_to_branch(body.chatId, parent_msg_id)
+def _emit_edit_run_start_events(channel: Channel, chat_id: str, message_id: str) -> None:
+    emit_run_start_events(channel, chat_id, message_id)
 
-    emit_run_start_events(channel, body.chatId, new_msg_id)
 
-    try:
-        graph_data = get_graph_data_for_chat(
-            body.chatId,
-            body.modelId,
-            model_options=validated_model_options,
-        )
-        await run_graph_chat_runtime(
-            graph_data,
-            chat_messages,
-            new_msg_id,
-            channel,
-            chat_id=body.chatId,
-            ephemeral=False,
-            extra_tool_ids=body.toolIds or None,
-        )
-
-    except Exception as e:
-        logger.error(f"retry_message error: {e}")
-        append_error_block_to_message(new_msg_id, error_message=str(e))
-        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
+def _build_edit_user_message_run_dependencies() -> EditUserMessageRunDependencies:
+    return EditUserMessageRunDependencies(
+        validate_model_options=validate_model_options,
+        update_chat_model_selection=update_chat_model_selection,
+        get_session=db.db_session,
+        get_original_message=_get_original_message,
+        get_manifest_for_message=db.get_manifest_for_message,
+        get_workspace_manager=get_workspace_manager,
+        get_extension_from_mime=get_extension_from_mime,
+        get_pending_attachment_path=get_pending_attachment_path,
+        create_attachment=_create_attachment,
+        create_branch_message=_create_branch_message,
+        update_message_attachments_and_manifest=_update_message_attachments_and_manifest,
+        set_active_leaf=db.set_active_leaf,
+        get_message_path=db.get_message_path,
+        build_message_history=build_message_history,
+        create_chat_message=_create_chat_message,
+        materialize_to_branch=db.materialize_to_branch,
+        emit_run_start_events=_emit_edit_run_start_events,
+        get_graph_data_for_chat=_get_graph_data,
+        run_graph_chat_runtime=run_graph_chat_runtime,
+        append_error_block_to_message=_append_error_block,
+        emit_run_error=_emit_branch_run_error,
+        logger=logger,
+    )
 
 
 @command
@@ -261,166 +329,39 @@ async def edit_user_message(
     channel: Channel,
     body: EditUserMessageRequest,
 ) -> None:
-    file_renames: Dict[str, str] = {}
-    manifest_id: Optional[str] = None
-
-    validated_model_options = validate_model_options(
-        body.chatId, body.modelId, body.modelOptions, channel
+    await execute_edit_user_message_run(
+        EditUserMessageRunInput(
+            channel=channel,
+            chat_id=body.chatId,
+            message_id=body.messageId,
+            new_content=body.newContent,
+            model_id=body.modelId,
+            model_options=body.modelOptions,
+            tool_ids=body.toolIds,
+            existing_attachments=[
+                ExistingAttachmentInputDTO(
+                    id=attachment.id,
+                    type=attachment.type,
+                    name=attachment.name,
+                    mimeType=attachment.mimeType,
+                    size=attachment.size,
+                )
+                for attachment in body.existingAttachments
+            ],
+            new_attachments=[
+                NewAttachmentInputDTO(
+                    id=attachment.id,
+                    type=attachment.type,
+                    name=attachment.name,
+                    mimeType=attachment.mimeType,
+                    size=attachment.size,
+                    data=attachment.data,
+                )
+                for attachment in body.newAttachments
+            ],
+        ),
+        _build_edit_user_message_run_dependencies(),
     )
-    if validated_model_options is None:
-        return
-
-    with db.db_session() as sess:
-        if body.modelId:
-            update_chat_model_selection(sess, body.chatId, body.modelId)
-        original_msg = sess.get(db.Message, body.messageId)
-        if not original_msg:
-            emit_chat_event(channel, EVENT_RUN_ERROR, content="Message not found")
-            return
-
-        original_manifest_id = db.get_manifest_for_message(sess, original_msg.id)
-
-        all_attachments: List[Attachment] = []
-        files_to_add: List[tuple[str, bytes]] = []
-
-        for existing_att in body.existingAttachments:
-            content = None
-            if original_manifest_id:
-                workspace_manager = get_workspace_manager(body.chatId)
-                content = workspace_manager.read_file_from_manifest(
-                    original_manifest_id, existing_att.name
-                )
-
-            if content:
-                files_to_add.append((existing_att.name, content))
-                all_attachments.append(
-                    Attachment(
-                        id=existing_att.id,
-                        type=existing_att.type,
-                        name=existing_att.name,
-                        mimeType=existing_att.mimeType,
-                        size=existing_att.size,
-                    )
-                )
-            else:
-                logger.warning(
-                    f"Could not find existing attachment "
-                    f"'{existing_att.name}' in manifest {original_manifest_id}"
-                )
-
-        for new_att in body.newAttachments:
-            extension = get_extension_from_mime(new_att.mimeType)
-            pending_path = get_pending_attachment_path(new_att.id, extension)
-
-            if pending_path.exists():
-                content = pending_path.read_bytes()
-                files_to_add.append((new_att.name, content))
-                pending_path.unlink()
-            elif new_att.data:
-                import base64
-
-                content = base64.b64decode(new_att.data)
-                files_to_add.append((new_att.name, content))
-
-            all_attachments.append(
-                Attachment(
-                    id=new_att.id,
-                    type=new_att.type,
-                    name=new_att.name,
-                    mimeType=new_att.mimeType,
-                    size=new_att.size,
-                )
-            )
-
-        if files_to_add:
-            workspace_manager = get_workspace_manager(body.chatId)
-            manifest_id, file_renames = workspace_manager.add_files(
-                files=files_to_add,
-                parent_manifest_id=None,
-                source="user_upload",
-                source_ref=None,
-            )
-
-            for att in all_attachments:
-                if att.name in file_renames:
-                    att.name = file_renames[att.name]
-
-        new_user_msg_id = db.create_branch_message(
-            sess,
-            parent_id=original_msg.parent_message_id,
-            role="user",
-            content=body.newContent,
-            chat_id=body.chatId,
-            is_complete=True,
-        )
-
-        if all_attachments:
-            attachments_json = json.dumps([att.model_dump() for att in all_attachments])
-            user_msg = sess.get(db.Message, new_user_msg_id)
-            if user_msg:
-                user_msg.attachments = attachments_json
-                if manifest_id:
-                    user_msg.manifest_id = manifest_id
-                sess.commit()
-        elif manifest_id:
-            user_msg = sess.get(db.Message, new_user_msg_id)
-            if user_msg:
-                user_msg.manifest_id = manifest_id
-                sess.commit()
-
-        db.set_active_leaf(sess, body.chatId, new_user_msg_id)
-
-        messages = (
-            db.get_message_path(sess, original_msg.parent_message_id)
-            if original_msg.parent_message_id
-            else []
-        )
-        chat_messages = build_message_history(messages)
-        chat_messages.append(
-            ChatMessage(
-                id=new_user_msg_id,
-                role="user",
-                content=body.newContent,
-                createdAt=original_msg.createdAt,
-                attachments=all_attachments if all_attachments else None,
-            )
-        )
-
-        assistant_msg_id = db.create_branch_message(
-            sess,
-            parent_id=new_user_msg_id,
-            role="assistant",
-            content="",
-            chat_id=body.chatId,
-            is_complete=False,
-        )
-
-        db.set_active_leaf(sess, body.chatId, assistant_msg_id)
-
-    db.materialize_to_branch(body.chatId, new_user_msg_id)
-
-    emit_run_start_events(channel, body.chatId, assistant_msg_id)
-
-    try:
-        graph_data = get_graph_data_for_chat(
-            body.chatId,
-            body.modelId,
-            model_options=validated_model_options,
-        )
-        await run_graph_chat_runtime(
-            graph_data,
-            chat_messages,
-            assistant_msg_id,
-            channel,
-            chat_id=body.chatId,
-            ephemeral=False,
-            extra_tool_ids=body.toolIds or None,
-        )
-
-    except Exception as e:
-        logger.error(f"edit_user_message error: {e}")
-        append_error_block_to_message(assistant_msg_id, error_message=str(e))
-        emit_chat_event(channel, EVENT_RUN_ERROR, content=str(e))
 
 
 @command
