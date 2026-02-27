@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from ..providers import PROVIDERS
 from ..providers._manifest import MANIFEST_PROVIDERS
+from .provider_plugin_manager import get_provider_plugin_manager
 
 AuthType = Literal["apiKey", "oauth"]
 OAuthVariant = Literal["panel", "compact", "inline-code", "device"]
@@ -291,24 +292,39 @@ def _build_manifest_entries() -> list[ProviderCatalogEntry]:
     return entries
 
 
-def _build_fallback_entry(provider_id: str) -> ProviderCatalogEntry:
-    if provider_id in _CUSTOM_PROVIDER_OVERRIDES:
-        return _CUSTOM_PROVIDER_OVERRIDES[provider_id]
-
-    name = _to_title(provider_id)
-    return ProviderCatalogEntry(
-        key=provider_id,
-        provider=provider_id,
-        name=name,
-        description=_to_description(name),
-        icon=provider_id.replace("_", "-"),
-    )
+def _build_plugin_entries() -> list[ProviderCatalogEntry]:
+    entries: list[ProviderCatalogEntry] = []
+    manager = get_provider_plugin_manager()
+    for plugin in manager.list_plugins():
+        if plugin.error or not plugin.enabled:
+            continue
+        if plugin.provider not in PROVIDERS:
+            continue
+        entries.append(
+            ProviderCatalogEntry(
+                key=plugin.id,
+                provider=plugin.provider,
+                name=plugin.name,
+                description=plugin.description,
+                icon=plugin.icon,
+                auth_type=plugin.auth_type,
+                default_base_url=plugin.default_base_url,
+                default_enabled=plugin.default_enabled,
+                oauth_variant=plugin.oauth_variant,
+                oauth_enterprise_domain=plugin.oauth_enterprise_domain,
+                aliases=list(plugin.aliases),
+            )
+        )
+    return entries
 
 
 def list_provider_catalog() -> list[ProviderCatalogEntry]:
     by_provider: dict[str, ProviderCatalogEntry] = {}
 
     for entry in _build_manifest_entries():
+        by_provider[entry.provider] = entry
+
+    for entry in _build_plugin_entries():
         by_provider[entry.provider] = entry
 
     for entry in _SPECIAL_PROVIDERS:

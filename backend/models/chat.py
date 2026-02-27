@@ -298,6 +298,65 @@ class ProviderOverviewResponse(BaseModel):
     providers: List[ProviderOverview]
 
 
+class ProviderPluginInfo(BaseModel):
+    id: str
+    name: str
+    version: str
+    provider: str
+    enabled: bool = True
+    installedAt: Optional[str] = None
+    sourceType: Optional[str] = None
+    sourceRef: Optional[str] = None
+    description: str
+    icon: str
+    authType: Literal["apiKey", "oauth"] = "apiKey"
+    defaultBaseUrl: Optional[str] = None
+    defaultEnabled: bool = True
+    oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
+    oauthEnterpriseDomain: bool = False
+    aliases: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class ProviderPluginsResponse(BaseModel):
+    plugins: List[ProviderPluginInfo]
+
+
+class ProviderPluginSourceInfo(BaseModel):
+    id: str
+    pluginId: str
+    name: str
+    version: str
+    provider: str
+    description: str
+    icon: str
+    installed: bool = False
+
+
+class ProviderPluginSourcesResponse(BaseModel):
+    sources: List[ProviderPluginSourceInfo]
+
+
+class InstallProviderPluginSourceInput(BaseModel):
+    id: str
+
+
+class EnableProviderPluginInput(BaseModel):
+    id: str
+    enabled: bool
+
+
+class ProviderPluginIdInput(BaseModel):
+    id: str
+
+
+class ImportProviderPluginResponse(BaseModel):
+    id: str
+    provider: str
+    name: str
+    version: str
+
+
 class DefaultToolsResponse(BaseModel):
     toolIds: List[str]
 
