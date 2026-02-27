@@ -304,9 +304,17 @@ class ProviderPluginInfo(BaseModel):
     version: str
     provider: str
     enabled: bool = True
+    blockedByPolicy: bool = False
     installedAt: Optional[str] = None
     sourceType: Optional[str] = None
     sourceRef: Optional[str] = None
+    sourceClass: Literal["official", "community"] = "community"
+    indexId: Optional[str] = None
+    repoUrl: Optional[str] = None
+    trackingRef: Optional[str] = None
+    pluginPath: Optional[str] = None
+    autoUpdateOverride: Literal["inherit", "enabled", "disabled"] = "inherit"
+    effectiveAutoUpdate: bool = False
     description: str
     icon: str
     authType: Literal["apiKey", "oauth"] = "apiKey"
@@ -318,6 +326,7 @@ class ProviderPluginInfo(BaseModel):
     verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
     verificationMessage: Optional[str] = None
     signingKeyId: Optional[str] = None
+    updateError: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -333,6 +342,15 @@ class ProviderPluginSourceInfo(BaseModel):
     provider: str
     description: str
     icon: str
+    sourceClass: Literal["official", "community"] = "community"
+    indexId: Optional[str] = None
+    indexName: Optional[str] = None
+    sourceUrl: Optional[str] = None
+    repoUrl: Optional[str] = None
+    trackingRef: Optional[str] = None
+    pluginPath: Optional[str] = None
+    blockedByPolicy: bool = False
+    requiresCommunityWarning: bool = False
     installed: bool = False
 
 
@@ -340,8 +358,71 @@ class ProviderPluginSourcesResponse(BaseModel):
     sources: List[ProviderPluginSourceInfo]
 
 
+class ProviderPluginPolicy(BaseModel):
+    mode: Literal["safe", "unsafe"] = "safe"
+    autoUpdateEnabled: bool = False
+    communityWarningAccepted: bool = False
+
+
+class SaveProviderPluginPolicyInput(BaseModel):
+    mode: Literal["safe", "unsafe"]
+    autoUpdateEnabled: bool
+    communityWarningAccepted: bool
+
+
+class ProviderPluginIndexInfo(BaseModel):
+    id: str
+    name: str
+    url: str
+    sourceClass: Literal["official", "community"] = "community"
+    builtIn: bool = False
+    pluginCount: int = 0
+
+
+class ProviderPluginIndexesResponse(BaseModel):
+    indexes: List[ProviderPluginIndexInfo]
+
+
+class AddProviderPluginIndexInput(BaseModel):
+    name: str
+    url: str
+
+
+class RemoveProviderPluginIndexInput(BaseModel):
+    id: str
+
+
+class RefreshProviderPluginIndexInput(BaseModel):
+    id: str
+
+
 class InstallProviderPluginSourceInput(BaseModel):
     id: str
+
+
+class InstallProviderPluginFromRepoInput(BaseModel):
+    repoUrl: str
+    ref: Optional[str] = "main"
+    pluginPath: Optional[str] = None
+
+
+class SetProviderPluginAutoUpdateInput(BaseModel):
+    id: str
+    override: Literal["inherit", "enabled", "disabled"] = "inherit"
+    trackingRef: Optional[str] = None
+
+
+class ProviderPluginUpdateItem(BaseModel):
+    id: str
+    status: Literal["updated", "skipped", "failed"]
+    message: Optional[str] = None
+
+
+class ProviderPluginUpdateCheckResponse(BaseModel):
+    results: List[ProviderPluginUpdateItem] = Field(default_factory=list)
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
 
 
 class EnableProviderPluginInput(BaseModel):
