@@ -13,6 +13,22 @@ from rich.logging import RichHandler
 from zynk import Channel, command
 
 from .. import db
+from ..application.conversation import (
+    StartRunDependencies,
+    StartRunInput,
+    execute_start_run,
+)
+from ..application.tooling import (
+    CancelFlowRunDependencies,
+    CancelFlowRunInput,
+    CancelRunDependencies,
+    CancelRunInput,
+    RespondToToolApprovalDependencies,
+    RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
+    execute_cancel_flow_run,
+    execute_cancel_run,
+    execute_respond_to_tool_approval,
+)
 from ..models.chat import Attachment, ChatMessage
 from ..services.runtime_events import (
     EVENT_ASSISTANT_MESSAGE_ID,
@@ -166,7 +182,7 @@ def save_user_msg(
         db.update_chat(sess, id=chat_id, updatedAt=now)
 
 
-def init_assistant_msg(chat_id: str, parent_id: str) -> str:
+def init_assistant_msg(chat_id: str, parent_id: Optional[str]) -> str:
     msg_id = str(uuid.uuid4())
     with db.db_session() as sess:
         now = datetime.now(UTC).isoformat()
@@ -214,97 +230,131 @@ class RespondToToolApprovalInput(BaseModel):
     editedArgs: Optional[Dict[str, Dict[str, Any]]] = None
 
 
+def _set_approval_response(
+    run_id: str,
+    approved: bool,
+    tool_decisions: Dict[str, bool],
+    edited_args: Dict[str, Dict[str, Any]],
+) -> None:
+    run_control.set_approval_response(
+        run_id,
+        approved=approved,
+        tool_decisions=tool_decisions,
+        edited_args=edited_args,
+    )
+
+
+def _mark_message_complete(message_id: str) -> None:
+    with db.db_session() as sess:
+        db.mark_message_complete(sess, message_id)
+
+
+def _build_respond_to_tool_approval_dependencies() -> RespondToToolApprovalDependencies:
+    return RespondToToolApprovalDependencies(set_approval_response=_set_approval_response)
+
+
+def _build_cancel_run_dependencies() -> CancelRunDependencies:
+    return CancelRunDependencies(
+        get_active_run=run_control.get_active_run,
+        mark_early_cancel=run_control.mark_early_cancel,
+        mark_message_complete=_mark_message_complete,
+        remove_active_run=run_control.remove_active_run,
+        logger=logger,
+    )
+
+
+def _build_cancel_flow_run_dependencies() -> CancelFlowRunDependencies:
+    return CancelFlowRunDependencies(
+        get_active_run=run_control.get_active_run,
+        mark_early_cancel=run_control.mark_early_cancel,
+        remove_active_run=run_control.remove_active_run,
+        logger=logger,
+    )
+
+
 @command
 async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    run_control.set_approval_response(
-        body.runId,
-        approved=body.approved,
-        tool_decisions=body.toolDecisions or {},
-        edited_args=body.editedArgs or {},
+    return execute_respond_to_tool_approval(
+        RespondToToolApprovalInputDTO(
+            run_id=body.runId,
+            approved=body.approved,
+            tool_decisions=body.toolDecisions,
+            edited_args=body.editedArgs,
+        ),
+        _build_respond_to_tool_approval_dependencies(),
     )
-    return {"success": True}
 
 
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
-    active_run = run_control.get_active_run(body.messageId)
-    if active_run is None:
-        logger.info(
-            f"[cancel_run] No active run found for message {body.messageId}; storing early intent"
-        )
-        run_control.mark_early_cancel(body.messageId)
-
-        try:
-            with db.db_session() as sess:
-                db.mark_message_complete(sess, body.messageId)
-        except Exception as e:
-            logger.info(f"[cancel_run] Warning marking message complete: {e}")
-
-        return {"cancelled": True}
-
-    run_id, agent = active_run
-    remove_active_run = False
-    try:
-        if run_id:
-            logger.info(
-                f"[cancel_run] Cancelling run {run_id} for message {body.messageId}"
-            )
-            agent.cancel_run(run_id)
-            remove_active_run = True
-        else:
-            logger.info(
-                f"[cancel_run] Flagging early cancel for message {body.messageId}"
-            )
-            run_control.mark_early_cancel(body.messageId)
-            request_cancel = getattr(agent, "request_cancel", None)
-            if callable(request_cancel):
-                request_cancel()
-
-        with db.db_session() as sess:
-            db.mark_message_complete(sess, body.messageId)
-        if remove_active_run:
-            run_control.remove_active_run(body.messageId)
-        logger.info(f"[cancel_run] Successfully cancelled for message {body.messageId}")
-        return {"cancelled": True}
-    except Exception as e:
-        logger.info(f"[cancel_run] Error cancelling run: {e}")
-        return {"cancelled": False}
+    return execute_cancel_run(
+        CancelRunInput(message_id=body.messageId),
+        _build_cancel_run_dependencies(),
+    )
 
 
 @command
 async def cancel_flow_run(body: CancelFlowRunRequest) -> dict:
-    active_run = run_control.get_active_run(body.runId)
-    if active_run is None:
-        logger.info(
-            f"[cancel_flow_run] No active run found for flow run {body.runId}"
-        )
-        return {"cancelled": False}
+    return execute_cancel_flow_run(
+        CancelFlowRunInput(run_id=body.runId),
+        _build_cancel_flow_run_dependencies(),
+    )
 
-    run_id, agent = active_run
-    remove_active_run = False
-    try:
-        if run_id:
-            logger.info(
-                f"[cancel_flow_run] Cancelling run {run_id} for flow run {body.runId}"
-            )
-            agent.cancel_run(run_id)
-            remove_active_run = True
-        else:
-            logger.info(
-                f"[cancel_flow_run] Flagging early cancel for flow run {body.runId}"
-            )
-            run_control.mark_early_cancel(body.runId)
-            request_cancel = getattr(agent, "request_cancel", None)
-            if callable(request_cancel):
-                request_cancel()
 
-        if remove_active_run:
-            run_control.remove_active_run(body.runId)
-        logger.info(f"[cancel_flow_run] Successfully cancelled for flow run {body.runId}")
-        return {"cancelled": True}
-    except Exception as e:
-        logger.info(f"[cancel_flow_run] Error cancelling run: {e}")
-        return {"cancelled": False}
+def _prepare_stream_attachments_for_start_run(
+    chat_id: str,
+    attachments: List[AttachmentMeta],
+    source_ref: Optional[str],
+):
+    return prepare_stream_attachments(chat_id, attachments, source_ref=source_ref)
+
+
+def _get_active_leaf_message_id(chat_id: str) -> Optional[str]:
+    with db.db_session() as sess:
+        chat = sess.get(db.Chat, chat_id)
+        return chat.active_leaf_message_id if chat else None
+
+
+def _emit_run_started(
+    channel: Channel,
+    chat_id: str,
+    file_renames: Optional[Dict[str, str]],
+) -> None:
+    emit_chat_event(
+        channel,
+        EVENT_RUN_STARTED,
+        sessionId=chat_id,
+        fileRenames=file_renames or {},
+    )
+
+
+def _emit_assistant_message_id(channel: Channel, assistant_msg_id: str) -> None:
+    emit_chat_event(channel, EVENT_ASSISTANT_MESSAGE_ID, content=assistant_msg_id)
+
+
+def _get_graph_data(chat_id: str, model_id: Optional[str], model_options: Dict[str, Any]) -> Dict[str, Any]:
+    return get_graph_data_for_chat(
+        chat_id,
+        model_id,
+        model_options=model_options,
+    )
+
+
+def _build_start_run_dependencies() -> StartRunDependencies:
+    return StartRunDependencies(
+        validate_model_options=validate_model_options,
+        ensure_chat_initialized=ensure_chat_initialized,
+        prepare_stream_attachments=_prepare_stream_attachments_for_start_run,
+        get_active_leaf_message_id=_get_active_leaf_message_id,
+        save_user_msg=save_user_msg,
+        emit_run_started=_emit_run_started,
+        init_assistant_msg=init_assistant_msg,
+        emit_assistant_message_id=_emit_assistant_message_id,
+        get_graph_data_for_chat=_get_graph_data,
+        run_graph_chat_runtime=run_graph_chat_runtime,
+        handle_streaming_run_error=handle_streaming_run_error,
+        logger=logger,
+    )
 
 
 @command
@@ -324,86 +374,18 @@ async def stream_chat(
         for m in body.messages
     ]
 
-    validated_model_options: Dict[str, Any] = {}
-
-    if body.modelId:
-        validated_model_options = validate_model_options(
-            body.chatId, body.modelId, body.modelOptions, channel
-        )
-        if validated_model_options is None:
-            return
-
-    chat_id = ensure_chat_initialized(body.chatId, body.modelId)
-
-    if not body.modelId:
-        result = validate_model_options(chat_id, None, body.modelOptions, channel)
-        if result is None:
-            return
-        validated_model_options = result
-
-    saved_attachments = []
-    manifest_id = None
-    file_renames = {}
-
-    if body.attachments:
-        attachment_state = prepare_stream_attachments(
-            chat_id,
-            body.attachments,
-            source_ref=messages[-1].id if messages else None,
-        )
-        saved_attachments = attachment_state.attachments
-        manifest_id = attachment_state.manifest_id
-        file_renames = attachment_state.file_renames
-
-    with db.db_session() as sess:
-        chat = sess.get(db.Chat, chat_id)
-        parent_id = chat.active_leaf_message_id if chat else None
-
-    if messages and messages[-1].role == "user":
-        if saved_attachments:
-            messages[-1].attachments = saved_attachments
-        save_user_msg(
-            messages[-1],
-            chat_id,
-            parent_id,
-            attachments=saved_attachments or None,
-            manifest_id=manifest_id,
-        )
-        parent_id = messages[-1].id
-
-    emit_chat_event(
-        channel,
-        EVENT_RUN_STARTED,
-        sessionId=chat_id,
-        fileRenames=file_renames,
+    await execute_start_run(
+        StartRunInput(
+            channel=channel,
+            messages=messages,
+            model_id=body.modelId,
+            model_options=body.modelOptions,
+            chat_id=body.chatId,
+            tool_ids=body.toolIds,
+            attachments=body.attachments,
+        ),
+        _build_start_run_dependencies(),
     )
-
-    assistant_msg_id = init_assistant_msg(chat_id, parent_id)
-
-    emit_chat_event(channel, EVENT_ASSISTANT_MESSAGE_ID, content=assistant_msg_id)
-
-    try:
-        graph_data = get_graph_data_for_chat(
-            chat_id,
-            body.modelId,
-            model_options=validated_model_options,
-        )
-        logger.info("[stream] Unified chat runtime — running graph runtime")
-        await run_graph_chat_runtime(
-            graph_data,
-            messages,
-            assistant_msg_id,
-            channel,
-            chat_id=chat_id,
-            ephemeral=False,
-            extra_tool_ids=body.toolIds or None,
-        )
-        return
-    except Exception as e:
-        await handle_streaming_run_error(
-            assistant_msg_id, e, channel,
-            chat_id=chat_id, label="[stream]",
-        )
 
 
 class StreamAgentChatRequest(BaseModel):
