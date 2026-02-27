@@ -1,533 +1,49 @@
 "use client";
 
-import type { ContentBlock, ToolApprovalRequiredPayload, ToolCallPayload } from "@/lib/types/chat";
+import type { ContentBlock } from "@/lib/types/chat";
+import { RUNTIME_EVENT, isKnownRuntimeEvent } from "@/lib/services/runtime-events";
+import { handleFlowNodeStarted } from "@/lib/services/flow-node-handler";
 import {
-  RUNTIME_EVENT,
-  isKnownRuntimeEvent,
-} from "@/lib/services/runtime-events";
+  handleMemberRunCompleted,
+  handleMemberRunStarted,
+  processMemberEvent,
+} from "@/lib/services/member-run-handler";
+import {
+  buildCurrentContent,
+  createInitialState,
+  normalizeEventPayload,
+  scheduleUpdate,
+  type StreamCallbacks,
+  type StreamState,
+} from "@/lib/services/stream-processor-state";
+import { warnUnknownRuntimeEvent } from "@/lib/services/stream-processor-utils";
+import {
+  handleAssistantMessageId,
+  handleReasoningCompleted,
+  handleReasoningStarted,
+  handleReasoningStep,
+  handleRunContent,
+  handleRunError,
+  handleSeedBlocks,
+  handleTerminalRunEvent,
+} from "@/lib/services/text-stream-handler";
+import {
+  handleToolApprovalRequired,
+  handleToolApprovalResolved,
+  handleToolCallCompleted,
+  handleToolCallStarted,
+  removeTopLevelToolBlock,
+} from "@/lib/services/tool-event-handler";
 
-const warnedPayloads = new Set<string>();
-const warnedUnknownEvents = new Set<string>();
+export { createInitialState };
+export type { StreamCallbacks, StreamState };
 
-function warnInvalidPayload(context: string, payload: unknown): void {
-  if (warnedPayloads.has(context)) return;
-  warnedPayloads.add(context);
-  try {
-    console.warn(
-      `[StreamProcessor] Invalid ${context} payload: ${JSON.stringify(payload)}`
-    );
-  } catch (err) {
-    console.warn(`[StreamProcessor] Invalid ${context} payload`, err);
-  }
-}
-
-function warnUnknownRuntimeEvent(eventType: string, payload: unknown): void {
-  if (warnedUnknownEvents.has(eventType)) return;
-  warnedUnknownEvents.add(eventType);
-  try {
-    console.warn(
-      `[StreamProcessor] Unknown runtime event ${eventType}: ${JSON.stringify(payload)}`
-    );
-  } catch (err) {
-    console.warn(`[StreamProcessor] Unknown runtime event ${eventType}`, err);
-  }
-}
-
-function coerceToolCallPayload(tool: unknown, context: string): ToolCallPayload | null {
-  if (!tool || typeof tool !== "object") {
-    warnInvalidPayload(context, tool);
-    return null;
-  }
-
-  const t = tool as ToolCallPayload;
-  if (typeof t.id !== "string" || typeof t.toolName !== "string") {
-    warnInvalidPayload(context, tool);
-    return null;
-  }
-  if (!t.toolArgs || typeof t.toolArgs !== "object") {
-    warnInvalidPayload(context, tool);
-    return null;
-  }
-  return t;
-}
-
-function coerceToolApprovalPayload(tool: unknown, context: string): ToolApprovalRequiredPayload | null {
-  if (!tool || typeof tool !== "object") {
-    warnInvalidPayload(context, tool);
-    return null;
-  }
-
-  const payload = tool as ToolApprovalRequiredPayload;
-  if (!Array.isArray(payload.tools)) {
-    warnInvalidPayload(context, tool);
-    return null;
-  }
-  return payload;
-}
-
-interface MemberBuffers {
-  currentTextBlock: string;
-  currentReasoningBlock: string;
-}
-
-export interface StreamCallbacks {
-  onUpdate: (content: ContentBlock[]) => void;
-  onSessionId?: (sessionId: string) => void;
-  onMessageId?: (messageId: string) => void;
-  onThinkTagDetected?: () => void;
-  onEvent?: (eventType: string, payload: Record<string, unknown>) => void;
-}
-
-export interface StreamState {
-  contentBlocks: ContentBlock[];
-  currentTextBlock: string;
-  currentReasoningBlock: string;
-  thinkTagDetected: boolean;
-  memberStates: Map<string, MemberBuffers>;
-  textBlockBoundary: boolean;
-}
-
-export function createInitialState(): StreamState {
-  return {
-    contentBlocks: [],
-    currentTextBlock: "",
-    currentReasoningBlock: "",
-    thinkTagDetected: false,
-    memberStates: new Map(),
-    textBlockBoundary: false,
-  };
-}
-
-function flushTextBlock(state: StreamState): void {
-  if (state.currentTextBlock) {
-    state.contentBlocks.push({ type: "text", content: state.currentTextBlock });
-    state.currentTextBlock = "";
-  }
-}
-
-function flushReasoningBlock(state: StreamState): void {
-  if (state.currentReasoningBlock) {
-    state.contentBlocks.push({
-      type: "reasoning",
-      content: state.currentReasoningBlock,
-      isCompleted: true,
-    });
-    state.currentReasoningBlock = "";
-  }
-}
-
-type MemberRunBlock = Extract<ContentBlock, { type: "member_run" }>;
-
-function findMemberBlock(state: StreamState, runId: string): MemberRunBlock | null {
-  for (let i = state.contentBlocks.length - 1; i >= 0; i--) {
-    const b = state.contentBlocks[i];
-    if (b.type === "member_run" && b.runId === runId) return b;
-  }
-  return null;
-}
-
-function getMemberState(state: StreamState, runId: string): MemberBuffers {
-  let ms = state.memberStates.get(runId);
-  if (!ms) {
-    ms = { currentTextBlock: "", currentReasoningBlock: "" };
-    state.memberStates.set(runId, ms);
-  }
-  return ms;
-}
-
-function flushMemberText(block: MemberRunBlock, ms: MemberBuffers): void {
-  if (ms.currentTextBlock) {
-    block.content.push({ type: "text", content: ms.currentTextBlock });
-    ms.currentTextBlock = "";
-  }
-}
-
-function flushMemberReasoning(block: MemberRunBlock, ms: MemberBuffers): void {
-  if (ms.currentReasoningBlock) {
-    block.content.push({
-      type: "reasoning",
-      content: ms.currentReasoningBlock,
-      isCompleted: true,
-    });
-    ms.currentReasoningBlock = "";
-  }
-}
-
-function buildCurrentContent(state: StreamState): ContentBlock[] {
-  const content: ContentBlock[] = [];
-
-  for (const block of state.contentBlocks) {
-    if (block.type === "member_run") {
-      const ms = state.memberStates.get(block.runId);
-      if (ms && (ms.currentTextBlock || ms.currentReasoningBlock)) {
-        const cloned: MemberRunBlock = { ...block, content: [...block.content] };
-        if (ms.currentTextBlock) {
-          cloned.content.push({ type: "text", content: ms.currentTextBlock });
-        }
-        if (ms.currentReasoningBlock) {
-          cloned.content.push({
-            type: "reasoning",
-            content: ms.currentReasoningBlock,
-            isCompleted: false,
-          });
-        }
-        content.push(cloned);
-      } else {
-        content.push(block);
-      }
-    } else {
-      content.push(block);
-    }
-  }
-
-  if (state.currentTextBlock) {
-    content.push({ type: "text", content: state.currentTextBlock });
-  }
-  if (state.currentReasoningBlock) {
-    content.push({
-      type: "reasoning",
-      content: state.currentReasoningBlock,
-      isCompleted: false,
-    });
-  }
-  if (content.length === 0) {
-    content.push({ type: "text", content: "" });
-  }
-
-  return content;
-}
-
-function scheduleUpdate(state: StreamState, onUpdate: (content: ContentBlock[]) => void): void {
-  requestAnimationFrame(() => onUpdate(buildCurrentContent(state)));
-}
-
-function handleRunContent(state: StreamState, content: string, callbacks: StreamCallbacks): void {
-  if (state.currentReasoningBlock && !state.currentTextBlock) {
-    flushReasoningBlock(state);
-  }
-
-  if (!state.textBlockBoundary && state.currentTextBlock === "" && state.contentBlocks.length > 0) {
-    const last = state.contentBlocks[state.contentBlocks.length - 1];
-    if (last?.type === "text") {
-      state.contentBlocks.pop();
-      state.currentTextBlock = last.content || "";
-    }
-  }
-
-  state.currentTextBlock += content;
-  if (state.textBlockBoundary) {
-    state.textBlockBoundary = false;
-  }
-
-  if (
-    !state.thinkTagDetected &&
-    state.currentTextBlock.toLowerCase().includes("<think>")
-  ) {
-    state.thinkTagDetected = true;
-    callbacks.onThinkTagDetected?.();
-  }
-}
-
-function handleToolCallStarted(state: StreamState, tool: unknown): void {
-  flushTextBlock(state);
-  flushReasoningBlock(state);
-
-  const t = coerceToolCallPayload(tool, "ToolCallStarted");
-  if (!t) return;
-  const existingBlock = state.contentBlocks.find(
-    (b) => b.type === "tool_call" && b.id === t.id,
-  );
-
-  if (existingBlock && existingBlock.type === "tool_call") {
-    existingBlock.isCompleted = false;
-  } else {
-    state.contentBlocks.push({
-      type: "tool_call",
-      id: t.id,
-      toolName: t.toolName,
-      toolArgs: t.toolArgs,
-      isCompleted: false,
-    });
-  }
-}
-
-function handleToolApprovalRequired(state: StreamState, toolData: unknown): void {
-  flushTextBlock(state);
-  flushReasoningBlock(state);
-
-  const data = coerceToolApprovalPayload(toolData, "ToolApprovalRequired");
-  if (!data) return;
-  const { runId, tools } = data;
-
-  for (const tool of tools) {
-    const block: ContentBlock = {
-      type: "tool_call",
-      id: tool.id,
-      toolName: tool.toolName,
-      toolArgs: tool.toolArgs,
-      isCompleted: false,
-      requiresApproval: true,
-      runId: runId,
-      toolCallId: tool.id,
-      approvalStatus: "pending",
-      editableArgs: tool.editableArgs,
-    };
-    state.contentBlocks.push(block);
-  }
-}
-
-function handleToolCallCompleted(state: StreamState, tool: unknown): void {
-  const t = coerceToolCallPayload(tool, "ToolCallCompleted");
-  if (!t) return;
-  const toolBlock = state.contentBlocks.find(
-    (b) => b.type === "tool_call" && b.id === t.id,
-  );
-
-  if (!toolBlock || toolBlock.type !== "tool_call") return;
-
-  toolBlock.toolResult = t.toolResult;
-  toolBlock.isCompleted = true;
-  if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
-    toolBlock.approvalStatus = "approved";
-  }
-  if (t.renderPlan) {
-    toolBlock.renderPlan = t.renderPlan;
-  }
-}
-
-function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
-  const t = coerceToolCallPayload(tool, "ToolApprovalResolved");
-  if (!t) return;
-  const toolBlock = state.contentBlocks.find(
-    (b) => b.type === "tool_call" && b.id === t.id,
-  );
-
-  if (!toolBlock || toolBlock.type !== "tool_call") return;
-
-  toolBlock.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
-  if (t.toolArgs) {
-    toolBlock.toolArgs = t.toolArgs;
-  }
-  if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
-    toolBlock.isCompleted = true;
-  }
-}
-
-function processMemberEvent(
+function emitEvent(
+  callbacks: StreamCallbacks,
   eventType: string,
-  d: Record<string, unknown>,
-  state: StreamState,
+  payload: Record<string, unknown>,
 ): void {
-  const runId = d.memberRunId as string;
-  const memberName = (d.memberName as string) || "Agent";
-
-  let block = findMemberBlock(state, runId);
-  if (!block) {
-    block = {
-      type: "member_run",
-      runId,
-      memberName,
-      content: [],
-      isCompleted: false,
-      task: (d.task as string) || "",
-      nodeId: (d.nodeId as string) || undefined,
-      nodeType: (d.nodeType as string) || undefined,
-      groupByNode: (d.groupByNode as boolean) || undefined,
-    };
-    state.contentBlocks.push(block);
-  }
-
-  if (memberName && memberName !== "Agent") {
-    block.memberName = memberName;
-  }
-  if (d.nodeId && !block.nodeId) {
-    block.nodeId = d.nodeId as string;
-  }
-  if (d.nodeType && !block.nodeType) {
-    block.nodeType = d.nodeType as string;
-  }
-  if (d.groupByNode && !block.groupByNode) {
-    block.groupByNode = true;
-  }
-
-  const ms = getMemberState(state, runId);
-
-  switch (eventType) {
-    case RUNTIME_EVENT.RUN_CONTENT: {
-      const text = (d.content as string) || "";
-      if (ms.currentReasoningBlock && !ms.currentTextBlock) {
-        flushMemberReasoning(block, ms);
-      }
-      ms.currentTextBlock += text;
-      break;
-    }
-
-    case RUNTIME_EVENT.REASONING_STARTED:
-      flushMemberText(block, ms);
-      break;
-
-    case RUNTIME_EVENT.REASONING_STEP: {
-      const text = (d.reasoningContent as string) || "";
-      if (text) {
-        if (ms.currentTextBlock && !ms.currentReasoningBlock) {
-          flushMemberText(block, ms);
-        }
-        ms.currentReasoningBlock += text;
-      }
-      break;
-    }
-
-    case RUNTIME_EVENT.REASONING_COMPLETED:
-      flushMemberReasoning(block, ms);
-      break;
-
-    case RUNTIME_EVENT.TOOL_CALL_STARTED: {
-      flushMemberText(block, ms);
-      flushMemberReasoning(block, ms);
-      const t = coerceToolCallPayload(d.tool, "Member.ToolCallStarted");
-      if (!t) break;
-      const existing = block.content.find(
-        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
-          b.type === "tool_call" && b.id === t.id,
-      );
-      if (existing) {
-        existing.toolName = t.toolName || existing.toolName;
-        existing.toolArgs = t.toolArgs || existing.toolArgs;
-        existing.isCompleted = false;
-      } else {
-        block.content.push({
-          type: "tool_call",
-          id: t.id,
-          toolName: t.toolName,
-          toolArgs: t.toolArgs,
-          isCompleted: false,
-        });
-      }
-      break;
-    }
-
-    case RUNTIME_EVENT.TOOL_CALL_COMPLETED: {
-      const t = coerceToolCallPayload(d.tool, "Member.ToolCallCompleted");
-      if (!t) break;
-      const tc = block.content.find(
-        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
-          b.type === "tool_call" && b.id === t.id,
-      );
-      if (tc) {
-        tc.isCompleted = true;
-        tc.toolResult = t.toolResult;
-        if (t.renderPlan) {
-          tc.renderPlan = t.renderPlan;
-        }
-      }
-      break;
-    }
-
-    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED: {
-      flushMemberText(block, ms);
-      flushMemberReasoning(block, ms);
-      const payload = coerceToolApprovalPayload(d.tool, "Member.ToolApprovalRequired");
-      if (!payload) break;
-      const tools = payload?.tools || [];
-      for (const tool of tools) {
-        block.content.push({
-          type: "tool_call",
-          id: tool.id,
-          toolName: tool.toolName,
-          toolArgs: tool.toolArgs,
-          isCompleted: false,
-          requiresApproval: true,
-          runId: payload?.runId,
-          toolCallId: tool.id,
-          approvalStatus: "pending",
-          editableArgs: tool.editableArgs,
-        });
-      }
-      break;
-    }
-
-    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED: {
-      const t = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolved");
-      if (!t) break;
-      const tc = block.content.find(
-        (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
-          b.type === "tool_call" && b.id === t.id,
-      );
-      if (tc) {
-        tc.approvalStatus = t.approvalStatus as "pending" | "approved" | "denied" | "timeout" | undefined;
-        if (t.toolArgs) {
-          tc.toolArgs = t.toolArgs;
-        }
-        if (t.approvalStatus === "denied" || t.approvalStatus === "timeout") {
-          tc.isCompleted = true;
-        }
-      }
-      break;
-    }
-
-    case RUNTIME_EVENT.RUN_ERROR:
-    case RUNTIME_EVENT.MEMBER_RUN_ERROR: {
-      flushMemberText(block, ms);
-      flushMemberReasoning(block, ms);
-      const errorContent = (d.content as string) || (d.error as string) || "Agent encountered an error.";
-      block.content.push({ type: "error", content: errorContent });
-      block.isCompleted = true;
-      block.hasError = true;
-      state.memberStates.delete(runId);
-      break;
-    }
-  }
-}
-
-function handleMemberRunStarted(state: StreamState, d: Record<string, unknown>): void {
-  flushTextBlock(state);
-  flushReasoningBlock(state);
-
-  const runId = (d.memberRunId as string) || "";
-  const memberName = (d.memberName as string) || "Agent";
-  const task = (d.task as string) || "";
-
-  if (runId && findMemberBlock(state, runId)) return;
-
-  state.contentBlocks.push({
-    type: "member_run",
-    runId,
-    memberName,
-    content: [],
-    isCompleted: false,
-    task,
-    nodeId: (d.nodeId as string) || undefined,
-    nodeType: (d.nodeType as string) || undefined,
-    groupByNode: (d.groupByNode as boolean) || undefined,
-  });
-  getMemberState(state, runId);
-}
-
-function handleMemberRunCompleted(state: StreamState, d: Record<string, unknown>): void {
-  const runId = (d.memberRunId as string) || "";
-
-  if (runId) {
-    const block = findMemberBlock(state, runId);
-    if (block) {
-      const ms = getMemberState(state, runId);
-      flushMemberText(block, ms);
-      flushMemberReasoning(block, ms);
-      block.isCompleted = true;
-      state.memberStates.delete(runId);
-    }
-  } else {
-    for (const b of state.contentBlocks) {
-      if (b.type === "member_run" && !b.isCompleted) {
-        const ms = state.memberStates.get(b.runId);
-        if (ms) {
-          flushMemberText(b, ms);
-          flushMemberReasoning(b, ms);
-          state.memberStates.delete(b.runId);
-        }
-        b.isCompleted = true;
-      }
-    }
-  }
+  callbacks.onEvent?.(eventType, payload);
 }
 
 export function processEvent(
@@ -536,22 +52,30 @@ export function processEvent(
   state: StreamState,
   callbacks: StreamCallbacks,
 ): void {
-  const d = (typeof data === "object" && data !== null
-    ? data
-    : { content: data }) as Record<string, unknown>;
+  const payload = normalizeEventPayload(data);
 
-  if (typeof d.sessionId === "string" && d.sessionId) {
-    callbacks.onSessionId?.(d.sessionId);
+  if (typeof payload.sessionId === "string" && payload.sessionId) {
+    callbacks.onSessionId?.(payload.sessionId);
   }
 
   if (!isKnownRuntimeEvent(eventType)) {
-    warnUnknownRuntimeEvent(eventType, d);
+    warnUnknownRuntimeEvent(eventType, payload);
+    emitEvent(callbacks, eventType, payload);
     return;
   }
 
-  if (d.memberRunId && eventType !== RUNTIME_EVENT.MEMBER_RUN_STARTED && eventType !== RUNTIME_EVENT.MEMBER_RUN_COMPLETED) {
-    processMemberEvent(eventType, d, state);
-    if (eventType !== RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED && eventType !== RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) {
+  emitEvent(callbacks, eventType, payload);
+
+  const isMemberScoped = Boolean(payload.memberRunId)
+    && eventType !== RUNTIME_EVENT.MEMBER_RUN_STARTED
+    && eventType !== RUNTIME_EVENT.MEMBER_RUN_COMPLETED;
+
+  if (isMemberScoped) {
+    processMemberEvent(eventType, payload, state);
+    if (
+      eventType !== RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED
+      && eventType !== RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED
+    ) {
       scheduleUpdate(state, callbacks.onUpdate);
       return;
     }
@@ -559,120 +83,85 @@ export function processEvent(
 
   switch (eventType) {
     case RUNTIME_EVENT.RUN_STARTED:
+    case RUNTIME_EVENT.STREAM_NOT_ACTIVE:
+    case RUNTIME_EVENT.STREAM_SUBSCRIBED:
+    case RUNTIME_EVENT.FLOW_NODE_COMPLETED:
+    case RUNTIME_EVENT.FLOW_NODE_RESULT:
+    case RUNTIME_EVENT.FLOW_NODE_ERROR:
+    case RUNTIME_EVENT.TOOL_CALL_FAILED:
+    case RUNTIME_EVENT.TOOL_CALL_ERROR:
       break;
 
     case RUNTIME_EVENT.ASSISTANT_MESSAGE_ID:
-      if (Array.isArray(d.blocks)) {
-        state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
-        state.currentTextBlock = "";
-        state.currentReasoningBlock = "";
-        state.textBlockBoundary = false;
-      }
-      callbacks.onMessageId?.(d.content as string);
+      handleAssistantMessageId(state, payload, callbacks);
       break;
 
     case RUNTIME_EVENT.RUN_CONTENT:
-      handleRunContent(state, (d.content as string) || "", callbacks);
+      handleRunContent(state, (payload.content as string) || "", callbacks);
       break;
 
     case RUNTIME_EVENT.SEED_BLOCKS:
-      if (Array.isArray(d.blocks)) {
-        state.contentBlocks.splice(0, state.contentBlocks.length, ...(d.blocks as ContentBlock[]));
-        state.currentTextBlock = "";
-        state.currentReasoningBlock = "";
-        state.textBlockBoundary = false;
-      }
+      handleSeedBlocks(state, payload);
       break;
 
     case RUNTIME_EVENT.REASONING_STARTED:
-      flushTextBlock(state);
+      handleReasoningStarted(state);
       break;
 
     case RUNTIME_EVENT.REASONING_STEP:
-      if (state.currentTextBlock && !state.currentReasoningBlock) {
-        flushTextBlock(state);
-      }
-      state.currentReasoningBlock += (d.reasoningContent as string) || "";
+      handleReasoningStep(state, payload);
       break;
 
     case RUNTIME_EVENT.REASONING_COMPLETED:
-      flushReasoningBlock(state);
+      handleReasoningCompleted(state);
       break;
 
     case RUNTIME_EVENT.TOOL_CALL_STARTED:
-      handleToolCallStarted(state, d.tool);
+      handleToolCallStarted(state, payload.tool);
       break;
 
     case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
-      handleToolApprovalRequired(state, d.tool);
+      handleToolApprovalRequired(state, payload.tool);
       break;
 
     case RUNTIME_EVENT.TOOL_CALL_COMPLETED:
-      handleToolCallCompleted(state, d.tool);
+      handleToolCallCompleted(state, payload.tool);
       break;
 
     case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
-      handleToolApprovalResolved(state, d.tool);
-      if (d.memberRunId) {
-        const toolId = coerceToolCallPayload(d.tool, "Member.ToolApprovalResolvedCleanup")?.id;
-        if (toolId) {
-          const idx = state.contentBlocks.findIndex(
-            (b) => b.type === "tool_call" && b.id === toolId,
-          );
-          if (idx !== -1) {
-            state.contentBlocks.splice(idx, 1);
-          }
-        }
+      handleToolApprovalResolved(state, payload.tool);
+      if (payload.memberRunId) {
+        removeTopLevelToolBlock(state, payload.tool);
       }
       break;
 
     case RUNTIME_EVENT.FLOW_NODE_STARTED:
-      flushTextBlock(state);
-      flushReasoningBlock(state);
-      state.textBlockBoundary = true;
+      handleFlowNodeStarted(state);
       break;
 
     case RUNTIME_EVENT.MEMBER_RUN_STARTED:
-      handleMemberRunStarted(state, d);
+      handleMemberRunStarted(state, payload);
       break;
 
     case RUNTIME_EVENT.MEMBER_RUN_COMPLETED:
-      handleMemberRunCompleted(state, d);
+      handleMemberRunCompleted(state, payload);
       break;
 
     case RUNTIME_EVENT.MEMBER_RUN_ERROR: {
-      const runId = (d.memberRunId as string) || "";
+      const runId = (payload.memberRunId as string) || "";
       if (runId) {
-        const block = findMemberBlock(state, runId);
-        if (block) {
-          const ms = getMemberState(state, runId);
-          flushMemberText(block, ms);
-          flushMemberReasoning(block, ms);
-          block.content.push({
-            type: "error",
-            content: (d.content as string) || "Agent encountered an error.",
-          });
-          block.isCompleted = true;
-          block.hasError = true;
-          state.memberStates.delete(runId);
-        }
+        processMemberEvent(eventType, payload, state);
       }
       break;
     }
 
     case RUNTIME_EVENT.RUN_COMPLETED:
     case RUNTIME_EVENT.RUN_CANCELLED:
-      flushTextBlock(state);
-      flushReasoningBlock(state);
+      handleTerminalRunEvent(state);
       break;
 
     case RUNTIME_EVENT.RUN_ERROR:
-      flushTextBlock(state);
-      flushReasoningBlock(state);
-      state.contentBlocks.push({
-        type: "error",
-        content: (typeof d.error === "string" ? d.error : typeof d.content === "string" ? d.content : "An error occurred.")
-      });
+      handleRunError(state, payload);
       break;
   }
 
@@ -724,15 +213,17 @@ export async function processMessageStream(
 
         if (line.startsWith("event: ")) {
           currentEvent = line.slice(7).trim();
-        } else if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
+          continue;
+        }
 
-          try {
-            processEvent(currentEvent, JSON.parse(data), state, wrappedCallbacks);
-          } catch (err) {
-            console.error("Failed to parse SSE data:", err);
-          }
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6);
+        if (data === "[DONE]") continue;
+
+        try {
+          processEvent(currentEvent, JSON.parse(data), state, wrappedCallbacks);
+        } catch (error) {
+          console.error("Failed to parse SSE data:", error);
         }
       }
     }

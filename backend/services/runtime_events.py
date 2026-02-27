@@ -18,6 +18,8 @@ EVENT_REASONING_STEP = "ReasoningStep"
 EVENT_REASONING_COMPLETED = "ReasoningCompleted"
 EVENT_TOOL_CALL_STARTED = "ToolCallStarted"
 EVENT_TOOL_CALL_COMPLETED = "ToolCallCompleted"
+EVENT_TOOL_CALL_FAILED = "ToolCallFailed"
+EVENT_TOOL_CALL_ERROR = "ToolCallError"
 EVENT_TOOL_APPROVAL_REQUIRED = "ToolApprovalRequired"
 EVENT_TOOL_APPROVAL_RESOLVED = "ToolApprovalResolved"
 EVENT_MEMBER_RUN_STARTED = "MemberRunStarted"
@@ -44,6 +46,8 @@ KNOWN_RUNTIME_EVENTS: frozenset[str] = frozenset(
         EVENT_REASONING_COMPLETED,
         EVENT_TOOL_CALL_STARTED,
         EVENT_TOOL_CALL_COMPLETED,
+        EVENT_TOOL_CALL_FAILED,
+        EVENT_TOOL_CALL_ERROR,
         EVENT_TOOL_APPROVAL_REQUIRED,
         EVENT_TOOL_APPROVAL_RESOLVED,
         EVENT_MEMBER_RUN_STARTED,
@@ -72,14 +76,16 @@ def _validate_runtime_event(event: str, *, allow_unknown: bool = False) -> str:
     if not isinstance(event, str) or not event.strip():
         raise ValueError("Runtime event must be a non-empty string")
 
-    if allow_unknown or is_known_runtime_event(event):
+    if is_known_runtime_event(event):
         return event
 
-    if event not in _WARNED_UNKNOWN_EVENTS:
-        _WARNED_UNKNOWN_EVENTS.add(event)
-        logger.warning("[runtime_events] Unknown runtime event emitted: %s", event)
+    if allow_unknown:
+        if event not in _WARNED_UNKNOWN_EVENTS:
+            _WARNED_UNKNOWN_EVENTS.add(event)
+            logger.warning("[runtime_events] Unknown runtime event emitted: %s", event)
+        return event
 
-    return event
+    raise ValueError(f"Unknown runtime event: {event}")
 
 
 def make_chat_event(
