@@ -11,9 +11,6 @@ import backend.commands.provider_plugins as provider_plugins
 @pytest.mark.asyncio
 async def test_list_provider_plugin_sources_marks_installed_and_policy_flags(monkeypatch) -> None:
     class _FakeManager:
-        def get_policy(self):
-            return SimpleNamespace(mode="safe", auto_update_enabled=False, community_warning_accepted=False)
-
         def list_plugins(self):
             return [SimpleNamespace(id="sample_openai_adapter")]
 
@@ -63,11 +60,9 @@ async def test_list_provider_plugin_sources_marks_installed_and_policy_flags(mon
     by_id = {item.id: item for item in response.sources}
     assert by_id["official-source"].installed is True
     assert by_id["official-source"].blockedByPolicy is False
-    assert by_id["official-source"].requiresCommunityWarning is False
 
     assert by_id["community-source"].installed is False
     assert by_id["community-source"].blockedByPolicy is True
-    assert by_id["community-source"].requiresCommunityWarning is True
 
 
 @pytest.mark.asyncio
@@ -138,33 +133,10 @@ async def test_install_provider_plugin_source_uses_manager_install(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_install_provider_plugin_source_blocks_without_warning(monkeypatch) -> None:
-    class _FakeManager:
-        def get_source(self, source_id: str):
-            return SimpleNamespace(source_class="community")
-
-        def get_policy(self):
-            return SimpleNamespace(mode="unsafe", auto_update_enabled=False, community_warning_accepted=False)
-
-        def is_install_blocked_by_policy(self, source_class: str) -> bool:
-            return False
-
-    monkeypatch.setattr(provider_plugins, "get_provider_plugin_manager", lambda: _FakeManager())
-
-    with pytest.raises(ValueError, match="Acknowledge the community plugin warning"):
-        await provider_plugins.install_provider_plugin_source(
-            provider_plugins.InstallProviderPluginSourceInput(id="community-source")
-        )
-
-
-@pytest.mark.asyncio
 async def test_install_provider_plugin_from_repo_calls_manager(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeManager:
-        def get_policy(self):
-            return SimpleNamespace(mode="unsafe", auto_update_enabled=False, community_warning_accepted=True)
-
         def is_install_blocked_by_policy(self, source_class: str) -> bool:
             return False
 
@@ -216,9 +188,6 @@ async def test_install_provider_plugin_from_repo_calls_manager(monkeypatch) -> N
 @pytest.mark.asyncio
 async def test_import_provider_plugin_blocks_in_safe_mode(monkeypatch, tmp_path: Path) -> None:
     class _FakeManager:
-        def get_policy(self):
-            return SimpleNamespace(mode="safe", auto_update_enabled=False, community_warning_accepted=False)
-
         def is_install_blocked_by_policy(self, source_class: str) -> bool:
             return source_class == "community"
 

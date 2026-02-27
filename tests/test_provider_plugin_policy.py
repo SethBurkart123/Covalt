@@ -110,11 +110,9 @@ def test_policy_defaults_and_save(monkeypatch, tmp_path: Path) -> None:
     saved = manager.save_policy(
         mode="unsafe",
         auto_update_enabled=True,
-        community_warning_accepted=True,
     )
     assert saved.mode == "unsafe"
     assert saved.auto_update_enabled is True
-    assert manager.get_policy().community_warning_accepted is True
 
 
 def test_indexes_add_remove_refresh(monkeypatch, tmp_path: Path) -> None:
@@ -167,7 +165,7 @@ def test_safe_mode_blocks_community_enable(monkeypatch, tmp_path: Path) -> None:
     assert plugin_id == "community-plugin"
 
     manager.enable_plugin(plugin_id, True)
-    manager.save_policy(mode="safe", auto_update_enabled=False, community_warning_accepted=False)
+    manager.save_policy(mode="safe", auto_update_enabled=False)
 
     assert manager.get_enabled_manifests() == []
     plugin = manager.get_plugin_info(plugin_id)
@@ -191,7 +189,7 @@ def test_set_auto_update_override(monkeypatch, tmp_path: Path) -> None:
     )
 
     assert manager.set_auto_update(plugin_id, override="enabled", tracking_ref="main") is True
-    manager.save_policy(mode="unsafe", auto_update_enabled=False, community_warning_accepted=True)
+    manager.save_policy(mode="unsafe", auto_update_enabled=False)
     plugin = manager.get_plugin_info(plugin_id)
     assert plugin is not None
     assert plugin.auto_update_override == "enabled"
@@ -200,7 +198,7 @@ def test_set_auto_update_override(monkeypatch, tmp_path: Path) -> None:
 
 def test_update_check_failure_keeps_plugin(monkeypatch, tmp_path: Path) -> None:
     manager = _setup_manager(monkeypatch, tmp_path)
-    manager.save_policy(mode="unsafe", auto_update_enabled=True, community_warning_accepted=True)
+    manager.save_policy(mode="unsafe", auto_update_enabled=True)
 
     source = tmp_path / "plugin-src"
     source.mkdir(parents=True, exist_ok=True)
