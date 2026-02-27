@@ -47,8 +47,16 @@ async def test_install_provider_plugin_source_uses_source_path(monkeypatch, tmp_
     captured: dict[str, object] = {}
 
     class _FakeManager:
-        def import_from_directory(self, directory: Path) -> str:
+        def import_from_directory(
+            self,
+            directory: Path,
+            *,
+            source_type: str = "local",
+            source_ref: str | None = None,
+        ) -> str:
             captured["import_dir"] = directory
+            captured["source_type"] = source_type
+            captured["source_ref"] = source_ref
             return "tmp_plugin"
 
         def get_manifest(self, plugin_id: str):
@@ -61,6 +69,15 @@ async def test_install_provider_plugin_source_uses_source_path(monkeypatch, tmp_
                 version="0.1.0",
                 default_enabled=False,
                 default_base_url="https://api.example.com/v1",
+            )
+
+        def get_plugin_info(self, plugin_id: str):
+            if plugin_id != "tmp_plugin":
+                return None
+            return SimpleNamespace(
+                verification_status="unsigned",
+                verification_message="Plugin is unsigned (no signature metadata found).",
+                signing_key_id=None,
             )
 
         def enable_plugin(self, plugin_id: str, enabled: bool) -> bool:
@@ -84,7 +101,11 @@ async def test_install_provider_plugin_source_uses_source_path(monkeypatch, tmp_
     )
 
     assert response.id == "tmp_plugin"
+    assert response.verificationStatus == "unsigned"
+    assert response.verificationMessage is not None
     assert captured["import_dir"] == source_dir
+    assert captured["source_type"] == "source"
+    assert captured["source_ref"] == "tmp-source"
     assert captured["plugin_enabled"] == {"id": "tmp_plugin", "enabled": True}
     assert captured["settings"] == {
         "provider": "tmp_provider",

@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 4 (Optional plugin signing/trust model hardening)
+## Current Phase: Phase 4 (Plugin Maturity) — Status: Complete
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -527,6 +527,48 @@ Verification:
 
 Follow-up:
 - Next active step remains **Phase 4, Step 4 (optional plugin signing/trust model hardening)**.
+
+---
+
+### Phase 4, Step 4: Plugin Signing/Trust Model Hardening (Warn-only + Ed25519) -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/services/provider_plugin_manager.py`
+- `backend/providers/provider_plugin_trusted_keys.json` (new)
+- `backend/commands/provider_plugins.py`
+- `backend/models/chat.py`
+- `app/python/api.ts` (regenerated)
+- `app/(app)/(pages)/settings/providers/ProviderStorePanel.tsx`
+- `app/lib/services/provider-plugin-trust.ts` (new)
+- `app/lib/services/provider-plugin-trust.test.ts` (new)
+- `examples/provider-plugins/sample-code-provider/provider.yaml`
+- `tests/test_provider_plugin_manager.py`
+- `tests/test_provider_plugin_sources_command.py`
+
+Implemented warn-only provider plugin trust hardening with Ed25519 signature verification and Store-visible trust status.
+
+Key outcomes:
+- Added optional signature manifest fields (`signature`, `signing_key_id`, `signature_algorithm`) with validation rules and Ed25519 support.
+- Added deterministic plugin payload hashing + signature verification over manifest (excluding signature metadata) and plugin files.
+- Added repo-tracked trusted signer keyring (`backend/providers/provider_plugin_trusted_keys.json`) and key-id lookup with safe parsing.
+- Added runtime trust states (`verified`, `unsigned`, `untrusted`, `invalid`) and surfaced them in plugin list responses.
+- Added trust metadata to import/install responses so Store install/upload flows can immediately show warnings.
+- Preserved warn-only behavior: unsigned/untrusted/invalid plugins install successfully but emit trust warnings.
+- Tagged source-index installs with `source` source-type metadata (distinct from local directory imports).
+- Updated Provider Store UI to show trust badges, signer IDs/messages, and explicit local-import caution messaging (Store only).
+- Added frontend trust utility module/tests and backend characterization tests for signed/unsigned/untrusted/tampered plugin cases.
+- Signed the sample code provider manifest with the repo-tracked example key so verification flow is exercised end-to-end.
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (185 passed)
+- `uv run pytest tests` (260 passed, 43 skipped)
+
+Follow-up:
+- **Phase 4 is now complete** for planned plugin maturity scope.
+- Next logical workstream is selecting post-Phase-4 priorities (e.g. stricter enforcement mode, signer management UX, or next redesign phase).
 
 ---
 
