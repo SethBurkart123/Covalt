@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 2 (Event Protocol Hardening)
+## Current Phase: Phase 3 (Core Boundaries)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -125,6 +125,42 @@ Verification:
 
 ---
 
+### Phase 2, Steps 2-3: Stream Processor Decomposition + Validation Enforcement -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `app/lib/services/stream-processor.ts` (refactored to thin dispatcher)
+- `app/lib/services/stream-processor-state.ts` (new)
+- `app/lib/services/stream-processor-utils.ts` (new)
+- `app/lib/services/text-stream-handler.ts` (new)
+- `app/lib/services/tool-event-handler.ts` (new)
+- `app/lib/services/member-run-handler.ts` (new)
+- `app/lib/services/flow-node-handler.ts` (new)
+- `app/lib/services/stream-processor.test.ts` (new)
+- `backend/services/runtime_events.py`
+- `tests/test_runtime_events.py`
+
+Split frontend stream processing into event-family modules and kept `stream-processor.ts` as a focused orchestrator/dispatcher. Added characterization tests for text/tool/member/flow-node event families plus unknown event passthrough behavior.
+
+Key outcomes:
+- `processEvent()` now emits all runtime events (known + unknown) through `callbacks.onEvent` so flow execution observers no longer depend on duplicated ad-hoc parsing paths.
+- Unknown frontend runtime events are still fail-safe (warn once + passthrough to observers, no reducer mutation).
+- Backend runtime event validation is now strict for unknown events unless `allow_unknown=True` is explicitly set.
+- Runtime event constants now include `ToolCallFailed` and `ToolCallError` on backend to match shared frontend contract classifiers.
+
+Size impact:
+- `stream-processor.ts`: 748 -> 238 LOC (-510)
+- New focused handler/state/util modules: +703 LOC across 6 files
+- Net: +193 LOC for this area (intentional decomposition to reduce monolithic orchestration risk)
+
+Verification:
+- `bun run lint` (warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (250 passed, 43 skipped)
+
+---
+
 ### Phase 1, Step 2: Backend-Served Provider Catalog -- DONE
 
 **Status:** Complete  
@@ -167,6 +203,6 @@ Verification:
 |---|---|---|
 | **Phase 0** | Quick wins, low risk | Complete |
 | **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
-| **Phase 2** | Event protocol hardening | In Progress |
-| **Phase 3** | Core boundaries (application-layer services) | Not Started |
+| **Phase 2** | Event protocol hardening | Complete |
+| **Phase 3** | Core boundaries (application-layer services) | In Progress |
 | **Phase 4** | Plugin maturity | Not Started |
