@@ -63,6 +63,10 @@ async def test_install_provider_plugin_source_uses_source_path(monkeypatch, tmp_
                 default_base_url="https://api.example.com/v1",
             )
 
+        def enable_plugin(self, plugin_id: str, enabled: bool) -> bool:
+            captured["plugin_enabled"] = {"id": plugin_id, "enabled": enabled}
+            return True
+
     monkeypatch.setattr(provider_plugins, "get_provider_plugin_manager", lambda: _FakeManager())
     monkeypatch.setattr(provider_plugins, "reload_provider_registry", lambda: None)
 
@@ -81,6 +85,7 @@ async def test_install_provider_plugin_source_uses_source_path(monkeypatch, tmp_
 
     assert response.id == "tmp_plugin"
     assert captured["import_dir"] == source_dir
+    assert captured["plugin_enabled"] == {"id": "tmp_plugin", "enabled": True}
     assert captured["settings"] == {
         "provider": "tmp_provider",
         "enabled": False,

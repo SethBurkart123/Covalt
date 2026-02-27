@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { ChevronDown, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 
@@ -13,6 +14,7 @@ interface ProviderItemProps {
   def: ProviderDefinition;
   config: ProviderConfig;
   isConnected: boolean;
+  isPluginProvider?: boolean;
   saving: boolean;
   saved: boolean;
   connectionStatus: 'idle' | 'testing' | 'success' | 'error';
@@ -65,7 +67,8 @@ const formatDeviceCode = (code: string): string => {
 export default function ProviderItem({ 
   def, 
   config, 
-  isConnected, 
+  isConnected,
+  isPluginProvider,
   saving, 
   saved, 
   connectionStatus,
@@ -415,6 +418,28 @@ export default function ProviderItem({
             className="overflow-hidden"
           >
             <div className="px-2 border-t border-border/60 pt-2 space-y-2 mt-2">
+              {!isOauth && (
+                <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                  <div>
+                    <div className="text-sm font-medium">Enabled</div>
+                    <div className="text-xs text-muted-foreground">
+                      {config.enabled ? 'Provider is available in model picker' : 'Provider is hidden until enabled'}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={Boolean(config.enabled)}
+                    onCheckedChange={(checked) => onChange('enabled', checked)}
+                    aria-label={`Toggle ${def.name} provider`}
+                  />
+                </div>
+              )}
+
+              {isPluginProvider && (
+                <div className="rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                  This provider was installed from Provider Store. Uninstall is available in the store dialog.
+                </div>
+              )}
+
               {!isOauth && def.fields.map((field) => (
                 <div className="space-y-2" key={`${def.key}-${field.id}`}>
                   <Label htmlFor={`${def.key}-${field.id}`}>{field.label}</Label>

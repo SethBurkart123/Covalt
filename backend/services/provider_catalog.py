@@ -296,7 +296,7 @@ def _build_plugin_entries() -> list[ProviderCatalogEntry]:
     entries: list[ProviderCatalogEntry] = []
     manager = get_provider_plugin_manager()
     for plugin in manager.list_plugins():
-        if plugin.error or not plugin.enabled:
+        if plugin.error:
             continue
         if plugin.provider not in PROVIDERS:
             continue
@@ -309,13 +309,27 @@ def _build_plugin_entries() -> list[ProviderCatalogEntry]:
                 icon=plugin.icon,
                 auth_type=plugin.auth_type,
                 default_base_url=plugin.default_base_url,
-                default_enabled=plugin.default_enabled,
+                default_enabled=plugin.enabled,
                 oauth_variant=plugin.oauth_variant,
                 oauth_enterprise_domain=plugin.oauth_enterprise_domain,
                 aliases=list(plugin.aliases),
             )
         )
     return entries
+
+
+def _build_fallback_entry(provider_id: str) -> ProviderCatalogEntry:
+    if provider_id in _CUSTOM_PROVIDER_OVERRIDES:
+        return _CUSTOM_PROVIDER_OVERRIDES[provider_id]
+
+    name = _to_title(provider_id)
+    return ProviderCatalogEntry(
+        key=provider_id,
+        provider=provider_id,
+        name=name,
+        description=_to_description(name),
+        icon=provider_id.replace("_", "-"),
+    )
 
 
 def list_provider_catalog() -> list[ProviderCatalogEntry]:
