@@ -350,7 +350,6 @@ class ProviderPluginSourceInfo(BaseModel):
     trackingRef: Optional[str] = None
     pluginPath: Optional[str] = None
     blockedByPolicy: bool = False
-    requiresCommunityWarning: bool = False
     installed: bool = False
 
 
@@ -361,13 +360,11 @@ class ProviderPluginSourcesResponse(BaseModel):
 class ProviderPluginPolicy(BaseModel):
     mode: Literal["safe", "unsafe"] = "safe"
     autoUpdateEnabled: bool = False
-    communityWarningAccepted: bool = False
 
 
 class SaveProviderPluginPolicyInput(BaseModel):
     mode: Literal["safe", "unsafe"]
     autoUpdateEnabled: bool
-    communityWarningAccepted: bool
 
 
 class ProviderPluginIndexInfo(BaseModel):

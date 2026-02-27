@@ -53,7 +53,6 @@ _trusted_signing_keys_mtime: float | None = None
 class ProviderPluginPolicy:
     mode: Literal["safe", "unsafe"] = "safe"
     auto_update_enabled: bool = False
-    community_warning_accepted: bool = False
 
 
 @dataclass(frozen=True)
@@ -446,7 +445,6 @@ def _load_provider_plugin_policy() -> ProviderPluginPolicy:
     return ProviderPluginPolicy(
         mode=_normalize_policy_mode(parsed.get("mode")),
         auto_update_enabled=_truthy(parsed.get("auto_update_enabled", False)),
-        community_warning_accepted=_truthy(parsed.get("community_warning_accepted", False)),
     )
 
 
@@ -454,7 +452,6 @@ def _save_provider_plugin_policy(policy: ProviderPluginPolicy) -> None:
     payload = {
         "mode": policy.mode,
         "auto_update_enabled": bool(policy.auto_update_enabled),
-        "community_warning_accepted": bool(policy.community_warning_accepted),
     }
     try:
         with db.db_session() as sess:
@@ -787,12 +784,10 @@ class ProviderPluginManager:
         *,
         mode: str,
         auto_update_enabled: bool,
-        community_warning_accepted: bool,
     ) -> ProviderPluginPolicy:
         policy = ProviderPluginPolicy(
             mode=_normalize_policy_mode(mode),
             auto_update_enabled=bool(auto_update_enabled),
-            community_warning_accepted=bool(community_warning_accepted),
         )
         _save_provider_plugin_policy(policy)
         return policy

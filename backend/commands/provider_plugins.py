@@ -76,11 +76,6 @@ def _set_provider_enabled(provider: str, *, enabled: bool) -> None:
 
 def _ensure_community_installs_allowed(source_class: str) -> None:
     manager = get_provider_plugin_manager()
-    policy = (
-        manager.get_policy()
-        if hasattr(manager, "get_policy")
-        else type("Policy", (), {"community_warning_accepted": True})()
-    )
     is_blocked = (
         manager.is_install_blocked_by_policy(source_class)
         if hasattr(manager, "is_install_blocked_by_policy")
@@ -88,8 +83,6 @@ def _ensure_community_installs_allowed(source_class: str) -> None:
     )
     if is_blocked:
         raise ValueError("Community plugin installs are blocked in Safe mode")
-    if source_class == "community" and not bool(policy.community_warning_accepted):
-        raise ValueError("Acknowledge the community plugin warning before installing community plugins")
 
 
 def _to_import_response(plugin_id: str) -> ImportProviderPluginResponse:
@@ -124,7 +117,6 @@ async def get_provider_plugin_policy() -> ProviderPluginPolicy:
     return ProviderPluginPolicy(
         mode=policy.mode,
         autoUpdateEnabled=policy.auto_update_enabled,
-        communityWarningAccepted=policy.community_warning_accepted,
     )
 
 
@@ -132,19 +124,14 @@ async def get_provider_plugin_policy() -> ProviderPluginPolicy:
 async def save_provider_plugin_policy(
     body: SaveProviderPluginPolicyInput,
 ) -> ProviderPluginPolicy:
-    if body.mode == "unsafe" and not body.communityWarningAccepted:
-        raise ValueError("Community warning acknowledgement is required for Unsafe mode")
-
     policy = get_provider_plugin_manager().save_policy(
         mode=body.mode,
         auto_update_enabled=body.autoUpdateEnabled,
-        community_warning_accepted=body.communityWarningAccepted,
     )
     reload_provider_registry()
     return ProviderPluginPolicy(
         mode=policy.mode,
         autoUpdateEnabled=policy.auto_update_enabled,
-        communityWarningAccepted=policy.community_warning_accepted,
     )
 
 
@@ -210,7 +197,6 @@ async def refresh_provider_plugin_index(
 @command
 async def list_provider_plugin_sources() -> ProviderPluginSourcesResponse:
     manager = get_provider_plugin_manager()
-    policy = manager.get_policy()
     installed_ids = {plugin.id for plugin in manager.list_plugins()}
 
     sources = []
@@ -234,10 +220,6 @@ async def list_provider_plugin_sources() -> ProviderPluginSourcesResponse:
                 trackingRef=source.tracking_ref,
                 pluginPath=source.plugin_path,
                 blockedByPolicy=blocked,
-                requiresCommunityWarning=(
-                    source.source_class == "community"
-                    and not policy.community_warning_accepted
-                ),
                 installed=is_installed,
             )
         )

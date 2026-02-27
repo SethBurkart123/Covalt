@@ -2,12 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { usePageTitle } from "@/contexts/page-title-context";
-import SettingsSidebar, { type TabKey } from "./SettingsSidebar";
+import SettingsSidebar, { type TabKey, isStoreTab } from "./SettingsSidebar";
 import ProvidersPanel from "./providers/ProvidersPanel";
+import ProviderStorePanel from "./providers/ProviderStorePanel";
 import AutoTitlePanel from "./AutoTitlePanel";
 import ModelSettingsPanel from "./ModelSettingsPanel";
 import SystemPromptPanel from "./SystemPromptPanel";
 import { AppearancePanel } from "./appearance/AppearancePanel";
+
+type StoreTab = "official" | "community" | "installed";
+
+function toStoreTab(tab: TabKey): StoreTab {
+  if (tab === "store:community") return "community";
+  if (tab === "store:installed") return "installed";
+  return "official";
+}
 
 export default function SettingsPage() {
   const { setTitle } = usePageTitle();
@@ -30,8 +39,10 @@ export default function SettingsPage() {
             </div>
           ) : activeTab === "appearance" ? (
             <AppearancePanel />
+          ) : isStoreTab(activeTab) ? (
+            <ProviderStorePanel storeTab={toStoreTab(activeTab)} />
           ) : (
-            <ProvidersPanel />
+            <ProvidersPanel onOpenStore={() => setActiveTab("store:official")} />
           )}
         </div>
       </main>
