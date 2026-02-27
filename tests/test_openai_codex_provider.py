@@ -338,25 +338,77 @@ def test_function_to_dict_strips_requires_confirmation_globally() -> None:
     assert "requires_confirmation" not in payload
 
 
-def test_codex_formatted_tools_do_not_include_requires_confirmation() -> None:
-    def _entrypoint() -> str:
-        return "ok"
-
-    function = Function(
-        name="example_tool",
-        description="Example",
-        parameters={"type": "object", "properties": {}},
-        entrypoint=_entrypoint,
-        skip_entrypoint_processing=True,
-        requires_confirmation=True,
-    )
-
+def test_codex_normalizes_non_fc_tool_call_ids_in_messages() -> None:
     model = openai_codex_provider.OpenAICodexResponses(
         id="gpt-5.3-codex",
         api_key="test-key",
         base_url="https://chatgpt.com/backend-api/codex",
     )
 
-    formatted = model._format_tool_params(messages=[], tools=[function])
+    assistant = Message(
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "toolu_014SpyXYsCiz5HFQcU2WLAk9",
+                "type": "function",
+                "function": {
+                    "name": "search_docs",
+                    "arguments": "{}",
+                },
+            }
+        ],
+    )
+    tool = Message(
+        role="tool",
+        tool_call_id="toolu_014SpyXYsCiz5HFQcU2WLAk9",
+        content="ok",
+    )
 
-    assert formatted and "requires_confirmation" not in formatted[0]
+    formatted = model._format_messages([assistant, tool])
+
+    function_call = formatted[0]
+    function_output = formatted[1]
+    assert isinstance(function_call, dict)
+    assert isinstance(function_output, dict)
+    assert function_call["type"] == "function_call"
+    assert function_output["type"] == "function_call_output"
+    assert isinstance(function_call.get("id"), str)
+    assert function_call["id"].startswith("fc_")
+    assert function_call.get("call_id") == function_call["id"]
+    assert function_output.get("call_id") == function_call["id"]
+
+
+def test_codex_preserves_existing_fc_tool_call_ids() -> None:
+    model = openai_codex_provider.OpenAICodexResponses(
+        id="gpt-5.3-codex",
+        api_key="test-key",
+        base_url="https://chatgpt.com/backend-api/codex",
+    )
+
+    assistant = Message(
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "fc_existing123",
+                "type": "function",
+                "function": {
+                    "name": "search_docs",
+                    "arguments": "{}",
+                },
+            }
+        ],
+    )
+    tool = Message(role="tool", tool_call_id="fc_existing123", content="ok")
+
+    formatted = model._format_messages([assistant, tool])
+
+    function_call = formatted[0]
+    function_output = formatted[1]
+    assert isinstance(function_call, dict)
+    assert isinstance(function_output, dict)
+    assert function_call.get("id") == "fc_existing123"
+    assert function_call.get("call_id") == "fc_existing123"
+    assert function_output.get("call_id") == "fc_existing123"
+
