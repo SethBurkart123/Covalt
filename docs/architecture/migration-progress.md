@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 4 (Plugin Maturity) — Status: Complete
+## Current Phase: Phase 5 (Simplified Plugin Safety + Update Policy) — Status: In Progress
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -572,6 +572,57 @@ Follow-up:
 
 ---
 
+### Phase 5, Step 1: Safe/Unsafe Policy + Index/Repo Sources + Auto-update Controls -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/services/provider_plugin_manager.py`
+- `backend/commands/provider_plugins.py`
+- `backend/models/chat.py`
+- `app/(app)/(pages)/settings/providers/ProviderStorePanel.tsx`
+- `app/lib/hooks/providers/types.ts`
+- `app/lib/services/provider-plugin-trust.ts`
+- `app/lib/services/provider-plugin-trust.test.ts`
+- `app/python/api.ts` (regenerated)
+- `tests/test_provider_plugin_sources_command.py`
+- `tests/test_provider_plugin_policy.py` (new)
+
+Implemented the first Phase 5 slice to shift provider plugin safety from multi-tier trust enforcement to a simplified **Safe/Unsafe** model with community-source gating, index/repo installs, and auto-update controls.
+
+Key outcomes:
+- Added backend policy settings + commands:
+  - `get_provider_plugin_policy`, `save_provider_plugin_policy`
+  - `list_provider_plugin_indexes`, `add_provider_plugin_index`, `remove_provider_plugin_index`, `refresh_provider_plugin_index`
+- Added source/index/repo install flow:
+  - dynamic source list assembled from built-in + custom indexes
+  - `install_provider_plugin_source` routed through manager-backed source metadata
+  - new `install_provider_plugin_from_repo` for GitHub repo install (`repoUrl`, `ref`, optional `pluginPath`)
+- Added Safe/Unsafe enforcement:
+  - Safe mode blocks community installs/enables
+  - community installs in Unsafe mode require warning acknowledgement
+- Added auto-update policy + per-plugin override:
+  - global policy toggle (`autoUpdateEnabled`)
+  - per-plugin override (`inherit|enabled|disabled`) + effective status
+  - manual update runner (`run_provider_plugin_update_check`) with per-plugin results and failure capture
+- Expanded plugin/source/index API models to include policy/source-class/auto-update metadata consumed by the Store UI.
+- Updated Provider Store UI with:
+  - Plugin Safety controls (Safe/Unsafe + global auto-update + community warning acknowledgment)
+  - community index management
+  - install-from-repo form
+  - source policy badges/blocking messages
+  - per-plugin auto-update override controls and update-error visibility
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (186 passed)
+- `uv run pytest tests` (272 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 5, Step 2 (auto-update scheduling + per-plugin details surface refinement + provider card safety UX alignment)**.
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
@@ -580,4 +631,5 @@ Follow-up:
 | **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
 | **Phase 2** | Event protocol hardening | Complete |
 | **Phase 3** | Core boundaries (application-layer services) | Complete |
-| **Phase 4** | Plugin maturity | In Progress (Steps 1-3.2 complete) |
+| **Phase 4** | Plugin maturity | Complete |
+| **Phase 5** | Simplified plugin safety + update policy (Safe/Unsafe, indexes, repo installs, auto-update controls) | In Progress (Step 1 complete) |

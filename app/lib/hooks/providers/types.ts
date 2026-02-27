@@ -33,6 +33,16 @@ export interface ProviderPluginMeta {
   id: string;
   provider: string;
   enabled?: boolean;
+  blockedByPolicy?: boolean;
+  sourceClass?: 'official' | 'community';
+  sourceType?: string | null;
+  sourceRef?: string | null;
+  indexId?: string | null;
+  repoUrl?: string | null;
+  trackingRef?: string | null;
+  autoUpdateOverride?: 'inherit' | 'enabled' | 'disabled';
+  effectiveAutoUpdate?: boolean;
+  updateError?: string | null;
   error?: string;
 }
 

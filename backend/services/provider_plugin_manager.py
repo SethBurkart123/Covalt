@@ -7,11 +7,15 @@ import json
 import logging
 import re
 import shutil
+import tempfile
+import urllib.parse
+import urllib.request
+import uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from cryptography.exceptions import InvalidSignature
@@ -29,6 +33,9 @@ _PROVIDER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
 _PLUGIN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SIGNING_KEY_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 SUPPORTED_SIGNATURE_ALGORITHMS = {"ed25519"}
+SUPPORTED_POLICY_MODES = {"safe", "unsafe"}
+SUPPORTED_SOURCE_CLASSES = {"official", "community"}
+SUPPORTED_AUTO_UPDATE_OVERRIDES = {"inherit", "enabled", "disabled"}
 _SIGNATURE_MANIFEST_FIELDS = {"signature", "signing_key_id", "signature_algorithm"}
 
 _VERIFIED_TRUST_STATUS = "verified"
@@ -40,6 +47,94 @@ _PROVIDER_PLUGIN_TRUSTED_KEYS_RELATIVE_PATH = Path("providers") / "provider_plug
 
 _trusted_signing_keys_cache: dict[str, Ed25519Verifier] | None = None
 _trusted_signing_keys_mtime: float | None = None
+
+
+@dataclass(frozen=True)
+class ProviderPluginPolicy:
+    mode: Literal["safe", "unsafe"] = "safe"
+    auto_update_enabled: bool = False
+    community_warning_accepted: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderPluginIndexEntry:
+    id: str
+    name: str
+    url: str
+    source_class: Literal["official", "community"] = "community"
+    built_in: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderPluginSourceEntry:
+    id: str
+    plugin_id: str
+    name: str
+    version: str
+    provider: str
+    description: str
+    icon: str
+    source_class: Literal["official", "community"] = "community"
+    index_id: str | None = None
+    index_name: str | None = None
+    source_url: str | None = None
+    repo_url: str | None = None
+    tracking_ref: str | None = None
+    plugin_path: str | None = None
+
+
+@dataclass(frozen=True)
+class ProviderPluginUpdateResult:
+    id: str
+    status: Literal["updated", "skipped", "failed"]
+    message: str | None = None
+
+
+_DEFAULT_PROVIDER_PLUGIN_POLICY = ProviderPluginPolicy()
+_PROVIDER_PLUGIN_POLICY_KEY = "provider_plugin_policy"
+_PROVIDER_PLUGIN_INDEXES_KEY = "provider_plugin_indexes"
+_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID = "official-index"
+
+_BUILTIN_PROVIDER_PLUGIN_INDEXES: tuple[ProviderPluginIndexEntry, ...] = (
+    ProviderPluginIndexEntry(
+        id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
+        name="Official Provider Index",
+        url="builtin://official-provider-index",
+        source_class="official",
+        built_in=True,
+    ),
+)
+
+_BUILTIN_PROVIDER_PLUGIN_SOURCES: tuple[ProviderPluginSourceEntry, ...] = (
+    ProviderPluginSourceEntry(
+        id="sample-openai-adapter",
+        plugin_id="sample_openai_adapter",
+        name="Sample OpenAI Adapter Provider",
+        version="0.1.0",
+        provider="sample_openai_adapter",
+        description="Template plugin using adapter-based provider manifest.",
+        icon="openai",
+        source_class="official",
+        index_id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
+        index_name="Official Provider Index",
+        source_url="builtin://official-provider-index",
+        plugin_path="examples/provider-plugins/sample-openai-adapter",
+    ),
+    ProviderPluginSourceEntry(
+        id="sample-code-provider",
+        plugin_id="sample_code_provider",
+        name="Sample Code Provider",
+        version="0.1.0",
+        provider="sample_code_provider",
+        description="Template plugin with custom Python provider factory entrypoint.",
+        icon="openai",
+        source_class="official",
+        index_id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
+        index_name="Official Provider Index",
+        source_url="builtin://official-provider-index",
+        plugin_path="examples/provider-plugins/sample-code-provider",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -210,9 +305,17 @@ class ProviderPluginInfo:
     version: str
     provider: str
     enabled: bool
+    blocked_by_policy: bool
     installed_at: str | None
     source_type: str | None
     source_ref: str | None
+    source_class: str
+    index_id: str | None
+    repo_url: str | None
+    tracking_ref: str | None
+    plugin_path: str | None
+    auto_update_override: str
+    effective_auto_update: bool
     description: str
     icon: str
     auth_type: str
@@ -224,6 +327,7 @@ class ProviderPluginInfo:
     verification_status: str
     verification_message: str | None
     signing_key_id: str | None
+    update_error: str | None = None
     error: str | None = None
 
 
@@ -246,6 +350,333 @@ def _decode_base64(value: str, *, field_name: str) -> bytes:
         return base64.b64decode(value.encode("utf-8"), validate=True)
     except Exception as exc:
         raise ValueError(f"{field_name} must be valid base64") from exc
+
+
+def _normalize_source_class(value: Any) -> Literal["official", "community"]:
+    raw = str(value or "community").strip().lower()
+    if raw not in SUPPORTED_SOURCE_CLASSES:
+        return "community"
+    return raw  # type: ignore[return-value]
+
+
+def _normalize_policy_mode(value: Any) -> Literal["safe", "unsafe"]:
+    raw = str(value or "safe").strip().lower()
+    if raw not in SUPPORTED_POLICY_MODES:
+        return "safe"
+    return raw  # type: ignore[return-value]
+
+
+def _normalize_auto_update_override(value: Any) -> Literal["inherit", "enabled", "disabled"]:
+    raw = str(value or "inherit").strip().lower()
+    if raw not in SUPPORTED_AUTO_UPDATE_OVERRIDES:
+        return "inherit"
+    return raw  # type: ignore[return-value]
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _normalize_tracking_ref(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    return raw or None
+
+
+def _normalize_plugin_path(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip().strip("/")
+    return raw or None
+
+
+def _is_http_url(value: str) -> bool:
+    lowered = value.strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _normalize_repo_url(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        raise ValueError("repoUrl is required")
+    if not _is_http_url(raw):
+        raise ValueError("repoUrl must be an http(s) URL")
+    if raw.endswith(".git"):
+        raw = raw[:-4]
+    return raw.rstrip("/")
+
+
+def _slugify(value: str) -> str:
+    lowered = value.strip().lower()
+    cleaned = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
+    return cleaned or f"index-{uuid.uuid4().hex[:8]}"
+
+
+def _safe_index_id(name: str) -> str:
+    slug = _slugify(name)
+    return f"custom-{slug}"
+
+
+def _validate_index_url(url: str) -> str:
+    normalized = url.strip()
+    if not _is_http_url(normalized):
+        raise ValueError("Index URL must use http:// or https://")
+    return normalized
+
+
+def _load_provider_plugin_policy() -> ProviderPluginPolicy:
+    try:
+        with db.db_session() as sess:
+            raw = db.get_user_setting(sess, _PROVIDER_PLUGIN_POLICY_KEY)
+    except Exception:
+        return _DEFAULT_PROVIDER_PLUGIN_POLICY
+    if not raw:
+        return _DEFAULT_PROVIDER_PLUGIN_POLICY
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return _DEFAULT_PROVIDER_PLUGIN_POLICY
+    if not isinstance(parsed, dict):
+        return _DEFAULT_PROVIDER_PLUGIN_POLICY
+    return ProviderPluginPolicy(
+        mode=_normalize_policy_mode(parsed.get("mode")),
+        auto_update_enabled=_truthy(parsed.get("auto_update_enabled", False)),
+        community_warning_accepted=_truthy(parsed.get("community_warning_accepted", False)),
+    )
+
+
+def _save_provider_plugin_policy(policy: ProviderPluginPolicy) -> None:
+    payload = {
+        "mode": policy.mode,
+        "auto_update_enabled": bool(policy.auto_update_enabled),
+        "community_warning_accepted": bool(policy.community_warning_accepted),
+    }
+    try:
+        with db.db_session() as sess:
+            db.set_user_setting(sess, _PROVIDER_PLUGIN_POLICY_KEY, json.dumps(payload))
+    except Exception:
+        return
+
+
+def _parse_index_entry(raw: dict[str, Any]) -> ProviderPluginIndexEntry | None:
+    idx_id = str(raw.get("id") or "").strip()
+    name = str(raw.get("name") or "").strip()
+    url = str(raw.get("url") or "").strip()
+    if not idx_id or not name or not url:
+        return None
+    return ProviderPluginIndexEntry(
+        id=idx_id,
+        name=name,
+        url=url,
+        source_class=_normalize_source_class(raw.get("source_class")),
+        built_in=_truthy(raw.get("built_in", False)),
+    )
+
+
+def _load_custom_indexes() -> list[ProviderPluginIndexEntry]:
+    try:
+        with db.db_session() as sess:
+            raw = db.get_user_setting(sess, _PROVIDER_PLUGIN_INDEXES_KEY)
+    except Exception:
+        return []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    result: list[ProviderPluginIndexEntry] = []
+    seen: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        entry = _parse_index_entry(item)
+        if entry is None:
+            continue
+        if entry.id in seen:
+            continue
+        seen.add(entry.id)
+        result.append(entry)
+    return result
+
+
+def _save_custom_indexes(entries: list[ProviderPluginIndexEntry]) -> None:
+    payload = [
+        {
+            "id": item.id,
+            "name": item.name,
+            "url": item.url,
+            "source_class": item.source_class,
+            "built_in": bool(item.built_in),
+        }
+        for item in entries
+        if not item.built_in
+    ]
+    try:
+        with db.db_session() as sess:
+            db.set_user_setting(sess, _PROVIDER_PLUGIN_INDEXES_KEY, json.dumps(payload))
+    except Exception:
+        return
+
+
+def _source_entry_to_dict(entry: ProviderPluginSourceEntry) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "plugin_id": entry.plugin_id,
+        "name": entry.name,
+        "version": entry.version,
+        "provider": entry.provider,
+        "description": entry.description,
+        "icon": entry.icon,
+        "source_class": entry.source_class,
+        "index_id": entry.index_id,
+        "index_name": entry.index_name,
+        "source_url": entry.source_url,
+        "repo_url": entry.repo_url,
+        "tracking_ref": entry.tracking_ref,
+        "plugin_path": entry.plugin_path,
+    }
+
+
+def _entry_from_raw(raw: dict[str, Any], *, fallback_index: ProviderPluginIndexEntry) -> ProviderPluginSourceEntry | None:
+    source_id = str(raw.get("id") or "").strip()
+    plugin_id = str(raw.get("pluginId") or raw.get("plugin_id") or "").strip()
+    name = str(raw.get("name") or "").strip()
+    version = str(raw.get("version") or "").strip()
+    provider = str(raw.get("provider") or "").strip()
+    description = str(raw.get("description") or "").strip()
+    icon = str(raw.get("icon") or "openai").strip() or "openai"
+    if not source_id or not plugin_id or not name or not provider:
+        return None
+
+    return ProviderPluginSourceEntry(
+        id=source_id,
+        plugin_id=plugin_id,
+        name=name,
+        version=version or "0.0.0",
+        provider=provider,
+        description=description or name,
+        icon=icon,
+        source_class=_normalize_source_class(raw.get("sourceClass") or raw.get("source_class") or fallback_index.source_class),
+        index_id=str(raw.get("indexId") or raw.get("index_id") or fallback_index.id),
+        index_name=str(raw.get("indexName") or raw.get("index_name") or fallback_index.name),
+        source_url=str(raw.get("sourceUrl") or raw.get("source_url") or fallback_index.url),
+        repo_url=str(raw.get("repoUrl") or raw.get("repo_url") or "").strip() or None,
+        tracking_ref=_normalize_tracking_ref(raw.get("trackingRef") or raw.get("tracking_ref")),
+        plugin_path=_normalize_plugin_path(raw.get("pluginPath") or raw.get("plugin_path")),
+    )
+
+
+def _extract_sources_from_index_payload(
+    payload: Any,
+    *,
+    fallback_index: ProviderPluginIndexEntry,
+) -> list[ProviderPluginSourceEntry]:
+    records: list[Any] = []
+    if isinstance(payload, dict):
+        if isinstance(payload.get("sources"), list):
+            records = payload.get("sources")
+        elif isinstance(payload.get("plugins"), list):
+            records = payload.get("plugins")
+    elif isinstance(payload, list):
+        records = payload
+
+    result: list[ProviderPluginSourceEntry] = []
+    seen: set[str] = set()
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        entry = _entry_from_raw(item, fallback_index=fallback_index)
+        if entry is None or entry.id in seen:
+            continue
+        seen.add(entry.id)
+        result.append(entry)
+    return result
+
+
+def _fetch_index_sources(index: ProviderPluginIndexEntry) -> list[ProviderPluginSourceEntry]:
+    if index.url.startswith("builtin://"):
+        return [item for item in _BUILTIN_PROVIDER_PLUGIN_SOURCES if item.index_id == index.id]
+
+    try:
+        with urllib.request.urlopen(index.url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to fetch provider plugin index %s: %s", index.url, exc)
+        return []
+
+    return _extract_sources_from_index_payload(payload, fallback_index=index)
+
+
+def _extract_github_owner_repo(repo_url: str) -> tuple[str, str]:
+    normalized = _normalize_repo_url(repo_url)
+    parsed = urllib.parse.urlparse(normalized)
+    host = (parsed.netloc or "").strip().lower()
+    if host != "github.com":
+        raise ValueError("Only GitHub repositories are supported for repo installs")
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        raise ValueError("repoUrl must include owner and repo")
+    return parts[0], parts[1]
+
+
+def _download_github_archive(repo_url: str, ref: str) -> bytes:
+    owner, repo = _extract_github_owner_repo(repo_url)
+    safe_ref = (ref or "main").strip() or "main"
+    archive_url = f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{safe_ref}"
+
+    try:
+        with urllib.request.urlopen(archive_url, timeout=20) as response:
+            return response.read()
+    except Exception:
+        fallback_url = f"https://codeload.github.com/{owner}/{repo}/zip/{safe_ref}"
+        with urllib.request.urlopen(fallback_url, timeout=20) as response:
+            return response.read()
+
+
+def _collect_files_for_zip(base_dir: Path) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(base_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            rel_path = file_path.relative_to(base_dir).as_posix()
+            zf.write(file_path, arcname=rel_path)
+    return buffer.getvalue()
+
+
+def _normalize_plugin_path_in_archive(path: str | None) -> str | None:
+    if path is None:
+        return None
+    normalized = path.strip().strip("/")
+    if not normalized:
+        return None
+    pure = PurePosixPath(normalized)
+    if pure.is_absolute() or ".." in pure.parts:
+        raise ValueError("pluginPath must be a safe relative path")
+    return pure.as_posix()
+
+
+def _resolve_effective_auto_update(
+    *,
+    override: str,
+    policy_auto_update_enabled: bool,
+) -> bool:
+    normalized = _normalize_auto_update_override(override)
+    if normalized == "enabled":
+        return True
+    if normalized == "disabled":
+        return False
+    return bool(policy_auto_update_enabled)
+
 
 
 def _load_trusted_signing_keys() -> dict[str, Ed25519Verifier]:
@@ -348,8 +779,188 @@ class ProviderPluginManager:
     def __init__(self) -> None:
         self.plugins_dir = get_provider_plugins_directory()
 
+    def get_policy(self) -> ProviderPluginPolicy:
+        return _load_provider_plugin_policy()
+
+    def save_policy(
+        self,
+        *,
+        mode: str,
+        auto_update_enabled: bool,
+        community_warning_accepted: bool,
+    ) -> ProviderPluginPolicy:
+        policy = ProviderPluginPolicy(
+            mode=_normalize_policy_mode(mode),
+            auto_update_enabled=bool(auto_update_enabled),
+            community_warning_accepted=bool(community_warning_accepted),
+        )
+        _save_provider_plugin_policy(policy)
+        return policy
+
+    def list_indexes(self) -> list[ProviderPluginIndexEntry]:
+        indexes = list(_BUILTIN_PROVIDER_PLUGIN_INDEXES) + _load_custom_indexes()
+        seen: set[str] = set()
+        deduped: list[ProviderPluginIndexEntry] = []
+        for item in indexes:
+            if item.id in seen:
+                continue
+            seen.add(item.id)
+            deduped.append(item)
+        return deduped
+
+    def add_index(self, *, name: str, url: str) -> ProviderPluginIndexEntry:
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            raise ValueError("Index name is required")
+        normalized_url = _validate_index_url(url)
+
+        custom = _load_custom_indexes()
+        used_ids = {item.id for item in custom}
+
+        base_id = _safe_index_id(normalized_name)
+        index_id = base_id
+        suffix = 2
+        while index_id in used_ids or any(index_id == item.id for item in _BUILTIN_PROVIDER_PLUGIN_INDEXES):
+            index_id = f"{base_id}-{suffix}"
+            suffix += 1
+
+        created = ProviderPluginIndexEntry(
+            id=index_id,
+            name=normalized_name,
+            url=normalized_url,
+            source_class="community",
+            built_in=False,
+        )
+        custom.append(created)
+        _save_custom_indexes(custom)
+        return created
+
+    def remove_index(self, index_id: str) -> bool:
+        normalized = str(index_id or "").strip()
+        if not normalized:
+            return False
+        if any(item.id == normalized and item.built_in for item in _BUILTIN_PROVIDER_PLUGIN_INDEXES):
+            raise ValueError("Built-in indexes cannot be removed")
+
+        custom = _load_custom_indexes()
+        next_custom = [item for item in custom if item.id != normalized]
+        if len(next_custom) == len(custom):
+            return False
+        _save_custom_indexes(next_custom)
+        return True
+
+    def refresh_index(self, index_id: str) -> int:
+        index = next((item for item in self.list_indexes() if item.id == index_id), None)
+        if index is None:
+            raise ValueError(f"Provider plugin index '{index_id}' not found")
+        return len(_fetch_index_sources(index))
+
+    def list_sources(self) -> list[ProviderPluginSourceEntry]:
+        entries: list[ProviderPluginSourceEntry] = []
+        seen: set[str] = set()
+        for index in self.list_indexes():
+            for item in _fetch_index_sources(index):
+                if item.id in seen:
+                    continue
+                seen.add(item.id)
+                entries.append(item)
+        return sorted(entries, key=lambda item: (item.source_class != "official", item.name.lower()))
+
+    def get_source(self, source_id: str) -> ProviderPluginSourceEntry | None:
+        normalized = str(source_id or "").strip()
+        if not normalized:
+            return None
+        for source in self.list_sources():
+            if source.id == normalized:
+                return source
+        return None
+
+    def is_install_blocked_by_policy(self, source_class: str) -> bool:
+        return self._is_policy_blocked(source_class=source_class, policy=self.get_policy())
+
+    def install_source(self, source_id: str) -> str:
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Unknown provider plugin source '{source_id}'")
+
+        if source.plugin_path and str(source.source_url or "").startswith("builtin://"):
+            root = Path(__file__).resolve().parents[2]
+            directory = root / source.plugin_path
+            if not directory.exists():
+                raise ValueError(f"Provider plugin source path not found: {directory}")
+            return self.import_from_directory(
+                directory,
+                source_type="source",
+                source_ref=source.id,
+                source_class=source.source_class,
+                index_id=source.index_id,
+                repo_url=source.repo_url,
+                tracking_ref=source.tracking_ref,
+                plugin_path=source.plugin_path,
+            )
+
+        if source.repo_url:
+            return self.install_from_repo(
+                repo_url=source.repo_url,
+                ref=source.tracking_ref or "main",
+                plugin_path=source.plugin_path,
+                source_type="source",
+                source_ref=source.id,
+                source_class=source.source_class,
+                index_id=source.index_id,
+            )
+
+        raise ValueError(f"Source '{source_id}' does not define a supported install path")
+
+    def install_from_repo(
+        self,
+        *,
+        repo_url: str,
+        ref: str | None = "main",
+        plugin_path: str | None = None,
+        source_type: str = "repo",
+        source_ref: str | None = None,
+        source_class: str = "community",
+        index_id: str | None = None,
+        auto_update_override: str = "inherit",
+    ) -> str:
+        normalized_repo = _normalize_repo_url(repo_url)
+        tracking_ref = _normalize_tracking_ref(ref) or "main"
+        normalized_plugin_path = _normalize_plugin_path_in_archive(plugin_path)
+
+        archive_bytes = _download_github_archive(normalized_repo, tracking_ref)
+        with tempfile.TemporaryDirectory(prefix="provider-plugin-repo-") as tmp:
+            tmp_dir = Path(tmp)
+            archive_path = tmp_dir / "repo.zip"
+            archive_path.write_bytes(archive_bytes)
+
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                zf.extractall(tmp_dir / "repo")
+
+            extracted_roots = [path for path in (tmp_dir / "repo").iterdir() if path.is_dir()]
+            if not extracted_roots:
+                raise ValueError("Repository archive did not contain a valid root directory")
+            repo_root = extracted_roots[0]
+
+            install_root = repo_root / normalized_plugin_path if normalized_plugin_path else repo_root
+            if not install_root.exists() or not install_root.is_dir():
+                raise ValueError("pluginPath not found in repository archive")
+
+            return self.import_from_directory(
+                install_root,
+                source_type=source_type,
+                source_ref=source_ref or normalized_repo,
+                source_class=source_class,
+                index_id=index_id,
+                repo_url=normalized_repo,
+                tracking_ref=tracking_ref,
+                plugin_path=normalized_plugin_path,
+                auto_update_override=auto_update_override,
+            )
+
     def list_plugins(self) -> list[ProviderPluginInfo]:
         states = _load_plugin_states()
+        policy = self.get_policy()
         infos: list[ProviderPluginInfo] = []
 
         for plugin_dir in sorted(self.plugins_dir.iterdir(), key=lambda p: p.name.lower()):
@@ -358,11 +969,20 @@ class ProviderPluginManager:
 
             state = states.get(plugin_dir.name, {})
             try:
-                infos.append(self._build_plugin_info(plugin_dir, state=state))
+                infos.append(self._build_plugin_info(plugin_dir, state=state, policy=policy))
             except Exception as exc:
-                installed_at = state.get("installed_at") if isinstance(state, dict) else None
-                source_type = state.get("source_type") if isinstance(state, dict) else None
-                source_ref = state.get("source_ref") if isinstance(state, dict) else None
+                source_class = _normalize_source_class(state.get("source_class"))
+                blocked = self._is_policy_blocked(source_class=source_class, policy=policy)
+                auto_update_override = _normalize_auto_update_override(
+                    state.get("auto_update_override")
+                )
+                effective_auto_update = (
+                    _resolve_effective_auto_update(
+                        override=auto_update_override,
+                        policy_auto_update_enabled=policy.auto_update_enabled,
+                    )
+                    and not blocked
+                )
                 infos.append(
                     ProviderPluginInfo(
                         id=plugin_dir.name,
@@ -370,9 +990,17 @@ class ProviderPluginManager:
                         version="unknown",
                         provider=plugin_dir.name,
                         enabled=bool(state.get("enabled", False)),
-                        installed_at=installed_at,
-                        source_type=source_type,
-                        source_ref=source_ref,
+                        blocked_by_policy=blocked,
+                        installed_at=state.get("installed_at") if isinstance(state, dict) else None,
+                        source_type=state.get("source_type") if isinstance(state, dict) else None,
+                        source_ref=state.get("source_ref") if isinstance(state, dict) else None,
+                        source_class=source_class,
+                        index_id=state.get("index_id") if isinstance(state, dict) else None,
+                        repo_url=state.get("repo_url") if isinstance(state, dict) else None,
+                        tracking_ref=_normalize_tracking_ref(state.get("tracking_ref")),
+                        plugin_path=_normalize_plugin_path(state.get("plugin_path")),
+                        auto_update_override=auto_update_override,
+                        effective_auto_update=effective_auto_update,
                         description="Invalid provider plugin",
                         icon="openai",
                         auth_type="apiKey",
@@ -384,6 +1012,7 @@ class ProviderPluginManager:
                         verification_status=_INVALID_TRUST_STATUS,
                         verification_message=str(exc),
                         signing_key_id=None,
+                        update_error=state.get("update_error") if isinstance(state, dict) else None,
                         error=str(exc),
                     )
                 )
@@ -396,10 +1025,11 @@ class ProviderPluginManager:
             return None
         states = _load_plugin_states()
         state = states.get(plugin_dir.name, {})
-        return self._build_plugin_info(plugin_dir, state=state)
+        return self._build_plugin_info(plugin_dir, state=state, policy=self.get_policy())
 
     def get_enabled_manifests(self) -> list[ProviderPluginManifest]:
         states = _load_plugin_states()
+        policy = self.get_policy()
         manifests: list[ProviderPluginManifest] = []
 
         for plugin_dir in sorted(self.plugins_dir.iterdir(), key=lambda p: p.name.lower()):
@@ -413,7 +1043,8 @@ class ProviderPluginManager:
 
             state = states.get(manifest.id, {})
             enabled = bool(state.get("enabled", manifest.default_enabled))
-            if enabled:
+            source_class = _normalize_source_class(state.get("source_class"))
+            if enabled and not self._is_policy_blocked(source_class=source_class, policy=policy):
                 manifests.append(manifest)
 
         return manifests
@@ -430,6 +1061,12 @@ class ProviderPluginManager:
         *,
         source_type: str = "zip",
         source_ref: str | None = None,
+        source_class: str = "official",
+        index_id: str | None = None,
+        repo_url: str | None = None,
+        tracking_ref: str | None = None,
+        plugin_path: str | None = None,
+        auto_update_override: str = "inherit",
     ) -> str:
         if isinstance(zip_data, Path):
             zip_bytes = zip_data.read_bytes()
@@ -475,6 +1112,12 @@ class ProviderPluginManager:
             enabled=manifest.default_enabled,
             source_type=source_type,
             source_ref=source_ref,
+            source_class=source_class,
+            index_id=index_id,
+            repo_url=repo_url,
+            tracking_ref=tracking_ref,
+            plugin_path=plugin_path,
+            auto_update_override=auto_update_override,
         )
         verification = self.get_plugin_verification(manifest.id)
         if verification and verification.status != "verified":
@@ -492,6 +1135,12 @@ class ProviderPluginManager:
         *,
         source_type: str = "local",
         source_ref: str | None = None,
+        source_class: str = "official",
+        index_id: str | None = None,
+        repo_url: str | None = None,
+        tracking_ref: str | None = None,
+        plugin_path: str | None = None,
+        auto_update_override: str = "inherit",
     ) -> str:
         manifest = self._read_manifest_from_directory(directory)
 
@@ -505,6 +1154,12 @@ class ProviderPluginManager:
             enabled=manifest.default_enabled,
             source_type=source_type,
             source_ref=source_ref or str(directory),
+            source_class=source_class,
+            index_id=index_id,
+            repo_url=repo_url,
+            tracking_ref=tracking_ref,
+            plugin_path=plugin_path,
+            auto_update_override=auto_update_override,
         )
         verification = self.get_plugin_verification(manifest.id)
         if verification and verification.status != "verified":
@@ -515,6 +1170,130 @@ class ProviderPluginManager:
             )
         logger.info("Installed provider plugin '%s' from directory", manifest.id)
         return manifest.id
+
+    def set_auto_update(
+        self,
+        plugin_id: str,
+        *,
+        override: str,
+        tracking_ref: str | None = None,
+    ) -> bool:
+        manifest = self.get_manifest(plugin_id)
+        if manifest is None:
+            return False
+        self._set_state(
+            plugin_id,
+            enabled=None,
+            auto_update_override=override,
+            tracking_ref=tracking_ref,
+        )
+        return True
+
+    def run_update_check(self) -> list[ProviderPluginUpdateResult]:
+        results: list[ProviderPluginUpdateResult] = []
+        for plugin in self.list_plugins():
+            if plugin.error:
+                results.append(
+                    ProviderPluginUpdateResult(
+                        id=plugin.id,
+                        status="skipped",
+                        message="Plugin is invalid and cannot be updated",
+                    )
+                )
+                continue
+
+            if not plugin.enabled:
+                results.append(
+                    ProviderPluginUpdateResult(
+                        id=plugin.id,
+                        status="skipped",
+                        message="Plugin is disabled",
+                    )
+                )
+                continue
+
+            if plugin.blocked_by_policy:
+                results.append(
+                    ProviderPluginUpdateResult(
+                        id=plugin.id,
+                        status="skipped",
+                        message="Plugin updates are blocked by Safe mode policy",
+                    )
+                )
+                continue
+
+            if not plugin.effective_auto_update:
+                results.append(
+                    ProviderPluginUpdateResult(
+                        id=plugin.id,
+                        status="skipped",
+                        message="Auto-update is disabled for this plugin",
+                    )
+                )
+                continue
+
+            try:
+                if plugin.source_type == "repo" and plugin.repo_url:
+                    self._update_from_repo(plugin)
+                    results.append(
+                        ProviderPluginUpdateResult(
+                            id=plugin.id,
+                            status="updated",
+                            message="Updated from repository",
+                        )
+                    )
+                elif plugin.source_type == "source" and plugin.source_ref:
+                    source = self.get_source(plugin.source_ref)
+                    if source and source.plugin_path and str(source.source_url or "").startswith("builtin://"):
+                        root = Path(__file__).resolve().parents[2]
+                        source_dir = root / source.plugin_path
+                        if not source_dir.exists():
+                            raise ValueError("Built-in source path no longer exists")
+                        self._replace_plugin_from_directory(plugin.id, source_dir)
+                        self._set_state(plugin.id, enabled=None, update_error=None)
+                        results.append(
+                            ProviderPluginUpdateResult(
+                                id=plugin.id,
+                                status="updated",
+                                message="Updated from store source",
+                            )
+                        )
+                    elif source and source.repo_url:
+                        self._update_from_repo(plugin, source=source)
+                        results.append(
+                            ProviderPluginUpdateResult(
+                                id=plugin.id,
+                                status="updated",
+                                message="Updated from source repository",
+                            )
+                        )
+                    else:
+                        results.append(
+                            ProviderPluginUpdateResult(
+                                id=plugin.id,
+                                status="skipped",
+                                message="Source does not support auto-update",
+                            )
+                        )
+                else:
+                    results.append(
+                        ProviderPluginUpdateResult(
+                            id=plugin.id,
+                            status="skipped",
+                            message="Source type does not support auto-update",
+                        )
+                    )
+            except Exception as exc:
+                self._set_state(plugin.id, enabled=None, update_error=str(exc))
+                results.append(
+                    ProviderPluginUpdateResult(
+                        id=plugin.id,
+                        status="failed",
+                        message=str(exc),
+                    )
+                )
+
+        return results
 
     def get_plugin_verification(self, plugin_id: str) -> ProviderPluginVerificationResult | None:
         plugin_dir = get_provider_plugin_directory(plugin_id)
@@ -545,22 +1324,135 @@ class ProviderPluginManager:
         logger.info("%s provider plugin '%s'", "Enabled" if enabled else "Disabled", plugin_id)
         return True
 
+    def _update_from_repo(
+        self,
+        plugin: ProviderPluginInfo,
+        *,
+        source: ProviderPluginSourceEntry | None = None,
+    ) -> None:
+        repo_url = source.repo_url if source and source.repo_url else plugin.repo_url
+        if not repo_url:
+            raise ValueError("Plugin is missing repo metadata")
+        ref = (
+            source.tracking_ref
+            if source and source.tracking_ref
+            else _normalize_tracking_ref(plugin.tracking_ref)
+            or "main"
+        )
+        plugin_path = (
+            source.plugin_path
+            if source and source.plugin_path is not None
+            else _normalize_plugin_path(plugin.plugin_path)
+        )
+
+        archive_bytes = _download_github_archive(repo_url, ref)
+        with tempfile.TemporaryDirectory(prefix="provider-plugin-update-") as tmp:
+            tmp_dir = Path(tmp)
+            archive_path = tmp_dir / "repo.zip"
+            archive_path.write_bytes(archive_bytes)
+
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                zf.extractall(tmp_dir / "repo")
+
+            extracted_roots = [path for path in (tmp_dir / "repo").iterdir() if path.is_dir()]
+            if not extracted_roots:
+                raise ValueError("Repository archive did not contain a valid root directory")
+            repo_root = extracted_roots[0]
+            install_root = repo_root / plugin_path if plugin_path else repo_root
+            if not install_root.exists() or not install_root.is_dir():
+                raise ValueError("pluginPath not found in repository archive")
+
+            self._replace_plugin_from_directory(plugin.id, install_root)
+
+        self._set_state(
+            plugin.id,
+            enabled=None,
+            repo_url=repo_url,
+            tracking_ref=ref,
+            plugin_path=plugin_path,
+            update_error=None,
+        )
+
+    def _replace_plugin_from_directory(self, plugin_id: str, directory: Path) -> None:
+        manifest = self._read_manifest_from_directory(directory)
+        if manifest.id != plugin_id:
+            raise ValueError(
+                f"Updated plugin id mismatch (expected '{plugin_id}', got '{manifest.id}')"
+            )
+
+        target_dir = get_provider_plugin_directory(plugin_id)
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        shutil.copytree(directory, target_dir)
+
+    def _is_policy_blocked(
+        self,
+        *,
+        source_class: str,
+        policy: ProviderPluginPolicy,
+    ) -> bool:
+        return policy.mode == "safe" and _normalize_source_class(source_class) != "official"
+
     def _set_state(
         self,
         plugin_id: str,
         *,
-        enabled: bool,
+        enabled: bool | None,
         source_type: str | None = None,
         source_ref: str | None = None,
+        source_class: str | None = None,
+        index_id: str | None = None,
+        repo_url: str | None = None,
+        tracking_ref: str | None = None,
+        plugin_path: str | None = None,
+        auto_update_override: str | None = None,
+        update_error: str | None = None,
     ) -> None:
         states = _load_plugin_states()
         now = datetime.now(UTC).isoformat()
         current = states.get(plugin_id, {})
+
+        next_enabled = bool(current.get("enabled", True)) if enabled is None else bool(enabled)
+        next_source_type = source_type if source_type is not None else current.get("source_type")
+        next_source_ref = source_ref if source_ref is not None else current.get("source_ref")
+        next_source_class = (
+            _normalize_source_class(source_class)
+            if source_class is not None
+            else _normalize_source_class(current.get("source_class"))
+        )
+        next_index_id = index_id if index_id is not None else current.get("index_id")
+        next_repo_url = repo_url if repo_url is not None else current.get("repo_url")
+        next_tracking_ref = (
+            _normalize_tracking_ref(tracking_ref)
+            if tracking_ref is not None
+            else _normalize_tracking_ref(current.get("tracking_ref"))
+        )
+        next_plugin_path = (
+            _normalize_plugin_path(plugin_path)
+            if plugin_path is not None
+            else _normalize_plugin_path(current.get("plugin_path"))
+        )
+        next_auto_update_override = (
+            _normalize_auto_update_override(auto_update_override)
+            if auto_update_override is not None
+            else _normalize_auto_update_override(current.get("auto_update_override"))
+        )
+        next_update_error = (
+            update_error if update_error is not None else current.get("update_error")
+        )
+
         states[plugin_id] = {
-            "enabled": enabled,
+            "enabled": next_enabled,
             "installed_at": current.get("installed_at", now),
-            "source_type": source_type or current.get("source_type"),
-            "source_ref": source_ref or current.get("source_ref"),
+            "source_type": next_source_type,
+            "source_ref": next_source_ref,
+            "source_class": next_source_class,
+            "index_id": next_index_id,
+            "repo_url": next_repo_url,
+            "tracking_ref": next_tracking_ref,
+            "plugin_path": next_plugin_path,
+            "auto_update_override": next_auto_update_override,
+            "update_error": next_update_error,
         }
         _save_plugin_states(states)
 
@@ -569,13 +1461,31 @@ class ProviderPluginManager:
         plugin_dir: Path,
         *,
         state: dict[str, Any],
+        policy: ProviderPluginPolicy,
     ) -> ProviderPluginInfo:
         installed_at = state.get("installed_at") if isinstance(state, dict) else None
         source_type = state.get("source_type") if isinstance(state, dict) else None
         source_ref = state.get("source_ref") if isinstance(state, dict) else None
+        source_class = _normalize_source_class(state.get("source_class"))
+        index_id = state.get("index_id") if isinstance(state, dict) else None
+        repo_url = state.get("repo_url") if isinstance(state, dict) else None
+        tracking_ref = _normalize_tracking_ref(state.get("tracking_ref"))
+        normalized_plugin_path = _normalize_plugin_path(state.get("plugin_path"))
+        auto_update_override = _normalize_auto_update_override(
+            state.get("auto_update_override")
+        )
+        update_error = state.get("update_error") if isinstance(state, dict) else None
 
         manifest = self._read_manifest_from_directory(plugin_dir)
         enabled = bool(state.get("enabled", manifest.default_enabled))
+        blocked_by_policy = self._is_policy_blocked(source_class=source_class, policy=policy)
+        effective_auto_update = (
+            _resolve_effective_auto_update(
+                override=auto_update_override,
+                policy_auto_update_enabled=policy.auto_update_enabled,
+            )
+            and not blocked_by_policy
+        )
         verification = self._verify_plugin_directory(plugin_dir, manifest)
 
         return ProviderPluginInfo(
@@ -584,9 +1494,17 @@ class ProviderPluginManager:
             version=manifest.version,
             provider=manifest.provider,
             enabled=enabled,
+            blocked_by_policy=blocked_by_policy,
             installed_at=installed_at,
             source_type=source_type,
             source_ref=source_ref,
+            source_class=source_class,
+            index_id=index_id,
+            repo_url=repo_url,
+            tracking_ref=tracking_ref,
+            plugin_path=normalized_plugin_path,
+            auto_update_override=auto_update_override,
+            effective_auto_update=effective_auto_update,
             description=manifest.description,
             icon=manifest.icon,
             auth_type=manifest.auth_type,
@@ -598,6 +1516,7 @@ class ProviderPluginManager:
             verification_status=verification.status,
             verification_message=verification.message,
             signing_key_id=verification.signing_key_id,
+            update_error=update_error,
         )
 
     def _read_manifest_from_directory(self, directory: Path) -> ProviderPluginManifest:

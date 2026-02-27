@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getProviderPluginSourceLabel,
   isLocalProviderPluginSource,
+  normalizeProviderPluginSourceClass,
   normalizeProviderPluginTrustStatus,
 } from "@/lib/services/provider-plugin-trust";
 
@@ -19,10 +20,17 @@ describe("provider-plugin-trust", () => {
     expect(normalizeProviderPluginTrustStatus(undefined)).toBe("unsigned");
   });
 
+  it("normalizes source classes", () => {
+    expect(normalizeProviderPluginSourceClass("official")).toBe("official");
+    expect(normalizeProviderPluginSourceClass("community")).toBe("community");
+    expect(normalizeProviderPluginSourceClass("other")).toBe("community");
+  });
+
   it("maps provider plugin source labels and local-source helper", () => {
     expect(getProviderPluginSourceLabel("source")).toBe("Store source");
     expect(getProviderPluginSourceLabel("zip")).toBe("ZIP upload");
     expect(getProviderPluginSourceLabel("local")).toBe("Local import");
+    expect(getProviderPluginSourceLabel("repo")).toBe("GitHub repo");
     expect(getProviderPluginSourceLabel("other")).toBeNull();
 
     expect(isLocalProviderPluginSource("local")).toBe(true);

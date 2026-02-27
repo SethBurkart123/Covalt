@@ -8,14 +8,25 @@ from zynk import UploadFile, command, upload
 
 from .. import db
 from ..models.chat import (
+    AddProviderPluginIndexInput,
     EnableProviderPluginInput,
     ImportProviderPluginResponse,
+    InstallProviderPluginFromRepoInput,
     InstallProviderPluginSourceInput,
     ProviderPluginIdInput,
+    ProviderPluginIndexInfo,
+    ProviderPluginIndexesResponse,
     ProviderPluginInfo,
+    ProviderPluginPolicy,
     ProviderPluginSourceInfo,
     ProviderPluginSourcesResponse,
+    ProviderPluginUpdateCheckResponse,
+    ProviderPluginUpdateItem,
     ProviderPluginsResponse,
+    RefreshProviderPluginIndexInput,
+    RemoveProviderPluginIndexInput,
+    SaveProviderPluginPolicyInput,
+    SetProviderPluginAutoUpdateInput,
 )
 from ..providers import reload_provider_registry
 from ..services.provider_plugin_manager import get_provider_plugin_manager
@@ -28,30 +39,6 @@ ALLOWED_PROVIDER_PLUGIN_TYPES = ["application/zip", "application/x-zip-compresse
 
 class InstallProviderPluginFromDirectoryInput(BaseModel):
     path: str
-
-
-_PROVIDER_PLUGIN_SOURCES: tuple[dict[str, str], ...] = (
-    {
-        "id": "sample-openai-adapter",
-        "plugin_id": "sample_openai_adapter",
-        "name": "Sample OpenAI Adapter Provider",
-        "version": "0.1.0",
-        "provider": "sample_openai_adapter",
-        "description": "Template plugin using adapter-based provider manifest.",
-        "icon": "openai",
-        "path": "examples/provider-plugins/sample-openai-adapter",
-    },
-    {
-        "id": "sample-code-provider",
-        "plugin_id": "sample_code_provider",
-        "name": "Sample Code Provider",
-        "version": "0.1.0",
-        "provider": "sample_code_provider",
-        "description": "Template plugin with custom Python provider factory entrypoint.",
-        "icon": "openai",
-        "path": "examples/provider-plugins/sample-code-provider",
-    },
-)
 
 
 def _ensure_provider_settings_initialized(
@@ -87,48 +74,26 @@ def _set_provider_enabled(provider: str, *, enabled: bool) -> None:
         )
 
 
-@command
-async def list_provider_plugin_sources() -> ProviderPluginSourcesResponse:
+def _ensure_community_installs_allowed(source_class: str) -> None:
     manager = get_provider_plugin_manager()
-    installed_ids = {plugin.id for plugin in manager.list_plugins()}
-
-    return ProviderPluginSourcesResponse(
-        sources=[
-            ProviderPluginSourceInfo(
-                id=source["id"],
-                pluginId=source["plugin_id"],
-                name=source["name"],
-                version=source["version"],
-                provider=source["provider"],
-                description=source["description"],
-                icon=source["icon"],
-                installed=source["plugin_id"] in installed_ids,
-            )
-            for source in _PROVIDER_PLUGIN_SOURCES
-        ]
+    policy = (
+        manager.get_policy()
+        if hasattr(manager, "get_policy")
+        else type("Policy", (), {"community_warning_accepted": True})()
     )
+    is_blocked = (
+        manager.is_install_blocked_by_policy(source_class)
+        if hasattr(manager, "is_install_blocked_by_policy")
+        else False
+    )
+    if is_blocked:
+        raise ValueError("Community plugin installs are blocked in Safe mode")
+    if source_class == "community" and not bool(policy.community_warning_accepted):
+        raise ValueError("Acknowledge the community plugin warning before installing community plugins")
 
 
-@command
-async def install_provider_plugin_source(
-    body: InstallProviderPluginSourceInput,
-) -> ImportProviderPluginResponse:
-    source = next((item for item in _PROVIDER_PLUGIN_SOURCES if item["id"] == body.id), None)
-    if source is None:
-        raise ValueError(f"Unknown provider plugin source '{body.id}'")
-
-    root = Path(__file__).resolve().parents[2]
-    source_path = root / source["path"]
-    if not source_path.exists():
-        raise ValueError(f"Provider plugin source path not found: {source_path}")
-
+def _to_import_response(plugin_id: str) -> ImportProviderPluginResponse:
     manager = get_provider_plugin_manager()
-    plugin_id = manager.import_from_directory(
-        source_path,
-        source_type="source",
-        source_ref=body.id,
-    )
-
     manifest = manager.get_manifest(plugin_id)
     if manifest is None:
         raise RuntimeError(f"Provider plugin '{plugin_id}' not found after install")
@@ -142,8 +107,6 @@ async def install_provider_plugin_source(
 
     plugin_info = manager.get_plugin_info(plugin_id)
     reload_provider_registry()
-    logger.info("Installed provider plugin source '%s'", body.id)
-
     return ImportProviderPluginResponse(
         id=manifest.id,
         provider=manifest.provider,
@@ -152,6 +115,206 @@ async def install_provider_plugin_source(
         verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
         verificationMessage=plugin_info.verification_message if plugin_info else None,
         signingKeyId=plugin_info.signing_key_id if plugin_info else None,
+    )
+
+
+@command
+async def get_provider_plugin_policy() -> ProviderPluginPolicy:
+    policy = get_provider_plugin_manager().get_policy()
+    return ProviderPluginPolicy(
+        mode=policy.mode,
+        autoUpdateEnabled=policy.auto_update_enabled,
+        communityWarningAccepted=policy.community_warning_accepted,
+    )
+
+
+@command
+async def save_provider_plugin_policy(
+    body: SaveProviderPluginPolicyInput,
+) -> ProviderPluginPolicy:
+    if body.mode == "unsafe" and not body.communityWarningAccepted:
+        raise ValueError("Community warning acknowledgement is required for Unsafe mode")
+
+    policy = get_provider_plugin_manager().save_policy(
+        mode=body.mode,
+        auto_update_enabled=body.autoUpdateEnabled,
+        community_warning_accepted=body.communityWarningAccepted,
+    )
+    reload_provider_registry()
+    return ProviderPluginPolicy(
+        mode=policy.mode,
+        autoUpdateEnabled=policy.auto_update_enabled,
+        communityWarningAccepted=policy.community_warning_accepted,
+    )
+
+
+@command
+async def list_provider_plugin_indexes() -> ProviderPluginIndexesResponse:
+    manager = get_provider_plugin_manager()
+    indexes = manager.list_indexes()
+    counts: dict[str, int] = {}
+    for source in manager.list_sources():
+        if source.index_id:
+            counts[source.index_id] = counts.get(source.index_id, 0) + 1
+
+    return ProviderPluginIndexesResponse(
+        indexes=[
+            ProviderPluginIndexInfo(
+                id=item.id,
+                name=item.name,
+                url=item.url,
+                sourceClass=item.source_class,
+                builtIn=item.built_in,
+                pluginCount=counts.get(item.id, 0),
+            )
+            for item in indexes
+        ]
+    )
+
+
+@command
+async def add_provider_plugin_index(
+    body: AddProviderPluginIndexInput,
+) -> ProviderPluginIndexInfo:
+    manager = get_provider_plugin_manager()
+    index = manager.add_index(name=body.name, url=body.url)
+    return ProviderPluginIndexInfo(
+        id=index.id,
+        name=index.name,
+        url=index.url,
+        sourceClass=index.source_class,
+        builtIn=index.built_in,
+        pluginCount=manager.refresh_index(index.id),
+    )
+
+
+@command
+async def remove_provider_plugin_index(
+    body: RemoveProviderPluginIndexInput,
+) -> dict[str, bool]:
+    manager = get_provider_plugin_manager()
+    if not manager.remove_index(body.id):
+        raise ValueError(f"Provider plugin index '{body.id}' not found")
+    return {"success": True}
+
+
+@command
+async def refresh_provider_plugin_index(
+    body: RefreshProviderPluginIndexInput,
+) -> dict[str, int | str]:
+    manager = get_provider_plugin_manager()
+    count = manager.refresh_index(body.id)
+    return {"id": body.id, "pluginCount": count}
+
+
+@command
+async def list_provider_plugin_sources() -> ProviderPluginSourcesResponse:
+    manager = get_provider_plugin_manager()
+    policy = manager.get_policy()
+    installed_ids = {plugin.id for plugin in manager.list_plugins()}
+
+    sources = []
+    for source in manager.list_sources():
+        blocked = manager.is_install_blocked_by_policy(source.source_class)
+        is_installed = source.plugin_id in installed_ids or source.id in installed_ids
+        sources.append(
+            ProviderPluginSourceInfo(
+                id=source.id,
+                pluginId=source.plugin_id,
+                name=source.name,
+                version=source.version,
+                provider=source.provider,
+                description=source.description,
+                icon=source.icon,
+                sourceClass=source.source_class,
+                indexId=source.index_id,
+                indexName=source.index_name,
+                sourceUrl=source.source_url,
+                repoUrl=source.repo_url,
+                trackingRef=source.tracking_ref,
+                pluginPath=source.plugin_path,
+                blockedByPolicy=blocked,
+                requiresCommunityWarning=(
+                    source.source_class == "community"
+                    and not policy.community_warning_accepted
+                ),
+                installed=is_installed,
+            )
+        )
+
+    return ProviderPluginSourcesResponse(sources=sources)
+
+
+@command
+async def install_provider_plugin_source(
+    body: InstallProviderPluginSourceInput,
+) -> ImportProviderPluginResponse:
+    manager = get_provider_plugin_manager()
+    source = manager.get_source(body.id)
+    if source is None:
+        raise ValueError(f"Unknown provider plugin source '{body.id}'")
+
+    _ensure_community_installs_allowed(source.source_class)
+    plugin_id = manager.install_source(body.id)
+    logger.info("Installed provider plugin source '%s'", body.id)
+    return _to_import_response(plugin_id)
+
+
+@command
+async def install_provider_plugin_from_repo(
+    body: InstallProviderPluginFromRepoInput,
+) -> ImportProviderPluginResponse:
+    _ensure_community_installs_allowed("community")
+    manager = get_provider_plugin_manager()
+    plugin_id = manager.install_from_repo(
+        repo_url=body.repoUrl,
+        ref=body.ref,
+        plugin_path=body.pluginPath,
+        source_type="repo",
+        source_ref=body.repoUrl,
+        source_class="community",
+        index_id=None,
+    )
+    logger.info("Installed provider plugin from repo %s", body.repoUrl)
+    return _to_import_response(plugin_id)
+
+
+@command
+async def set_provider_plugin_auto_update(
+    body: SetProviderPluginAutoUpdateInput,
+) -> dict[str, bool | str]:
+    manager = get_provider_plugin_manager()
+    if not manager.set_auto_update(
+        body.id,
+        override=body.override,
+        tracking_ref=body.trackingRef,
+    ):
+        raise ValueError(f"Provider plugin '{body.id}' not found")
+    return {"success": True, "id": body.id, "override": body.override}
+
+
+@command
+async def run_provider_plugin_update_check() -> ProviderPluginUpdateCheckResponse:
+    manager = get_provider_plugin_manager()
+    raw_results = manager.run_update_check()
+    reload_provider_registry()
+
+    updated = sum(1 for item in raw_results if item.status == "updated")
+    skipped = sum(1 for item in raw_results if item.status == "skipped")
+    failed = sum(1 for item in raw_results if item.status == "failed")
+
+    return ProviderPluginUpdateCheckResponse(
+        results=[
+            ProviderPluginUpdateItem(
+                id=item.id,
+                status=item.status,
+                message=item.message,
+            )
+            for item in raw_results
+        ],
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
     )
 
 
@@ -165,9 +328,17 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
             version=item.version,
             provider=item.provider,
             enabled=item.enabled,
+            blockedByPolicy=item.blocked_by_policy,
             installedAt=item.installed_at,
             sourceType=item.source_type,
             sourceRef=item.source_ref,
+            sourceClass=item.source_class,
+            indexId=item.index_id,
+            repoUrl=item.repo_url,
+            trackingRef=item.tracking_ref,
+            pluginPath=item.plugin_path,
+            autoUpdateOverride=item.auto_update_override,
+            effectiveAutoUpdate=item.effective_auto_update,
             description=item.description,
             icon=item.icon,
             authType=item.auth_type,
@@ -179,6 +350,7 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
             verificationStatus=item.verification_status,
             verificationMessage=item.verification_message,
             signingKeyId=item.signing_key_id,
+            updateError=item.update_error,
             error=item.error,
         )
         for item in manager.list_plugins()
@@ -188,68 +360,34 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
 
 @upload(max_size=MAX_PROVIDER_PLUGIN_SIZE, allowed_types=ALLOWED_PROVIDER_PLUGIN_TYPES)
 async def import_provider_plugin(file: UploadFile) -> ImportProviderPluginResponse:
+    _ensure_community_installs_allowed("community")
     manager = get_provider_plugin_manager()
     plugin_id = manager.import_from_zip(
         zip_data=await file.read(),
         source_type="zip",
         source_ref=file.filename,
+        source_class="community",
     )
 
-    manifest = manager.get_manifest(plugin_id)
-    if manifest is None:
-        raise RuntimeError(f"Provider plugin '{plugin_id}' not found after import")
-
-    manager.enable_plugin(plugin_id, True)
-    _ensure_provider_settings_initialized(
-        manifest.provider,
-        enabled=False,
-        base_url=manifest.default_base_url,
-    )
-
-    plugin_info = manager.get_plugin_info(plugin_id)
-    reload_provider_registry()
     logger.info("Imported provider plugin '%s' from %s", plugin_id, file.filename)
-    return ImportProviderPluginResponse(
-        id=manifest.id,
-        provider=manifest.provider,
-        name=manifest.name,
-        version=manifest.version,
-        verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
-        verificationMessage=plugin_info.verification_message if plugin_info else None,
-        signingKeyId=plugin_info.signing_key_id if plugin_info else None,
-    )
+    return _to_import_response(plugin_id)
 
 
 @command
 async def import_provider_plugin_from_directory(
     body: InstallProviderPluginFromDirectoryInput,
 ) -> ImportProviderPluginResponse:
+    _ensure_community_installs_allowed("community")
     manager = get_provider_plugin_manager()
-    plugin_id = manager.import_from_directory(Path(body.path))
-
-    manifest = manager.get_manifest(plugin_id)
-    if manifest is None:
-        raise RuntimeError(f"Provider plugin '{plugin_id}' not found after import")
-
-    manager.enable_plugin(plugin_id, True)
-    _ensure_provider_settings_initialized(
-        manifest.provider,
-        enabled=False,
-        base_url=manifest.default_base_url,
+    plugin_id = manager.import_from_directory(
+        Path(body.path),
+        source_type="local",
+        source_ref=body.path,
+        source_class="community",
     )
 
-    plugin_info = manager.get_plugin_info(plugin_id)
-    reload_provider_registry()
     logger.info("Imported provider plugin '%s' from directory %s", plugin_id, body.path)
-    return ImportProviderPluginResponse(
-        id=manifest.id,
-        provider=manifest.provider,
-        name=manifest.name,
-        version=manifest.version,
-        verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
-        verificationMessage=plugin_info.verification_message if plugin_info else None,
-        signingKeyId=plugin_info.signing_key_id if plugin_info else None,
-    )
+    return _to_import_response(plugin_id)
 
 
 @command
@@ -258,6 +396,10 @@ async def enable_provider_plugin(body: EnableProviderPluginInput) -> dict[str, b
     manifest = manager.get_manifest(body.id)
     if manifest is None:
         raise ValueError(f"Provider plugin '{body.id}' not found")
+
+    plugin_info = manager.get_plugin_info(body.id)
+    if body.enabled and plugin_info and plugin_info.blocked_by_policy:
+        raise ValueError(f"Provider plugin '{body.id}' is blocked by Safe mode policy")
 
     if not manager.enable_plugin(body.id, body.enabled):
         raise ValueError(f"Provider plugin '{body.id}' not found")
