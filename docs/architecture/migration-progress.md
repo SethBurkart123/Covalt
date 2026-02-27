@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 3.1 (Provider visibility + store UX stability)
+## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 4 (Optional plugin signing/trust model hardening)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -498,6 +498,38 @@ Follow-up:
 
 ---
 
+### Phase 4, Step 3.2: Providers UI Decomposition (Hooks) -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `app/(app)/(pages)/settings/providers/ProvidersPanel.tsx`
+- `app/(app)/(pages)/settings/providers/ProviderItem.tsx`
+- `app/lib/hooks/providers/types.ts` (new)
+- `app/lib/hooks/providers/use-provider-catalog-data.ts` (new)
+- `app/lib/hooks/providers/use-provider-connection-actions.ts` (new)
+- `app/lib/hooks/providers/use-provider-filtering.ts` (new)
+- `app/lib/hooks/providers/use-provider-item-state.ts` (new)
+- `app/lib/hooks/providers/use-provider-oauth-actions.ts` (new)
+
+Completed a focused decomposition pass for provider settings UI by splitting orchestration and stateful concerns into dedicated hooks while preserving current provider/store behavior.
+
+Key outcomes:
+- `ProvidersPanel` now composes focused hooks for catalog loading, connection actions, OAuth actions, and provider filtering.
+- `ProviderItem` now consumes `use-provider-item-state` for local UI/OAuth presentation state instead of inline state helpers.
+- Preserved existing UX contract: store opened via plus-button modal, plugin providers visible in main list, enable/disable on provider cards, uninstall in store.
+- Reduced monolithic inline logic and centralized provider UI concerns into reusable hook modules.
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (182 passed)
+- `uv run pytest tests` (257 passed, 43 skipped)
+
+Follow-up:
+- Next active step remains **Phase 4, Step 4 (optional plugin signing/trust model hardening)**.
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
@@ -506,4 +538,4 @@ Follow-up:
 | **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
 | **Phase 2** | Event protocol hardening | Complete |
 | **Phase 3** | Core boundaries (application-layer services) | Complete |
-| **Phase 4** | Plugin maturity | In Progress (Steps 1-3 complete) |
+| **Phase 4** | Plugin maturity | In Progress (Steps 1-3.2 complete) |
