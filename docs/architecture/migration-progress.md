@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Not Started
+## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 4 (Plugin trust/signing hardening)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -382,6 +382,83 @@ Follow-up:
 
 ---
 
+### Phase 4, Steps 1-2: Provider Plugin Loader + Install Lifecycle (Code Plugins) -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/services/provider_plugin_manager.py` (new)
+- `backend/providers/__init__.py`
+- `backend/commands/provider_plugins.py` (new)
+- `backend/commands/__init__.py`
+- `backend/services/provider_catalog.py`
+- `backend/models/chat.py`
+- `app/python/api.ts` (regenerated)
+- `tests/test_provider_plugin_manager.py` (new)
+- `tests/test_provider_plugin_runtime.py` (new)
+
+Added a provider plugin manager + runtime loader with support for full code-based provider plugins (manifest `entrypoint` modules) and adapter-backed plugins.
+
+Key outcomes:
+- Added provider plugin package support (`provider.yaml`) with schema validation, zip/directory import, safe archive path normalization, enable/disable state, and uninstall lifecycle.
+- Implemented code-plugin runtime loading into provider registry via isolated dynamic module namespace and `reload_provider_registry()`.
+- Added new provider plugin commands: `list_provider_plugins`, `import_provider_plugin`, `import_provider_plugin_from_directory`, `enable_provider_plugin`, `uninstall_provider_plugin`.
+- Integrated plugin providers into backend-served provider catalog output.
+- Added uninstall safety guard requiring provider disable before plugin removal.
+
+Size impact:
+- `backend/providers/__init__.py`: 220 -> 402 LOC (+182)
+- `backend/services/provider_catalog.py`: 319 -> 345 LOC (+26)
+- New modules/tests added for plugin manager, commands, and characterization coverage.
+
+Verification:
+- `uv run pytest tests/test_provider_plugin_manager.py tests/test_provider_plugin_runtime.py tests/test_openai_compatible_adapter.py tests/test_provider_model_options_mapping.py tests/test_anthropic_oauth_provider.py tests/test_openai_codex_provider.py` (43 passed)
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (254 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 4, Step 3 (Store UI + source index integration)**.
+
+---
+
+### Phase 4, Step 3: Provider Store UI + Source Index + Sample Plugins -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `app/(app)/(pages)/settings/providers/ProviderStorePanel.tsx` (new)
+- `app/(app)/(pages)/settings/providers/ProvidersPanel.tsx`
+- `backend/commands/provider_plugins.py`
+- `backend/models/chat.py`
+- `app/python/api.ts` (regenerated)
+- `examples/provider-plugins/sample-openai-adapter/provider.yaml` (new)
+- `examples/provider-plugins/sample-code-provider/provider.yaml` (new)
+- `examples/provider-plugins/sample-code-provider/plugin.py` (new)
+- `tests/test_provider_plugin_sources_command.py` (new)
+
+Implemented the provider store UX and backend source index for installable community plugin templates.
+
+Key outcomes:
+- Added Store panel under Provider settings to browse source-index entries, install source plugins, upload plugin ZIPs, enable/disable installed plugins, and uninstall plugins.
+- Added backend source index commands: `list_provider_plugin_sources`, `install_provider_plugin_source`.
+- Added curated sample provider plugins (adapter-based and full code-entrypoint) under `examples/provider-plugins/*` so community contributors have concrete templates.
+- Extended API contracts and regenerated TS client for new source-index command/types.
+
+Size impact:
+- New store UI panel and source index flow added without changing existing provider config behavior.
+- Added sample plugin directories for reference implementations.
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (181 passed)
+- `uv run pytest tests` (256 passed, 43 skipped)
+
+Follow-up:
+- Next active step is **Phase 4, Step 4 (optional plugin signing/trust model hardening)**.
+
+---
+
 ## Phase Overview
 
 | Phase | Description | Status |
@@ -390,4 +467,4 @@ Follow-up:
 | **Phase 1** | Footprint reduction (provider manifests + catalog unification) | Complete |
 | **Phase 2** | Event protocol hardening | Complete |
 | **Phase 3** | Core boundaries (application-layer services) | Complete |
-| **Phase 4** | Plugin maturity | Not Started |
+| **Phase 4** | Plugin maturity | In Progress (Steps 1-3 complete) |

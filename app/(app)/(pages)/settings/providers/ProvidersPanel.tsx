@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
+import ProviderStorePanel from './ProviderStorePanel';
 import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 import { getProviders } from './provider-registry';
 import { toProviderConfigMap } from '@/lib/services/provider-catalog';
@@ -623,6 +624,8 @@ export default function ProvidersPanel() {
               );
             })}
       </div>
+
+      <ProviderStorePanel onPluginsChanged={loadSettings} />
     </div>
   );
 }

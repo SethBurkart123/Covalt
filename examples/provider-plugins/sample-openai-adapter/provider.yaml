@@ -1,0 +1,16 @@
+manifest_version: "1"
+id: sample_openai_adapter
+name: Sample OpenAI Adapter Provider
+version: "0.1.0"
+provider: sample_openai_adapter
+adapter: openai_compatible
+adapter_config:
+  base_url: https://api.example.com/v1
+aliases:
+  - sample-openai
+  - sample-openai-adapter
+description: Template provider plugin using the built-in openai_compatible adapter.
+icon: openai
+auth_type: apiKey
+default_base_url: https://api.example.com/v1
+default_enabled: false
