@@ -315,6 +315,9 @@ class ProviderPluginInfo(BaseModel):
     oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
     oauthEnterpriseDomain: bool = False
     aliases: List[str] = Field(default_factory=list)
+    verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
+    verificationMessage: Optional[str] = None
+    signingKeyId: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -355,6 +358,9 @@ class ImportProviderPluginResponse(BaseModel):
     provider: str
     name: str
     version: str
+    verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
+    verificationMessage: Optional[str] = None
+    signingKeyId: Optional[str] = None
 
 
 class DefaultToolsResponse(BaseModel):

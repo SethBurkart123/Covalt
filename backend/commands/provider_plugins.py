@@ -123,7 +123,11 @@ async def install_provider_plugin_source(
         raise ValueError(f"Provider plugin source path not found: {source_path}")
 
     manager = get_provider_plugin_manager()
-    plugin_id = manager.import_from_directory(source_path)
+    plugin_id = manager.import_from_directory(
+        source_path,
+        source_type="source",
+        source_ref=body.id,
+    )
 
     manifest = manager.get_manifest(plugin_id)
     if manifest is None:
@@ -136,6 +140,7 @@ async def install_provider_plugin_source(
         base_url=manifest.default_base_url,
     )
 
+    plugin_info = manager.get_plugin_info(plugin_id)
     reload_provider_registry()
     logger.info("Installed provider plugin source '%s'", body.id)
 
@@ -144,6 +149,9 @@ async def install_provider_plugin_source(
         provider=manifest.provider,
         name=manifest.name,
         version=manifest.version,
+        verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
+        verificationMessage=plugin_info.verification_message if plugin_info else None,
+        signingKeyId=plugin_info.signing_key_id if plugin_info else None,
     )
 
 
@@ -168,6 +176,9 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
             oauthVariant=item.oauth_variant,
             oauthEnterpriseDomain=item.oauth_enterprise_domain,
             aliases=item.aliases,
+            verificationStatus=item.verification_status,
+            verificationMessage=item.verification_message,
+            signingKeyId=item.signing_key_id,
             error=item.error,
         )
         for item in manager.list_plugins()
@@ -195,6 +206,7 @@ async def import_provider_plugin(file: UploadFile) -> ImportProviderPluginRespon
         base_url=manifest.default_base_url,
     )
 
+    plugin_info = manager.get_plugin_info(plugin_id)
     reload_provider_registry()
     logger.info("Imported provider plugin '%s' from %s", plugin_id, file.filename)
     return ImportProviderPluginResponse(
@@ -202,6 +214,9 @@ async def import_provider_plugin(file: UploadFile) -> ImportProviderPluginRespon
         provider=manifest.provider,
         name=manifest.name,
         version=manifest.version,
+        verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
+        verificationMessage=plugin_info.verification_message if plugin_info else None,
+        signingKeyId=plugin_info.signing_key_id if plugin_info else None,
     )
 
 
@@ -223,6 +238,7 @@ async def import_provider_plugin_from_directory(
         base_url=manifest.default_base_url,
     )
 
+    plugin_info = manager.get_plugin_info(plugin_id)
     reload_provider_registry()
     logger.info("Imported provider plugin '%s' from directory %s", plugin_id, body.path)
     return ImportProviderPluginResponse(
@@ -230,6 +246,9 @@ async def import_provider_plugin_from_directory(
         provider=manifest.provider,
         name=manifest.name,
         version=manifest.version,
+        verificationStatus=plugin_info.verification_status if plugin_info else "unsigned",
+        verificationMessage=plugin_info.verification_message if plugin_info else None,
+        signingKeyId=plugin_info.signing_key_id if plugin_info else None,
     )
 
 

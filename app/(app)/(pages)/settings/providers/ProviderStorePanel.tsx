@@ -5,6 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Upload, Loader2, CheckCircle, XCircle, Plug, Trash2, AlertTriangle } from "lucide-react";
+import {
+  TRUST_BADGE_LABEL,
+  TRUST_BADGE_STYLE,
+  getProviderPluginSourceLabel,
+  isLocalProviderPluginSource,
+  normalizeProviderPluginTrustStatus,
+} from "@/lib/services/provider-plugin-trust";
 import type { ProviderPluginInfo, ProviderPluginSourceInfo } from "@/python/api";
 import {
   listProviderPlugins,
@@ -30,6 +37,8 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
   const [removingPluginId, setRemovingPluginId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errorByKey, setErrorByKey] = useState<Record<string, string>>({});
+  const [installWarningBySourceId, setInstallWarningBySourceId] = useState<Record<string, string>>({});
+  const [uploadWarning, setUploadWarning] = useState<string>("");
 
   const reload = useCallback(async () => {
     setIsLoading(true);
@@ -41,6 +50,8 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
       setSources(sourceResp.sources || []);
       setInstalled(pluginsResp.plugins || []);
       setErrorByKey({});
+
+      setUploadWarning("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load provider store";
       setErrorByKey({ global: message });
@@ -87,8 +98,13 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
   const handleInstallSource = async (source: ProviderPluginSourceInfo) => {
     setInstallingSourceId(source.id);
     setErrorByKey((prev) => ({ ...prev, [source.id]: "" }));
+    setInstallWarningBySourceId((prev) => ({ ...prev, [source.id]: "" }));
     try {
-      await installProviderPluginSource({ body: { id: source.id } });
+      const result = await installProviderPluginSource({ body: { id: source.id } });
+      if (result.verificationStatus !== "verified") {
+        const warning = result.verificationMessage || "Plugin installed with trust warnings.";
+        setInstallWarningBySourceId((prev) => ({ ...prev, [source.id]: warning }));
+      }
       await refreshAll();
     } catch (error) {
       setErrorByKey((prev) => ({
@@ -120,8 +136,12 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
     if (!file) return;
     setIsUploading(true);
     setErrorByKey((prev) => ({ ...prev, upload: "" }));
+    setUploadWarning("");
     try {
-      await importProviderPlugin({ file }).promise;
+      const result = await importProviderPlugin({ file }).promise;
+      if (result.verificationStatus !== "verified") {
+        setUploadWarning(result.verificationMessage || "Plugin uploaded with trust warnings.");
+      }
       await refreshAll();
     } catch (error) {
       setErrorByKey((prev) => ({
@@ -184,6 +204,7 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
 
       {errorByKey.global && <p className="text-sm text-red-600">{errorByKey.global}</p>}
       {errorByKey.upload && <p className="text-sm text-red-600">{errorByKey.upload}</p>}
+      {uploadWarning && <p className="text-sm text-amber-600">{uploadWarning}</p>}
 
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Store Sources</h3>
@@ -232,6 +253,9 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
                   </Button>
                 </div>
                 {errorByKey[source.id] && <p className="text-xs text-red-600">{errorByKey[source.id]}</p>}
+                {installWarningBySourceId[source.id] && (
+                  <p className="text-xs text-amber-600">{installWarningBySourceId[source.id]}</p>
+                )}
               </Card>
             );
           })
@@ -247,17 +271,28 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
         ) : (
           filteredInstalled.map((plugin) => {
             const isRemoving = removingPluginId === plugin.id;
+            const trustStatus = normalizeProviderPluginTrustStatus(plugin.verificationStatus);
+            const trustLabel = TRUST_BADGE_LABEL[trustStatus];
+            const trustClassName = TRUST_BADGE_STYLE[trustStatus];
+            const sourceLabel = getProviderPluginSourceLabel(plugin.sourceType);
+            const sourceIsLocal = isLocalProviderPluginSource(plugin.sourceType);
+
             return (
               <Card key={plugin.id} className="p-4 space-y-2">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="font-medium flex items-center gap-2">
+                    <div className="font-medium flex flex-wrap items-center gap-2">
                       {plugin.name}
                       {plugin.error ? (
                         <span className="text-xs text-amber-600 inline-flex items-center gap-1">
                           <AlertTriangle size={12} /> Warning
                         </span>
-                      ) : plugin.enabled ? (
+                      ) : null}
+                      <span className={`text-xs inline-flex items-center gap-1 ${trustClassName}`}>
+                        {trustStatus === "verified" ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                        {trustLabel}
+                      </span>
+                      {plugin.enabled ? (
                         <span className="text-xs text-green-600 inline-flex items-center gap-1">
                           <CheckCircle size={12} /> Enabled
                         </span>
@@ -269,6 +304,22 @@ export default function ProviderStorePanel({ onPluginsChanged, compact = false }
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{plugin.description}</p>
                     <p className="text-xs text-muted-foreground mt-1">Provider: {plugin.provider}</p>
+                    {sourceLabel ? (
+                      <p className="text-xs text-muted-foreground mt-1">Source: {sourceLabel}</p>
+                    ) : null}
+                    {plugin.signingKeyId ? (
+                      <p className="text-xs text-muted-foreground mt-1">Signer: {plugin.signingKeyId}</p>
+                    ) : null}
+                    {plugin.verificationMessage ? (
+                      <p className={`text-xs mt-1 ${trustStatus === "verified" ? "text-muted-foreground" : "text-amber-600"}`}>
+                        {plugin.verificationMessage}
+                      </p>
+                    ) : null}
+                    {sourceIsLocal ? (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Local directory imports are allowed for development and should be reviewed before enabling.
+                      </p>
+                    ) : null}
                     {plugin.error ? <p className="text-xs text-red-600 mt-1">{plugin.error}</p> : null}
                   </div>
                   <div className="flex items-center gap-2">
