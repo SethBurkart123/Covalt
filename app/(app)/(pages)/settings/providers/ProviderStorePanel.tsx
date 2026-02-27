@@ -4,33 +4,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Upload, Loader2, CheckCircle, XCircle, Plug, PlugZap, Trash2 } from "lucide-react";
-import type {
-  ProviderPluginInfo,
-  ProviderPluginSourceInfo,
-} from "@/python/api";
+import { Search, Upload, Loader2, CheckCircle, XCircle, Plug, Trash2, AlertTriangle } from "lucide-react";
+import type { ProviderPluginInfo, ProviderPluginSourceInfo } from "@/python/api";
 import {
   listProviderPlugins,
   listProviderPluginSources,
   installProviderPluginSource,
   importProviderPlugin,
-  enableProviderPlugin,
   uninstallProviderPlugin,
 } from "@/python/api";
 
 interface ProviderStorePanelProps {
   onPluginsChanged?: () => Promise<void> | void;
+  compact?: boolean;
 }
 
 const normalize = (value: string): string => value.toLowerCase().trim();
 
-export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePanelProps) {
+export default function ProviderStorePanel({ onPluginsChanged, compact = false }: ProviderStorePanelProps) {
   const [search, setSearch] = useState("");
   const [sources, setSources] = useState<ProviderPluginSourceInfo[]>([]);
   const [installed, setInstalled] = useState<ProviderPluginInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [installingSourceId, setInstallingSourceId] = useState<string | null>(null);
-  const [togglingPluginId, setTogglingPluginId] = useState<string | null>(null);
   const [removingPluginId, setRemovingPluginId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errorByKey, setErrorByKey] = useState<Record<string, string>>({});
@@ -104,22 +100,6 @@ export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePa
     }
   };
 
-  const handleTogglePlugin = async (plugin: ProviderPluginInfo, enabled: boolean) => {
-    setTogglingPluginId(plugin.id);
-    setErrorByKey((prev) => ({ ...prev, [plugin.id]: "" }));
-    try {
-      await enableProviderPlugin({ body: { id: plugin.id, enabled } });
-      await refreshAll();
-    } catch (error) {
-      setErrorByKey((prev) => ({
-        ...prev,
-        [plugin.id]: error instanceof Error ? error.message : "Failed to update plugin",
-      }));
-    } finally {
-      setTogglingPluginId(null);
-    }
-  };
-
   const handleUninstallPlugin = async (plugin: ProviderPluginInfo) => {
     setRemovingPluginId(plugin.id);
     setErrorByKey((prev) => ({ ...prev, [plugin.id]: "" }));
@@ -153,12 +133,14 @@ export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePa
     }
   };
 
+  const headerClass = compact ? "text-lg" : "text-xl";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold">Provider Store</h2>
+        <h2 className={`${headerClass} font-semibold`}>Provider Store</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Install community provider plugins and manage them for this instance.
+          Install provider plugins. Installed providers appear in the main Providers list (disabled by default).
         </p>
       </div>
 
@@ -264,7 +246,6 @@ export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePa
           <Card className="p-4 text-sm text-muted-foreground">No installed plugins yet.</Card>
         ) : (
           filteredInstalled.map((plugin) => {
-            const isToggling = togglingPluginId === plugin.id;
             const isRemoving = removingPluginId === plugin.id;
             return (
               <Card key={plugin.id} className="p-4 space-y-2">
@@ -272,9 +253,13 @@ export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePa
                   <div>
                     <div className="font-medium flex items-center gap-2">
                       {plugin.name}
-                      {plugin.enabled ? (
+                      {plugin.error ? (
+                        <span className="text-xs text-amber-600 inline-flex items-center gap-1">
+                          <AlertTriangle size={12} /> Warning
+                        </span>
+                      ) : plugin.enabled ? (
                         <span className="text-xs text-green-600 inline-flex items-center gap-1">
-                          <PlugZap size={12} /> Enabled
+                          <CheckCircle size={12} /> Enabled
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
@@ -289,28 +274,8 @@ export default function ProviderStorePanel({ onPluginsChanged }: ProviderStorePa
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
-                      variant="secondary"
-                      disabled={isToggling || isRemoving}
-                      onClick={() => void handleTogglePlugin(plugin, !plugin.enabled)}
-                    >
-                      {isToggling ? (
-                        <>
-                          <Loader2 className="mr-1.5 size-4 animate-spin" /> Saving...
-                        </>
-                      ) : plugin.enabled ? (
-                        <>
-                          <XCircle className="mr-1.5 size-4" /> Disable
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="mr-1.5 size-4" /> Enable
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
                       variant="destructive"
-                      disabled={isRemoving || isToggling}
+                      disabled={isRemoving}
                       onClick={() => void handleUninstallPlugin(plugin)}
                     >
                       {isRemoving ? (

@@ -2,7 +2,7 @@
 
 _Tracks progress through the [Redesign Blueprint](../../docs/architecture/redesign-blueprint.md) phases._
 
-## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 4 (Plugin trust/signing hardening)
+## Current Phase: Phase 4 (Plugin Maturity) — Active Step: Step 3.1 (Provider visibility + store UX stability)
 
 ### Phase 0, Step 1: Extract Conversation Run Service -- DONE
 
@@ -456,6 +456,45 @@ Verification:
 
 Follow-up:
 - Next active step is **Phase 4, Step 4 (optional plugin signing/trust model hardening)**.
+
+---
+
+### Phase 4, Step 3.1: Provider Visibility + Store UX Stability Fixes -- DONE
+
+**Status:** Complete  
+**Files changed:**
+- `backend/services/provider_catalog.py`
+- `backend/commands/provider_plugins.py`
+- `app/lib/services/provider-catalog.ts`
+- `app/(app)/(pages)/settings/providers/ProvidersPanel.tsx`
+- `app/(app)/(pages)/settings/providers/ProviderStorePanel.tsx`
+- `app/(app)/(pages)/settings/providers/ProviderItem.tsx`
+- `app/python/api.ts` (regenerated)
+- `tests/test_provider_plugin_sources_command.py`
+- `tests/test_provider_catalog.py` (new)
+- `app/lib/services/provider-catalog.test.ts` (new)
+
+Fixed provider disappearance regression and aligned Provider Store UX with product expectations.
+
+Key outcomes:
+- Fixed backend runtime error path (`_build_fallback_entry` missing) that could collapse provider catalog responses.
+- Ensured installed plugin providers are visible in main Providers immediately while staying **disabled by default**.
+- Hardened provider catalog client fetch behavior to recover cleanly after transient failures (no poisoned in-flight promise state).
+- Moved Provider Store access to a **plus button beside provider search** and rendered Store inside a modal.
+- Removed enable/disable actions from Store installed list; keep uninstall in Store and use main provider card for enable/disable.
+- Added warning indicator/badge behavior for plugin issues while keeping other providers visible.
+
+Size impact:
+- Targeted stability/UX fixes; no broad architecture reshuffle.
+
+Verification:
+- `bun run lint` (passes; warnings only)
+- `bun x tsc --noEmit` (passed)
+- `bun run test` (182 passed)
+- `uv run pytest tests` (257 passed, 43 skipped)
+
+Follow-up:
+- Next active step remains **Phase 4, Step 4 (optional plugin signing/trust model hardening)**.
 
 ---
 

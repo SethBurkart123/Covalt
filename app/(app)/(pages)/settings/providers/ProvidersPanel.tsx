@@ -4,9 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
 import ProviderStorePanel from './ProviderStorePanel';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 import { getProviders } from './provider-registry';
 import { toProviderConfigMap } from '@/lib/services/provider-catalog';
@@ -52,6 +59,17 @@ interface ProviderOverviewResponse {
   providers: ProviderOverview[];
 }
 
+interface ProviderPluginMeta {
+  id: string;
+  provider: string;
+  enabled?: boolean;
+  error?: string;
+}
+
+interface ProviderPluginsResponse {
+  plugins: ProviderPluginMeta[];
+}
+
 const normalizeOAuthStatus = (value: unknown): OAuthStatus => {
   if (value === 'none' || value === 'pending' || value === 'authenticated' || value === 'error') {
     return value;
@@ -77,6 +95,8 @@ export default function ProvidersPanel() {
   const [oauthAuthenticating, setOauthAuthenticating] = useState<Record<string, boolean>>({});
   const [oauthRevoking, setOauthRevoking] = useState<Record<string, boolean>>({});
   const [oauthSubmitting, setOauthSubmitting] = useState<Record<string, boolean>>({});
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [pluginProviders, setPluginProviders] = useState<Record<string, ProviderPluginMeta>>({});
   const pollIntervalRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const pollTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const chatContext = useOptionalChat();
@@ -175,7 +195,10 @@ export default function ProvidersPanel() {
       setProviders(catalog);
 
       const providerIds = catalog.map((provider) => provider.provider);
-      const response = await fetchProviderOverview(providerIds);
+      const [response, pluginResponse] = await Promise.all([
+        fetchProviderOverview(providerIds),
+        request<ProviderPluginsResponse>('list_provider_plugins', {}),
+      ]);
       const map = toProviderConfigMap(catalog, response?.providers || []);
       const oauthMap: Record<string, OAuthState> = {};
       const connectionMap: Record<string, boolean> = {};
@@ -203,9 +226,16 @@ export default function ProvidersPanel() {
         }
       }
 
+      const pluginsByProvider: Record<string, ProviderPluginMeta> = {};
+      for (const plugin of pluginResponse.plugins || []) {
+        if (!plugin.provider) continue;
+        pluginsByProvider[plugin.provider] = plugin;
+      }
+
       setProviderConfigs(map);
       setOauthStatus(oauthMap);
       setProviderConnections(connectionMap);
+      setPluginProviders(pluginsByProvider);
     } catch {
       const catalog = await getProviders().catch(() => []);
       setProviders(catalog);
@@ -221,6 +251,7 @@ export default function ProvidersPanel() {
       setProviderConfigs(fallback);
       setOauthStatus(fallbackOauth);
       setProviderConnections(fallbackConnections);
+      setPluginProviders({});
     } finally {
       setIsLoading(false);
     }
@@ -300,6 +331,11 @@ export default function ProvidersPanel() {
           return a.name.localeCompare(b.name);
         }),
     [filtered, isConnected],
+  );
+
+  const hasStoreWarnings = useMemo(
+    () => Object.values(pluginProviders).some((plugin) => Boolean(plugin.error)),
+    [pluginProviders],
   );
 
   const updateProvider = (providerId: string, field: keyof ProviderConfig, value: string | boolean) => {
@@ -420,6 +456,18 @@ export default function ProvidersPanel() {
             className="pl-8"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setStoreOpen(true)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-muted transition-colors relative"
+          aria-label="Open provider store"
+          title="Open provider store"
+        >
+          <Plus size={16} />
+          {hasStoreWarnings ? (
+            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />
+          ) : null}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-3">
@@ -455,6 +503,7 @@ export default function ProvidersPanel() {
                   def={def}
                   config={config}
                   isConnected={isConnected(providerId)}
+                  isPluginProvider={Boolean(pluginProviders[providerId])}
                   saving={!!saving[providerId]}
                   saved={!!saved[providerId]}
                   connectionStatus={connectionStatus[providerId] || 'idle'}
@@ -625,7 +674,17 @@ export default function ProvidersPanel() {
             })}
       </div>
 
-      <ProviderStorePanel onPluginsChanged={loadSettings} />
+      <Dialog open={storeOpen} onOpenChange={setStoreOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Provider Store</DialogTitle>
+            <DialogDescription>
+              Install community providers and manage uninstall from here. Enable/disable happens on provider cards.
+            </DialogDescription>
+          </DialogHeader>
+          <ProviderStorePanel onPluginsChanged={loadSettings} compact />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

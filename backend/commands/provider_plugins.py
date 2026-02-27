@@ -129,9 +129,10 @@ async def install_provider_plugin_source(
     if manifest is None:
         raise RuntimeError(f"Provider plugin '{plugin_id}' not found after install")
 
+    manager.enable_plugin(plugin_id, True)
     _ensure_provider_settings_initialized(
         manifest.provider,
-        enabled=manifest.default_enabled,
+        enabled=False,
         base_url=manifest.default_base_url,
     )
 
@@ -187,9 +188,10 @@ async def import_provider_plugin(file: UploadFile) -> ImportProviderPluginRespon
     if manifest is None:
         raise RuntimeError(f"Provider plugin '{plugin_id}' not found after import")
 
+    manager.enable_plugin(plugin_id, True)
     _ensure_provider_settings_initialized(
         manifest.provider,
-        enabled=manifest.default_enabled,
+        enabled=False,
         base_url=manifest.default_base_url,
     )
 
@@ -214,9 +216,10 @@ async def import_provider_plugin_from_directory(
     if manifest is None:
         raise RuntimeError(f"Provider plugin '{plugin_id}' not found after import")
 
+    manager.enable_plugin(plugin_id, True)
     _ensure_provider_settings_initialized(
         manifest.provider,
-        enabled=manifest.default_enabled,
+        enabled=False,
         base_url=manifest.default_base_url,
     )
 

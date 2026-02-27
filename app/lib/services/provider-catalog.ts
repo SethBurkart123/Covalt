@@ -65,20 +65,32 @@ let providerCatalogPromise: Promise<ProviderDefinition[]> | null = null;
 let providerCatalogCache: ProviderDefinition[] | null = null;
 
 export const fetchProviderCatalog = async (options?: { force?: boolean }): Promise<ProviderDefinition[]> => {
-  if (options?.force) {
+  const forceRefresh = Boolean(options?.force);
+
+  if (forceRefresh) {
     providerCatalogPromise = null;
-    providerCatalogCache = null;
   }
-  if (providerCatalogCache) {
+
+  if (providerCatalogCache && !forceRefresh) {
     return providerCatalogCache;
   }
+
   if (!providerCatalogPromise) {
-    providerCatalogPromise = request<ProviderCatalogResponse>('get_provider_catalog', {}).then((response) => {
-      const providers = (response.providers || []).map(toProviderDefinition);
-      providerCatalogCache = providers;
-      return providers;
-    });
+    providerCatalogPromise = request<ProviderCatalogResponse>('get_provider_catalog', {})
+      .then((response) => {
+        const providers = (response.providers || []).map(toProviderDefinition);
+        providerCatalogCache = providers;
+        return providers;
+      })
+      .catch((error) => {
+        providerCatalogPromise = null;
+        if (providerCatalogCache) {
+          return providerCatalogCache;
+        }
+        throw error;
+      });
   }
+
   return providerCatalogPromise;
 };
 
