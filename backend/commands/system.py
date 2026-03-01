@@ -169,6 +169,7 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
             defaultEnabled=entry.default_enabled,
             oauthVariant=entry.oauth_variant,
             oauthEnterpriseDomain=entry.oauth_enterprise_domain,
+            fieldMode=entry.field_mode,
             aliases=entry.aliases,
         )
         for entry in list_provider_catalog()

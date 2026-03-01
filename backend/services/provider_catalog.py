@@ -9,6 +9,7 @@ from .provider_plugin_manager import get_provider_plugin_manager
 
 AuthType = Literal["apiKey", "oauth"]
 OAuthVariant = Literal["panel", "compact", "inline-code", "device"]
+ProviderFieldMode = Literal["standard_api_key", "openai_compatible", "local_ollama", "local_vllm"]
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class ProviderCatalogEntry:
     default_enabled: bool = True
     oauth_variant: Optional[OAuthVariant] = None
     oauth_enterprise_domain: bool = False
+    field_mode: Optional[ProviderFieldMode] = None
     aliases: list[str] = field(default_factory=list)
 
 
@@ -40,6 +42,11 @@ _MANIFEST_NAME_OVERRIDES: Dict[str, str] = {
     "cloudflare_workers_ai": "Cloudflare Workers AI",
     "google_vertex": "Google Vertex",
     "google_vertex_anthropic": "Google Vertex Anthropic",
+    "kimi_for_coding": "Kimi for Coding",
+    "minimax": "MiniMax",
+    "minimax_cn": "MiniMax (China)",
+    "minimax_coding_plan": "MiniMax Coding Plan",
+    "minimax_cn_coding_plan": "MiniMax (China) Coding Plan",
 }
 
 _MANIFEST_ICON_OVERRIDES: Dict[str, str] = {
@@ -52,6 +59,7 @@ _MANIFEST_ICON_OVERRIDES: Dict[str, str] = {
     "fireworks_ai": "fireworks-ai",
     "github_copilot_api": "github-copilot-api",
     "github_models": "github-models",
+    "google_vertex_anthropic": "vertex-ai",
     "io_net": "io-net",
     "kuae_cloud_coding_plan": "kuae-cloud-coding-plan",
     "nano_gpt": "nano-gpt",
@@ -63,6 +71,11 @@ _MANIFEST_ICON_OVERRIDES: Dict[str, str] = {
     "sap_ai_core": "sap-ai-core",
     "siliconflow_cn": "siliconflow-cn",
     "moonshotai_cn": "moonshotai-cn",
+    "kimi_for_coding": "kimi",
+    "minimax": "minimax",
+    "minimax_cn": "minimax",
+    "minimax_coding_plan": "minimax",
+    "minimax_cn_coding_plan": "minimax",
     "zai_coding_plan": "zai-coding-plan",
     "zhipuai_coding_plan": "zhipuai-coding-plan",
 }
@@ -74,6 +87,7 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
         name="OpenAI Compatible (Custom)",
         description="Any OpenAI-like API endpoint",
         icon="openai",
+        field_mode="openai_compatible",
     ),
     ProviderCatalogEntry(
         key="ollama",
@@ -82,6 +96,7 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
         description="Local models running on your machine",
         icon="ollama",
         default_base_url="http://localhost:11434",
+        field_mode="local_ollama",
     ),
     ProviderCatalogEntry(
         key="vllm",
@@ -90,6 +105,7 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
         description="Local vLLM server (OpenAI compatible)",
         icon="vllm",
         default_base_url="http://localhost:8000/v1",
+        field_mode="local_vllm",
     ),
     ProviderCatalogEntry(
         key="anthropic_oauth",
@@ -137,6 +153,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="OpenAI",
         description="OpenAI API",
         icon="openai",
+        field_mode="standard_api_key",
     ),
     "anthropic": ProviderCatalogEntry(
         key="anthropic",
@@ -144,6 +161,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="Anthropic",
         description="Anthropic API",
         icon="anthropic",
+        field_mode="standard_api_key",
     ),
     "google": ProviderCatalogEntry(
         key="google",
@@ -151,6 +169,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="Google",
         description="Google API",
         icon="google",
+        field_mode="standard_api_key",
     ),
     "groq": ProviderCatalogEntry(
         key="groq",
@@ -158,6 +177,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="Groq",
         description="Groq API",
         icon="groq",
+        field_mode="standard_api_key",
     ),
     "cohere": ProviderCatalogEntry(
         key="cohere",
@@ -165,6 +185,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="Cohere",
         description="Cohere API",
         icon="cohere",
+        field_mode="standard_api_key",
     ),
     "openrouter": ProviderCatalogEntry(
         key="openrouter",
@@ -172,6 +193,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="OpenRouter",
         description="OpenRouter API",
         icon="openrouter",
+        field_mode="standard_api_key",
     ),
     "lmstudio": ProviderCatalogEntry(
         key="lmstudio",
@@ -180,46 +202,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         description="LM Studio API",
         icon="lmstudio",
         default_base_url="http://localhost:1234/v1",
-    ),
-    "minimax": ProviderCatalogEntry(
-        key="minimax",
-        provider="minimax",
-        name="MiniMax",
-        description="MiniMax API",
-        icon="minimax",
-        default_base_url="https://api.minimax.io/v1",
-    ),
-    "minimax_cn": ProviderCatalogEntry(
-        key="minimax_cn",
-        provider="minimax_cn",
-        name="MiniMax (China)",
-        description="MiniMax (China) API",
-        icon="minimax",
-        default_base_url="https://api.minimaxi.chat/v1",
-    ),
-    "minimax_coding_plan": ProviderCatalogEntry(
-        key="minimax_coding_plan",
-        provider="minimax_coding_plan",
-        name="MiniMax Coding Plan",
-        description="MiniMax Coding Plan API",
-        icon="minimax",
-        default_base_url="https://api.minimax.io/v1",
-    ),
-    "minimax_cn_coding_plan": ProviderCatalogEntry(
-        key="minimax_cn_coding_plan",
-        provider="minimax_cn_coding_plan",
-        name="MiniMax (China) Coding Plan",
-        description="MiniMax (China) Coding Plan API",
-        icon="minimax",
-        default_base_url="https://api.minimaxi.chat/v1",
-    ),
-    "kimi_for_coding": ProviderCatalogEntry(
-        key="kimi_for_coding",
-        provider="kimi_for_coding",
-        name="Kimi for Coding",
-        description="Kimi for Coding API",
-        icon="kimi",
-        default_base_url="https://api.moonshot.cn/v1",
+        field_mode="standard_api_key",
     ),
     "google_vertex": ProviderCatalogEntry(
         key="google_vertex",
@@ -227,13 +210,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         name="Google Vertex",
         description="Google Vertex API",
         icon="vertex-ai",
-    ),
-    "google_vertex_anthropic": ProviderCatalogEntry(
-        key="google_vertex_anthropic",
-        provider="google_vertex_anthropic",
-        name="Google Vertex Anthropic",
-        description="Google Vertex Anthropic API",
-        icon="vertex-ai",
+        field_mode="standard_api_key",
     ),
     "zenmux": ProviderCatalogEntry(
         key="zenmux",
@@ -242,6 +219,7 @@ _CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
         description="ZenMux API",
         icon="openai",
         default_base_url="https://zenmux.ai/api/anthropic/v1",
+        field_mode="standard_api_key",
     ),
 }
 
@@ -261,6 +239,16 @@ def _to_title(provider_id: str) -> str:
 
 def _to_description(name: str) -> str:
     return f"{name} API"
+
+
+def _to_field_mode(provider_id: str) -> ProviderFieldMode:
+    if provider_id == "openai_like":
+        return "openai_compatible"
+    if provider_id == "ollama":
+        return "local_ollama"
+    if provider_id == "vllm":
+        return "local_vllm"
+    return "standard_api_key"
 
 
 def _build_manifest_entries() -> list[ProviderCatalogEntry]:
@@ -286,6 +274,7 @@ def _build_manifest_entries() -> list[ProviderCatalogEntry]:
                 description=_to_description(name),
                 icon=icon,
                 default_base_url=str(base_url) if isinstance(base_url, str) else None,
+                field_mode=_to_field_mode(provider_id),
                 aliases=[str(alias) for alias in aliases if isinstance(alias, str)],
             )
         )
@@ -312,6 +301,7 @@ def _build_plugin_entries() -> list[ProviderCatalogEntry]:
                 default_enabled=plugin.enabled,
                 oauth_variant=plugin.oauth_variant,
                 oauth_enterprise_domain=plugin.oauth_enterprise_domain,
+                field_mode=_to_field_mode(plugin.provider),
                 aliases=list(plugin.aliases),
             )
         )
@@ -329,6 +319,7 @@ def _build_fallback_entry(provider_id: str) -> ProviderCatalogEntry:
         name=name,
         description=_to_description(name),
         icon=provider_id.replace("_", "-"),
+        field_mode=_to_field_mode(provider_id),
     )
 
 

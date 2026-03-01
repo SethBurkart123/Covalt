@@ -43,6 +43,7 @@ export interface ProviderCatalogItem {
   defaultEnabled: boolean;
   oauthVariant?: "panel" | "compact" | "inline-code" | "device" | null;
   oauthEnterpriseDomain: boolean;
+  fieldMode?: "standard_api_key" | "openai_compatible" | "local_ollama" | "local_vllm" | null;
 }
 
 export interface ProviderCatalogResponse {

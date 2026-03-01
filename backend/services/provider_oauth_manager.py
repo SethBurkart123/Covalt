@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, Literal, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -22,8 +22,12 @@ from ..db.provider_oauth import (
     get_provider_oauth,
     save_provider_oauth,
 )
-
-OAuthStatus = Literal["none", "pending", "authenticated", "error"]
+from .oauth_shared import (
+    OAuthStatus,
+    PendingOAuthCallbacks,
+    build_localhost_redirect_uri,
+    parse_oauth_code_input,
+)
 
 AUTH_TIMEOUT_S = 600
 CALLBACK_TIMEOUT_S = 600
@@ -78,32 +82,14 @@ def _env_flag(name: str, default: bool) -> bool:
     return default
 
 
-def _parse_url_params(input_value: str) -> tuple[Optional[str], Optional[str]]:
-    try:
-        parsed = urlparse(input_value)
-        if parsed.scheme and parsed.query:
-            params = parse_qs(parsed.query)
-            return params.get("code", [None])[0], params.get("state", [None])[0]
-    except Exception:
-        return None, None
-    return None, None
+def _build_callback_server_message(status: str) -> bytes:
+    if status == "failed":
+        return b"Authentication failed. Return to the app and try again."
+    return b"Authentication successful. Return to the app."
 
 
 def _normalize_provider(provider: str) -> str:
     return provider.lower().strip().replace("-", "_")
-
-
-def _parse_code_state(input_value: str) -> tuple[Optional[str], Optional[str]]:
-    trimmed = input_value.strip()
-    if not trimmed:
-        return None, None
-    if "#" in trimmed:
-        code, state = trimmed.split("#", 1)
-        return code or None, state or None
-    if "code=" in trimmed:
-        params = parse_qs(trimmed)
-        return params.get("code", [None])[0], params.get("state", [None])[0]
-    return trimmed, None
 
 
 def _decode_jwt_payload(token: str) -> Optional[Dict[str, Any]]:
@@ -160,6 +146,11 @@ class _CallbackServer:
             def log_message(self, format: str, *args: Any) -> None:
                 return
 
+            def _write_response(self, status_code: int, status: str) -> None:
+                self.send_response(status_code)
+                self.end_headers()
+                self.wfile.write(_build_callback_server_message(status))
+
             def do_GET(self) -> None:
                 try:
                     parsed = urlparse(self.path)
@@ -173,26 +164,18 @@ class _CallbackServer:
                     error = params.get("error", [""])[0]
                     if error:
                         on_error(error)
-                        self.send_response(400)
-                        self.end_headers()
-                        self.wfile.write(b"Authentication failed.")
+                        self._write_response(400, "failed")
                         return
                     if expected_state and state != expected_state:
                         on_error("state_mismatch")
-                        self.send_response(400)
-                        self.end_headers()
-                        self.wfile.write(b"State mismatch.")
+                        self._write_response(400, "failed")
                         return
                     if not code:
                         on_error("missing_code")
-                        self.send_response(400)
-                        self.end_headers()
-                        self.wfile.write(b"Missing authorization code.")
+                        self._write_response(400, "failed")
                         return
                     on_code(code, state)
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b"Authentication successful. Return to the app.")
+                    self._write_response(200, "success")
                 except Exception:
                     self.send_response(500)
                     self.end_headers()
@@ -218,6 +201,7 @@ class OAuthFlowState:
 class ProviderOAuthManager:
     def __init__(self) -> None:
         self._active_flows: Dict[str, OAuthFlowState] = {}
+        self._pending_callbacks = PendingOAuthCallbacks()
         # When true, attempt refresh for credentials missing expires_at.
         self._refresh_if_missing_expiry = _env_flag(
             "COVALT_OAUTH_REFRESH_IF_MISSING_EXPIRY", False
@@ -226,6 +210,57 @@ class ProviderOAuthManager:
         self._allow_stale_on_refresh_failure = _env_flag(
             "COVALT_OAUTH_ALLOW_STALE_ON_REFRESH_FAILURE", True
         )
+
+    def _register_code_future(self, flow: OAuthFlowState) -> None:
+        pending_key = flow.state or flow.provider
+        flow.extra["pending_callback_key"] = pending_key
+        flow.code_future = self._pending_callbacks.create(pending_key)
+
+    def _resolve_pending_key(self, flow: OAuthFlowState) -> Optional[str]:
+        value = flow.extra.get("pending_callback_key")
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _clear_pending_callback(self, flow: OAuthFlowState) -> None:
+        pending_key = self._resolve_pending_key(flow)
+        if pending_key:
+            self._pending_callbacks.cancel(pending_key)
+            flow.extra.pop("pending_callback_key", None)
+
+    def _complete_pending_callback(
+        self,
+        flow: OAuthFlowState,
+        *,
+        code: str,
+        state: Optional[str],
+    ) -> bool:
+        resolved_state = state or flow.state
+        pending_key = self._resolve_pending_key(flow)
+        if pending_key and self._pending_callbacks.complete(
+            code,
+            pending_key,
+            result_state=resolved_state,
+        ):
+            return True
+
+        if flow.code_future and not flow.code_future.done():
+            flow.code_future.set_result((code, resolved_state))
+            return True
+
+        return False
+
+    def _fail_pending_callback(self, flow: OAuthFlowState, error: str) -> None:
+        pending_key = self._resolve_pending_key(flow)
+        if pending_key:
+            self._pending_callbacks.fail(pending_key, error)
+            flow.extra.pop("pending_callback_key", None)
+
+        if flow.code_future and not flow.code_future.done():
+            flow.code_future.set_exception(RuntimeError(error))
+
+    def _create_callback_redirect_uri(self, port: int, path: str) -> str:
+        return build_localhost_redirect_uri(port, path)
 
     async def start_oauth(
         self, provider: str, options: Optional[Dict[str, Any]] = None
@@ -269,18 +304,19 @@ class ProviderOAuthManager:
         if not flow or not flow.code_future or flow.code_future.done():
             return False
 
-        code, state = self._parse_manual_input(provider, code_input)
+        code, state = parse_oauth_code_input(code_input)
         if not code:
             flow.error = "Missing authorization code"
             flow.status = "error"
+            self._fail_pending_callback(flow, "missing_code")
             return False
         if flow.state and state and state != flow.state:
             flow.error = "State mismatch"
             flow.status = "error"
+            self._fail_pending_callback(flow, "state_mismatch")
             return False
 
-        flow.code_future.set_result((code, state))
-        return True
+        return self._complete_pending_callback(flow, code=code, state=state)
 
     def get_oauth_status(self, provider: str) -> Dict[str, Any]:
         provider = _normalize_provider(provider)
@@ -303,6 +339,8 @@ class ProviderOAuthManager:
     async def revoke_oauth(self, provider: str) -> None:
         provider = _normalize_provider(provider)
         flow = self._active_flows.pop(provider, None)
+        if flow:
+            self._clear_pending_callback(flow)
         if flow and flow.callback_server:
             flow.callback_server.stop()
         if flow and flow.flow_task:
@@ -392,7 +430,7 @@ class ProviderOAuthManager:
         }
         flow.auth_url = f"https://claude.ai/oauth/authorize?{urlencode(auth_params)}"
         flow.instructions = "Paste the authorization code"
-        flow.code_future = asyncio.get_event_loop().create_future()
+        self._register_code_future(flow)
         flow.flow_task = asyncio.create_task(self._finish_anthropic(flow))
 
     async def _finish_anthropic(self, flow: OAuthFlowState) -> None:
@@ -441,15 +479,24 @@ class ProviderOAuthManager:
         except Exception as e:
             flow.status = "error"
             flow.error = str(e)
+        finally:
+            self._clear_pending_callback(flow)
 
     async def _start_openai_codex(self, flow: OAuthFlowState) -> None:
         verifier, challenge = _generate_pkce()
         flow.verifier = verifier
         flow.state = secrets.token_hex(16)
+        callback_port = 1455
+        callback_path = "/auth/callback"
+        callback_redirect_uri = self._create_callback_redirect_uri(
+            callback_port,
+            callback_path,
+        )
+
         params = {
             "response_type": "code",
             "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
-            "redirect_uri": "http://localhost:1455/auth/callback",
+            "redirect_uri": callback_redirect_uri,
             "scope": "openid profile email offline_access",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
@@ -460,15 +507,20 @@ class ProviderOAuthManager:
         }
         flow.auth_url = f"https://auth.openai.com/oauth/authorize?{urlencode(params)}"
         flow.instructions = "Complete login in the browser, then return here"
-        flow.code_future = asyncio.get_event_loop().create_future()
+        flow.extra["callback_redirect_uri"] = callback_redirect_uri
+        self._register_code_future(flow)
         flow.callback_server = self._start_callback_server(
             flow,
-            port=1455,
-            path="/auth/callback",
+            port=callback_port,
+            path=callback_path,
         )
         flow.flow_task = asyncio.create_task(self._finish_openai_codex(flow))
 
     async def _finish_openai_codex(self, flow: OAuthFlowState) -> None:
+        callback_redirect_uri = str(
+            flow.extra.get("callback_redirect_uri")
+            or self._create_callback_redirect_uri(1455, "/auth/callback")
+        )
         try:
             if not flow.code_future:
                 raise ValueError("Missing authorization code")
@@ -483,7 +535,7 @@ class ProviderOAuthManager:
                 "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
                 "code": code,
                 "code_verifier": flow.verifier,
-                "redirect_uri": "http://localhost:1455/auth/callback",
+                "redirect_uri": callback_redirect_uri,
             }
             async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.post(
@@ -518,6 +570,7 @@ class ProviderOAuthManager:
             flow.status = "error"
             flow.error = str(e)
         finally:
+            self._clear_pending_callback(flow)
             if flow.callback_server:
                 flow.callback_server.stop()
 
@@ -578,17 +631,26 @@ class ProviderOAuthManager:
         except Exception as e:
             flow.status = "error"
             flow.error = str(e)
+        finally:
+            self._clear_pending_callback(flow)
 
     async def _start_google_gemini(self, flow: OAuthFlowState) -> None:
         verifier, challenge = _generate_pkce()
         flow.verifier = verifier
         flow.state = verifier
+        callback_port = 8085
+        callback_path = "/oauth2callback"
+        callback_redirect_uri = self._create_callback_redirect_uri(
+            callback_port,
+            callback_path,
+        )
+
         params = {
             "client_id": _decode_base64(
                 "NjgxMjU1ODA5Mzk1LW9vOGZ0Mm9wcmRybnA5ZTNhcWY2YXYzaG1kaWIxMzVqLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t"
             ),
             "response_type": "code",
-            "redirect_uri": "http://localhost:8085/oauth2callback",
+            "redirect_uri": callback_redirect_uri,
             "scope": " ".join(
                 [
                     "https://www.googleapis.com/auth/cloud-platform",
@@ -606,15 +668,20 @@ class ProviderOAuthManager:
             f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
         )
         flow.instructions = "Complete the sign-in in your browser"
-        flow.code_future = asyncio.get_event_loop().create_future()
+        flow.extra["callback_redirect_uri"] = callback_redirect_uri
+        self._register_code_future(flow)
         flow.callback_server = self._start_callback_server(
             flow,
-            port=8085,
-            path="/oauth2callback",
+            port=callback_port,
+            path=callback_path,
         )
         flow.flow_task = asyncio.create_task(self._finish_google_gemini(flow))
 
     async def _finish_google_gemini(self, flow: OAuthFlowState) -> None:
+        callback_redirect_uri = str(
+            flow.extra.get("callback_redirect_uri")
+            or self._create_callback_redirect_uri(8085, "/oauth2callback")
+        )
         try:
             if not flow.code_future:
                 raise ValueError("Missing authorization code")
@@ -633,7 +700,7 @@ class ProviderOAuthManager:
                 client_secret=_decode_base64(
                     "R09DU1BYLTR1SGdNUG0tMW83U2stZ2VWNkN1NWNsWEZzeGw="
                 ),
-                redirect_uri="http://localhost:8085/oauth2callback",
+                redirect_uri=callback_redirect_uri,
             )
             email = await self._get_google_user_email(token["access_token"])
             project_id = await self._discover_gemini_project(token["access_token"])
@@ -653,21 +720,21 @@ class ProviderOAuthManager:
             flow.status = "error"
             flow.error = str(e)
         finally:
+            self._clear_pending_callback(flow)
             if flow.callback_server:
                 flow.callback_server.stop()
 
     def _start_callback_server(
         self, flow: OAuthFlowState, *, port: int, path: str
     ) -> _CallbackServer:
-        loop = asyncio.get_event_loop()
-
         def handle_code(code: str, state: str) -> None:
-            if flow.code_future and not flow.code_future.done():
-                loop.call_soon_threadsafe(flow.code_future.set_result, (code, state))
+            resolved_state = state or flow.state
+            self._complete_pending_callback(flow, code=code, state=resolved_state)
 
         def handle_error(error: str) -> None:
             flow.error = error
             flow.status = "error"
+            self._fail_pending_callback(flow, error)
 
         server = _CallbackServer(
             port=port,
@@ -681,17 +748,8 @@ class ProviderOAuthManager:
         except Exception as e:
             flow.error = str(e)
             flow.status = "error"
+            self._fail_pending_callback(flow, str(e))
         return server
-
-    def _parse_manual_input(
-        self, provider: str, input_value: str
-    ) -> tuple[Optional[str], Optional[str]]:
-        code, state = _parse_url_params(input_value)
-        if code:
-            return code, state
-        if provider == "anthropic":
-            return _parse_code_state(input_value)
-        return _parse_code_state(input_value)
 
     def _get_openai_account_id(self, access_token: str) -> Optional[str]:
         payload = _decode_jwt_payload(access_token)

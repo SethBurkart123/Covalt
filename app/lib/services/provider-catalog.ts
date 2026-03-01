@@ -10,30 +10,40 @@ import { getProviderIcon } from '@/(app)/(pages)/settings/providers/provider-ico
 
 const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, '_');
 
-const API_KEY_FIELDS: ProviderFieldDef[] = [
-  { id: 'apiKey', label: 'API Key / Token', type: 'password', placeholder: 'API_KEY' },
-  {
-    id: 'baseUrl',
-    label: 'Base URL (optional)',
-    type: 'text',
-    placeholder: 'https://api.example.com/v1',
-    required: false,
-  },
-];
-
-const FIELD_OVERRIDES: Record<string, ProviderFieldDef[]> = {
-  ollama: [{ id: 'baseUrl', label: 'Host URL', type: 'text', placeholder: 'http://localhost:11434' }],
-  vllm: [{ id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:8000/v1' }],
-  openai_like: [
+const FIELD_DEFINITIONS: Record<
+  'standard_api_key' | 'openai_compatible' | 'local_ollama' | 'local_vllm',
+  ProviderFieldDef[]
+> = {
+  standard_api_key: [
+    { id: 'apiKey', label: 'API Key / Token', type: 'password', placeholder: 'API_KEY' },
+    {
+      id: 'baseUrl',
+      label: 'Base URL (optional)',
+      type: 'text',
+      placeholder: 'https://api.example.com/v1',
+      required: false,
+    },
+  ],
+  openai_compatible: [
     { id: 'apiKey', label: 'API Key / Token', type: 'password', placeholder: 'API_KEY' },
     { id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'https://api.example.com/v1' },
   ],
+  local_ollama: [{ id: 'baseUrl', label: 'Host URL', type: 'text', placeholder: 'http://localhost:11434' }],
+  local_vllm: [{ id: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:8000/v1' }],
 };
 
 const getFields = (provider: ProviderCatalogItem): ProviderFieldDef[] => {
-  const providerId = toProviderId(provider.provider);
   if (provider.authType === 'oauth') return [];
-  return FIELD_OVERRIDES[providerId] || API_KEY_FIELDS;
+
+  const mode =
+    provider.fieldMode === 'openai_compatible' ||
+    provider.fieldMode === 'local_ollama' ||
+    provider.fieldMode === 'local_vllm' ||
+    provider.fieldMode === 'standard_api_key'
+      ? provider.fieldMode
+      : 'standard_api_key';
+
+  return FIELD_DEFINITIONS[mode];
 };
 
 const toProviderDefinition = (provider: ProviderCatalogItem): ProviderDefinition => {

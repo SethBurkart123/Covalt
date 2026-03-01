@@ -197,3 +197,6 @@ export const getProviderIcon = (iconKey?: string | null): ProviderIcon => {
   if (!iconKey) return OpenAIIcon;
   return ICON_MAP[normalize(iconKey)] || OpenAIIcon;
 };
+
+export { OpenAIIcon };
+
