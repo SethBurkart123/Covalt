@@ -110,20 +110,29 @@ def _get_configured_providers() -> Dict[str, Dict[str, Any]]:
     with db.db_session() as sess:
         configured = db.get_all_provider_settings(sess)
 
-    oauth_providers = [
-        "anthropic_oauth",
+    oauth_providers = {
         "openai_codex",
         "github_copilot",
-        "google_gemini_cli",
-    ]
+    }
+    oauth_plugin_provider_ids = {"anthropic_oauth", "google_gemini_cli"}
+    oauth_providers.update(
+        provider for provider in list_providers() if provider in oauth_plugin_provider_ids
+    )
+
     oauth_manager = get_provider_oauth_manager()
-    for provider in oauth_providers:
+    for provider in sorted(oauth_providers):
+        has_tokens = oauth_manager.has_valid_tokens(provider)
         if provider not in configured:
             configured[provider] = {
                 "provider": provider,
                 "api_key": None,
                 "base_url": None,
                 "extra": None,
-                "enabled": oauth_manager.has_valid_tokens(provider),
+                "enabled": has_tokens,
             }
+            continue
+
+        if has_tokens and not configured[provider].get("enabled", True):
+            configured[provider]["enabled"] = True
+
     return configured

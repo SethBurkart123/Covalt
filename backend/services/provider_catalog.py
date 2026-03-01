@@ -108,15 +108,6 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
         field_mode="local_vllm",
     ),
     ProviderCatalogEntry(
-        key="anthropic_oauth",
-        provider="anthropic_oauth",
-        name="Claude OAuth",
-        description="Claude Pro/Max via OAuth sign-in",
-        icon="anthropic",
-        auth_type="oauth",
-        oauth_variant="inline-code",
-    ),
-    ProviderCatalogEntry(
         key="openai_codex",
         provider="openai_codex",
         name="ChatGPT OAuth",
@@ -134,15 +125,6 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
         auth_type="oauth",
         oauth_variant="device",
         oauth_enterprise_domain=True,
-    ),
-    ProviderCatalogEntry(
-        key="google_gemini_cli",
-        provider="google_gemini_cli",
-        name="Gemini CLI OAuth",
-        description="Cloud Code Assist Gemini models via OAuth",
-        icon="google-gemini-cli",
-        auth_type="oauth",
-        oauth_variant="compact",
     ),
 )
 

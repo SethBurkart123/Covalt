@@ -12,25 +12,25 @@ import backend.commands.provider_plugins as provider_plugins
 async def test_list_provider_plugin_sources_marks_installed_and_policy_flags(monkeypatch) -> None:
     class _FakeManager:
         def list_plugins(self):
-            return [SimpleNamespace(id="sample_openai_adapter")]
+            return [SimpleNamespace(id="anthropic_oauth")]
 
         def list_sources(self):
             return [
                 SimpleNamespace(
                     id="official-source",
-                    plugin_id="sample_openai_adapter",
-                    name="Official",
-                    version="1.0.0",
-                    provider="sample_openai_adapter",
-                    description="official",
-                    icon="openai",
+                    plugin_id="anthropic_oauth",
+                    name="Claude OAuth",
+                    version="0.1.0",
+                    provider="anthropic_oauth",
+                    description="Claude Pro/Max via OAuth sign-in",
+                    icon="anthropic",
                     source_class="official",
                     index_id="official-index",
                     index_name="Official",
                     source_url="https://raw.githubusercontent.com/sethburkart123/covalt-provider-plugins/main/index.json",
                     repo_url="https://github.com/sethburkart123/covalt-provider-plugins",
                     tracking_ref="main",
-                    plugin_path="plugins/sample-openai-adapter",
+                    plugin_path="plugins/claude-oauth",
                 ),
                 SimpleNamespace(
                     id="community-source",

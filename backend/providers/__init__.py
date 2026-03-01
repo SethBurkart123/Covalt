@@ -24,6 +24,10 @@ _MANIFEST_PROVIDER_IDS = {
     for item in MANIFEST_PROVIDERS
     if isinstance(item, dict) and item.get("id")
 }
+_PLUGIN_STORE_PROVIDER_IDS = {
+    "anthropic_oauth",
+    "google_gemini_cli",
+}
 
 _credential_override: contextvars.ContextVar[
     Optional[Tuple[Optional[str], Optional[str]]]
@@ -130,7 +134,10 @@ def _load_python_module_providers() -> None:
             continue
 
         normalized_name = _normalize_provider_key(name)
-        if normalized_name in _MANIFEST_PROVIDER_IDS:
+        if (
+            normalized_name in _MANIFEST_PROVIDER_IDS
+            or normalized_name in _PLUGIN_STORE_PROVIDER_IDS
+        ):
             continue
         try:
             module = importlib.import_module(f".{name}", __package__)
