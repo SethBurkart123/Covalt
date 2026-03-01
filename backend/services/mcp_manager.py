@@ -20,6 +20,7 @@ from mcp.types import Tool as MCPTool
 
 from ..db import db_session
 from ..db.models import ToolOverride, Toolset, ToolsetMcpServer
+from ..models import format_mcp_tool_id, normalize_renderer_alias
 from .oauth_manager import get_oauth_manager
 
 logger = logging.getLogger(__name__)
@@ -800,12 +801,12 @@ class MCPManager:
                 continue
 
             tool_info = {
-                "id": f"mcp:{server_key}:{tool.name}",
+                "id": format_mcp_tool_id(server_key, tool.name),
                 "name": overrides.get("name_override") or tool.name,
                 "description": overrides.get("description_override")
                 or tool.description,
                 "inputSchema": tool.inputSchema,
-                "renderer": overrides.get("renderer"),
+                "renderer": normalize_renderer_alias(overrides.get("renderer")),
                 "renderer_config": overrides.get("renderer_config"),
                 "requires_confirmation": overrides.get("requires_confirmation")
                 if overrides.get("requires_confirmation") is not None

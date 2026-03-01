@@ -5,11 +5,9 @@ import contextvars
 import importlib.util
 import json
 import logging
-import re
 import sys
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
 
 from agno.tools.function import Function
@@ -20,10 +18,12 @@ from covalt_toolset import ToolContext, clear_context, get_tool_metadata, set_co
 from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolOverride, Toolset
+from ..models import normalize_renderer_alias
+from .render_plan_builder import get_render_plan_builder
 from .toolset_manager import get_toolset_directory
 from .workspace_event_broadcaster import broadcast_workspace_files_changed
 from .workspace_events import WorkspaceFilesChanged
-from .workspace_manager import WorkspaceManager, get_workspace_manager
+from .workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class ToolsetExecutor:
                 "enabled": enabled,
                 "entrypoint": tool.entrypoint,
                 "render_config": {
-                    "renderer": override.renderer,
+                    "renderer": normalize_renderer_alias(override.renderer),
                     "config": json.loads(override.renderer_config)
                     if override.renderer_config
                     else {},
@@ -402,6 +402,19 @@ class ToolsetExecutor:
                 tool_call.post_manifest_id = post_manifest_id
             session.commit()
 
+    def get_tool_metadata(self, tool_id: str) -> dict[str, Any] | None:
+        return self._get_tool_from_db(tool_id)
+
+    def get_toolset_directory(self, tool_id: str) -> str:
+        tool_info = self._get_tool_from_db(tool_id)
+        toolset_id = tool_info.get("toolset_id") if tool_info else ""
+        return str(get_toolset_directory(toolset_id or ""))
+
+    def consume_render_plan(self, tool_call_id: str | None) -> dict[str, Any] | None:
+        if not tool_call_id:
+            return None
+        return self._render_plan_cache.pop(tool_call_id, None)
+
     def generate_render_plan(
         self,
         tool_id: str,
@@ -410,11 +423,6 @@ class ToolsetExecutor:
         chat_id: str,
     ) -> dict[str, Any] | None:
         return self._generate_render_plan(tool_id, args, result, chat_id)
-
-    def consume_render_plan(self, tool_call_id: str | None) -> dict[str, Any] | None:
-        if not tool_call_id:
-            return None
-        return self._render_plan_cache.pop(tool_call_id, None)
 
     def _generate_render_plan(
         self,
@@ -438,84 +446,18 @@ class ToolsetExecutor:
             "toolset": str(get_toolset_directory(tool_info.get("toolset_id", ""))),
         }
 
-        interpolated_config = self._interpolate(config, context)
-
-        renderer_type = render_config["renderer"]
-        if renderer_type == "markdown":
-            renderer_type = "document"
-        if renderer_type == "html" and "artifact" in interpolated_config:
-            artifact_path = interpolated_config["artifact"]
-            html_content = self._load_artifact_content(
-                tool_info.get("toolset_id", ""), artifact_path
-            )
-            if html_content:
-                interpolated_config["content"] = html_content
-
-        return {
-            "renderer": renderer_type,
-            "config": interpolated_config,
-        }
-
-    def _interpolate(self, obj: Any, context: dict[str, Any]) -> Any:
-        if isinstance(obj, str):
-            return self._interpolate_string(obj, context)
-        elif isinstance(obj, dict):
-            return {k: self._interpolate(v, context) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._interpolate(item, context) for item in obj]
-        return obj
-
-    def _interpolate_string(self, s: str, context: dict[str, Any]) -> Any:
-        if s.startswith("$") and "." not in s[1:] and s[1:] in context:
-            return context[s[1:]]
-
-        if s.startswith("$"):
-            parts = s[1:].split(".", 1)
-            var_name = parts[0]
-
-            if var_name in context:
-                value = context[var_name]
-                if len(parts) > 1 and isinstance(value, dict):
-                    for part in parts[1].split("."):
-                        if isinstance(value, dict) and part in value:
-                            value = value[part]
-                        else:
-                            return s
-                return value
-
-        def replace_var(match: re.Match) -> str:
-            parts = match.group(1).split(".", 1)
-            var_name = parts[0]
-
-            if var_name in context:
-                value = context[var_name]
-                if len(parts) > 1 and isinstance(value, dict):
-                    for part in parts[1].split("."):
-                        if isinstance(value, dict) and part in value:
-                            value = value[part]
-                        else:
-                            return match.group(0)
-                return str(value)
-            return match.group(0)
-
-        return re.sub(r"\$(\w+(?:\.\w+)*)", replace_var, s)
-
-    def _load_artifact_content(self, toolset_id: str, artifact_path: str) -> str | None:
-        if not toolset_id:
-            return None
-
-        toolset_dir = get_toolset_directory(toolset_id)
-        full_path = (
-            Path(artifact_path)
-            if artifact_path.startswith(str(toolset_dir))
-            else toolset_dir / artifact_path
+        toolset_dir = get_toolset_directory(tool_info.get("toolset_id", ""))
+        plan = get_render_plan_builder().build(
+            renderer=render_config["renderer"],
+            config=config,
+            context=context,
+            toolset_dir=toolset_dir,
         )
 
-        if full_path.exists() and full_path.is_file():
-            return full_path.read_text(encoding="utf-8")
+        if plan["renderer"] == "html" and "artifact" in plan["config"] and "content" not in plan["config"]:
+            logger.warning("Artifact not found: %s", plan["config"]["artifact"])
 
-        logger.warning(f"Artifact not found: {full_path}")
-        return None
+        return plan
 
     def list_toolset_tools(self) -> list[dict[str, Any]]:
         with db_session() as session:

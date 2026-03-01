@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
+from ..models import normalize_override_tool_id
 from ..services.mcp_manager import get_mcp_manager
 from ..services.toolset_executor import get_toolset_executor
 from ..services.toolset_manager import get_toolset_manager
@@ -360,11 +361,12 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
         if not sess.query(Toolset).filter(Toolset.id == body.toolset_id).first():
             raise ValueError(f"Toolset '{body.toolset_id}' not found")
 
+        normalized_tool_id = normalize_override_tool_id(body.tool_id, body.toolset_id)
         existing = (
             sess.query(ToolOverride)
             .filter(
                 ToolOverride.toolset_id == body.toolset_id,
-                ToolOverride.tool_id == body.tool_id,
+                ToolOverride.tool_id == normalized_tool_id,
             )
             .first()
         )
@@ -387,7 +389,7 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
             override = ToolOverride(
                 id=str(uuid.uuid4()),
                 toolset_id=body.toolset_id,
-                tool_id=body.tool_id,
+                tool_id=normalized_tool_id,
                 renderer=body.renderer,
                 renderer_config=json.dumps(body.renderer_config)
                 if body.renderer_config

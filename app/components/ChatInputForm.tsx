@@ -41,6 +41,7 @@ import {
   type MentionItem,
 } from "@/components/chat-input/at-mention-extension";
 import { buildMcpServerLabelMap, getMcpServerLabel } from "@/lib/mcp";
+import { parseToolId } from "@/lib/tooling";
 import {
   hasMentionNodes,
   serializeChatInputMarkdown,
@@ -268,11 +269,11 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     const mentionItems = useMemo<MentionItem[]>(() => {
       const serverLabelByKey = buildMcpServerLabelMap(mcpServers);
       const toolItems = availableTools.map((tool) => {
-        if (tool.id.startsWith("mcp:")) {
-          const parts = tool.id.split(":");
-          const serverKey = parts[1] ?? "";
+        const parsed = parseToolId(tool.id);
+        if (parsed.kind === "mcp_tool") {
+          const serverKey = parsed.namespace ?? "";
           const serverLabel = serverLabelByKey.get(serverKey) ?? serverKey;
-          const label = tool.name || parts.slice(2).join(":") || tool.id;
+          const label = tool.name || parsed.name || tool.id;
           return {
             id: tool.id,
             label,
@@ -425,9 +426,11 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         }
 
         if (attrs.type === "mcp") {
-          const prefix = `mcp:${attrs.id}:`;
           availableTools
-            .filter((tool) => tool.id.startsWith(prefix))
+            .filter((tool) => {
+              const parsed = parseToolId(tool.id);
+              return parsed.kind === "mcp_tool" && parsed.namespace === attrs.id;
+            })
             .forEach((tool) => toolIds.add(tool.id));
           return false;
         }

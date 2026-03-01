@@ -1,54 +1,39 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import shutil
-import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..config import get_db_directory
 from ..db import db_session
-from ..db.models import Chat, WorkspaceManifest
+from .workspace import (
+    WorkspaceBlobStore,
+    WorkspaceDiffService,
+    WorkspaceManifestRepository,
+    WorkspaceMaterializer,
+    get_blobs_directory as _get_blobs_directory,
+    get_chat_directory as _get_chat_directory,
+    get_chats_directory as _get_chats_directory,
+    get_workspace_directory as _get_workspace_directory,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def get_chats_directory() -> Path:
-    chats_dir = get_db_directory() / "chats"
-    chats_dir.mkdir(parents=True, exist_ok=True)
-    return chats_dir
+    return _get_chats_directory()
 
 
 def get_chat_directory(chat_id: str) -> Path:
-    chat_dir = get_chats_directory() / chat_id
-    chat_dir.mkdir(parents=True, exist_ok=True)
-    return chat_dir
+    return _get_chat_directory(chat_id)
 
 
 def get_workspace_directory(chat_id: str) -> Path:
-    workspace_dir = get_chat_directory(chat_id) / "workspace"
-    workspace_dir.mkdir(parents=True, exist_ok=True)
-    return workspace_dir
+    return _get_workspace_directory(chat_id)
 
 
 def get_blobs_directory(chat_id: str) -> Path:
-    blobs_dir = get_chat_directory(chat_id) / "blobs"
-    blobs_dir.mkdir(parents=True, exist_ok=True)
-    return blobs_dir
-
-
-def _compute_hash(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
-def _get_blob_path(chat_id: str, file_hash: str) -> Path:
-    blobs_dir = get_blobs_directory(chat_id)
-    subdir = blobs_dir / file_hash[:2]
-    subdir.mkdir(parents=True, exist_ok=True)
-    return subdir / file_hash
+    return _get_blobs_directory(chat_id)
 
 
 class WorkspaceManager:
@@ -56,86 +41,45 @@ class WorkspaceManager:
         self.chat_id = chat_id
         self.workspace_dir = get_workspace_directory(chat_id)
         self.blobs_dir = get_blobs_directory(chat_id)
+        self._blob_store = WorkspaceBlobStore(chat_id)
+        self._manifest_repository = WorkspaceManifestRepository(chat_id)
+        self._diff_service = WorkspaceDiffService(self._manifest_repository)
+        self._materializer = WorkspaceMaterializer(
+            chat_id=chat_id,
+            workspace_dir=self.workspace_dir,
+            manifest_repository=self._manifest_repository,
+            blob_store=self._blob_store,
+        )
 
     def store_file(self, content: bytes) -> str:
-        file_hash = _compute_hash(content)
-        blob_path = _get_blob_path(self.chat_id, file_hash)
-
-        if not blob_path.exists():
-            blob_path.write_bytes(content)
-            logger.debug(f"Stored blob {file_hash[:12]}... ({len(content)} bytes)")
-
+        file_hash = self._blob_store.store(content)
+        logger.debug(f"Stored blob {file_hash[:12]}... ({len(content)} bytes)")
         return file_hash
 
     def store_file_from_path(self, source_path: Path) -> str:
-        return self.store_file(source_path.read_bytes())
+        return self._blob_store.store_from_path(source_path)
 
     def get_blob(self, file_hash: str) -> bytes | None:
-        blob_path = _get_blob_path(self.chat_id, file_hash)
-        if blob_path.exists():
-            return blob_path.read_bytes()
-        return None
+        return self._blob_store.read(file_hash)
 
     def get_manifest(self, manifest_id: str) -> dict[str, Any] | None:
-        with db_session() as session:
-            manifest = (
-                session.query(WorkspaceManifest)
-                .filter(WorkspaceManifest.id == manifest_id)
-                .first()
-            )
-
-            if not manifest:
-                return None
-
-            return {
-                "id": manifest.id,
-                "chat_id": manifest.chat_id,
-                "parent_id": manifest.parent_id,
-                "files": json.loads(manifest.files),
-                "created_at": manifest.created_at,
-                "source": manifest.source,
-                "source_ref": manifest.source_ref,
-            }
+        return self._manifest_repository.get_manifest(manifest_id)
 
     def diff_manifests(
         self,
         pre_manifest_id: str | None,
         post_manifest_id: str | None,
     ) -> tuple[list[str], list[str]]:
-        pre_files: dict[str, str] = {}
-        post_files: dict[str, str] = {}
-
-        if pre_manifest_id and (pre_manifest := self.get_manifest(pre_manifest_id)):
-            pre_files = pre_manifest["files"]
-
-        if post_manifest_id and (post_manifest := self.get_manifest(post_manifest_id)):
-            post_files = post_manifest["files"]
-
-        changed = [
-            path
-            for path, file_hash in post_files.items()
-            if path not in pre_files or pre_files[path] != file_hash
-        ]
-        deleted = [path for path in pre_files if path not in post_files]
-
-        return changed, deleted
+        return self._diff_service.diff_manifests(pre_manifest_id, post_manifest_id)
 
     def get_active_manifest_id(self) -> str | None:
         if hasattr(self, "_local_manifest_id"):
             return self._local_manifest_id
-
-        with db_session() as session:
-            if chat := session.query(Chat).filter(Chat.id == self.chat_id).first():
-                return chat.active_manifest_id
-            return None
+        return self._manifest_repository.get_active_manifest_id()
 
     def set_active_manifest_id(self, manifest_id: str | None) -> None:
-        with db_session() as session:
-            if chat := session.query(Chat).filter(Chat.id == self.chat_id).first():
-                chat.active_manifest_id = manifest_id
-                session.commit()
-            else:
-                self._local_manifest_id = manifest_id
+        if not self._manifest_repository.set_active_manifest_id(manifest_id):
+            self._local_manifest_id = manifest_id
 
     def create_manifest(
         self,
@@ -144,58 +88,22 @@ class WorkspaceManager:
         source: str = "initial",
         source_ref: str | None = None,
     ) -> str:
-        manifest_id = str(uuid.uuid4())
-
-        with db_session() as session:
-            manifest = WorkspaceManifest(
-                id=manifest_id,
-                chat_id=self.chat_id,
-                parent_id=parent_id,
-                files=json.dumps(files),
-                created_at=datetime.now().isoformat(),
-                source=source,
-                source_ref=source_ref,
-            )
-            session.add(manifest)
-            session.commit()
-
+        manifest_id = self._manifest_repository.create_manifest(
+            files,
+            parent_id=parent_id,
+            source=source,
+            source_ref=source_ref,
+        )
         logger.info(
             f"Created manifest {manifest_id[:8]}... for chat {self.chat_id[:8]}..."
         )
         return manifest_id
 
     def materialize(self, manifest_id: str | None = None) -> bool:
-        if not manifest_id:
-            manifest_id = self.get_active_manifest_id()
-
-        if not manifest_id:
-            if self.workspace_dir.exists():
-                shutil.rmtree(self.workspace_dir)
-            self.workspace_dir.mkdir(parents=True, exist_ok=True)
-            return True
-
-        if not (manifest := self.get_manifest(manifest_id)):
+        result = self._materializer.materialize(manifest_id)
+        if not result and manifest_id:
             logger.warning(f"Manifest {manifest_id} not found")
-            return False
-
-        if self.workspace_dir.exists():
-            shutil.rmtree(self.workspace_dir)
-        self.workspace_dir.mkdir(parents=True, exist_ok=True)
-
-        for rel_path, file_hash in manifest["files"].items():
-            target = self.workspace_dir / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-
-            blob_path = _get_blob_path(self.chat_id, file_hash)
-            if blob_path.exists():
-                shutil.copy2(blob_path, target)
-            else:
-                logger.warning(f"Blob {file_hash[:12]}... not found for {rel_path}")
-
-        logger.info(
-            f"Materialized {len(manifest['files'])} files for manifest {manifest_id[:8]}..."
-        )
-        return True
+        return result
 
     def snapshot(
         self,
@@ -363,27 +271,20 @@ class WorkspaceManager:
 
     def cleanup(self) -> None:
         referenced: set[str] = set()
-        with db_session() as session:
-            manifests = (
-                session.query(WorkspaceManifest)
-                .filter(WorkspaceManifest.chat_id == self.chat_id)
-                .all()
-            )
-
-            for manifest in manifests:
-                files = json.loads(manifest.files)
-                referenced.update(files.values())
+        for files in self._manifest_repository.list_manifest_file_maps():
+            referenced.update(files.values())
 
         removed = 0
         for subdir in self.blobs_dir.iterdir():
-            if subdir.is_dir():
-                for blob_file in subdir.iterdir():
-                    if blob_file.name not in referenced:
-                        blob_file.unlink()
-                        removed += 1
+            if not subdir.is_dir():
+                continue
+            for blob_file in subdir.iterdir():
+                if blob_file.name not in referenced:
+                    blob_file.unlink()
+                    removed += 1
 
-                if not any(subdir.iterdir()):
-                    subdir.rmdir()
+            if not any(subdir.iterdir()):
+                subdir.rmdir()
 
         if removed:
             logger.info(

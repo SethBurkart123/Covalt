@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from agno.tools import tool as agno_tool
 
+from ..models import normalize_renderer_alias, parse_tool_id, split_mcp_tool_id
+
 if TYPE_CHECKING:
     from .mcp_manager import MCPManager
     from .toolset_executor import ToolsetExecutor
@@ -72,17 +74,12 @@ class ToolRegistry:
         return tool_id in self._tools
 
     def _get_mcp_tool_info(self, tool_id: str) -> dict[str, Any] | None:
-        if not tool_id.startswith("mcp:"):
+        parsed = parse_tool_id(tool_id)
+        if parsed.kind != "mcp_tool" or not parsed.namespace or not parsed.name:
             return None
 
-        parsed = self._parse_tool_id(tool_id)
-        if parsed[0] != "mcp_tool":
-            return None
-
-        _, server_id, tool_name = parsed
-        if not (server_id and tool_name):
-            return None
-
+        server_id = parsed.namespace
+        tool_name = parsed.name
         mcp = get_mcp_manager()
         server_key = mcp.resolve_server_key(server_id) or server_id
         tool_id_full = f"mcp:{server_key}:{tool_name}"
@@ -109,40 +106,17 @@ class ToolRegistry:
     def get_renderer(self, tool_id: str) -> str | None:
         metadata = self._metadata.get(tool_id, {})
         if "renderer" in metadata:
-            renderer = metadata.get("renderer")
-            return "document" if renderer == "markdown" else renderer
+            return normalize_renderer_alias(metadata.get("renderer"))
 
         mcp_tool_info = self._get_mcp_tool_info(tool_id)
         if mcp_tool_info:
-            renderer = mcp_tool_info.get("renderer")
-            return "document" if renderer == "markdown" else renderer
+            return normalize_renderer_alias(mcp_tool_info.get("renderer"))
 
         return None
 
     def _parse_tool_id(self, tool_id: str) -> tuple[str, str | None, str | None]:
-        if tool_id.startswith("-"):
-            inner = tool_id[1:]
-            if inner.startswith("mcp:"):
-                parts = inner.split(":", 2)
-                if len(parts) == 3:
-                    return ("blacklist", parts[1], parts[2])
-            return ("blacklist", None, inner)
-
-        if tool_id.startswith("mcp:"):
-            parts = tool_id.split(":", 2)
-            if len(parts) == 2:
-                return ("mcp_toolset", parts[1], None)
-            elif len(parts) == 3:
-                return ("mcp_tool", parts[1], parts[2])
-
-        if tool_id.startswith("toolset:"):
-            return ("toolset_all", tool_id.split(":", 1)[1], None)
-
-        if ":" in tool_id:
-            parts = tool_id.split(":", 1)
-            return ("toolset_tool", parts[0], parts[1])
-
-        return ("builtin", None, tool_id)
+        parsed = parse_tool_id(tool_id)
+        return parsed.kind, parsed.namespace, parsed.name
 
     def resolve_tool_ids(
         self, tool_ids: list[str], chat_id: str | None = None
@@ -195,10 +169,11 @@ class ToolRegistry:
 
         def _tool_name_from_info(tool_info: dict[str, Any]) -> str | None:
             tool_id = tool_info.get("id") or ""
-            if isinstance(tool_id, str) and tool_id.startswith("mcp:"):
-                parts = tool_id.split(":", 2)
-                if len(parts) == 3:
-                    return parts[2]
+            if isinstance(tool_id, str):
+                parsed = split_mcp_tool_id(tool_id)
+                if parsed is not None:
+                    _, tool_name = parsed
+                    return tool_name
             return tool_info.get("name")
 
         for server_id in resolved_toolsets:

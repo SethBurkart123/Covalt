@@ -16,6 +16,7 @@ import yaml
 
 from ..config import get_db_directory
 from ..db import db_session
+from ..models import normalize_override_tool_id
 from sqlalchemy import func
 from ..db.models import (
     Agent,
@@ -174,12 +175,7 @@ class ToolsetManager:
         )
 
     def _normalize_override_tool_id(self, raw_id: str, toolset_id: str) -> str:
-        tool_id = raw_id.strip()
-        if tool_id.startswith("mcp:"):
-            tool_id = tool_id[4:]
-        if ":" not in tool_id:
-            return f"{toolset_id}:{tool_id}"
-        return tool_id
+        return normalize_override_tool_id(raw_id, toolset_id)
 
     def list_toolsets(self, user_mcp: bool | None = None) -> list[dict[str, Any]]:
         with db_session() as sess:
