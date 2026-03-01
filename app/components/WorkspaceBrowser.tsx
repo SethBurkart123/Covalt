@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   File,
   Folder,
@@ -9,11 +9,10 @@ import {
   RefreshCw,
   Download,
   ChevronRight,
+  Dot,
 } from "lucide-react";
-import {
-  getWorkspaceFiles,
-  getWorkspaceFile,
-} from "@/python/api";
+import { getWorkspaceFiles, getWorkspaceFile } from "@/python/api";
+import { useWebSocket } from "@/contexts/websocket-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,13 +60,15 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
   }
 
   const sortNodes = (nodes: FileTreeNode[]): FileTreeNode[] =>
-    nodes.sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    }).map((node) => ({
-      ...node,
-      children: node.children ? sortNodes(node.children) : undefined,
-    }));
+    nodes
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map((node) => ({
+        ...node,
+        children: node.children ? sortNodes(node.children) : undefined,
+      }));
 
   return sortNodes(root);
 }
@@ -76,10 +77,12 @@ interface FileNodeProps {
   node: FileTreeNode;
   depth: number;
   onFileClick: (path: string) => void;
+  changedInLastRun: Set<string>;
 }
 
-function FileNode({ node, depth, onFileClick }: FileNodeProps) {
+function FileNode({ node, depth, onFileClick, changedInLastRun }: FileNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const isChanged = changedInLastRun.has(node.path);
 
   if (node.isDirectory) {
     return (
@@ -101,6 +104,7 @@ function FileNode({ node, depth, onFileClick }: FileNodeProps) {
             <Folder className="size-4 text-amber-500" />
           )}
           <span className="truncate">{node.name}</span>
+          {isChanged && <Dot className="size-4 text-primary shrink-0" />}
         </button>
         {isOpen && node.children && (
           <div>
@@ -110,6 +114,7 @@ function FileNode({ node, depth, onFileClick }: FileNodeProps) {
                 node={child}
                 depth={depth + 1}
                 onFileClick={onFileClick}
+                changedInLastRun={changedInLastRun}
               />
             ))}
           </div>
@@ -121,11 +126,15 @@ function FileNode({ node, depth, onFileClick }: FileNodeProps) {
   return (
     <button
       onClick={() => onFileClick(node.path)}
-      className="flex items-center gap-2 w-full px-2 py-1.5 text-sm hover:bg-muted rounded-md transition-colors text-left"
+      className={cn(
+        "flex items-center gap-2 w-full px-2 py-1.5 text-sm hover:bg-muted rounded-md transition-colors text-left",
+        isChanged && "bg-primary/5"
+      )}
       style={{ paddingLeft: `${depth * 16 + 24}px` }}
     >
       <File className="size-4 text-muted-foreground" />
       <span className="truncate">{node.name}</span>
+      {isChanged && <Dot className="size-4 text-primary shrink-0" />}
     </button>
   );
 }
@@ -178,7 +187,10 @@ function FilePreviewDialog({
   };
 
   const fileName = filePath?.split("/").pop() || "File";
-  const isTextFile = /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(fileName);
+  const isTextFile =
+    /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(
+      fileName
+    );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -232,13 +244,22 @@ function FilePreviewDialog({
 interface WorkspaceBrowserProps {
   chatId: string;
   className?: string;
+  lastRunChangedPaths?: string[];
 }
 
-export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
+export function WorkspaceBrowser({
+  chatId,
+  className,
+  lastRunChangedPaths = [],
+}: WorkspaceBrowserProps) {
   const [files, setFiles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [changedInLastRun, setChangedInLastRun] = useState<Set<string>>(new Set());
+
+  const { onWorkspaceFilesChanged } = useWebSocket();
+  const lastRunSourceRef = useRef<string | null>(null);
 
   const loadFiles = useCallback(async () => {
     setIsLoading(true);
@@ -258,17 +279,50 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
     loadFiles();
   }, [loadFiles]);
 
+  useEffect(() => {
+    if (lastRunChangedPaths.length > 0) {
+      setChangedInLastRun(new Set(lastRunChangedPaths));
+    } else {
+      setChangedInLastRun(new Set());
+    }
+    lastRunSourceRef.current = null;
+  }, [lastRunChangedPaths]);
+
+  useEffect(() => {
+    return onWorkspaceFilesChanged((eventChatId, changedPaths, deletedPaths, meta) => {
+      if (eventChatId !== chatId) return;
+      if (meta?.source !== "tool_run") return;
+
+      if (meta?.sourceRef && lastRunSourceRef.current !== meta.sourceRef) {
+        lastRunSourceRef.current = meta.sourceRef;
+        setChangedInLastRun(new Set());
+      }
+
+      setChangedInLastRun((prev) => {
+        const next = new Set(prev);
+        changedPaths.forEach((path) => next.add(path));
+        deletedPaths.forEach((path) => next.add(path));
+        return next;
+      });
+
+      void loadFiles();
+    });
+  }, [chatId, loadFiles, onWorkspaceFilesChanged]);
+
   const fileTree = useMemo(() => buildFileTree(files), [files]);
 
   return (
-    <div className={cn("flex flex-col", className)}>
+    <div className={cn("flex h-full flex-col", className)}>
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Folder className="size-4 text-muted-foreground" />
           <span>Workspace</span>
-          <span className="text-muted-foreground text-xs">
-            ({files.length} files)
-          </span>
+          <span className="text-muted-foreground text-xs">({files.length} files)</span>
+          {changedInLastRun.size > 0 && (
+            <span className="text-xs text-primary">
+              {changedInLastRun.size} changed in last run
+            </span>
+          )}
         </div>
         <Button
           variant="ghost"
@@ -277,9 +331,7 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
           onClick={loadFiles}
           disabled={isLoading}
         >
-          <RefreshCw
-            className={cn("size-3.5", isLoading && "animate-spin")}
-          />
+          <RefreshCw className={cn("size-3.5", isLoading && "animate-spin")} />
         </Button>
       </div>
 
@@ -302,6 +354,7 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
                 node={node}
                 depth={0}
                 onFileClick={setPreviewPath}
+                changedInLastRun={changedInLastRun}
               />
             ))}
           </div>
@@ -317,3 +370,4 @@ export function WorkspaceBrowser({ chatId, className }: WorkspaceBrowserProps) {
     </div>
   );
 }
+

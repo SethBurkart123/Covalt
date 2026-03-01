@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef } from "react";
+import { preloadRenderersForToolCalls } from "@/components/ToolCallRouter";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -42,6 +43,26 @@ function ChatMessage({
   chatId,
 }: ChatMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!Array.isArray(content)) {
+      return;
+    }
+
+    const renderers: Array<string | undefined> = [];
+    const queueRenderers = (blocks: ContentBlock[]) => {
+      blocks.forEach((block) => {
+        if (block.type === "tool_call") {
+          renderers.push(block.renderPlan?.renderer);
+        } else if (block.type === "member_run") {
+          queueRenderers(block.content);
+        }
+      });
+    };
+
+    queueRenderers(content);
+    preloadRenderersForToolCalls(renderers);
+  }, [content]);
 
   useEffect(() => {
     const content = contentRef.current;

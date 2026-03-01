@@ -15,5 +15,6 @@ export type ToolCallRenderer = React.ComponentType<ToolCallRendererProps>;
 
 export interface RendererDefinition {
   key: string;
-  component: ToolCallRenderer;
+  aliases: readonly string[];
+  load: () => Promise<{ default: ToolCallRenderer }>;
 }

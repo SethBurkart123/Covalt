@@ -16,7 +16,11 @@ import yaml
 
 from ..config import get_db_directory
 from ..db import db_session
-from ..models import normalize_override_tool_id
+from ..models import (
+    normalize_override_tool_id,
+    validate_renderer_manifest_entry,
+    validate_renderer_override,
+)
 from sqlalchemy import func
 from ..db.models import (
     Agent,
@@ -96,11 +100,33 @@ class ToolsetManifest:
                 raise ValueError(
                     f"Tool at index {i} missing required field: entrypoint"
                 )
+            if "renderer" in tool and tool.get("renderer") is not None:
+                validate_renderer_manifest_entry(
+                    tool.get("renderer"),
+                    context=f"tools[{i}].renderer",
+                )
 
         for i, override in enumerate(self.raw.get("tool_overrides", [])):
             if "tool_id" not in override:
                 raise ValueError(
                     f"Tool override at index {i} missing required field: tool_id"
+                )
+
+            renderer_set = "renderer" in override
+            renderer_config_set = (
+                "renderer_config" in override or "rendererConfig" in override
+            )
+            if renderer_set or renderer_config_set:
+                validate_renderer_override(
+                    override.get("renderer") if renderer_set else None,
+                    (
+                        override.get("renderer_config")
+                        if "renderer_config" in override
+                        else override.get("rendererConfig")
+                    )
+                    if renderer_config_set
+                    else None,
+                    context=f"tool_overrides[{i}]",
                 )
 
         for i, mcp_server in enumerate(self.raw.get("mcp_servers", [])):
@@ -482,11 +508,15 @@ class ToolsetManager:
 
                 renderer = tool_def.get("renderer")
                 if renderer:
+                    normalized_renderer, normalized_config = (
+                        validate_renderer_manifest_entry(
+                            renderer,
+                            context=f"tools[{tool_def['id']}].renderer",
+                        )
+                    )
                     override_entries[tool_id] = {
-                        "renderer": renderer.get("type", "code"),
-                        "renderer_config": {
-                            k: v for k, v in renderer.items() if k != "type"
-                        },
+                        "renderer": normalized_renderer,
+                        "renderer_config": normalized_config,
                     }
 
             for override_def in manifest.tool_overrides:
@@ -497,12 +527,34 @@ class ToolsetManager:
                 tool_id = self._normalize_override_tool_id(raw_tool_id, manifest.id)
                 entry = override_entries.get(tool_id, {})
 
+                override_renderer = None
+                override_renderer_set = False
                 if "renderer" in override_def:
-                    entry["renderer"] = override_def.get("renderer")
+                    override_renderer = override_def.get("renderer")
+                    override_renderer_set = True
+
+                override_renderer_config = None
+                override_renderer_config_set = False
                 if "renderer_config" in override_def or "rendererConfig" in override_def:
-                    entry["renderer_config"] = override_def.get("renderer_config") or override_def.get(
+                    override_renderer_config = override_def.get("renderer_config") or override_def.get(
                         "rendererConfig"
                     )
+                    override_renderer_config_set = True
+
+                if override_renderer_set or override_renderer_config_set:
+                    existing_renderer = entry.get("renderer")
+                    normalized_renderer, normalized_config = validate_renderer_override(
+                        override_renderer if override_renderer_set else existing_renderer,
+                        (
+                            override_renderer_config
+                            if override_renderer_config_set
+                            else entry.get("renderer_config")
+                        ),
+                        context=f"tool_overrides[{raw_tool_id}]",
+                    )
+                    if normalized_renderer is not None:
+                        entry["renderer"] = normalized_renderer
+                    entry["renderer_config"] = normalized_config
                 if "name_override" in override_def or "nameOverride" in override_def:
                     entry["name_override"] = override_def.get("name_override") or override_def.get(
                         "nameOverride"

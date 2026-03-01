@@ -15,6 +15,8 @@ from .tooling import (
     parse_tool_display_parts,
     parse_tool_id,
     split_mcp_tool_id,
+    validate_renderer_manifest_entry,
+    validate_renderer_override,
 )
 
 __all__ = [
@@ -30,4 +32,6 @@ __all__ = [
     "parse_tool_display_parts",
     "parse_tool_id",
     "split_mcp_tool_id",
+    "validate_renderer_manifest_entry",
+    "validate_renderer_override",
 ]

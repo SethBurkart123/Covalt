@@ -7,3 +7,5 @@ class WorkspaceFilesChanged(BaseModel):
     chat_id: str
     changed_paths: list[str]
     deleted_paths: list[str]
+    source: str | None = None
+    source_ref: str | None = None

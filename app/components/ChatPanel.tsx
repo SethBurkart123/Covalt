@@ -14,6 +14,7 @@ import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
 import { Header } from "./Header";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
+import { WorkspaceBrowser } from "@/components/WorkspaceBrowser";
 import "@/components/tool-renderers";
 import type { AllModelSettingsResponse } from "@/python/api";
 import type { Message } from "@/lib/types/chat";
@@ -226,6 +227,11 @@ export default function ChatPanel() {
           )}
         </div>
         <ArtifactPanel />
+        {chatId && (
+          <div className="w-80 min-w-72 border-l bg-card/40">
+            <WorkspaceBrowser chatId={chatId} className="h-full" />
+          </div>
+        )}
         {process.env.NODE_ENV === "development" && (
           <DevPanel isLoading={isLoading} canSendMessage={canSendMessage} />
         )}

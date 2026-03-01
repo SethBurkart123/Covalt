@@ -1,6 +1,6 @@
 # Covalt Desktop — Architecture Redesign TODO (Execution Document)
 
-_Last updated: 2026-03-01 (Phase 2 pass + tracker update)_
+_Last updated: 2026-03-01 (Phase 4 pass + tracker update)_
 
 This is the working execution document for the redesign blueprint. It combines:
 - project context needed to onboard quickly,
@@ -222,7 +222,7 @@ Split mixed workspace/tool orchestration concerns into composable services.
 - [x] Standardize tool/MCP id parse/normalize/format helpers.
 
 ### Status
-- **Completed (uncommitted in working tree)** via implementation + review/fix loop; final independent review returned PASS.
+- **Completed** in commit `074b0ab`.
 - Added workspace-focused modules under `backend/services/workspace/*` with `workspace_manager.py` retained as compatibility facade.
 - Added canonical render-plan builder (`backend/services/render_plan_builder.py`) reused by tool execution and runtime fallback.
 - Added canonical tooling helpers (`backend/models/tooling.py`, `app/lib/tooling.ts`) and migrated key backend/frontend call sites.
@@ -262,10 +262,16 @@ bun run test:e2e
 Reduce provider code footprint and eliminate metadata duplication.
 
 ### TODOs
-- [ ] Extend adapter strategy for Anthropic-compatible providers (manifest-driven where possible).
-- [ ] Consolidate provider metadata source-of-truth (backend catalog -> frontend render).
-- [ ] Reduce frontend hardcoded icon/field override sprawl.
-- [ ] Unify OAuth core paths where overlap exists.
+- [x] Extend adapter strategy for Anthropic-compatible providers (manifest-driven where possible).
+- [x] Consolidate provider metadata source-of-truth (backend catalog -> frontend render).
+- [x] Reduce frontend hardcoded icon/field override sprawl.
+- [x] Unify OAuth core paths where overlap exists.
+
+### Status
+- **Completed** in commit `4a2a600`.
+- Added `anthropic_compatible` adapter and migrated manifest-backed Anthropic-like providers.
+- Provider catalog metadata is now more backend-driven (including field mode) and consumed by frontend rendering logic.
+- Shared OAuth primitives extracted into `backend/services/oauth_shared.py` and reused across OAuth managers, with dedicated tests.
 
 ### File targets
 - `backend/providers/adapters/*`
@@ -297,10 +303,14 @@ uv run pytest
 Complete plugin-first shape for renderers/nodes and finalize UX-contract features.
 
 ### TODOs
-- [ ] Add renderer manifest/schema validation path (backend boundary validation).
-- [ ] Support manifest-keyed/lazy frontend renderer loading.
-- [ ] Introduce node plugin metadata loading improvements (definition/runtime/UI coherence).
-- [ ] Complete workspace browser “changed in last run” UX alignment.
+- [x] Add renderer manifest/schema validation path (backend boundary validation).
+- [x] Support manifest-keyed/lazy frontend renderer loading.
+- [x] Introduce node plugin metadata loading improvements (definition/runtime/UI coherence).
+- [x] Complete workspace browser “changed in last run” UX alignment.
+
+### Status
+- **Completed (uncommitted in working tree)** via implementation + review/fix loop; final independent review returned PASS.
+- Added strict renderer validation at backend boundaries, lazy manifest-keyed frontend renderer loading, node plugin coherence cataloging, and workspace browser last-run change indicators wired through websocket event metadata.
 
 ### File targets
 - `backend/services/toolset_manager.py`
@@ -403,12 +413,9 @@ Program is complete when all are true:
 
 ## 10) Immediate next actions
 
-1. Commit Phase 2 changes currently in working tree (already PASS-reviewed).
-2. Start Phase 3 execution with the same orchestrated loop:
-   - implementation subagent
-   - independent review subagent
-   - fix/re-review until PASS
-3. Open/refresh tracking tickets per remaining phase and link PRs/commits back to this document.
+1. Commit Phase 4 changes currently in working tree (already PASS-reviewed).
+2. Run final full verification gates (including e2e) and address any regressions.
+3. Open/refresh any follow-up hardening tickets (non-blocking lint debt, additional integration coverage) and link PRs/commits back to this document.
 
 ---
 
