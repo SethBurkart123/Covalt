@@ -48,7 +48,11 @@ type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error";
 type WorkspaceFilesChangedCallback = (
   chatId: string,
   changedPaths: string[],
-  deletedPaths: string[]
+  deletedPaths: string[],
+  meta?: {
+    source?: string;
+    sourceRef?: string;
+  }
 ) => void;
 
 interface WebSocketContextType {
@@ -100,13 +104,15 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           });
           break;
         case "workspace_files_changed": {
-          const { chatId, changedPaths, deletedPaths } = convertKeysToCamelCase<{
+          const { chatId, changedPaths, deletedPaths, source, sourceRef } = convertKeysToCamelCase<{
             chatId: string;
             changedPaths: string[];
             deletedPaths: string[];
+            source?: string;
+            sourceRef?: string;
           }>(message.data);
           workspaceCallbacksRef.current.forEach((cb) =>
-            cb(chatId, changedPaths, deletedPaths)
+            cb(chatId, changedPaths, deletedPaths, { source, sourceRef })
           );
           break;
         }

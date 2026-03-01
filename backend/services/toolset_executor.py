@@ -306,6 +306,8 @@ class ToolsetExecutor:
                                 chat_id=chat_id,
                                 changed_paths=changed_paths,
                                 deleted_paths=deleted_paths,
+                                source="tool_run",
+                                source_ref=tool_call_id,
                             )
                         )
                     )

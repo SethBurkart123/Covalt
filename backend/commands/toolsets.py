@@ -8,12 +8,13 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
-from ..models import normalize_override_tool_id
+from ..models import normalize_override_tool_id, validate_renderer_override
 from ..services.mcp_manager import get_mcp_manager
 from ..services.toolset_executor import get_toolset_executor
 from ..services.toolset_manager import get_toolset_manager
 from ..services.workspace_event_broadcaster import broadcast_workspace_files_changed
 from ..services.workspace_events import WorkspaceFilesChanged
+from ..services.node_plugin_catalog import list_node_plugins as list_node_plugin_records
 from ..services.workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,8 @@ async def update_workspace_file(
                     chat_id=body.chat_id,
                     changed_paths=[body.path],
                     deleted_paths=[],
+                    source="edit",
+                    source_ref=manifest_id,
                 )
             )
         )
@@ -322,6 +325,50 @@ async def update_workspace_file(
         logger.debug(f"Failed to broadcast workspace change: {e}")
 
     return UpdateWorkspaceFileResponse(manifest_id=manifest_id, path=body.path)
+
+
+class NodePluginRuntimeInfo(BaseModel):
+    module_path: Optional[str] = None
+    has_execute: bool = False
+    has_materialize: bool = False
+    has_configure_runtime: bool = False
+    has_init_routes: bool = False
+
+
+class NodePluginDefinitionInfo(BaseModel):
+    module_path: Optional[str] = None
+    definition_path: Optional[str] = None
+    node_id: Optional[str] = None
+    name: Optional[str] = None
+    category: Optional[str] = None
+    execution_mode: Optional[str] = None
+
+
+class NodePluginInfo(BaseModel):
+    node_type: str
+    runtime: NodePluginRuntimeInfo
+    definition: NodePluginDefinitionInfo
+    coherent: bool
+
+
+class NodePluginsResponse(BaseModel):
+    plugins: List[NodePluginInfo]
+
+
+@command
+async def list_node_plugins() -> NodePluginsResponse:
+    items = list_node_plugin_records()
+    return NodePluginsResponse(
+        plugins=[
+            NodePluginInfo(
+                node_type=item["node_type"],
+                runtime=NodePluginRuntimeInfo(**item.get("runtime", {})),
+                definition=NodePluginDefinitionInfo(**item.get("definition", {})),
+                coherent=bool(item.get("coherent")),
+            )
+            for item in items
+        ]
+    )
 
 
 class SetToolOverrideRequest(BaseModel):
@@ -371,11 +418,34 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
             .first()
         )
 
+        normalized_renderer: str | None = None
+        normalized_renderer_config_json: str | None = None
+        if body.renderer is not None or body.renderer_config is not None:
+            existing_renderer = existing.renderer if existing else None
+            existing_renderer_config = (
+                json.loads(existing.renderer_config)
+                if existing and existing.renderer_config
+                else None
+            )
+            normalized_renderer, normalized_renderer_config = validate_renderer_override(
+                body.renderer if body.renderer is not None else existing_renderer,
+                (
+                    body.renderer_config
+                    if body.renderer_config is not None
+                    else existing_renderer_config
+                ),
+                context=f"tool_override[{normalized_tool_id}]",
+            )
+            normalized_renderer_config_json = (
+                json.dumps(normalized_renderer_config)
+                if normalized_renderer is not None
+                else None
+            )
+
         if existing:
-            if body.renderer is not None:
-                existing.renderer = body.renderer
-            if body.renderer_config is not None:
-                existing.renderer_config = json.dumps(body.renderer_config)
+            if body.renderer is not None or body.renderer_config is not None:
+                existing.renderer = normalized_renderer
+                existing.renderer_config = normalized_renderer_config_json
             if body.name_override is not None:
                 existing.name_override = body.name_override
             if body.description_override is not None:
@@ -390,10 +460,16 @@ async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideRespons
                 id=str(uuid.uuid4()),
                 toolset_id=body.toolset_id,
                 tool_id=normalized_tool_id,
-                renderer=body.renderer,
-                renderer_config=json.dumps(body.renderer_config)
-                if body.renderer_config
-                else None,
+                renderer=normalized_renderer
+                if body.renderer is not None or body.renderer_config is not None
+                else body.renderer,
+                renderer_config=normalized_renderer_config_json
+                if body.renderer is not None or body.renderer_config is not None
+                else (
+                    json.dumps(body.renderer_config)
+                    if body.renderer_config is not None
+                    else None
+                ),
                 name_override=body.name_override,
                 description_override=body.description_override,
                 requires_confirmation=body.requires_confirmation,

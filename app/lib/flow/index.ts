@@ -44,6 +44,8 @@ export { resolveNodeParameters, resolveParameterForHandle } from './node-paramet
 export {
   NODE_DEFINITIONS,
   getNodeDefinition,
+  getNodeDefinitionMetadata,
+  listNodeDefinitionMetadata,
   listNodeTypes,
   getNodesByCategory,
   getCompatibleNodeSockets,

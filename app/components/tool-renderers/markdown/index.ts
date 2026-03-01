@@ -1,7 +1,10 @@
 import type { RendererDefinition } from "@/lib/tool-renderers/types";
-import { MarkdownArtifact } from "./MarkdownArtifact";
 
 export const markdownRenderer: RendererDefinition = {
   key: "document",
-  component: MarkdownArtifact,
+  aliases: ["document", "markdown"],
+  load: () =>
+    import("./MarkdownArtifact").then((module) => ({
+      default: module.MarkdownArtifact,
+    })),
 };

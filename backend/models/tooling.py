@@ -1,10 +1,45 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Literal
 
 
 RENDERER_ALIAS_MAP: dict[str, str] = {
     "markdown": "document",
+}
+
+SUPPORTED_RENDERERS: set[str] = {
+    "default",
+    "code",
+    "document",
+    "html",
+    "frame",
+}
+
+RendererConfigType = Literal["string", "bool", "port", "any"]
+
+RENDERER_CONFIG_SCHEMAS: dict[str, dict[str, RendererConfigType]] = {
+    "default": {},
+    "code": {
+        "file": "string",
+        "content": "string",
+        "language": "string",
+        "editable": "bool",
+    },
+    "document": {
+        "file": "string",
+        "content": "string",
+        "editable": "bool",
+    },
+    "html": {
+        "content": "string",
+        "artifact": "string",
+        "data": "any",
+    },
+    "frame": {
+        "url": "string",
+        "port": "port",
+    },
 }
 
 
@@ -12,6 +47,132 @@ def normalize_renderer_alias(renderer: str | None) -> str | None:
     if not renderer:
         return renderer
     return RENDERER_ALIAS_MAP.get(renderer, renderer)
+
+
+def validate_renderer_manifest_entry(
+    renderer: Any,
+    *,
+    context: str,
+) -> tuple[str, dict[str, Any]]:
+    if not isinstance(renderer, dict):
+        raise ValueError(f"{context} must be an object")
+
+    renderer_type = renderer.get("type")
+    if not isinstance(renderer_type, str) or not renderer_type.strip():
+        raise ValueError(f"{context} is missing required field: type")
+
+    config = {k: v for k, v in renderer.items() if k != "type"}
+    normalized_renderer, normalized_config = validate_renderer_override(
+        renderer=renderer_type,
+        renderer_config=config,
+        context=context,
+    )
+    if not normalized_renderer:
+        raise ValueError(f"{context} is missing required field: type")
+
+    return normalized_renderer, normalized_config
+
+
+def validate_renderer_override(
+    renderer: str | None,
+    renderer_config: Any,
+    *,
+    context: str,
+) -> tuple[str | None, dict[str, Any]]:
+    if renderer is None:
+        if renderer_config is None:
+            return None, {}
+        raise ValueError(f"{context} renderer_config requires renderer")
+
+    if not isinstance(renderer, str) or not renderer.strip():
+        raise ValueError(f"{context} renderer must be a non-empty string")
+
+    normalized_renderer = normalize_renderer_alias(renderer.strip())
+    if normalized_renderer not in SUPPORTED_RENDERERS:
+        allowed = ", ".join(sorted(SUPPORTED_RENDERERS))
+        raise ValueError(
+            f"{context} renderer '{renderer}' is unsupported (allowed: {allowed})"
+        )
+
+    config = _coerce_renderer_config(renderer_config, context=context)
+    _validate_renderer_config_shape(
+        normalized_renderer,
+        config,
+        context=context,
+    )
+
+    return normalized_renderer, config
+
+
+def _coerce_renderer_config(
+    renderer_config: Any,
+    *,
+    context: str,
+) -> dict[str, Any]:
+    if renderer_config is None:
+        return {}
+    if not isinstance(renderer_config, dict):
+        raise ValueError(f"{context} renderer_config must be an object")
+    return renderer_config
+
+
+def _validate_renderer_config_shape(
+    renderer: str,
+    config: dict[str, Any],
+    *,
+    context: str,
+) -> None:
+    schema = RENDERER_CONFIG_SCHEMAS.get(renderer, {})
+
+    unknown_keys = sorted(set(config) - set(schema))
+    if unknown_keys:
+        suffix = ", ".join(unknown_keys)
+        raise ValueError(
+            f"{context} renderer_config has unknown key(s) for renderer '{renderer}': {suffix}"
+        )
+
+    for key, expected_type in schema.items():
+        value = config.get(key)
+        if value is None or expected_type == "any":
+            continue
+        if expected_type == "string":
+            _validate_string(value, key=key, context=context)
+            continue
+        if expected_type == "bool":
+            _validate_bool(value, key=key, context=context)
+            continue
+        if expected_type == "port":
+            _validate_port(value, key=key, context=context)
+
+
+def _validate_string(
+    value: Any,
+    *,
+    key: str,
+    context: str,
+) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{context} renderer_config.{key} must be a string")
+
+
+def _validate_bool(
+    value: Any,
+    *,
+    key: str,
+    context: str,
+) -> None:
+    if not isinstance(value, bool):
+        raise ValueError(f"{context} renderer_config.{key} must be a boolean")
+
+
+def _validate_port(
+    value: Any,
+    *,
+    key: str,
+    context: str,
+) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{context} renderer_config.{key} must be a number or string")
 
 
 @dataclass(frozen=True)
