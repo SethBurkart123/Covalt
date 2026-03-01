@@ -8,11 +8,11 @@ Phase 5+ executors are guarded and skipped until implemented.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
@@ -35,6 +35,9 @@ from nodes.flow.conditional.executor import ConditionalExecutor
 from nodes.tools.mcp_server.executor import McpServerExecutor
 from nodes.tools.toolset.executor import ToolsetExecutor
 from nodes.utility.model_selector.executor import ModelSelectorExecutor
+
+# ── conftest re-exports ─────────────────────────────────────────────
+from tests.conftest import collect_events
 
 # ── Phase 5+ executors — guarded until implemented ──────────────────
 try:
@@ -64,16 +67,6 @@ _skip_future = pytest.mark.skipif(
     not _FUTURE_EXECUTORS_AVAILABLE,
     reason="Phase 5+ executors not yet implemented",
 )
-
-# ── conftest re-exports ─────────────────────────────────────────────
-from tests.conftest import collect_events
-
-
-@pytest.fixture(autouse=True)
-def _reset_run_control_state() -> Iterator[None]:
-    run_control.reset_state()
-    yield
-    run_control.reset_state()
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -1176,8 +1169,6 @@ class TestHttpRequestExecutor:
 
     @pytest.mark.asyncio
     async def test_timeout_yields_error_output(self) -> None:
-        import httpx
-
         executor = HttpRequestExecutor()
 
         mock_client = AsyncMock()

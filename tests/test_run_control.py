@@ -22,8 +22,6 @@ class _RunIdCancelableHandle:
 
 
 def test_active_run_lifecycle() -> None:
-    run_control.reset_state()
-
     agent = object()
     run_control.register_active_run("msg-1", agent)
     assert run_control.get_active_run("msg-1") == (None, agent)
@@ -36,16 +34,12 @@ def test_active_run_lifecycle() -> None:
 
 
 def test_early_cancel_consumption() -> None:
-    run_control.reset_state()
-
     run_control.mark_early_cancel("msg-2")
     assert run_control.consume_early_cancel("msg-2") is True
     assert run_control.consume_early_cancel("msg-2") is False
 
 
 def test_register_active_run_applies_pending_cancel_intent_to_request_handle() -> None:
-    run_control.reset_state()
-
     handle = _RequestCancelableHandle()
     run_control.mark_early_cancel("msg-3")
 
@@ -56,8 +50,6 @@ def test_register_active_run_applies_pending_cancel_intent_to_request_handle() -
 
 
 def test_set_active_run_id_applies_pending_cancel_intent_to_run_id_handle() -> None:
-    run_control.reset_state()
-
     handle = _RunIdCancelableHandle()
     run_control.mark_early_cancel("msg-4")
 
@@ -69,8 +61,6 @@ def test_set_active_run_id_applies_pending_cancel_intent_to_run_id_handle() -> N
 
 
 def test_approval_response_signals_waiter() -> None:
-    run_control.reset_state()
-
     waiter = asyncio.Event()
     run_control.register_approval_waiter("run-approve", waiter)
 

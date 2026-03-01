@@ -30,13 +30,6 @@ def _graph() -> dict[str, Any]:
     )
 
 
-@pytest.fixture(autouse=True)
-def _reset_run_control_state():
-    run_control.reset_state()
-    yield
-    run_control.reset_state()
-
-
 @pytest.mark.asyncio
 async def test_runtime_delegates_to_flow_handler_without_prebuilt_agent() -> None:
     captured: dict[str, Any] = {}
