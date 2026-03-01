@@ -229,19 +229,6 @@ def set_active_leaf(sess: Session, chat_id: str, leaf_id: str) -> None:
         sess.commit()
 
 
-def materialize_to_branch(chat_id: str, message_id: str) -> None:
-    from ..services.workspace_manager import get_workspace_manager
-    from .core import db_session
-
-    with db_session() as sess:
-        manifest_id = get_manifest_for_message(sess, message_id)
-
-    workspace_manager = get_workspace_manager(chat_id)
-    workspace_manager.materialize(manifest_id)
-    if manifest_id:
-        workspace_manager.set_active_manifest_id(manifest_id)
-
-
 def create_branch_message(
     sess: Session,
     *,

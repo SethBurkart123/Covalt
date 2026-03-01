@@ -400,6 +400,18 @@ def get_workspace_manager(chat_id: str) -> WorkspaceManager:
     return _workspace_managers[chat_id]
 
 
+def materialize_to_branch(chat_id: str, message_id: str) -> None:
+    from ..db.chats import get_manifest_for_message
+
+    with db_session() as sess:
+        manifest_id = get_manifest_for_message(sess, message_id)
+
+    workspace_manager = get_workspace_manager(chat_id)
+    workspace_manager.materialize(manifest_id)
+    if manifest_id:
+        workspace_manager.set_active_manifest_id(manifest_id)
+
+
 def clear_workspace_manager_cache(chat_id: str | None = None) -> None:
     if chat_id:
         _workspace_managers.pop(chat_id, None)

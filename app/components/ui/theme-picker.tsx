@@ -9,14 +9,13 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTheme } from "@/lib/theme-provider";
+import { useTheme } from "@/contexts/theme-context";
 import { presets } from "@/lib/theme-presets";
 import { cn } from "@/lib/utils";
 import type { ThemeStyleProps } from "@/lib/types";
 
 export function ThemePicker() {
-	const { themeState, applyThemePreset } = useTheme();
-	const { preset: currentPreset, currentMode: mode } = themeState;
+	const { preset: currentPreset, resolvedMode: mode, styles, setPreset } = useTheme();
 
 	const getPresetLabel = (presetKey: string) =>
 		presets[presetKey]?.label ||
@@ -35,18 +34,9 @@ export function ThemePicker() {
 			<DropdownMenuTrigger asChild>
 				<Button variant="outline" className="flex items-center gap-2">
 					<div className="flex gap-1">
-						<ColorSwatch
-							color={getSafeColor(themeState.styles[mode], "primary")}
-							size="sm"
-						/>
-						<ColorSwatch
-							color={getSafeColor(themeState.styles[mode], "accent")}
-							size="sm"
-						/>
-						<ColorSwatch
-							color={getSafeColor(themeState.styles[mode], "secondary")}
-							size="sm"
-						/>
+						<ColorSwatch color={getSafeColor(styles[mode], "primary")} size="sm" />
+						<ColorSwatch color={getSafeColor(styles[mode], "accent")} size="sm" />
+						<ColorSwatch color={getSafeColor(styles[mode], "secondary")} size="sm" />
 					</div>
 					<span className="hidden sm:inline-block">
 						{getPresetLabel(currentPreset)}
@@ -69,7 +59,7 @@ export function ThemePicker() {
 								"flex items-center gap-2 cursor-pointer",
 								isActive && "font-medium bg-accent text-accent-foreground",
 							)}
-							onClick={() => applyThemePreset(presetKey)}
+							onClick={() => setPreset(presetKey)}
 						>
 							<div className="flex gap-1">
 								<ColorSwatch

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from .models import ProviderOAuthCredential
-from ..services.oauth_manager import _decrypt, _encrypt
+from ..crypto import decrypt, encrypt
 
 
 def get_provider_oauth(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
@@ -16,8 +16,8 @@ def get_provider_oauth(sess: Session, provider: str) -> Optional[Dict[str, Any]]
         return None
 
     try:
-        access_token = _decrypt(row.access_token)
-        refresh_token = _decrypt(row.refresh_token) if row.refresh_token else None
+        access_token = decrypt(row.access_token)
+        refresh_token = decrypt(row.refresh_token) if row.refresh_token else None
     except Exception:
         return None
 
@@ -56,8 +56,8 @@ def save_provider_oauth(
 
     now = datetime.now().isoformat()
     if row:
-        row.access_token = _encrypt(access_token)
-        row.refresh_token = _encrypt(refresh_token) if refresh_token else None
+        row.access_token = encrypt(access_token)
+        row.refresh_token = encrypt(refresh_token) if refresh_token else None
         row.token_type = token_type
         row.expires_at = expires_at
         row.extra = extra_json
@@ -66,8 +66,8 @@ def save_provider_oauth(
         sess.add(
             ProviderOAuthCredential(
                 provider=provider,
-                access_token=_encrypt(access_token),
-                refresh_token=_encrypt(refresh_token) if refresh_token else None,
+                access_token=encrypt(access_token),
+                refresh_token=encrypt(refresh_token) if refresh_token else None,
                 token_type=token_type,
                 expires_at=expires_at,
                 extra=extra_json,
