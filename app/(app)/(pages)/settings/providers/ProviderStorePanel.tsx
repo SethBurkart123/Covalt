@@ -9,7 +9,6 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
-  Plug,
   Trash2,
   AlertTriangle,
   Shield,
@@ -21,6 +20,7 @@ import {
   normalizeProviderPluginTrustStatus,
   getProviderPluginSourceLabel,
 } from "@/lib/services/provider-plugin-trust";
+import { getProviderIcon } from "./provider-icons";
 import type {
   ProviderPluginInfo,
   ProviderPluginPolicy,
@@ -58,10 +58,12 @@ function SourceCard({
   onInstall: () => void;
   error?: string;
 }) {
+  const Icon = getProviderIcon(source.icon);
+
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
       <div className="flex items-center justify-center size-10 rounded-lg bg-muted flex-shrink-0">
-        <Plug className="size-5 text-muted-foreground" />
+        <Icon />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -113,11 +115,12 @@ function InstalledPluginCard({
   const trustStatus = normalizeProviderPluginTrustStatus(plugin.verificationStatus);
   const sourceLabel = getProviderPluginSourceLabel(plugin.sourceType);
   const hasTrustIssue = trustStatus === "invalid" || trustStatus === "untrusted";
+  const Icon = getProviderIcon(plugin.icon);
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
       <div className="flex items-center justify-center size-10 rounded-lg bg-muted flex-shrink-0 mt-0.5">
-        <Package className="size-5 text-muted-foreground" />
+        <Icon />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

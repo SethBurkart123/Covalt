@@ -56,6 +56,8 @@ def test_list_provider_catalog_exposes_field_mode_from_manifest(monkeypatch) -> 
             "ollama": {},
             "vllm": {},
             "openai": {},
+            "openai_codex": {},
+            "github_copilot": {},
         },
     )
 
@@ -79,3 +81,27 @@ def test_list_provider_catalog_exposes_field_mode_from_manifest(monkeypatch) -> 
     assert by_provider["ollama"].field_mode == "local_ollama"
     assert by_provider["vllm"].field_mode == "local_vllm"
     assert by_provider["openai"].field_mode == "standard_api_key"
+
+
+def test_list_provider_catalog_excludes_claude_and_gemini_oauth_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(
+        provider_catalog,
+        "PROVIDERS",
+        {
+            "openai": {},
+            "openai_codex": {},
+            "github_copilot": {},
+        },
+    )
+    monkeypatch.setattr(provider_catalog, "MANIFEST_PROVIDERS", [])
+
+    fake_manager = SimpleNamespace(list_plugins=lambda: [])
+    monkeypatch.setattr(provider_catalog, "get_provider_plugin_manager", lambda: fake_manager)
+
+    entries = provider_catalog.list_provider_catalog()
+    by_provider = {entry.provider: entry for entry in entries}
+
+    assert "openai_codex" in by_provider
+    assert "github_copilot" in by_provider
+    assert "anthropic_oauth" not in by_provider
+    assert "google_gemini_cli" not in by_provider

@@ -25,11 +25,13 @@ def test_manifest_migrated_anthropic_ids_use_adapter_entries() -> None:
 def test_load_python_module_providers_skips_manifest_ids(monkeypatch) -> None:
     original_providers = dict(providers.PROVIDERS)
     original_aliases = dict(providers.ALIASES)
+    original_plugin_store_ids = set(providers._PLUGIN_STORE_PROVIDER_IDS)
 
     providers.PROVIDERS.clear()
     providers.ALIASES.clear()
 
     monkeypatch.setattr(providers, "_MANIFEST_PROVIDER_IDS", {"minimax"})
+    monkeypatch.setattr(providers, "_PLUGIN_STORE_PROVIDER_IDS", set())
 
     def fake_iter_modules(_path):
         return [
@@ -74,3 +76,4 @@ def test_load_python_module_providers_skips_manifest_ids(monkeypatch) -> None:
         providers.PROVIDERS.update(original_providers)
         providers.ALIASES.clear()
         providers.ALIASES.update(original_aliases)
+        providers._PLUGIN_STORE_PROVIDER_IDS = original_plugin_store_ids
