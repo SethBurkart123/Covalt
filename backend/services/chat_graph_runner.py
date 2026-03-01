@@ -7,22 +7,37 @@ import logging
 import traceback
 import types
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from agno.agent import Agent, Message, RunEvent
 from agno.media import Audio, File, Image, Video
 from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 from agno.team import Team
-from nodes._types import DataValue, ExecutionResult, NodeEvent, RuntimeConfigContext
-from nodes import get_executor
 from zynk import Channel
 
+from nodes import get_executor
+from nodes._types import DataValue, ExecutionResult, NodeEvent, RuntimeConfigContext
+
 from .. import db
+from ..db.models import ToolCall as DbToolCall
+from ..models import (
+    parse_message_blocks,
+    serialize_message_blocks,
+)
 from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall, ToolCallPayload
+from . import run_control
+from . import stream_broadcaster as broadcaster
+from .agent_manager import get_agent_manager
+from .execution_trace import ExecutionTraceRecorder
+from .flow_executor import run_flow
+from .mcp_manager import ensure_mcp_initialized
+from .model_selection import parse_model_id
+from .render_plan_builder import get_render_plan_builder
 from .runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
@@ -38,32 +53,19 @@ from .runtime_events import (
     EVENT_RUN_COMPLETED,
     EVENT_RUN_CONTENT,
     EVENT_RUN_ERROR,
-    EVENT_TOOL_CALL_COMPLETED,
-    EVENT_TOOL_CALL_STARTED,
     EVENT_TOOL_APPROVAL_REQUIRED,
     EVENT_TOOL_APPROVAL_RESOLVED,
+    EVENT_TOOL_CALL_COMPLETED,
+    EVENT_TOOL_CALL_STARTED,
     emit_chat_event,
     make_chat_event,
 )
-from ..db.models import ToolCall as DbToolCall
-from .agent_manager import get_agent_manager
-from . import run_control
-from . import stream_broadcaster as broadcaster
-from .flow_executor import run_flow
-from .execution_trace import ExecutionTraceRecorder
-from .tool_registry import get_tool_registry, get_original_tool_name
-from .mcp_manager import ensure_mcp_initialized
-from .render_plan_builder import get_render_plan_builder
-from .workspace_manager import get_workspace_manager
+from .tool_registry import get_original_tool_name, get_tool_registry
 from .toolset_executor import get_toolset_executor
-from .model_selection import parse_model_id
-from ..models import (
-    parse_message_blocks,
-    serialize_message_blocks,
-)
+from .workspace_manager import get_workspace_manager
 
 FlowStreamHandler = Callable[..., Awaitable[None]]
-ContentMessageConverter = Callable[[ChatMessage, Optional[str]], list[Any]]
+ContentMessageConverter = Callable[[ChatMessage, str | None], list[Any]]
 
 logger = logging.getLogger(__name__)
 registry = get_tool_registry()
@@ -444,7 +446,7 @@ def _build_canonical_chat_graph(
 
 def get_graph_data_for_chat(
     chat_id: str,
-    model_id: Optional[str],
+    model_id: str | None,
     model_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     with db.db_session() as sess:
@@ -2736,7 +2738,7 @@ async def handle_content_stream(
                         timed_out = False
                         try:
                             await asyncio.wait_for(approval_event.wait(), timeout=300)
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             timed_out = True
                             for tool in chunk.tools_requiring_confirmation:
                                 tool.confirmed = False

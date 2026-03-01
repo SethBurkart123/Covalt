@@ -1,14 +1,16 @@
 """vLLM Provider - Self-hosted models via vLLM (OpenAI-compatible)"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
-from . import get_credentials, get_base_url
+
+from . import get_base_url, get_credentials
 
 
 def get_vllm_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not base_url:
@@ -22,7 +24,7 @@ def get_vllm_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     api_key, base_url = get_credentials()
     if not base_url:
         return []
@@ -32,7 +34,7 @@ async def fetch_models() -> List[Dict[str, str]]:
 
 async def _fetch_from_openai_endpoint(
     base_url: str, api_key: str
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     base = base_url.rstrip("/")
     url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

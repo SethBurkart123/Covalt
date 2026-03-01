@@ -6,7 +6,7 @@ model and chat APIs using x-api-key authentication.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from agno.models.litellm import LiteLLM
@@ -22,18 +22,18 @@ def _models_url(base_url: str) -> str:
 
 def create_provider(
     provider_id: str,
-    base_url: Optional[str] = None,
+    base_url: str | None = None,
     anthropic_version: str = "2023-06-01",
     **_kwargs: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a provider entry for Anthropic-compatible endpoints."""
 
-    def _resolve_credentials() -> tuple[Optional[str], Optional[str], Optional[str]]:
+    def _resolve_credentials() -> tuple[str | None, str | None, str | None]:
         api_key, custom_base_url = get_credentials(provider_name=provider_id)
         resolved = custom_base_url or base_url
         return api_key, custom_base_url, resolved
 
-    def get_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM:
+    def get_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
         api_key, _, resolved = _resolve_credentials()
         if not api_key:
             raise RuntimeError("API key not configured in Settings.")
@@ -48,7 +48,7 @@ def create_provider(
             **options,
         )
 
-    async def fetch_models() -> List[Dict[str, Any]]:
+    async def fetch_models() -> list[dict[str, Any]]:
         api_key, _, resolved = _resolve_credentials()
         if not api_key or not resolved:
             return []

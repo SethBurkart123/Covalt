@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from zynk import Channel
 
@@ -35,42 +36,42 @@ class EditUserMessageRunInput:
     chat_id: str
     message_id: str
     new_content: str
-    model_id: Optional[str] = None
-    model_options: Optional[Dict[str, Any]] = None
-    tool_ids: Optional[List[str]] = None
-    existing_attachments: Optional[List[ExistingAttachmentInput]] = None
-    new_attachments: Optional[List[NewAttachmentInput]] = None
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    tool_ids: list[str] | None = None
+    existing_attachments: list[ExistingAttachmentInput] | None = None
+    new_attachments: list[NewAttachmentInput] | None = None
 
 
 @dataclass
 class EditUserMessageRunDependencies:
     validate_model_options: Callable[
-        [str, Optional[str], Optional[Dict[str, Any]], Channel],
-        Optional[Dict[str, Any]],
+        [str, str | None, dict[str, Any] | None, Channel],
+        dict[str, Any] | None,
     ]
     update_chat_model_selection: Callable[[Any, str, str], None]
     get_session: Callable[[], Any]
     get_original_message: Callable[[Any, str], Any]
-    get_manifest_for_message: Callable[[Any, str], Optional[str]]
+    get_manifest_for_message: Callable[[Any, str], str | None]
     get_workspace_manager: Callable[[str], Any]
     get_extension_from_mime: Callable[[str], str]
     get_pending_attachment_path: Callable[[str, str], Any]
     create_attachment: Callable[[str, str, str, str, int], Attachment]
-    create_branch_message: Callable[[Any, Optional[str], str, str, str, bool], str]
+    create_branch_message: Callable[[Any, str | None, str, str, str, bool], str]
     update_message_attachments_and_manifest: Callable[
-        [Any, str, Optional[str], Optional[str]],
+        [Any, str, str | None, str | None],
         None,
     ]
     set_active_leaf: Callable[[Any, str, str], None]
-    get_message_path: Callable[[Any, Optional[str]], List[Any]]
-    build_message_history: Callable[[List[Any]], List[ChatMessage]]
+    get_message_path: Callable[[Any, str | None], list[Any]]
+    build_message_history: Callable[[list[Any]], list[ChatMessage]]
     create_chat_message: Callable[
-        [str, str, str, str, Optional[List[Attachment]]],
+        [str, str, str, str, list[Attachment] | None],
         ChatMessage,
     ]
     materialize_to_branch: Callable[[str, str], None]
     emit_run_start_events: Callable[[Channel, str, str], None]
-    get_graph_data_for_chat: Callable[[str, Optional[str], Dict[str, Any]], Dict[str, Any]]
+    get_graph_data_for_chat: Callable[[str, str | None, dict[str, Any]], dict[str, Any]]
     run_graph_chat_runtime: Callable[..., Any]
     append_error_block_to_message: Callable[[str, str], None]
     emit_run_error: Callable[[Channel, str], None]
@@ -80,7 +81,7 @@ def _load_new_attachment_bytes(
     new_att: NewAttachmentInput,
     get_extension_from_mime: Callable[[str], str],
     get_pending_attachment_path: Callable[[str, str], Any],
-) -> Optional[bytes]:
+) -> bytes | None:
     extension = get_extension_from_mime(new_att.mimeType)
     pending_path = get_pending_attachment_path(new_att.id, extension)
 
@@ -108,8 +109,8 @@ async def execute_edit_user_message_run(
     if validated_model_options is None:
         return
 
-    file_renames: Dict[str, str] = {}
-    manifest_id: Optional[str] = None
+    file_renames: dict[str, str] = {}
+    manifest_id: str | None = None
 
     existing_attachments = input_data.existing_attachments or []
     new_attachments = input_data.new_attachments or []
@@ -125,8 +126,8 @@ async def execute_edit_user_message_run(
 
         original_manifest_id = deps.get_manifest_for_message(sess, original_msg.id)
 
-        all_attachments: List[Attachment] = []
-        files_to_add: List[tuple[str, bytes]] = []
+        all_attachments: list[Attachment] = []
+        files_to_add: list[tuple[str, bytes]] = []
 
         for existing_att in existing_attachments:
             content = None

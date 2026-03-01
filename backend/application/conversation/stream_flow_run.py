@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import types
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Literal
+from typing import Any, Literal
+
+from zynk import Channel
 
 from nodes._types import NodeEvent
-from zynk import Channel
 
 from ...services.runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
@@ -24,10 +26,10 @@ from ...services.runtime_events import (
 
 @dataclass
 class FlowRunPromptInput:
-    message: Optional[str] = None
-    history: Optional[List[Dict[str, Any]]] = None
-    messages: Optional[List[Any]] = None
-    attachments: Optional[List[Dict[str, Any]]] = None
+    message: str | None = None
+    history: list[dict[str, Any]] | None = None
+    messages: list[Any] | None = None
+    attachments: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -36,9 +38,9 @@ class StreamFlowRunInput:
     agent_id: str
     mode: Literal["execute", "runFrom"]
     target_node_id: str
-    cached_outputs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
-    prompt_input: Optional[FlowRunPromptInput] = None
-    node_ids: Optional[List[str]] = None
+    cached_outputs: dict[str, dict[str, dict[str, Any]]] | None = None
+    prompt_input: FlowRunPromptInput | None = None
+    node_ids: list[str] | None = None
 
 
 class FlowRunCancelHandle:
@@ -68,13 +70,13 @@ class FlowRunCancelHandle:
 
 @dataclass
 class StreamFlowRunDependencies:
-    get_agent_data: Callable[[str], Optional[Dict[str, Any]]]
+    get_agent_data: Callable[[str], dict[str, Any] | None]
     build_trigger_payload: Callable[[str, list[dict[str, Any]], list[dict[str, Any]], list[Any]], dict[str, Any]]
     create_run_handle: Callable[[], Any]
     get_tool_registry: Callable[[], Any]
     register_active_run: Callable[[str, Any], None]
     consume_early_cancel: Callable[[str], bool]
-    remove_active_run: Callable[[str], Optional[tuple[Optional[str], Any]]]
+    remove_active_run: Callable[[str], tuple[str | None, Any] | None]
     clear_early_cancel: Callable[[str], None]
     run_flow: Callable[..., Any]
     emit_run_error: Callable[[Channel, str], None]

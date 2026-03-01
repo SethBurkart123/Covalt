@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 
@@ -79,7 +80,7 @@ class _FakeQuery:
     def __init__(self, record: Any | None) -> None:
         self._record = record
 
-    def filter(self, *args: Any, **kwargs: Any) -> "_FakeQuery":
+    def filter(self, *args: Any, **kwargs: Any) -> _FakeQuery:
         return self
 
     def first(self) -> Any | None:

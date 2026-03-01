@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from agno.tools import tool as agno_tool
 
@@ -282,13 +283,13 @@ _tool_registry: ToolRegistry | None = None
 _e2e_tools_loaded = False
 
 
-def get_mcp_manager() -> "MCPManager":
+def get_mcp_manager() -> MCPManager:
     from .mcp_manager import get_mcp_manager as _get_mcp_manager
 
     return _get_mcp_manager()
 
 
-def get_toolset_executor() -> "ToolsetExecutor":
+def get_toolset_executor() -> ToolsetExecutor:
     from .toolset_executor import get_toolset_executor as _get_toolset_executor
 
     return _get_toolset_executor()

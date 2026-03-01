@@ -1,13 +1,15 @@
 """kimi-for-coding provider."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_credentials
 
 DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1"
 
-def get_kimi_for_coding_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM:
+def get_kimi_for_coding_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not api_key:
         raise RuntimeError("API key not configured in Settings.")
@@ -22,7 +24,7 @@ def get_kimi_for_coding_model(model_id: str, provider_options: Dict[str, Any]) -
     )
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     api_key, base_url = get_credentials()
     if not api_key:
         return []

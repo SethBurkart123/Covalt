@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from zynk import Channel
 
@@ -13,20 +14,20 @@ from ...models.chat import ChatMessage
 class StreamAgentRunInput:
     channel: Channel
     agent_id: str
-    messages: List[ChatMessage]
-    chat_id: Optional[str] = None
+    messages: list[ChatMessage]
+    chat_id: str | None = None
     ephemeral: bool = False
 
 
 @dataclass
 class StreamAgentRunDependencies:
-    get_agent_data: Callable[[str], Optional[Dict[str, Any]]]
+    get_agent_data: Callable[[str], dict[str, Any] | None]
     emit_run_error: Callable[[Channel, str], None]
-    ensure_chat_initialized: Callable[[Optional[str], Optional[str]], str]
-    get_active_leaf_message_id: Callable[[str], Optional[str]]
+    ensure_chat_initialized: Callable[[str | None, str | None], str]
+    get_active_leaf_message_id: Callable[[str], str | None]
     save_user_message: Callable[..., None]
-    init_assistant_message: Callable[[str, Optional[str]], str]
-    emit_run_start_events: Callable[[Channel, Optional[str], str], None]
+    init_assistant_message: Callable[[str, str | None], str]
+    emit_run_start_events: Callable[[Channel, str | None, str], None]
     run_graph_chat_runtime: Callable[..., Any]
     handle_streaming_run_error: Callable[..., Any]
     logger: Any

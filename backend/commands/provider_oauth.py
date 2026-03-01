@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 from zynk import command
@@ -14,15 +14,15 @@ class ProviderOAuthId(BaseModel):
 
 class StartProviderOAuthInput(BaseModel):
     provider: str
-    enterpriseDomain: Optional[str] = None
+    enterpriseDomain: str | None = None
 
 
 class StartProviderOAuthResult(BaseModel):
     success: bool
-    authUrl: Optional[str] = None
-    instructions: Optional[str] = None
-    status: Optional[Literal["none", "pending", "authenticated", "error"]] = None
-    error: Optional[str] = None
+    authUrl: str | None = None
+    instructions: str | None = None
+    status: Literal["none", "pending", "authenticated", "error"] | None = None
+    error: str | None = None
 
 
 @command
@@ -48,9 +48,9 @@ async def start_provider_oauth(
 class ProviderOAuthStatusResult(BaseModel):
     status: Literal["none", "pending", "authenticated", "error"]
     hasTokens: bool = False
-    authUrl: Optional[str] = None
-    instructions: Optional[str] = None
-    error: Optional[str] = None
+    authUrl: str | None = None
+    instructions: str | None = None
+    error: str | None = None
 
 
 @command
@@ -72,7 +72,7 @@ class ProviderOAuthCodeInput(BaseModel):
 
 class ProviderOAuthCodeResult(BaseModel):
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @command
@@ -88,7 +88,7 @@ async def submit_provider_oauth_code(
 
 class RevokeProviderOAuthResult(BaseModel):
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @command

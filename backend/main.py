@@ -1,7 +1,7 @@
-from pathlib import Path
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 _local_zynk = Path(__file__).parent.parent / "zynk"
@@ -10,16 +10,16 @@ existing_pythonpath = os.environ.get("PYTHONPATH", "")
 paths = [str(_local_zynk)] + ([existing_pythonpath] if existing_pythonpath else [])
 os.environ["PYTHONPATH"] = os.pathsep.join([p for p in paths if p])
 
-import nodes  # noqa: F401
-
 from zynk import Bridge
 
+import nodes  # noqa: F401
+
+from . import commands  # noqa: F401
 from .db import init_database
+from .services.http_routes import register_http_routes
 from .services.mcp_manager import shutdown_mcp
 from .services.node_route_index import rebuild_node_route_index
 from .services.toolset_manager import get_toolset_manager
-from .services.http_routes import register_http_routes
-from . import commands  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

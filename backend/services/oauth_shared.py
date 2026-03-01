@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, Literal, Optional
+from collections.abc import Callable
+from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
 OAuthStatus = Literal["none", "pending", "authenticated", "error"]
@@ -12,7 +13,7 @@ def build_localhost_redirect_uri(port: int, path: str = "/oauth/callback") -> st
     return f"http://localhost:{port}{normalized_path}"
 
 
-def extract_state_from_auth_url(auth_url: str) -> Optional[str]:
+def extract_state_from_auth_url(auth_url: str) -> str | None:
     try:
         params = parse_qs(urlparse(auth_url).query)
         state = params.get("state", [None])[0]
@@ -21,7 +22,7 @@ def extract_state_from_auth_url(auth_url: str) -> Optional[str]:
         return None
 
 
-def parse_oauth_code_input(input_value: str) -> tuple[Optional[str], Optional[str]]:
+def parse_oauth_code_input(input_value: str) -> tuple[str | None, str | None]:
     trimmed = input_value.strip()
     if not trimmed:
         return None, None
@@ -41,7 +42,7 @@ def parse_oauth_code_input(input_value: str) -> tuple[Optional[str], Optional[st
     return trimmed, None
 
 
-def _parse_url_params(input_value: str) -> tuple[Optional[str], Optional[str]]:
+def _parse_url_params(input_value: str) -> tuple[str | None, str | None]:
     try:
         parsed = urlparse(input_value)
         if parsed.scheme and parsed.query:
@@ -52,7 +53,7 @@ def _parse_url_params(input_value: str) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def _parse_query_params(input_value: str) -> tuple[Optional[str], Optional[str]]:
+def _parse_query_params(input_value: str) -> tuple[str | None, str | None]:
     try:
         params = parse_qs(input_value)
         return params.get("code", [None])[0], params.get("state", [None])[0]
@@ -68,22 +69,22 @@ def _current_loop() -> asyncio.AbstractEventLoop:
 
 
 def _set_future_result(
-    future: asyncio.Future[tuple[str, Optional[str]]],
-    result: tuple[str, Optional[str]],
+    future: asyncio.Future[tuple[str, str | None]],
+    result: tuple[str, str | None],
 ) -> None:
     if not future.done():
         future.set_result(result)
 
 
 def _set_future_exception(
-    future: asyncio.Future[tuple[str, Optional[str]]],
+    future: asyncio.Future[tuple[str, str | None]],
     exc: Exception,
 ) -> None:
     if not future.done():
         future.set_exception(exc)
 
 
-def _cancel_future(future: asyncio.Future[tuple[str, Optional[str]]]) -> None:
+def _cancel_future(future: asyncio.Future[tuple[str, str | None]]) -> None:
     if not future.done():
         future.cancel()
 
@@ -92,17 +93,17 @@ class PendingOAuthCallbacks:
     def __init__(
         self,
         *,
-        error_factory: Callable[[str, Optional[str]], Exception] | None = None,
+        error_factory: Callable[[str, str | None], Exception] | None = None,
     ) -> None:
         self._pending: dict[
             str,
-            tuple[asyncio.AbstractEventLoop, asyncio.Future[tuple[str, Optional[str]]]],
+            tuple[asyncio.AbstractEventLoop, asyncio.Future[tuple[str, str | None]]],
         ] = {}
         self._error_factory = error_factory or self._default_error
 
-    def create(self, state: str) -> asyncio.Future[tuple[str, Optional[str]]]:
+    def create(self, state: str) -> asyncio.Future[tuple[str, str | None]]:
         loop = _current_loop()
-        future: asyncio.Future[tuple[str, Optional[str]]] = loop.create_future()
+        future: asyncio.Future[tuple[str, str | None]] = loop.create_future()
         self._pending[state] = (loop, future)
         return future
 
@@ -111,7 +112,7 @@ class PendingOAuthCallbacks:
         code: str,
         state: str,
         *,
-        result_state: Optional[str] = None,
+        result_state: str | None = None,
     ) -> bool:
         entry = self._pending.pop(state, None)
         if not entry:
@@ -128,7 +129,7 @@ class PendingOAuthCallbacks:
         )
         return True
 
-    def fail(self, state: str, error: str, description: Optional[str] = None) -> bool:
+    def fail(self, state: str, error: str, description: str | None = None) -> bool:
         entry = self._pending.pop(state, None)
         if not entry:
             return False
@@ -152,5 +153,5 @@ class PendingOAuthCallbacks:
         loop.call_soon_threadsafe(_cancel_future, future)
 
     @staticmethod
-    def _default_error(error: str, description: Optional[str]) -> Exception:
+    def _default_error(error: str, description: str | None) -> Exception:
         return RuntimeError(f"{error}: {description}" if description else error)

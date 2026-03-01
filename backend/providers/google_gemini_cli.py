@@ -1,13 +1,13 @@
 """Google Gemini CLI OAuth Provider - Cloud Code Assist."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from .google_code_assist import CloudCodeAssistModel
 from ..services.models_dev import fetch_models_dev_provider
 from ..services.provider_oauth_manager import get_provider_oauth_manager
+from .google_code_assist import CloudCodeAssistModel
 
 
-def _get_gemini_cli_credentials() -> Dict[str, Any]:
+def _get_gemini_cli_credentials() -> dict[str, Any]:
     creds = get_provider_oauth_manager().get_valid_credentials(
         "google_gemini_cli",
         refresh_if_missing_expiry=True,
@@ -20,7 +20,7 @@ def _get_gemini_cli_credentials() -> Dict[str, Any]:
 
 def get_google_gemini_cli_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> CloudCodeAssistModel:
     creds = _get_gemini_cli_credentials()
     access_token = creds.get("access_token")
@@ -40,7 +40,7 @@ def get_google_gemini_cli_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     try:
         _get_gemini_cli_credentials()
     except RuntimeError:

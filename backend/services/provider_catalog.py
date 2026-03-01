@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from ..providers import PROVIDERS
 from ..providers._manifest import MANIFEST_PROVIDERS
@@ -20,15 +20,15 @@ class ProviderCatalogEntry:
     description: str
     icon: str
     auth_type: AuthType = "apiKey"
-    default_base_url: Optional[str] = None
+    default_base_url: str | None = None
     default_enabled: bool = True
-    oauth_variant: Optional[OAuthVariant] = None
+    oauth_variant: OAuthVariant | None = None
     oauth_enterprise_domain: bool = False
-    field_mode: Optional[ProviderFieldMode] = None
+    field_mode: ProviderFieldMode | None = None
     aliases: list[str] = field(default_factory=list)
 
 
-_MANIFEST_NAME_OVERRIDES: Dict[str, str] = {
+_MANIFEST_NAME_OVERRIDES: dict[str, str] = {
     "p302ai": "302.AI",
     "io_net": "IO.NET",
     "zai": "Z.AI",
@@ -49,7 +49,7 @@ _MANIFEST_NAME_OVERRIDES: Dict[str, str] = {
     "minimax_cn_coding_plan": "MiniMax (China) Coding Plan",
 }
 
-_MANIFEST_ICON_OVERRIDES: Dict[str, str] = {
+_MANIFEST_ICON_OVERRIDES: dict[str, str] = {
     "p302ai": "p302ai",
     "amazon_bedrock": "amazon-bedrock",
     "azure_cognitive_services": "azure-cognitive-services",
@@ -128,7 +128,7 @@ _SPECIAL_PROVIDERS: tuple[ProviderCatalogEntry, ...] = (
     ),
 )
 
-_CUSTOM_PROVIDER_OVERRIDES: Dict[str, ProviderCatalogEntry] = {
+_CUSTOM_PROVIDER_OVERRIDES: dict[str, ProviderCatalogEntry] = {
     "openai": ProviderCatalogEntry(
         key="openai",
         provider="openai",
@@ -236,7 +236,7 @@ def _to_field_mode(provider_id: str) -> ProviderFieldMode:
 def _build_manifest_entries() -> list[ProviderCatalogEntry]:
     entries: list[ProviderCatalogEntry] = []
     for raw in MANIFEST_PROVIDERS:
-        data: Dict[str, Any] = dict(raw)
+        data: dict[str, Any] = dict(raw)
         provider_id = str(data.get("id") or "").strip()
         if not provider_id or provider_id not in PROVIDERS:
             continue

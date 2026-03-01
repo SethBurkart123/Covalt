@@ -1,14 +1,16 @@
 """Groq Provider - Fast inference with Llama and Mixtral models"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_api_key
 
 
 def get_groq_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     """Create a Groq model instance."""
     api_key = get_api_key()
@@ -19,7 +21,7 @@ def get_groq_model(
     return LiteLLM(id=f"groq/{model_id}", api_key=api_key, **provider_options)
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     """Fetch available models from Groq API."""
     api_key = get_api_key()
     if not api_key:

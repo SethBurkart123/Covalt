@@ -1,10 +1,11 @@
 """cohere provider."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
-from . import get_credentials
 
+from . import get_credentials
 
 DEFAULT_PAGE_SIZE = 1000
 MAX_PAGE_COUNT = 5
@@ -27,7 +28,7 @@ def _should_pass_api_base(base_url: str | None) -> bool:
         return False
     return base not in DEFAULT_CHAT_BASE_URLS
 
-def get_cohere_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM:
+def get_cohere_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not (base_url or DEFAULT_BASE_URL):
         raise RuntimeError("Base URL not configured in Settings.")
@@ -43,7 +44,7 @@ def get_cohere_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM
     )
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     api_key, base_url = get_credentials()
     resolved_base_url = base_url or DEFAULT_BASE_URL
     if not resolved_base_url:
@@ -109,8 +110,8 @@ async def fetch_models() -> List[Dict[str, Any]]:
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     _ = model_id
     supports_tools = True
     if isinstance(model_metadata, dict):

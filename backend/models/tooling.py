@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-
 RENDERER_ALIAS_MAP: dict[str, str] = {
     "markdown": "document",
 }

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from zynk import Channel
 
@@ -13,27 +14,27 @@ class RetryRunInput:
     channel: Channel
     chat_id: str
     message_id: str
-    model_id: Optional[str] = None
-    model_options: Optional[Dict[str, Any]] = None
-    tool_ids: Optional[List[str]] = None
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    tool_ids: list[str] | None = None
 
 
 @dataclass
 class RetryRunDependencies:
     validate_model_options: Callable[
-        [str, Optional[str], Optional[Dict[str, Any]], Channel],
-        Optional[Dict[str, Any]],
+        [str, str | None, dict[str, Any] | None, Channel],
+        dict[str, Any] | None,
     ]
     update_chat_model_selection: Callable[[Any, str, str], None]
     get_session: Callable[[], Any]
     get_original_message: Callable[[Any, str], Any]
-    get_message_path: Callable[[Any, Optional[str]], List[Any]]
-    build_message_history: Callable[[List[Any]], List[ChatMessage]]
-    create_branch_message: Callable[[Any, Optional[str], str, str, str, bool], str]
+    get_message_path: Callable[[Any, str | None], list[Any]]
+    build_message_history: Callable[[list[Any]], list[ChatMessage]]
+    create_branch_message: Callable[[Any, str | None, str, str, str, bool], str]
     set_active_leaf: Callable[[Any, str, str], None]
     materialize_to_branch: Callable[[str, str], None]
     emit_run_start_events: Callable[[Channel, str, str], None]
-    get_graph_data_for_chat: Callable[[str, Optional[str], Dict[str, Any]], Dict[str, Any]]
+    get_graph_data_for_chat: Callable[[str, str | None, dict[str, Any]], dict[str, Any]]
     run_graph_chat_runtime: Callable[..., Any]
     append_error_block_to_message: Callable[[str, str], None]
     emit_run_error: Callable[[Channel, str], None]
@@ -53,7 +54,7 @@ async def execute_retry_run(
     if validated_model_options is None:
         return
 
-    parent_msg_id: Optional[str] = None
+    parent_msg_id: str | None = None
 
     with deps.get_session() as sess:
         if input_data.model_id:

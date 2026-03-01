@@ -21,15 +21,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from backend.services.flow_executor import (
-    run_flow,
-    find_flow_nodes,
-    topological_sort,
     _flow_edges,
+    find_flow_nodes,
+    run_flow,
+    topological_sort,
 )
-from tests.conftest import make_node, make_edge, make_graph
-
+from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
+from tests.conftest import make_edge, make_graph, make_node
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stub executors — deterministic, no I/O, match real node contracts

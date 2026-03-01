@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 class ToolNameSanitizer:
@@ -10,8 +10,8 @@ class ToolNameSanitizer:
         self.max_len = max_len
         self._allowed_re = re.compile(rf"^[{allowed_chars}]+$")
         self._replace_re = re.compile(rf"[^{allowed_chars}]")
-        self._safe_to_original: Dict[str, str] = {}
-        self._original_to_safe: Dict[str, str] = {}
+        self._safe_to_original: dict[str, str] = {}
+        self._original_to_safe: dict[str, str] = {}
         self._used: set[str] = set()
 
     def map_original_to_safe(self, name: str) -> str:
@@ -21,8 +21,8 @@ class ToolNameSanitizer:
         return self._safe_to_original.get(name, name)
 
     def sanitize_tool_choice(
-        self, tool_choice: Optional[Union[str, Dict[str, Any]]]
-    ) -> Optional[Union[str, Dict[str, Any]]]:
+        self, tool_choice: str | dict[str, Any] | None
+    ) -> str | dict[str, Any] | None:
         if not isinstance(tool_choice, dict):
             return tool_choice
         name = tool_choice.get("name")
@@ -47,11 +47,11 @@ class ToolNameSanitizer:
         return tool_choice
 
     def sanitize_tool_definitions(
-        self, tools: Optional[List[Dict[str, Any]]]
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, tools: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]] | None:
         if not tools:
             return tools
-        sanitized: List[Dict[str, Any]] = []
+        sanitized: list[dict[str, Any]] = []
         for tool in tools:
             if not isinstance(tool, dict):
                 sanitized.append(tool)
@@ -84,9 +84,9 @@ class ToolNameSanitizer:
         return sanitized
 
     def sanitize_tool_calls(
-        self, tool_calls: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        sanitized: List[Dict[str, Any]] = []
+        self, tool_calls: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        sanitized: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             if not isinstance(tool_call, dict):
                 sanitized.append(tool_call)
@@ -111,9 +111,9 @@ class ToolNameSanitizer:
         return sanitized
 
     def restore_tool_calls(
-        self, tool_calls: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        restored: List[Dict[str, Any]] = []
+        self, tool_calls: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        restored: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             if not isinstance(tool_call, dict):
                 restored.append(tool_call)

@@ -5,7 +5,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, Field
@@ -23,24 +23,24 @@ from ..services.toolset_manager import get_toolset_manager
 
 
 class MCPServerConfig(BaseModel):
-    command: Optional[str] = None
-    args: Optional[List[str]] = None
-    env: Optional[Dict[str, str]] = None
-    cwd: Optional[str] = None
-    url: Optional[str] = None
-    transport: Optional[Literal["sse", "streamable-http"]] = None
-    headers: Optional[Dict[str, str]] = None
+    command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
+    cwd: str | None = None
+    url: str | None = None
+    transport: Literal["sse", "streamable-http"] | None = None
+    headers: dict[str, str] | None = None
     requiresConfirmation: bool = True
-    toolOverrides: Optional[Dict[str, Dict[str, Any]]] = None
+    toolOverrides: dict[str, dict[str, Any]] | None = None
 
 
 class MCPToolInfo(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
-    inputSchema: Optional[Dict[str, Any]] = None
-    renderer: Optional[str] = None
-    renderer_config: Optional[Dict[str, Any]] = None
+    description: str | None = None
+    inputSchema: dict[str, Any] | None = None
+    renderer: str | None = None
+    renderer_config: dict[str, Any] | None = None
     requires_confirmation: bool = True
 
 
@@ -48,19 +48,19 @@ class MCPServerInfo(BaseModel):
     id: str
     serverId: str
     toolsetId: str
-    toolsetName: Optional[str] = None
+    toolsetName: str | None = None
     status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]
-    error: Optional[str] = None
+    error: str | None = None
     toolCount: int = 0
-    tools: List[MCPToolInfo] = Field(default_factory=list)
-    config: Dict[str, Any] = Field(default_factory=dict)
+    tools: list[MCPToolInfo] = Field(default_factory=list)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class MCPServersResponse(BaseModel):
-    servers: List[MCPServerInfo]
+    servers: list[MCPServerInfo]
 
 
-def _tool_info(t: Dict[str, Any]) -> MCPToolInfo:
+def _tool_info(t: dict[str, Any]) -> MCPToolInfo:
     return MCPToolInfo(
         id=t["id"],
         name=t["name"],
@@ -72,7 +72,7 @@ def _tool_info(t: Dict[str, Any]) -> MCPToolInfo:
     )
 
 
-def _server_info(mcp: Any, server_data: Dict[str, Any]) -> MCPServerInfo:
+def _server_info(mcp: Any, server_data: dict[str, Any]) -> MCPServerInfo:
     server_id = server_data["id"]
     tools = [_tool_info(t) for t in mcp.get_server_tools(server_id)]
     return MCPServerInfo(
@@ -97,14 +97,14 @@ def _resolve_server_key(server_id: str) -> str:
 
 
 class AddMCPServerInput(BaseModel):
-    id: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
     config: MCPServerConfig
 
 
 class UpdateMCPServerInput(BaseModel):
     id: str
-    name: Optional[str] = None
+    name: str | None = None
     config: MCPServerConfig
 
 
@@ -189,7 +189,7 @@ async def update_mcp_server(body: UpdateMCPServerInput) -> MCPServerInfo:
 
 
 @command
-async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
+async def remove_mcp_server(body: MCPServerId) -> dict[str, bool]:
     mcp = get_mcp_manager()
     server_key = _resolve_server_key(body.id)
     state = mcp.get_server_state(server_key)
@@ -204,7 +204,7 @@ async def remove_mcp_server(body: MCPServerId) -> Dict[str, bool]:
 
 
 @command
-async def get_mcp_server_config(body: MCPServerId) -> Dict[str, Any]:
+async def get_mcp_server_config(body: MCPServerId) -> dict[str, Any]:
     server_key = _resolve_server_key(body.id)
     config = get_mcp_manager().get_server_config(server_key, sanitize=False)
     if config is None:
@@ -231,16 +231,16 @@ class ScannedServer(BaseModel):
 
 
 class SourceScanResult(BaseModel):
-    servers: List[ScannedServer]
-    error: Optional[str] = None
+    servers: list[ScannedServer]
+    error: str | None = None
 
 
 class ScanImportSourcesResponse(BaseModel):
-    results: Dict[str, SourceScanResult]
+    results: dict[str, SourceScanResult]
 
 
 # Source configurations with paths for each OS
-IMPORT_SOURCE_CONFIGS: Dict[str, Dict[str, Any]] = {
+IMPORT_SOURCE_CONFIGS: dict[str, dict[str, Any]] = {
     "claude-desktop": {
         "paths": {
             "darwin": [
@@ -320,8 +320,8 @@ def _detect_mcp_transport(
     return "sse"
 
 
-def _parse_claude_desktop_server(raw: Dict[str, Any]) -> Dict[str, Any]:
-    config: Dict[str, Any] = {"requiresConfirmation": True}
+def _parse_claude_desktop_server(raw: dict[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {"requiresConfirmation": True}
 
     if "command" in raw:
         config["command"] = raw["command"]
@@ -335,8 +335,8 @@ def _parse_claude_desktop_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def _parse_claude_code_server(raw: Dict[str, Any]) -> Dict[str, Any]:
-    config: Dict[str, Any] = {"requiresConfirmation": True}
+def _parse_claude_code_server(raw: dict[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {"requiresConfirmation": True}
 
     server_type = raw.get("type", "stdio")
 
@@ -359,8 +359,8 @@ def _parse_claude_code_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def _parse_opencode_server(raw: Dict[str, Any]) -> Dict[str, Any]:
-    config: Dict[str, Any] = {"requiresConfirmation": True}
+def _parse_opencode_server(raw: dict[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {"requiresConfirmation": True}
 
     if raw.get("type", "local") == "remote":
         if "url" in raw:
@@ -379,8 +379,8 @@ def _parse_opencode_server(raw: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def _parse_cursor_server(raw: Dict[str, Any]) -> Dict[str, Any]:
-    config: Dict[str, Any] = {"requiresConfirmation": True}
+def _parse_cursor_server(raw: dict[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {"requiresConfirmation": True}
 
     if "url" in raw:
         url = raw["url"]
@@ -457,13 +457,13 @@ async def scan_import_sources() -> ScanImportSourcesResponse:
 class TestMCPToolInput(BaseModel):
     serverId: str
     toolName: str
-    arguments: Dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 class TestMCPToolResult(BaseModel):
     success: bool
-    result: Optional[str] = None
-    error: Optional[str] = None
+    result: str | None = None
+    error: str | None = None
     durationMs: int = 0
 
 
@@ -494,9 +494,9 @@ class ProbeOAuthInput(BaseModel):
 
 class ProbeOAuthResult(BaseModel):
     requiresOAuth: bool
-    providerName: Optional[str] = None
-    resourceMetadataUrl: Optional[str] = None
-    error: Optional[str] = None
+    providerName: str | None = None
+    resourceMetadataUrl: str | None = None
+    error: str | None = None
 
 
 @command
@@ -518,9 +518,9 @@ class StartOAuthInput(BaseModel):
 
 class StartOAuthResult(BaseModel):
     success: bool
-    authUrl: Optional[str] = None
-    state: Optional[str] = None
-    error: Optional[str] = None
+    authUrl: str | None = None
+    state: str | None = None
+    error: str | None = None
 
 
 @command
@@ -551,7 +551,7 @@ async def start_mcp_oauth(body: StartOAuthInput) -> StartOAuthResult:
 class OAuthStatusResult(BaseModel):
     status: Literal["none", "pending", "authenticated", "error"]
     hasTokens: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @command
@@ -573,7 +573,7 @@ async def get_mcp_oauth_status(body: MCPServerId) -> OAuthStatusResult:
 
 class RevokeOAuthResult(BaseModel):
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @command
@@ -600,12 +600,12 @@ class OAuthCallbackInput(BaseModel):
 class OAuthCallbackErrorInput(BaseModel):
     state: str
     error: str
-    errorDescription: Optional[str] = None
+    errorDescription: str | None = None
 
 
 class OAuthCallbackResult(BaseModel):
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @command

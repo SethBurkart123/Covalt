@@ -1,14 +1,16 @@
 """OpenRouter Provider - Access to multiple AI models via OpenRouter"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_api_key
 
 
 def get_openrouter_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     api_key = get_api_key()
     if not api_key:
@@ -22,7 +24,7 @@ def get_openrouter_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     api_key = get_api_key()
     if not api_key:
         return []

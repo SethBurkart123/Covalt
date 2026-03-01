@@ -131,7 +131,7 @@ class ProviderPluginManifest:
     raw: dict[str, Any]
 
     @classmethod
-    def parse(cls, raw: dict[str, Any], *, path: Path) -> "ProviderPluginManifest":
+    def parse(cls, raw: dict[str, Any], *, path: Path) -> ProviderPluginManifest:
         manifest_version = str(raw.get("manifest_version", "1"))
         if manifest_version not in SUPPORTED_PROVIDER_PLUGIN_MANIFEST_VERSIONS:
             raise ValueError(f"Unsupported provider plugin manifest version: {manifest_version}")

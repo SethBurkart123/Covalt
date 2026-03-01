@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,20 +8,20 @@ from sqlalchemy.orm import Session
 from .models import Model
 
 
-def get_model_settings(sess: Session, provider: str, model_id: str) -> Optional[Model]:
+def get_model_settings(sess: Session, provider: str, model_id: str) -> Model | None:
     return sess.get(Model, {"provider": provider, "model_id": model_id})
 
 
 def get_all_model_settings(
-    sess: Session, provider: Optional[str] = None
-) -> List[Model]:
+    sess: Session, provider: str | None = None
+) -> list[Model]:
     stmt = select(Model)
     if provider:
         stmt = stmt.where(Model.provider == provider)
     return list(sess.scalars(stmt))
 
 
-def _parse_extra(extra_raw: Optional[str]) -> dict:
+def _parse_extra(extra_raw: str | None) -> dict:
     if not extra_raw:
         return {}
     try:
@@ -35,7 +34,7 @@ def _serialize_extra(extra_dict: dict) -> str:
     return json.dumps(extra_dict) if extra_dict else ""
 
 
-def _get_reasoning_from_extra(extra_raw: Optional[str]) -> dict:
+def _get_reasoning_from_extra(extra_raw: str | None) -> dict:
     extra = _parse_extra(extra_raw)
     return extra.get("reasoning", {"supports": False, "isUserOverride": False})
 
@@ -44,7 +43,7 @@ def get_reasoning_from_model(model: Model) -> dict:
     return _get_reasoning_from_extra(model.extra)
 
 
-def _update_extra_with_reasoning(extra_raw: Optional[str], reasoning: dict) -> str:
+def _update_extra_with_reasoning(extra_raw: str | None, reasoning: dict) -> str:
     extra = _parse_extra(extra_raw)
     extra["reasoning"] = reasoning
     return _serialize_extra(extra)
@@ -56,8 +55,8 @@ def save_model_settings(
     provider: str,
     model_id: str,
     parse_think_tags: bool = False,
-    reasoning: Optional[dict] = None,
-    extra: Optional[dict] = None,
+    reasoning: dict | None = None,
+    extra: dict | None = None,
 ) -> None:
     model = sess.get(Model, {"provider": provider, "model_id": model_id})
 
@@ -96,8 +95,8 @@ def upsert_model_settings(
     provider: str,
     model_id: str,
     parse_think_tags: bool = False,
-    reasoning: Optional[dict] = None,
-    extra: Optional[dict] = None,
+    reasoning: dict | None = None,
+    extra: dict | None = None,
 ) -> None:
     model = sess.get(Model, {"provider": provider, "model_id": model_id})
 

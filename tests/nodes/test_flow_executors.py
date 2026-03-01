@@ -8,15 +8,16 @@ Phase 5+ executors are guarded and skipped until implemented.
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Iterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.team import Team
+
 from backend.services import run_control
 
 # ── Core types — always available ────────────────────────────────────

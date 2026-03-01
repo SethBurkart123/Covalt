@@ -1,14 +1,16 @@
 """Ollama Provider - Local models running on Ollama"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_base_url
 
 
 def get_ollama_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     host = get_base_url()
     if not host:
@@ -17,7 +19,7 @@ def get_ollama_model(
     return LiteLLM(id=f"ollama/{model_id}", api_base=host, **provider_options)
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     host = get_base_url()
     if not host:
         return []

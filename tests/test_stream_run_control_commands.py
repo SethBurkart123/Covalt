@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 
 from backend.commands import streaming
-from backend.services.chat_graph_runner import FlowRunHandle
 from backend.services import run_control
+from backend.services.chat_graph_runner import FlowRunHandle
 
 
 class _FakeAgent:

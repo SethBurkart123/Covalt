@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any, Dict, List
+from typing import Any
 
-from ..providers import get_model as get_provider_model
-from ..providers import fetch_provider_models, get_provider_model_options, list_providers
-from ..models.chat import OptionSchema
 from .. import db
+from ..models.chat import OptionSchema
+from ..providers import fetch_provider_models, get_provider_model_options, list_providers
+from ..providers import get_model as get_provider_model
 from .model_schema_cache import cache_model_metadata
 from .provider_oauth_manager import get_provider_oauth_manager
 
@@ -17,28 +17,28 @@ PROVIDER_MODELS_TIMEOUT_SECONDS = 12
 def get_model(
     provider: str,
     model_id: str,
-    provider_options: Dict[str, Any] | None = None,
+    provider_options: dict[str, Any] | None = None,
 ) -> Any:
     return get_provider_model(provider, model_id, provider_options=provider_options)
 
 
-def list_supported_providers() -> List[str]:
+def list_supported_providers() -> list[str]:
     return list_providers()
 
 
-def get_enabled_providers() -> List[str]:
+def get_enabled_providers() -> list[str]:
     configured = _get_configured_providers()
     return [provider for provider, config in configured.items() if config.get("enabled", True)]
 
 
-async def stream_available_model_batches() -> AsyncIterator[tuple[str, List[Dict[str, Any]], bool]]:
+async def stream_available_model_batches() -> AsyncIterator[tuple[str, list[dict[str, Any]], bool]]:
     configured = _get_configured_providers()
     enabled = [(p, c) for p, c in configured.items() if c.get("enabled", True)]
 
     if not enabled:
         return
 
-    async def fetch_one(provider: str) -> tuple[str, List[Dict[str, Any]], bool]:
+    async def fetch_one(provider: str) -> tuple[str, list[dict[str, Any]], bool]:
         try:
             models = await asyncio.wait_for(
                 fetch_provider_models(provider),
@@ -83,7 +83,7 @@ async def stream_available_model_batches() -> AsyncIterator[tuple[str, List[Dict
                 provider_models,
                 False,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print(
                 f"[{provider}] Error fetching models: timed out after {PROVIDER_MODELS_TIMEOUT_SECONDS}s"
             )
@@ -106,7 +106,7 @@ async def stream_available_model_batches() -> AsyncIterator[tuple[str, List[Dict
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def _get_configured_providers() -> Dict[str, Dict[str, Any]]:
+def _get_configured_providers() -> dict[str, dict[str, Any]]:
     with db.db_session() as sess:
         configured = db.get_all_provider_settings(sess)
 

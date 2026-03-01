@@ -1,46 +1,48 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
-
 from sqlalchemy import or_, select
-
 from zynk import Channel, command
 
+from .. import db
 from ..application.conversation import (
     ContinueRunDependencies,
     ContinueRunInput,
     EditUserMessageRunDependencies,
     EditUserMessageRunInput,
-    ExistingAttachmentInput as ExistingAttachmentInputDTO,
-    NewAttachmentInput as NewAttachmentInputDTO,
     RetryRunDependencies,
     RetryRunInput,
     execute_continue_run,
     execute_edit_user_message_run,
     execute_retry_run,
 )
-from .. import db
-from ..models.chat import Attachment, ChatMessage
-from ..services.runtime_events import EVENT_RUN_ERROR, emit_chat_event
-from ..services.file_storage import (
-    get_extension_from_mime,
-    get_pending_attachment_path,
+from ..application.conversation import (
+    ExistingAttachmentInput as ExistingAttachmentInputDTO,
 )
+from ..application.conversation import (
+    NewAttachmentInput as NewAttachmentInputDTO,
+)
+from ..models.chat import Attachment, ChatMessage
 from ..services.chat_graph_runner import (
     append_error_block_to_message,
     get_graph_data_for_chat,
     run_graph_chat_runtime,
 )
-from ..services.model_selection import update_chat_model_selection
-from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 from ..services.conversation_run_service import (
-    validate_model_options,
     build_message_history,
     emit_run_start_events,
+    validate_model_options,
 )
+from ..services.file_storage import (
+    get_extension_from_mime,
+    get_pending_attachment_path,
+)
+from ..services.model_selection import update_chat_model_selection
+from ..services.runtime_events import EVENT_RUN_ERROR, emit_chat_event
+from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +50,17 @@ logger = logging.getLogger(__name__)
 class ContinueMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    modelId: Optional[str] = None
-    modelOptions: Optional[Dict[str, Any]] = None
-    toolIds: List[str] = []
+    modelId: str | None = None
+    modelOptions: dict[str, Any] | None = None
+    toolIds: list[str] = []
 
 
 class RetryMessageRequest(BaseModel):
     messageId: str
     chatId: str
-    modelId: Optional[str] = None
-    modelOptions: Optional[Dict[str, Any]] = None
-    toolIds: List[str] = []
+    modelId: str | None = None
+    modelOptions: dict[str, Any] | None = None
+    toolIds: list[str] = []
 
 
 class AttachmentInput(BaseModel):
@@ -82,11 +84,11 @@ class EditUserMessageRequest(BaseModel):
     messageId: str
     newContent: str
     chatId: str
-    modelId: Optional[str] = None
-    modelOptions: Optional[Dict[str, Any]] = None
-    toolIds: List[str] = []
-    existingAttachments: List[ExistingAttachmentInput] = []
-    newAttachments: List[AttachmentInput] = []
+    modelId: str | None = None
+    modelOptions: dict[str, Any] | None = None
+    toolIds: list[str] = []
+    existingAttachments: list[ExistingAttachmentInput] = []
+    newAttachments: list[AttachmentInput] = []
 
 
 class SwitchToSiblingRequest(BaseModel):
@@ -107,7 +109,7 @@ class MessageSiblingInfo(BaseModel):
 
 class GetMessageSiblingsBatchRequest(BaseModel):
     chatId: str
-    messageIds: List[str]
+    messageIds: list[str]
 
 
 def _get_original_message(sess: Any, message_id: str) -> Any:
@@ -116,7 +118,7 @@ def _get_original_message(sess: Any, message_id: str) -> Any:
 
 def _create_branch_message(
     sess: Any,
-    parent_id: Optional[str],
+    parent_id: str | None,
     role: str,
     content: str,
     chat_id: str,
@@ -136,7 +138,7 @@ def _emit_continue_run_start_events(
     channel: Channel,
     chat_id: str,
     message_id: str,
-    blocks: Optional[List[Dict[str, Any]]],
+    blocks: list[dict[str, Any]] | None,
 ) -> None:
     emit_run_start_events(channel, chat_id, message_id, blocks=blocks)
 
@@ -145,7 +147,7 @@ def _emit_branch_run_error(channel: Channel, content: str) -> None:
     emit_chat_event(channel, EVENT_RUN_ERROR, content=content)
 
 
-def _get_graph_data(chat_id: str, model_id: Optional[str], model_options: Dict[str, Any]) -> Dict[str, Any]:
+def _get_graph_data(chat_id: str, model_id: str | None, model_options: dict[str, Any]) -> dict[str, Any]:
     return get_graph_data_for_chat(
         chat_id,
         model_id,
@@ -263,8 +265,8 @@ def _create_attachment(
 def _update_message_attachments_and_manifest(
     sess: Any,
     message_id: str,
-    attachments_json: Optional[str],
-    manifest_id: Optional[str],
+    attachments_json: str | None,
+    manifest_id: str | None,
 ) -> None:
     user_msg = sess.get(db.Message, message_id)
     if not user_msg:
@@ -282,7 +284,7 @@ def _create_chat_message(
     role: str,
     content: str,
     created_at: str,
-    attachments: Optional[List[Attachment]],
+    attachments: list[Attachment] | None,
 ) -> ChatMessage:
     return ChatMessage(
         id=message_id,
@@ -378,7 +380,7 @@ async def switch_to_sibling(
 @command
 async def get_message_siblings(
     body: GetMessageSiblingsRequest,
-) -> List[MessageSiblingInfo]:
+) -> list[MessageSiblingInfo]:
     with db.db_session() as sess:
         message = sess.get(db.Message, body.messageId)
         if not message:
@@ -407,7 +409,7 @@ async def get_message_siblings(
 @command
 async def get_message_siblings_batch(
     body: GetMessageSiblingsBatchRequest,
-) -> Dict[str, List[MessageSiblingInfo]]:
+) -> dict[str, list[MessageSiblingInfo]]:
     message_ids = list(dict.fromkeys(body.messageIds))
     if not message_ids:
         return {}
@@ -430,7 +432,7 @@ async def get_message_siblings_batch(
         if non_null_parents:
             conditions.append(db.Message.parent_message_id.in_(non_null_parents))
 
-        siblings_by_parent: Dict[Optional[str], List[MessageSiblingInfo]] = {}
+        siblings_by_parent: dict[str | None, list[MessageSiblingInfo]] = {}
         active_path_ids: set[str] = set()
 
         chat = sess.get(db.Chat, body.chatId)

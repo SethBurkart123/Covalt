@@ -1,11 +1,14 @@
 """google-vertex provider."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_api_key
 
-def get_google_vertex_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM:
+
+def get_google_vertex_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError("Google API key not configured in Settings.")
@@ -13,7 +16,7 @@ def get_google_vertex_model(model_id: str, provider_options: Dict[str, Any]) -> 
     return LiteLLM(id=f"gemini/{model_id}", api_key=api_key, **provider_options)
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     api_key = get_api_key()
     if not api_key:
         return []

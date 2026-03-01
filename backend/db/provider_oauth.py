@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
-from .models import ProviderOAuthCredential
 from ..crypto import decrypt, encrypt
+from .models import ProviderOAuthCredential
 
 
-def get_provider_oauth(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
-    row: Optional[ProviderOAuthCredential] = sess.get(ProviderOAuthCredential, provider)
+def get_provider_oauth(sess: Session, provider: str) -> dict[str, Any] | None:
+    row: ProviderOAuthCredential | None = sess.get(ProviderOAuthCredential, provider)
     if not row:
         return None
 
@@ -43,12 +43,12 @@ def save_provider_oauth(
     *,
     provider: str,
     access_token: str,
-    refresh_token: Optional[str] = None,
-    token_type: Optional[str] = None,
-    expires_at: Optional[str] = None,
-    extra: Optional[Dict[str, Any] | str] = None,
+    refresh_token: str | None = None,
+    token_type: str | None = None,
+    expires_at: str | None = None,
+    extra: dict[str, Any] | str | None = None,
 ) -> None:
-    row: Optional[ProviderOAuthCredential] = sess.get(ProviderOAuthCredential, provider)
+    row: ProviderOAuthCredential | None = sess.get(ProviderOAuthCredential, provider)
 
     extra_json = None
     if extra is not None:
@@ -80,7 +80,7 @@ def save_provider_oauth(
 
 
 def delete_provider_oauth(sess: Session, provider: str) -> None:
-    row: Optional[ProviderOAuthCredential] = sess.get(ProviderOAuthCredential, provider)
+    row: ProviderOAuthCredential | None = sess.get(ProviderOAuthCredential, provider)
     if not row:
         return
     sess.delete(row)

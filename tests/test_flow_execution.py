@@ -15,7 +15,6 @@ from backend.services.flow_executor.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -23,7 +22,6 @@ from typing import Any
 import pytest
 
 from tests.conftest import (
-    assert_event_order,
     assert_valid_topological_order,
     make_edge,
     make_graph,
@@ -35,13 +33,13 @@ from tests.conftest import (
 # can collect (and skip) this file without ImportError.
 
 try:
-    from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
     from backend.services.flow_executor import (
+        _flow_edges,
         find_flow_nodes,
         run_flow,
         topological_sort,
-        _flow_edges,
     )
+    from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
     _FLOW_ENGINE_AVAILABLE = True
 except ImportError:
@@ -76,7 +74,7 @@ except ImportError:
         data: dict[str, Any] | None = None
         timestamp: float = 0.0
 
-    from typing import AsyncIterator as _AI
+    from collections.abc import AsyncIterator as _AI
 
     async def run_flow(*a: Any, **kw: Any) -> _AI[Any]:  # type: ignore[no-redef]
         raise NotImplementedError

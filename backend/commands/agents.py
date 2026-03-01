@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from zynk import StaticFile, UploadFile, command, static, upload
 
-from .. import db
 from ..services.agent_manager import get_agent_manager
 
 logger = logging.getLogger(__name__)
@@ -16,54 +15,54 @@ logger = logging.getLogger(__name__)
 class AgentInfo(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
-    preview_image: Optional[str] = None
+    description: str | None = None
+    icon: str | None = None
+    preview_image: str | None = None
     include_user_tools: bool = False
     created_at: str
     updated_at: str
 
 
 class AgentsListResponse(BaseModel):
-    agents: List[AgentInfo]
+    agents: list[AgentInfo]
 
 
 # Response model for full agent (includes graph_data)
 class GraphNode(BaseModel):
     id: str
     type: str
-    position: Dict[str, float]
-    data: Dict[str, Any]
+    position: dict[str, float]
+    data: dict[str, Any]
 
 
 class GraphEdgeData(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    sourceType: Optional[str] = None
-    targetType: Optional[str] = None
+    sourceType: str | None = None
+    targetType: str | None = None
     channel: Literal["flow", "link"]
 
 
 class GraphEdge(BaseModel):
     id: str
     source: str
-    sourceHandle: Optional[str] = None
+    sourceHandle: str | None = None
     target: str
-    targetHandle: Optional[str] = None
+    targetHandle: str | None = None
     data: GraphEdgeData
 
 
 class GraphData(BaseModel):
-    nodes: List[GraphNode]
-    edges: List[GraphEdge]
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
 
 
 class AgentDetailResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
-    preview_image: Optional[str] = None
+    description: str | None = None
+    icon: str | None = None
+    preview_image: str | None = None
     graph_data: GraphData
     created_at: str
     updated_at: str
@@ -72,8 +71,8 @@ class AgentDetailResponse(BaseModel):
 # Request models
 class CreateAgentRequest(BaseModel):
     name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
+    description: str | None = None
+    icon: str | None = None
 
 
 class CreateAgentResponse(BaseModel):
@@ -86,15 +85,15 @@ class AgentIdRequest(BaseModel):
 
 class UpdateAgentRequest(BaseModel):
     id: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    icon: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    icon: str | None = None
 
 
 class SaveAgentGraphRequest(BaseModel):
     id: str
-    nodes: List[GraphNode]
-    edges: List[GraphEdge]
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
 
 
 class UploadAgentImageRequest(BaseModel):
@@ -180,7 +179,7 @@ async def create_agent(body: CreateAgentRequest) -> CreateAgentResponse:
 
 
 @command
-async def update_agent(body: UpdateAgentRequest) -> Dict[str, bool]:
+async def update_agent(body: UpdateAgentRequest) -> dict[str, bool]:
     """Update agent metadata (name, description, icon)."""
     manager = get_agent_manager()
     success = manager.update_agent(
@@ -195,7 +194,7 @@ async def update_agent(body: UpdateAgentRequest) -> Dict[str, bool]:
 
 
 @command
-async def save_agent_graph(body: SaveAgentGraphRequest) -> Dict[str, bool]:
+async def save_agent_graph(body: SaveAgentGraphRequest) -> dict[str, bool]:
     """Save agent graph data (autosave endpoint)."""
     manager = get_agent_manager()
 
@@ -214,7 +213,7 @@ async def save_agent_graph(body: SaveAgentGraphRequest) -> Dict[str, bool]:
 
 
 @command
-async def delete_agent(body: AgentIdRequest) -> Dict[str, bool]:
+async def delete_agent(body: AgentIdRequest) -> dict[str, bool]:
     """Delete an agent."""
     manager = get_agent_manager()
     success = manager.delete_agent(body.id)
@@ -228,7 +227,7 @@ ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 
 
 @upload(max_size=MAX_IMAGE_SIZE, allowed_types=ALLOWED_IMAGE_TYPES)
-async def upload_agent_icon(file: UploadFile, agent_id: str) -> Dict[str, str]:
+async def upload_agent_icon(file: UploadFile, agent_id: str) -> dict[str, str]:
     """Upload a custom icon image for an agent."""
     manager = get_agent_manager()
     icon_value = manager.update_icon(
@@ -240,7 +239,7 @@ async def upload_agent_icon(file: UploadFile, agent_id: str) -> Dict[str, str]:
 
 
 @upload(max_size=MAX_IMAGE_SIZE, allowed_types=ALLOWED_IMAGE_TYPES)
-async def upload_agent_preview(file: UploadFile, agent_id: str) -> Dict[str, bool]:
+async def upload_agent_preview(file: UploadFile, agent_id: str) -> dict[str, bool]:
     """Upload a preview screenshot for an agent."""
     manager = get_agent_manager()
     success = manager.update_preview(

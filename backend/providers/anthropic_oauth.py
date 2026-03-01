@@ -7,13 +7,13 @@ import json
 import mimetypes
 import re
 import time
-from pathlib import Path
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Union
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-
 from agno.exceptions import ModelProviderError
 from agno.models.base import Model
 from agno.models.message import Message
@@ -64,7 +64,7 @@ IMAGE_EXTENSION_MEDIA_TYPES = {
 }
 
 
-def _get_anthropic_credentials() -> Dict[str, Any]:
+def _get_anthropic_credentials() -> dict[str, Any]:
     creds = get_provider_oauth_manager().get_valid_credentials(
         "anthropic_oauth",
         refresh_if_missing_expiry=True,
@@ -95,11 +95,11 @@ def _sanitize_tool_name(name: str, used: set[str]) -> str:
     return candidate
 
 
-def _log_usage(event_type: str, usage: Dict[str, Any]) -> None:
+def _log_usage(event_type: str, usage: dict[str, Any]) -> None:
     print(f"[anthropic_oauth] {event_type} usage={usage}")
 
 
-def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
+def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
     if isinstance(arguments, str):
         try:
             parsed = json.loads(arguments)
@@ -114,9 +114,9 @@ def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
 
 
 def _build_system_blocks(
-    messages: List[Message], cache_control: Optional[Dict[str, str]]
-) -> Optional[List[Dict[str, Any]]]:
-    blocks: List[Dict[str, Any]] = [{"type": "text", "text": CLAUDE_CODE_SYSTEM}]
+    messages: list[Message], cache_control: dict[str, str] | None
+) -> list[dict[str, Any]] | None:
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": CLAUDE_CODE_SYSTEM}]
     for message in messages:
         if message.role != "system":
             continue
@@ -130,13 +130,13 @@ def _build_system_blocks(
 
 
 def _build_tools(
-    tools: Optional[List[Dict[str, Any]]],
-) -> tuple[Optional[List[Dict[str, Any]]], Dict[str, str], Dict[str, str]]:
+    tools: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]] | None, dict[str, str], dict[str, str]]:
     if not tools:
         return None, {}, {}
-    results: List[Dict[str, Any]] = []
-    name_map: Dict[str, str] = {}
-    reverse_map: Dict[str, str] = {}
+    results: list[dict[str, Any]] = []
+    name_map: dict[str, str] = {}
+    reverse_map: dict[str, str] = {}
     used: set[str] = set()
     for tool in tools:
         if tool.get("type") != "function":
@@ -152,7 +152,7 @@ def _build_tools(
             name_map[safe_name] = name
             reverse_map[name] = safe_name
         schema = func.get("parameters") or {"type": "object", "properties": {}}
-        tool_def: Dict[str, Any] = {"name": safe_name, "input_schema": schema}
+        tool_def: dict[str, Any] = {"name": safe_name, "input_schema": schema}
         description = func.get("description")
         if isinstance(description, str) and description:
             tool_def["description"] = description
@@ -161,10 +161,10 @@ def _build_tools(
 
 
 def _convert_messages(
-    messages: List[Message],
-    safe_tool_name: Optional[Callable[[str], str]] = None,
-) -> List[Dict[str, Any]]:
-    params: List[Dict[str, Any]] = []
+    messages: list[Message],
+    safe_tool_name: Callable[[str], str] | None = None,
+) -> list[dict[str, Any]]:
+    params: list[dict[str, Any]] = []
     i = 0
     while i < len(messages):
         message = messages[i]
@@ -172,7 +172,7 @@ def _convert_messages(
             i += 1
             continue
         if message.role == "user":
-            blocks: List[Dict[str, Any]] = []
+            blocks: list[dict[str, Any]] = []
             text = message.get_content_string()
             if text:
                 blocks.append({"type": "text", "text": text})
@@ -196,7 +196,7 @@ def _convert_messages(
             i += 1
             continue
         if message.role == "assistant":
-            blocks: List[Dict[str, Any]] = []
+            blocks: list[dict[str, Any]] = []
             text = message.get_content_string()
             if text:
                 blocks.append({"type": "text", "text": text})
@@ -231,7 +231,7 @@ def _convert_messages(
             i += 1
             continue
         if message.role == "tool":
-            tool_results: List[Dict[str, Any]] = []
+            tool_results: list[dict[str, Any]] = []
             while i < len(messages) and messages[i].role == "tool":
                 tool_msg = messages[i]
                 tool_id = tool_msg.tool_call_id or ""
@@ -254,7 +254,7 @@ def _convert_messages(
 
 
 def _apply_cache_control(
-    params: List[Dict[str, Any]], cache_control: Optional[Dict[str, str]]
+    params: list[dict[str, Any]], cache_control: dict[str, str] | None
 ) -> None:
     if not cache_control:
         return
@@ -277,7 +277,7 @@ def _apply_cache_control(
         return
 
 
-def _normalize_image_media_type(value: Any) -> Optional[str]:
+def _normalize_image_media_type(value: Any) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     normalized = value.split(";")[0].strip().lower()
@@ -286,13 +286,13 @@ def _normalize_image_media_type(value: Any) -> Optional[str]:
     return normalized if normalized in SUPPORTED_IMAGE_MEDIA_TYPES else None
 
 
-def _normalize_media_type(value: Any) -> Optional[str]:
+def _normalize_media_type(value: Any) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     return value.split(";")[0].strip().lower() or None
 
 
-def _guess_media_type(image: Any) -> Optional[str]:
+def _guess_media_type(image: Any) -> str | None:
     media_type = _normalize_media_type(getattr(image, "mime_type", None))
     if media_type:
         return media_type
@@ -321,7 +321,7 @@ def _guess_media_type(image: Any) -> Optional[str]:
     return None
 
 
-def _guess_image_media_type(image: Any) -> Optional[str]:
+def _guess_image_media_type(image: Any) -> str | None:
     media_type = _normalize_image_media_type(getattr(image, "mime_type", None))
     if media_type:
         return media_type
@@ -330,7 +330,7 @@ def _guess_image_media_type(image: Any) -> Optional[str]:
     return _normalize_image_media_type(guessed)
 
 
-def _load_image_bytes(image: Any) -> Optional[bytes]:
+def _load_image_bytes(image: Any) -> bytes | None:
     content = getattr(image, "content", None)
     if isinstance(content, (bytes, bytearray)):
         return bytes(content)
@@ -347,7 +347,7 @@ def _load_image_bytes(image: Any) -> Optional[bytes]:
     return None
 
 
-def _build_image_block(image: Any) -> Optional[Dict[str, Any]]:
+def _build_image_block(image: Any) -> dict[str, Any] | None:
     media_type = _guess_image_media_type(image)
     if not media_type:
         return None
@@ -366,7 +366,7 @@ def _build_image_block(image: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def _build_document_block_from_image(image: Any) -> Optional[Dict[str, Any]]:
+def _build_document_block_from_image(image: Any) -> dict[str, Any] | None:
     raw_bytes = _load_image_bytes(image)
     if not raw_bytes:
         return None
@@ -394,7 +394,7 @@ def _build_document_block_from_image(image: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def _build_metrics(usage: Dict[str, Any]) -> Metrics:
+def _build_metrics(usage: dict[str, Any]) -> Metrics:
     input_tokens = usage.get("input_tokens") or 0
     output_tokens = usage.get("output_tokens") or 0
     cache_read = usage.get("cache_read_input_tokens") or 0
@@ -412,17 +412,17 @@ def _build_metrics(usage: Dict[str, Any]) -> Metrics:
 @dataclass
 class AnthropicOAuthModel(Model):
     id: str
-    name: Optional[str] = None
-    provider: Optional[str] = None
-    access_token: Optional[str] = None
+    name: str | None = None
+    provider: str | None = None
+    access_token: str | None = None
     base_url: str = "https://api.anthropic.com"
     max_tokens: int = 4096
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
+    temperature: float | None = None
+    top_p: float | None = None
     cache_retention: str = "short"
-    request_params: Optional[Dict[str, Any]] = None
-    _tool_name_map: Optional[Dict[str, str]] = None
-    _tool_name_reverse_map: Optional[Dict[str, str]] = None
+    request_params: dict[str, Any] | None = None
+    _tool_name_map: dict[str, str] | None = None
+    _tool_name_reverse_map: dict[str, str] | None = None
 
     def _get_safe_tool_name(self, name: str) -> str:
         reverse_map = self._tool_name_reverse_map or {}
@@ -444,8 +444,8 @@ class AnthropicOAuthModel(Model):
         return name_map.get(name, name)
 
     def _map_tool_choice(
-        self, tool_choice: Optional[Union[str, Dict[str, Any]]]
-    ) -> Optional[Dict[str, Any]]:
+        self, tool_choice: str | dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         if tool_choice is None:
             return None
         if isinstance(tool_choice, str):
@@ -461,21 +461,21 @@ class AnthropicOAuthModel(Model):
         return None
 
     def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return self._invoke_sync(messages, response_format, tools, tool_choice)
 
     async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return await self._invoke_async(messages, response_format, tools, tool_choice)
 
     def invoke_stream(self, *args: Any, **kwargs: Any) -> Iterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -486,7 +486,7 @@ class AnthropicOAuthModel(Model):
     async def ainvoke_stream(
         self, *args: Any, **kwargs: Any
     ) -> AsyncIterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -501,7 +501,7 @@ class AnthropicOAuthModel(Model):
     def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
         return response if isinstance(response, ModelResponse) else ModelResponse()
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self) -> dict[str, str]:
         if not self.access_token:
             raise ModelProviderError(
                 message="Missing access token for Anthropic OAuth",
@@ -528,7 +528,7 @@ class AnthropicOAuthModel(Model):
             "x-app": "cli",
         }
 
-    def _get_cache_control(self) -> Optional[Dict[str, str]]:
+    def _get_cache_control(self) -> dict[str, str] | None:
         retention = (self.cache_retention or "").lower()
         if retention in ("", "none"):
             return None
@@ -538,18 +538,18 @@ class AnthropicOAuthModel(Model):
 
     def _build_request(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
         *,
         stream: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         tool_defs, name_map, reverse_map = _build_tools(tools)
         self._tool_name_map = name_map
         self._tool_name_reverse_map = reverse_map
         cache_control = self._get_cache_control()
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.id,
             "messages": _convert_messages(messages, self._get_safe_tool_name),
             "max_tokens": self.max_tokens,
@@ -588,15 +588,15 @@ class AnthropicOAuthModel(Model):
 
     def _invoke_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         for delta in self._invoke_stream_sync(
             messages, response_format, tools, tool_choice
         ):
@@ -620,15 +620,15 @@ class AnthropicOAuthModel(Model):
 
     async def _invoke_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         async for delta in self._invoke_stream_async(
             messages, response_format, tools, tool_choice
         ):
@@ -652,15 +652,15 @@ class AnthropicOAuthModel(Model):
 
     def _invoke_stream_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> Iterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice, stream=True)
         headers = self._build_headers()
         url = f"{self.base_url.rstrip('/')}/v1/messages"
-        tool_state: Dict[int, Dict[str, Any]] = {}
+        tool_state: dict[int, dict[str, Any]] = {}
 
         with httpx.Client(timeout=60.0) as client:
             with client.stream(
@@ -688,15 +688,15 @@ class AnthropicOAuthModel(Model):
 
     async def _invoke_stream_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> AsyncIterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice, stream=True)
         headers = self._build_headers()
         url = f"{self.base_url.rstrip('/')}/v1/messages"
-        tool_state: Dict[int, Dict[str, Any]] = {}
+        tool_state: dict[int, dict[str, Any]] = {}
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
@@ -726,7 +726,7 @@ class AnthropicOAuthModel(Model):
                         yield delta
 
     def _parse_stream_event(
-        self, event: Dict[str, Any], tool_state: Dict[int, Dict[str, Any]]
+        self, event: dict[str, Any], tool_state: dict[int, dict[str, Any]]
     ) -> Iterator[ModelResponse]:
         event_type = event.get("type")
         if event_type == "message_start":
@@ -787,7 +787,7 @@ class AnthropicOAuthModel(Model):
                 name = state.get("name")
                 if isinstance(name, str):
                     name = self._get_original_tool_name(name)
-                parsed_args: Dict[str, Any] = {}
+                parsed_args: dict[str, Any] = {}
                 if state.get("has_delta"):
                     args_json = state.get("json") or "{}"
                     try:
@@ -859,9 +859,9 @@ def _coerce_positive_int(value: Any, *, default: int) -> int:
 
 def resolve_options(
     model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     options = model_options or {}
     resolved = resolve_common_options(model_options, node_params)
 
@@ -889,11 +889,11 @@ def resolve_options(
     return resolved
 
 
-def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
+def _parse_reasoning_levels(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
 
-    parsed: List[Dict[str, str]] = []
+    parsed: list[dict[str, str]] = []
     seen_efforts: set[str] = set()
 
     for item in value:
@@ -914,7 +914,7 @@ def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
             continue
 
         seen_efforts.add(effort)
-        level: Dict[str, str] = {"effort": effort}
+        level: dict[str, str] = {"effort": effort}
         if description:
             level["description"] = description
         parsed.append(level)
@@ -922,7 +922,7 @@ def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
     return parsed
 
 
-def _extract_reasoning_levels(model: Dict[str, Any]) -> List[Dict[str, str]]:
+def _extract_reasoning_levels(model: dict[str, Any]) -> list[dict[str, str]]:
     for key in (
         "supported_reasoning_levels",
         "supported_reasoning_efforts",
@@ -947,7 +947,7 @@ def _extract_reasoning_levels(model: Dict[str, Any]) -> List[Dict[str, str]]:
     return []
 
 
-def _default_reasoning_levels(model_id: str) -> List[Dict[str, str]]:
+def _default_reasoning_levels(model_id: str) -> list[dict[str, str]]:
     if not _supports_reasoning(model_id):
         return []
     efforts = ["low", "medium", "high"]
@@ -970,8 +970,8 @@ def _normalize_default_reasoning(
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     metadata = model_metadata or {}
     reasoning_levels = _parse_reasoning_levels(
         metadata.get("supported_reasoning_levels")
@@ -1016,7 +1016,7 @@ def get_model_options(
 
 def get_anthropic_oauth_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> Model:
     creds = _get_anthropic_credentials()
     access_token = creds.get("access_token")
@@ -1037,12 +1037,12 @@ def get_anthropic_oauth_model(
     return model
 
 
-def _format_anthropic_model_info(model: Dict[str, Any]) -> Dict[str, Any] | None:
+def _format_anthropic_model_info(model: dict[str, Any]) -> dict[str, Any] | None:
     model_id = model.get("id")
     if not isinstance(model_id, str) or not model_id:
         return None
 
-    model_info: Dict[str, Any] = {
+    model_info: dict[str, Any] = {
         "id": model_id,
         "name": model.get("display_name", model_id),
     }
@@ -1064,7 +1064,7 @@ def _format_anthropic_model_info(model: Dict[str, Any]) -> Dict[str, Any] | None
     return model_info
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     try:
         creds = _get_anthropic_credentials()
     except RuntimeError:
@@ -1085,7 +1085,7 @@ async def fetch_models() -> List[Dict[str, Any]]:
             )
             if response.is_success:
                 models = response.json().get("data", [])
-                results: List[Dict[str, Any]] = []
+                results: list[dict[str, Any]] = []
                 for model in models:
                     if not isinstance(model, dict):
                         continue
@@ -1100,7 +1100,7 @@ async def fetch_models() -> List[Dict[str, Any]]:
         "anthropic",
         predicate=lambda _id, info: info.get("tool_call") is True,
     )
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for model in fallback:
         model_id = model.get("id")
         if not isinstance(model_id, str) or not model_id:

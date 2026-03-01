@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel
 from zynk import command
@@ -16,21 +16,21 @@ from ..models.chat import (
     ChatAgentConfigResponse,
     ChatData,
     ChatId,
+    CreateChatInput,
     ExecutionEventItem,
+    MCPToolsetInfo,
     MessageExecutionTraceResponse,
     MessageId,
-    CreateChatInput,
-    MCPToolsetInfo,
     ToggleChatToolsInput,
     ToolInfo,
     UpdateChatInput,
     UpdateChatModelInput,
 )
 from ..services.chat_config import update_chat_model_provider, update_chat_tool_ids
-from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 from ..services.mcp_manager import ensure_mcp_initialized
 from ..services.title_generator import generate_title_for_chat
 from ..services.tool_registry import get_tool_registry
+from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 
 
 @command
@@ -144,7 +144,7 @@ async def toggle_star_chat(body: ChatId) -> ChatData:
 
 
 @command
-async def get_chat(body: ChatId) -> Dict[str, Any]:
+async def get_chat(body: ChatId) -> dict[str, Any]:
     with db.db_session() as sess:
         msgs = db.get_chat_messages(sess, chatId=body.id)
     return {"id": body.id, "messages": msgs}
@@ -268,7 +268,7 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
 
 
 @command
-async def generate_chat_title(body: ChatId) -> Dict[str, Any]:
+async def generate_chat_title(body: ChatId) -> dict[str, Any]:
     title = generate_title_for_chat(body.id)
     if title:
         with db.db_session() as sess:

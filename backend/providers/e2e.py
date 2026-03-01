@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from agno.models.base import Model
 from agno.models.response import ModelResponse
@@ -12,7 +12,7 @@ class StaticToolModel(Model):
         super().__init__(id=model_id, name="E2E", provider="e2e")
         self._scenario = scenario
 
-    def _build_tool_call(self) -> Dict[str, Any]:
+    def _build_tool_call(self) -> dict[str, Any]:
         if self._scenario == "toolset":
             tool_name = "artifact-tools:write_artifact"
             args = {
@@ -35,7 +35,7 @@ class StaticToolModel(Model):
             },
         }
 
-    def _build_response(self, messages: List[Any] | None) -> ModelResponse:
+    def _build_response(self, messages: list[Any] | None) -> ModelResponse:
         if messages:
             for msg in messages:
                 role = getattr(msg, "role", None)
@@ -67,12 +67,12 @@ class StaticToolModel(Model):
         return response if isinstance(response, ModelResponse) else ModelResponse()
 
 
-def get_e2e_model(model_id: str, provider_options: Dict[str, Any]) -> Model:
+def get_e2e_model(model_id: str, provider_options: dict[str, Any]) -> Model:
     scenario = model_id.strip() if model_id.strip() else "toolset"
     return StaticToolModel(model_id=model_id, scenario=scenario)
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     return [
         {"id": "toolset", "name": "E2E Toolset Tool"},
         {"id": "builtin", "name": "E2E Builtin Tool"},
@@ -80,15 +80,15 @@ async def fetch_models() -> List[Dict[str, Any]]:
     ]
 
 
-def get_model_options(_model_id: str, _model_metadata: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def get_model_options(_model_id: str, _model_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"main": [], "advanced": []}
 
 
 def resolve_options(
     _model_id: str,
-    model_options: Dict[str, Any] | None,
-    _node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    _node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     return model_options or {}
 
 

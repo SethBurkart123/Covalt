@@ -10,41 +10,41 @@ import json
 import logging
 import traceback
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from zynk import Channel
 
 from .. import db
+from ..models import (
+    decode_message_content,
+    serialize_message_blocks,
+)
 from ..models.chat import Attachment, ChatMessage
+from ..services import stream_broadcaster as broadcaster
+from ..services.chat_graph_runner import (
+    append_error_block_to_message,
+    extract_error_message,
+)
+from ..services.option_validation import (
+    ModelResolutionError,
+    resolve_and_validate_model_options,
+)
 from ..services.runtime_events import (
     EVENT_ASSISTANT_MESSAGE_ID,
     EVENT_RUN_ERROR,
     EVENT_RUN_STARTED,
     emit_chat_event,
 )
-from ..services.chat_graph_runner import (
-    append_error_block_to_message,
-    extract_error_message,
-)
-from ..models import (
-    decode_message_content,
-    serialize_message_blocks,
-)
-from ..services.option_validation import (
-    ModelResolutionError,
-    resolve_and_validate_model_options,
-)
-from ..services import stream_broadcaster as broadcaster
 
 logger = logging.getLogger(__name__)
 
 
 def validate_model_options(
-    chat_id: Optional[str],
-    model_id: Optional[str],
-    model_options: Optional[Dict[str, Any]],
+    chat_id: str | None,
+    model_id: str | None,
+    model_options: dict[str, Any] | None,
     channel: Channel,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Resolve and validate model options, sending RunError on failure.
 
     Returns the validated dict, or None if validation failed (error already sent).
@@ -56,9 +56,9 @@ def validate_model_options(
         return None
 
 
-def build_message_history(db_messages: List[Any]) -> List[ChatMessage]:
+def build_message_history(db_messages: list[Any]) -> list[ChatMessage]:
     """Convert a list of DB Message objects into ChatMessages."""
-    result: List[ChatMessage] = []
+    result: list[ChatMessage] = []
 
     for m in db_messages:
         content = decode_message_content(m.content)
@@ -88,11 +88,11 @@ def build_message_history(db_messages: List[Any]) -> List[ChatMessage]:
 
 def emit_run_start_events(
     channel: Channel,
-    chat_id: Optional[str],
+    chat_id: str | None,
     assistant_msg_id: str,
     *,
-    file_renames: Optional[Dict[str, str]] = None,
-    blocks: Optional[List[Dict[str, Any]]] = None,
+    file_renames: dict[str, str] | None = None,
+    blocks: list[dict[str, Any]] | None = None,
 ) -> None:
     """Send the RunStarted + AssistantMessageId event pair."""
     emit_chat_event(

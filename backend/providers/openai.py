@@ -1,14 +1,16 @@
 """OpenAI Provider - GPT models via OpenAI API"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_credentials
 
 
 def get_openai_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not api_key:
@@ -22,7 +24,7 @@ def get_openai_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     api_key, base_url = get_credentials()
     if not api_key:
         return []
@@ -49,8 +51,8 @@ async def fetch_models() -> List[Dict[str, str]]:
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     _ = model_id, model_metadata
     return {
         "main": [],

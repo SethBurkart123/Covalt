@@ -3,17 +3,18 @@
 import json
 import re
 import time
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
+from typing import Any
 
 import httpx
-from agno.models.litellm import LiteLLM
+from agno.exceptions import ModelProviderError
 from agno.models.base import Model
+from agno.models.litellm import LiteLLM
 from agno.models.message import Message
 from agno.models.metrics import Metrics
 from agno.models.openai.responses import OpenAIResponses
 from agno.models.response import ModelResponse
-from agno.exceptions import ModelProviderError
 from openai.types.responses import ResponseReasoningItem
 
 from ..services.models_dev import fetch_models_dev_provider
@@ -35,15 +36,15 @@ ANTHROPIC_BETA = "interleaved-thinking-2025-05-14"
 
 
 class CopilotOpenAIResponses(OpenAIResponses):
-    _tool_name_sanitizer: Optional[ToolNameSanitizer] = None
+    _tool_name_sanitizer: ToolNameSanitizer | None = None
 
     def get_request_params(
         self,
-        messages: Optional[List[Message]] = None,
-        response_format: Optional[Any] = None,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        tool_choice: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        messages: list[Message] | None = None,
+        response_format: Any | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: Any | None = None,
+    ) -> dict[str, Any]:
         self.store = False
         params = super().get_request_params(
             messages=messages,
@@ -61,8 +62,8 @@ class CopilotOpenAIResponses(OpenAIResponses):
         return params
 
     def _format_tool_params(
-        self, messages: List[Message], tools: Optional[List[Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, messages: list[Message], tools: list[Any] | None = None
+    ) -> list[dict[str, Any]]:
         formatted = super()._format_tool_params(messages=messages, tools=tools)
         if not formatted:
             self._tool_name_sanitizer = None
@@ -72,13 +73,13 @@ class CopilotOpenAIResponses(OpenAIResponses):
         return sanitizer.sanitize_tool_definitions(formatted) or []
 
     def _format_messages(
-        self, messages: List[Message], compress_tool_results: bool = False
-    ) -> List[Dict[str, Any] | ResponseReasoningItem]:
+        self, messages: list[Message], compress_tool_results: bool = False
+    ) -> list[dict[str, Any] | ResponseReasoningItem]:
         sanitizer = self._tool_name_sanitizer or ToolNameSanitizer(
             OPENAI_TOOL_NAME_CHARS
         )
         self._tool_name_sanitizer = sanitizer
-        sanitized_messages: List[Message] = []
+        sanitized_messages: list[Message] = []
 
         for message in messages:
             tool_calls = getattr(message, "tool_calls", None)
@@ -100,8 +101,8 @@ class CopilotOpenAIResponses(OpenAIResponses):
         return super()._format_messages(sanitized_messages, compress_tool_results)
 
     def parse_tool_calls(
-        self, tool_calls_data: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, tool_calls_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         sanitizer = self._tool_name_sanitizer
         if not sanitizer:
             return tool_calls_data
@@ -121,11 +122,11 @@ class CopilotOpenAIResponses(OpenAIResponses):
 
 class CopilotLiteLLM(LiteLLM):
     tool_name_chars: str = OPENAI_TOOL_NAME_CHARS
-    _tool_name_sanitizer: Optional[ToolNameSanitizer] = None
+    _tool_name_sanitizer: ToolNameSanitizer | None = None
 
     def get_request_params(
-        self, tools: Optional[List[Dict[str, Any]]] = None
-    ) -> Dict[str, Any]:
+        self, tools: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         if tools:
             sanitizer = ToolNameSanitizer(self.tool_name_chars)
             sanitized_tools = sanitizer.sanitize_tool_definitions(tools)
@@ -135,8 +136,8 @@ class CopilotLiteLLM(LiteLLM):
         return super().get_request_params(tools=tools)
 
     def _format_messages(
-        self, messages: List[Message], compress_tool_results: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, messages: list[Message], compress_tool_results: bool = False
+    ) -> list[dict[str, Any]]:
         formatted = super()._format_messages(messages, compress_tool_results)
         sanitizer = self._tool_name_sanitizer
         if not sanitizer:
@@ -167,7 +168,7 @@ def _normalize_tool_call_id(tool_call_id: str) -> str:
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in tool_call_id)[:64]
 
 
-def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
+def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
     if isinstance(arguments, str):
         try:
             parsed = json.loads(arguments)
@@ -181,8 +182,8 @@ def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
     return {}
 
 
-def _build_system_blocks(messages: List[Message]) -> Optional[List[Dict[str, Any]]]:
-    blocks: List[Dict[str, Any]] = []
+def _build_system_blocks(messages: list[Message]) -> list[dict[str, Any]] | None:
+    blocks: list[dict[str, Any]] = []
     for message in messages:
         if message.role != "system":
             continue
@@ -195,31 +196,31 @@ def _build_system_blocks(messages: List[Message]) -> Optional[List[Dict[str, Any
 @dataclass
 class CopilotAnthropicModel(Model):
     id: str
-    name: Optional[str] = None
-    provider: Optional[str] = None
-    access_token: Optional[str] = None
+    name: str | None = None
+    provider: str | None = None
+    access_token: str | None = None
     base_url: str = "https://api.individual.githubcopilot.com"
     max_tokens: int = 4096
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    _tool_name_sanitizer: Optional[ToolNameSanitizer] = None
+    temperature: float | None = None
+    top_p: float | None = None
+    _tool_name_sanitizer: ToolNameSanitizer | None = None
 
     def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return self._invoke_sync(messages, response_format, tools, tool_choice)
 
     async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return await self._invoke_async(messages, response_format, tools, tool_choice)
 
     def invoke_stream(self, *args: Any, **kwargs: Any) -> Iterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -230,7 +231,7 @@ class CopilotAnthropicModel(Model):
     async def ainvoke_stream(
         self, *args: Any, **kwargs: Any
     ) -> AsyncIterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -245,7 +246,7 @@ class CopilotAnthropicModel(Model):
     def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
         return response if isinstance(response, ModelResponse) else ModelResponse()
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self) -> dict[str, str]:
         if not self.access_token:
             raise ModelProviderError(
                 message="Missing access token for GitHub Copilot",
@@ -264,15 +265,15 @@ class CopilotAnthropicModel(Model):
         return headers
 
     def _build_tools(
-        self, tools: Optional[List[Dict[str, Any]]]
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, tools: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]] | None:
         if not tools:
             return None
         sanitizer = self._tool_name_sanitizer or ToolNameSanitizer(
             ANTHROPIC_TOOL_NAME_CHARS
         )
         self._tool_name_sanitizer = sanitizer
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for tool in tools:
             if tool.get("type") != "function":
                 continue
@@ -284,7 +285,7 @@ class CopilotAnthropicModel(Model):
                 continue
             safe_name = sanitizer.map_original_to_safe(name)
             schema = func.get("parameters") or {"type": "object", "properties": {}}
-            tool_def: Dict[str, Any] = {"name": safe_name, "input_schema": schema}
+            tool_def: dict[str, Any] = {"name": safe_name, "input_schema": schema}
             description = func.get("description")
             if isinstance(description, str) and description:
                 tool_def["description"] = description
@@ -292,8 +293,8 @@ class CopilotAnthropicModel(Model):
         return results or None
 
     def _map_tool_choice(
-        self, tool_choice: Optional[Union[str, Dict[str, Any]]]
-    ) -> Optional[Dict[str, Any]]:
+        self, tool_choice: str | dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         if tool_choice is None:
             return None
         if isinstance(tool_choice, str):
@@ -312,12 +313,12 @@ class CopilotAnthropicModel(Model):
                 return {"type": "tool", "name": sanitizer.map_original_to_safe(name)}
         return None
 
-    def _convert_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
+    def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         sanitizer = self._tool_name_sanitizer or ToolNameSanitizer(
             ANTHROPIC_TOOL_NAME_CHARS
         )
         self._tool_name_sanitizer = sanitizer
-        params: List[Dict[str, Any]] = []
+        params: list[dict[str, Any]] = []
         i = 0
         while i < len(messages):
             message = messages[i]
@@ -331,7 +332,7 @@ class CopilotAnthropicModel(Model):
                 i += 1
                 continue
             if message.role == "assistant":
-                blocks: List[Dict[str, Any]] = []
+                blocks: list[dict[str, Any]] = []
                 text = message.get_content_string()
                 if text:
                     blocks.append({"type": "text", "text": text})
@@ -367,7 +368,7 @@ class CopilotAnthropicModel(Model):
                 i += 1
                 continue
             if message.role == "tool":
-                tool_results: List[Dict[str, Any]] = []
+                tool_results: list[dict[str, Any]] = []
                 while i < len(messages) and messages[i].role == "tool":
                     tool_msg = messages[i]
                     tool_id = tool_msg.tool_call_id or ""
@@ -390,7 +391,7 @@ class CopilotAnthropicModel(Model):
             i += 1
         return params
 
-    def _build_metrics(self, usage: Dict[str, Any]) -> Metrics:
+    def _build_metrics(self, usage: dict[str, Any]) -> Metrics:
         input_tokens = usage.get("input_tokens") or 0
         output_tokens = usage.get("output_tokens") or 0
         total_tokens = input_tokens + output_tokens
@@ -402,13 +403,13 @@ class CopilotAnthropicModel(Model):
 
     def _build_request(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
         *,
         stream: bool,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": self.id,
             "messages": self._convert_messages(messages),
             "max_tokens": self.max_tokens,
@@ -442,15 +443,15 @@ class CopilotAnthropicModel(Model):
 
     def _invoke_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         for delta in self._invoke_stream_sync(
             messages, response_format, tools, tool_choice
         ):
@@ -474,15 +475,15 @@ class CopilotAnthropicModel(Model):
 
     async def _invoke_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         async for delta in self._invoke_stream_async(
             messages, response_format, tools, tool_choice
         ):
@@ -506,15 +507,15 @@ class CopilotAnthropicModel(Model):
 
     def _invoke_stream_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> Iterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice, stream=True)
         headers = self._build_headers()
         url = self._build_messages_url()
-        tool_state: Dict[int, Dict[str, Any]] = {}
+        tool_state: dict[int, dict[str, Any]] = {}
 
         with httpx.Client(timeout=60.0) as client:
             with client.stream(
@@ -543,15 +544,15 @@ class CopilotAnthropicModel(Model):
 
     async def _invoke_stream_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> AsyncIterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice, stream=True)
         headers = self._build_headers()
         url = self._build_messages_url()
-        tool_state: Dict[int, Dict[str, Any]] = {}
+        tool_state: dict[int, dict[str, Any]] = {}
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
@@ -581,7 +582,7 @@ class CopilotAnthropicModel(Model):
                         yield delta
 
     def _parse_stream_event(
-        self, event: Dict[str, Any], tool_state: Dict[int, Dict[str, Any]]
+        self, event: dict[str, Any], tool_state: dict[int, dict[str, Any]]
     ) -> Iterator[ModelResponse]:
         event_type = event.get("type")
         if event_type == "message_start":
@@ -640,7 +641,7 @@ class CopilotAnthropicModel(Model):
                 )
                 if isinstance(name, str):
                     name = sanitizer.map_safe_to_original(name)
-                parsed_args: Dict[str, Any] = {}
+                parsed_args: dict[str, Any] = {}
                 if state.get("has_delta"):
                     args_json = state.get("json") or "{}"
                     try:
@@ -665,7 +666,7 @@ class CopilotAnthropicModel(Model):
             return
 
 
-def _get_copilot_credentials() -> Dict[str, Any]:
+def _get_copilot_credentials() -> dict[str, Any]:
     creds = get_provider_oauth_manager().get_valid_credentials(
         "github_copilot",
         refresh_if_missing_expiry=True,
@@ -676,7 +677,7 @@ def _get_copilot_credentials() -> Dict[str, Any]:
     return creds
 
 
-def _get_copilot_base_url(creds: Dict[str, Any]) -> str:
+def _get_copilot_base_url(creds: dict[str, Any]) -> str:
     extra = creds.get("extra")
     if isinstance(extra, dict) and extra.get("baseUrl"):
         return extra["baseUrl"]
@@ -693,7 +694,7 @@ def _resolve_copilot_api(model_id: str) -> str:
 
 async def _fetch_copilot_models_from_api(
     base_url: str, access_token: str
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     base = base_url.rstrip("/")
     urls = [f"{base}/models", f"{base}/v1/models"]
     headers = {
@@ -711,7 +712,7 @@ async def _fetch_copilot_models_from_api(
         except Exception:
             continue
 
-        models: List[Dict[str, Any]] = []
+        models: list[dict[str, Any]] = []
         if isinstance(payload, dict):
             if isinstance(payload.get("data"), list):
                 models = payload.get("data", [])
@@ -720,7 +721,7 @@ async def _fetch_copilot_models_from_api(
         elif isinstance(payload, list):
             models = payload
 
-        results: List[Dict[str, str]] = []
+        results: list[dict[str, str]] = []
         for model in models:
             if not isinstance(model, dict):
                 continue
@@ -743,7 +744,7 @@ async def _fetch_copilot_models_from_api(
 
 def get_github_copilot_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> Any:
     creds = _get_copilot_credentials()
     token = creds.get("access_token")
@@ -785,7 +786,7 @@ def get_github_copilot_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     try:
         creds = _get_copilot_credentials()
     except RuntimeError:

@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from agno.models.message import Message as AgnoMessage
 
+import backend.services.chat_graph_runner as chat_graph_runner
 from backend import db
 from backend.commands import chats as chats_commands
 from backend.models.chat import ChatMessage, ContentBlock
@@ -15,7 +16,6 @@ from backend.services.chat_graph_runner import (
     parse_message_blocks,
     run_graph_chat_runtime,
 )
-import backend.services.chat_graph_runner as chat_graph_runner
 from nodes._types import DataValue, ExecutionResult, NodeEvent
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
 

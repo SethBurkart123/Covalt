@@ -8,10 +8,11 @@ import os
 import secrets
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -53,7 +54,7 @@ def _expires_at_from_seconds(expires_in: int) -> str:
     ).isoformat()
 
 
-def _is_expired(expires_at: Optional[str]) -> bool:
+def _is_expired(expires_at: str | None) -> bool:
     if not expires_at:
         return False
     try:
@@ -62,7 +63,7 @@ def _is_expired(expires_at: Optional[str]) -> bool:
         return False
 
 
-def _is_missing_expiry(expires_at: Optional[str]) -> bool:
+def _is_missing_expiry(expires_at: str | None) -> bool:
     if expires_at is None:
         return True
     if isinstance(expires_at, str) and not expires_at.strip():
@@ -92,7 +93,7 @@ def _normalize_provider(provider: str) -> str:
     return provider.lower().strip().replace("-", "_")
 
 
-def _decode_jwt_payload(token: str) -> Optional[Dict[str, Any]]:
+def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
     parts = token.split(".")
     if len(parts) != 3:
         return None
@@ -111,7 +112,7 @@ class _CallbackServer:
         *,
         port: int,
         path: str,
-        expected_state: Optional[str],
+        expected_state: str | None,
         on_code: Callable[[str, str], None],
         on_error: Callable[[str], None],
     ) -> None:
@@ -187,20 +188,20 @@ class _CallbackServer:
 class OAuthFlowState:
     provider: str
     status: OAuthStatus = "pending"
-    error: Optional[str] = None
-    auth_url: Optional[str] = None
-    instructions: Optional[str] = None
-    verifier: Optional[str] = None
-    state: Optional[str] = None
-    code_future: asyncio.Future[Tuple[str, Optional[str]]] | None = None
-    callback_server: Optional[_CallbackServer] = None
-    flow_task: Optional[asyncio.Task[None]] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    auth_url: str | None = None
+    instructions: str | None = None
+    verifier: str | None = None
+    state: str | None = None
+    code_future: asyncio.Future[tuple[str, str | None]] | None = None
+    callback_server: _CallbackServer | None = None
+    flow_task: asyncio.Task[None] | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class ProviderOAuthManager:
     def __init__(self) -> None:
-        self._active_flows: Dict[str, OAuthFlowState] = {}
+        self._active_flows: dict[str, OAuthFlowState] = {}
         self._pending_callbacks = PendingOAuthCallbacks()
         # When true, attempt refresh for credentials missing expires_at.
         self._refresh_if_missing_expiry = _env_flag(
@@ -216,7 +217,7 @@ class ProviderOAuthManager:
         flow.extra["pending_callback_key"] = pending_key
         flow.code_future = self._pending_callbacks.create(pending_key)
 
-    def _resolve_pending_key(self, flow: OAuthFlowState) -> Optional[str]:
+    def _resolve_pending_key(self, flow: OAuthFlowState) -> str | None:
         value = flow.extra.get("pending_callback_key")
         if isinstance(value, str) and value:
             return value
@@ -233,7 +234,7 @@ class ProviderOAuthManager:
         flow: OAuthFlowState,
         *,
         code: str,
-        state: Optional[str],
+        state: str | None,
     ) -> bool:
         resolved_state = state or flow.state
         pending_key = self._resolve_pending_key(flow)
@@ -263,8 +264,8 @@ class ProviderOAuthManager:
         return build_localhost_redirect_uri(port, path)
 
     async def start_oauth(
-        self, provider: str, options: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, provider: str, options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         provider = _normalize_provider(provider)
         options = options or {}
         if provider in self._active_flows:
@@ -318,7 +319,7 @@ class ProviderOAuthManager:
 
         return self._complete_pending_callback(flow, code=code, state=state)
 
-    def get_oauth_status(self, provider: str) -> Dict[str, Any]:
+    def get_oauth_status(self, provider: str) -> dict[str, Any]:
         provider = _normalize_provider(provider)
         flow = self._active_flows.get(provider)
         if flow:
@@ -362,9 +363,9 @@ class ProviderOAuthManager:
         self,
         provider: str,
         *,
-        refresh_if_missing_expiry: Optional[bool] = None,
-        allow_stale_on_refresh_failure: Optional[bool] = None,
-    ) -> Optional[Dict[str, Any]]:
+        refresh_if_missing_expiry: bool | None = None,
+        allow_stale_on_refresh_failure: bool | None = None,
+    ) -> dict[str, Any] | None:
         provider = _normalize_provider(provider)
         refresh_missing = (
             self._refresh_if_missing_expiry
@@ -398,8 +399,8 @@ class ProviderOAuthManager:
         return None
 
     def _refresh_credentials(
-        self, provider: str, data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, provider: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         refresh_token = data.get("refresh_token")
         if not refresh_token:
             return None
@@ -575,7 +576,7 @@ class ProviderOAuthManager:
                 flow.callback_server.stop()
 
     async def _start_github_copilot(
-        self, flow: OAuthFlowState, options: Dict[str, Any]
+        self, flow: OAuthFlowState, options: dict[str, Any]
     ) -> None:
         enterprise_domain = options.get("enterpriseDomain")
         if enterprise_domain:
@@ -751,7 +752,7 @@ class ProviderOAuthManager:
             self._fail_pending_callback(flow, str(e))
         return server
 
-    def _get_openai_account_id(self, access_token: str) -> Optional[str]:
+    def _get_openai_account_id(self, access_token: str) -> str | None:
         payload = _decode_jwt_payload(access_token)
         if not payload:
             return None
@@ -766,11 +767,11 @@ class ProviderOAuthManager:
         self,
         *,
         code: str,
-        verifier: Optional[str],
+        verifier: str | None,
         client_id: str,
         client_secret: str,
         redirect_uri: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         data = {
             "client_id": client_id,
             "client_secret": client_secret,
@@ -792,7 +793,7 @@ class ProviderOAuthManager:
             raise ValueError("No refresh token received")
         return payload
 
-    async def _get_google_user_email(self, access_token: str) -> Optional[str]:
+    async def _get_google_user_email(self, access_token: str) -> str | None:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
@@ -865,7 +866,7 @@ class ProviderOAuthManager:
                 "Missing GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID for this account"
             )
 
-        onboard_body: Dict[str, Any] = {
+        onboard_body: dict[str, Any] = {
             "tierId": tier_id,
             "metadata": {
                 "ideType": "IDE_UNSPECIFIED",
@@ -901,8 +902,8 @@ class ProviderOAuthManager:
         raise ValueError("Could not provision a project")
 
     async def _poll_google_operation(
-        self, name: str, headers: Dict[str, str]
-    ) -> Dict[str, Any]:
+        self, name: str, headers: dict[str, str]
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=20.0) as client:
             while True:
                 resp = await client.get(
@@ -916,7 +917,7 @@ class ProviderOAuthManager:
                     return data
                 await asyncio.sleep(5)
 
-    async def _github_device_code(self, domain: str) -> Dict[str, Any]:
+    async def _github_device_code(self, domain: str) -> dict[str, Any]:
         client_id = _decode_base64("SXYxLmI1MDdhMDhjODdlY2ZlOTg=")
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(
@@ -972,7 +973,7 @@ class ProviderOAuthManager:
 
     async def _fetch_copilot_token(
         self, domain: str, access_token: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.get(
                 f"https://api.{domain}/copilot_internal/v2/token",
@@ -1003,7 +1004,7 @@ class ProviderOAuthManager:
             return f"https://copilot-api.{domain}"
         return "https://api.individual.githubcopilot.com"
 
-    def _normalize_github_domain(self, value: str) -> Optional[str]:
+    def _normalize_github_domain(self, value: str) -> str | None:
         trimmed = value.strip()
         if not trimmed:
             return None
@@ -1013,7 +1014,7 @@ class ProviderOAuthManager:
         except Exception:
             return None
 
-    def _refresh_anthropic(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+    def _refresh_anthropic(self, refresh_token: str) -> dict[str, Any] | None:
         payload = {
             "grant_type": "refresh_token",
             "client_id": _decode_base64(
@@ -1051,7 +1052,7 @@ class ProviderOAuthManager:
             "expires_at": expires_at,
         }
 
-    def _refresh_openai_codex(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+    def _refresh_openai_codex(self, refresh_token: str) -> dict[str, Any] | None:
         data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
@@ -1093,8 +1094,8 @@ class ProviderOAuthManager:
         }
 
     def _refresh_github_copilot(
-        self, refresh_token: str, extra: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, refresh_token: str, extra: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         domain = None
         if isinstance(extra, dict):
             domain = extra.get("enterpriseDomain")
@@ -1138,8 +1139,8 @@ class ProviderOAuthManager:
         }
 
     def _refresh_google_gemini(
-        self, refresh_token: str, extra: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, refresh_token: str, extra: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         project_id = extra.get("projectId") if isinstance(extra, dict) else None
         if not project_id:
             return None

@@ -1,11 +1,13 @@
 """Google Provider - Gemini models via Google AI Studio or Vertex AI"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
+from .. import db
 from . import get_api_key, get_extra_config
 from .options import resolve_common_options
-from .. import db
 
 ALIASES = ["gemini", "google_ai_studio"]
 GOOGLE_THINKING_BUDGET_MAX = 32768
@@ -14,7 +16,7 @@ VERTEX_THINKING_BUDGET_MAX = 24576
 
 def get_google_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     """Create a Google Gemini model instance."""
     api_key = get_api_key()
@@ -25,7 +27,7 @@ def get_google_model(
         raise RuntimeError("Google API key not configured in Settings.")
 
     options = provider_options
-    request_params: Dict[str, Any] = dict(options.get("request_params") or {})
+    request_params: dict[str, Any] = dict(options.get("request_params") or {})
     if is_vertex_enabled:
         thinking = request_params.get("thinking")
         if isinstance(thinking, dict):
@@ -51,9 +53,9 @@ def get_google_model(
 
 def resolve_options(
     model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     _ = model_id
     options = model_options or {}
     resolved = resolve_common_options(model_options, node_params)
@@ -71,7 +73,7 @@ def resolve_options(
     return resolved
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     """Fetch available models from Google AI Studio API."""
     api_key = get_api_key()
     if not api_key:
@@ -117,8 +119,8 @@ async def fetch_models() -> List[Dict[str, Any]]:
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return Google Gemini options for a model."""
     metadata = model_metadata or {}
     max_output_tokens = _coerce_positive_int(
@@ -219,7 +221,7 @@ def _max_thinking_budget() -> int:
     return GOOGLE_THINKING_BUDGET_MAX
 
 
-def _is_vertex_enabled(extra: Dict[str, Any]) -> bool:
+def _is_vertex_enabled(extra: dict[str, Any]) -> bool:
     raw = extra.get("vertexai")
     if isinstance(raw, bool):
         return raw

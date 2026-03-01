@@ -12,7 +12,7 @@ from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import Agent
 from .graph_normalizer import normalize_graph_data
-from .node_route_index import update_agent_routes, remove_agent_routes
+from .node_route_index import remove_agent_routes, update_agent_routes
 
 logger = logging.getLogger(__name__)
 

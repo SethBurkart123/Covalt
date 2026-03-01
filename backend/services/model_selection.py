@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .. import db
 
 
-def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
+def parse_model_id(model_id: str | None) -> tuple[str, str]:
     if not model_id:
         return "", ""
     if ":" in model_id:

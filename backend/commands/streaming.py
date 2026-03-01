@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional, Literal
+import logging
+from typing import Any, Literal
 
 from pydantic import BaseModel
 from rich.logging import RichHandler
-
-from .. import db
-
 from zynk import Channel, command
 
+from .. import db
 from ..application.conversation import (
     FlowRunPromptInput as FlowRunPromptInputDTO,
+)
+from ..application.conversation import (
     StartRunDependencies,
     StartRunInput,
     StreamAgentRunDependencies,
@@ -28,12 +29,40 @@ from ..application.tooling import (
     CancelRunDependencies,
     CancelRunInput,
     RespondToToolApprovalDependencies,
-    RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
     execute_cancel_flow_run,
     execute_cancel_run,
     execute_respond_to_tool_approval,
 )
+from ..application.tooling import (
+    RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
+)
 from ..models.chat import ChatMessage
+from ..services import run_control
+from ..services import stream_broadcaster as broadcaster
+from ..services.agent_manager import get_agent_manager
+from ..services.chat_attachments import prepare_stream_attachments
+from ..services.chat_graph_runner import (
+    FlowRunHandle,
+    _build_trigger_payload,
+    get_graph_data_for_chat,
+    run_graph_chat_runtime,
+)
+from ..services.conversation_run_service import (
+    emit_run_start_events,
+    handle_streaming_run_error,
+    validate_model_options,
+)
+from ..services.conversation_store import (
+    ensure_chat_initialized,
+    get_active_leaf_message_id,
+)
+from ..services.conversation_store import (
+    init_assistant_message as init_assistant_msg,
+)
+from ..services.conversation_store import (
+    save_user_message as save_user_msg,
+)
+from ..services.flow_executor import run_flow
 from ..services.runtime_events import (
     EVENT_ASSISTANT_MESSAGE_ID,
     EVENT_RUN_ERROR,
@@ -42,30 +71,7 @@ from ..services.runtime_events import (
     EVENT_STREAM_SUBSCRIBED,
     emit_chat_event,
 )
-from ..services.agent_manager import get_agent_manager
-from ..services.chat_attachments import prepare_stream_attachments
-from ..services.chat_graph_runner import (
-    get_graph_data_for_chat,
-    run_graph_chat_runtime,
-    _build_trigger_payload,
-    FlowRunHandle,
-)
-from ..services.conversation_store import (
-    ensure_chat_initialized,
-    init_assistant_message as init_assistant_msg,
-    save_user_message as save_user_msg,
-    get_active_leaf_message_id,
-)
-from ..services.flow_executor import run_flow
 from ..services.tool_registry import get_tool_registry
-from ..services import run_control
-from ..services import stream_broadcaster as broadcaster
-from ..services.conversation_run_service import (
-    validate_model_options,
-    emit_run_start_events,
-    handle_streaming_run_error,
-)
-import logging
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,12 +100,12 @@ class AttachmentMeta(BaseModel):
 
 
 class StreamChatRequest(BaseModel):
-    messages: List[Dict[str, Any]]
-    modelId: Optional[str] = None
-    modelOptions: Optional[Dict[str, Any]] = None
-    chatId: Optional[str] = None
-    toolIds: List[str] = []
-    attachments: List[AttachmentMeta] = []
+    messages: list[dict[str, Any]]
+    modelId: str | None = None
+    modelOptions: dict[str, Any] | None = None
+    chatId: str | None = None
+    toolIds: list[str] = []
+    attachments: list[AttachmentMeta] = []
 
 
 class CancelRunRequest(BaseModel):
@@ -109,15 +115,15 @@ class CancelRunRequest(BaseModel):
 class RespondToToolApprovalInput(BaseModel):
     runId: str
     approved: bool
-    toolDecisions: Optional[Dict[str, bool]] = None
-    editedArgs: Optional[Dict[str, Dict[str, Any]]] = None
+    toolDecisions: dict[str, bool] | None = None
+    editedArgs: dict[str, dict[str, Any]] | None = None
 
 
 def _set_approval_response(
     run_id: str,
     approved: bool,
-    tool_decisions: Dict[str, bool],
-    edited_args: Dict[str, Dict[str, Any]],
+    tool_decisions: dict[str, bool],
+    edited_args: dict[str, dict[str, Any]],
 ) -> None:
     run_control.set_approval_response(
         run_id,
@@ -186,8 +192,8 @@ async def cancel_flow_run(body: CancelFlowRunRequest) -> dict:
 
 def _prepare_stream_attachments_for_start_run(
     chat_id: str,
-    attachments: List[AttachmentMeta],
-    source_ref: Optional[str],
+    attachments: list[AttachmentMeta],
+    source_ref: str | None,
 ):
     return prepare_stream_attachments(chat_id, attachments, source_ref=source_ref)
 
@@ -195,7 +201,7 @@ def _prepare_stream_attachments_for_start_run(
 def _emit_run_started(
     channel: Channel,
     chat_id: str,
-    file_renames: Optional[Dict[str, str]],
+    file_renames: dict[str, str] | None,
 ) -> None:
     emit_chat_event(
         channel,
@@ -209,7 +215,7 @@ def _emit_assistant_message_id(channel: Channel, assistant_msg_id: str) -> None:
     emit_chat_event(channel, EVENT_ASSISTANT_MESSAGE_ID, content=assistant_msg_id)
 
 
-def _get_graph_data(chat_id: str, model_id: Optional[str], model_options: Dict[str, Any]) -> Dict[str, Any]:
+def _get_graph_data(chat_id: str, model_id: str | None, model_options: dict[str, Any]) -> dict[str, Any]:
     return get_graph_data_for_chat(
         chat_id,
         model_id,
@@ -239,7 +245,7 @@ async def stream_chat(
     channel: Channel,
     body: StreamChatRequest,
 ) -> None:
-    messages: List[ChatMessage] = [
+    messages: list[ChatMessage] = [
         ChatMessage(
             id=m.get("id"),
             role=m.get("role"),
@@ -267,25 +273,25 @@ async def stream_chat(
 
 class StreamAgentChatRequest(BaseModel):
     agentId: str
-    messages: List[Dict[str, Any]]
-    chatId: Optional[str] = None
+    messages: list[dict[str, Any]]
+    chatId: str | None = None
     ephemeral: bool = False
 
 
 class FlowRunPromptInput(BaseModel):
-    message: Optional[str] = None
-    history: Optional[List[Dict[str, Any]]] = None
-    messages: Optional[List[Any]] = None
-    attachments: Optional[List[Dict[str, Any]]] = None
+    message: str | None = None
+    history: list[dict[str, Any]] | None = None
+    messages: list[Any] | None = None
+    attachments: list[dict[str, Any]] | None = None
 
 
 class StreamFlowRunRequest(BaseModel):
     agentId: str
     mode: Literal["execute", "runFrom"]
     targetNodeId: str
-    cachedOutputs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
-    promptInput: Optional[FlowRunPromptInput] = None
-    nodeIds: Optional[List[str]] = None
+    cachedOutputs: dict[str, dict[str, dict[str, Any]]] | None = None
+    promptInput: FlowRunPromptInput | None = None
+    nodeIds: list[str] | None = None
 
 
 class CancelFlowRunRequest(BaseModel):
@@ -312,7 +318,7 @@ async def stream_agent_chat(
     channel: Channel,
     body: StreamAgentChatRequest,
 ) -> None:
-    messages: List[ChatMessage] = [
+    messages: list[ChatMessage] = [
         ChatMessage(
             id=m.get("id"),
             role=m.get("role"),
@@ -382,11 +388,11 @@ class ActiveStreamInfo(BaseModel):
     chatId: str
     messageId: str
     status: str
-    errorMessage: Optional[str] = None
+    errorMessage: str | None = None
 
 
 class ActiveStreamsResponse(BaseModel):
-    streams: List[ActiveStreamInfo]
+    streams: list[ActiveStreamInfo]
 
 
 class SubscribeToStreamRequest(BaseModel):

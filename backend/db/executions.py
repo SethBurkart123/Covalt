@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,11 +14,11 @@ def create_execution_run(
     sess: Session,
     *,
     id: str,
-    chat_id: Optional[str],
-    message_id: Optional[str],
+    chat_id: str | None,
+    message_id: str | None,
     kind: str,
     status: str,
-    root_run_id: Optional[str],
+    root_run_id: str | None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
     sess.add(
@@ -40,9 +40,9 @@ def update_execution_run(
     sess: Session,
     *,
     execution_id: str,
-    status: Optional[str] = None,
-    root_run_id: Optional[str] = None,
-    error_message: Optional[str] = None,
+    status: str | None = None,
+    root_run_id: str | None = None,
+    error_message: str | None = None,
     end_run: bool = False,
 ) -> None:
     run = sess.get(ExecutionRun, execution_id)

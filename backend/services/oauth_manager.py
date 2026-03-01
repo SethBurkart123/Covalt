@@ -10,10 +10,9 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import AnyUrl
-
 from mcp.client.auth import OAuthClientProvider, TokenStorage
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from pydantic import AnyUrl
 
 from ..crypto import decrypt, encrypt
 from ..db import db_session
