@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Folder, FolderOpen } from "lucide-react";
+import { motion } from "framer-motion";
 import { useChat } from "@/contexts/chat-context";
+import { usePageTitle } from "@/contexts/page-title-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { useModelOptions } from "@/lib/hooks/use-model-options";
@@ -11,6 +14,7 @@ import { getModelSettings } from "@/python/api";
 import ChatInputForm from "@/components/ChatInputForm";
 import ChatMessageList from "@/components/ChatMessageList";
 import ThinkingTagPrompt from "@/components/ThinkingTagPrompt";
+import { Button } from "@/components/ui/button";
 import { Header } from "./Header";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
@@ -19,12 +23,21 @@ import "@/components/tool-renderers";
 import type { AllModelSettingsResponse } from "@/python/api";
 import type { Message } from "@/lib/types/chat";
 
+const WORKSPACE_PANEL_TRANSITION = {
+  type: "spring" as const,
+  stiffness: 231,
+  damping: 28,
+};
+
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
+  const { setRightContent } = usePageTitle();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
   const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
     useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
+  const [workspaceFilesCount, setWorkspaceFilesCount] = useState(0);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
 
   const hideToolSelector = useMemo(() => {
     if (!selectedModel.startsWith("agent:")) return false;
@@ -66,6 +79,40 @@ export default function ChatPanel() {
     setHasCheckedThinkingPrompt(false);
     setShowThinkingPrompt(false);
   }, [selectedModel]);
+
+  useEffect(() => {
+    if (!chatId) {
+      setWorkspaceFilesCount(0);
+      setIsWorkspaceOpen(false);
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (workspaceFilesCount === 0) {
+      setIsWorkspaceOpen(false);
+    }
+  }, [workspaceFilesCount]);
+
+  useEffect(() => {
+    if (workspaceFilesCount <= 0) {
+      setRightContent(null);
+      return;
+    }
+
+    setRightContent(
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8"
+        onClick={() => setIsWorkspaceOpen((prev) => !prev)}
+        aria-label={isWorkspaceOpen ? "Close workspace" : "Open workspace"}
+      >
+        {isWorkspaceOpen ? <FolderOpen className="size-4" /> : <Folder className="size-4" />}
+      </Button>
+    );
+
+    return () => setRightContent(null);
+  }, [isWorkspaceOpen, setRightContent, workspaceFilesCount]);
 
   const {
     schema: modelOptionSchema,
@@ -228,9 +275,20 @@ export default function ChatPanel() {
         </div>
         <ArtifactPanel />
         {chatId && (
-          <div className="w-80 min-w-72 border-l bg-card/40">
-            <WorkspaceBrowser chatId={chatId} className="h-full" />
-          </div>
+          <motion.div
+            className="overflow-hidden h-full shrink-0"
+            initial={false}
+            animate={{ width: isWorkspaceOpen ? 320 : 0 }}
+            transition={WORKSPACE_PANEL_TRANSITION}
+          >
+            <div className="h-full w-80 min-w-80 border-l bg-card/40">
+              <WorkspaceBrowser
+                chatId={chatId}
+                className="h-full"
+                onFilesCountChange={setWorkspaceFilesCount}
+              />
+            </div>
+          </motion.div>
         )}
         {process.env.NODE_ENV === "development" && (
           <DevPanel isLoading={isLoading} canSendMessage={canSendMessage} />
