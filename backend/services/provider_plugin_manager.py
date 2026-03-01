@@ -94,44 +94,15 @@ _PROVIDER_PLUGIN_POLICY_KEY = "provider_plugin_policy"
 _PROVIDER_PLUGIN_INDEXES_KEY = "provider_plugin_indexes"
 _OFFICIAL_PROVIDER_PLUGIN_INDEX_ID = "official-index"
 
+_OFFICIAL_PROVIDER_PLUGIN_INDEX_URL = "https://raw.githubusercontent.com/sethburkart123/covalt-provider-plugins/main/index.json"
+
 _BUILTIN_PROVIDER_PLUGIN_INDEXES: tuple[ProviderPluginIndexEntry, ...] = (
     ProviderPluginIndexEntry(
         id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
         name="Official Provider Index",
-        url="builtin://official-provider-index",
+        url=_OFFICIAL_PROVIDER_PLUGIN_INDEX_URL,
         source_class="official",
         built_in=True,
-    ),
-)
-
-_BUILTIN_PROVIDER_PLUGIN_SOURCES: tuple[ProviderPluginSourceEntry, ...] = (
-    ProviderPluginSourceEntry(
-        id="sample-openai-adapter",
-        plugin_id="sample_openai_adapter",
-        name="Sample OpenAI Adapter Provider",
-        version="0.1.0",
-        provider="sample_openai_adapter",
-        description="Template plugin using adapter-based provider manifest.",
-        icon="openai",
-        source_class="official",
-        index_id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
-        index_name="Official Provider Index",
-        source_url="builtin://official-provider-index",
-        plugin_path="examples/provider-plugins/sample-openai-adapter",
-    ),
-    ProviderPluginSourceEntry(
-        id="sample-code-provider",
-        plugin_id="sample_code_provider",
-        name="Sample Code Provider",
-        version="0.1.0",
-        provider="sample_code_provider",
-        description="Template plugin with custom Python provider factory entrypoint.",
-        icon="openai",
-        source_class="official",
-        index_id=_OFFICIAL_PROVIDER_PLUGIN_INDEX_ID,
-        index_name="Official Provider Index",
-        source_url="builtin://official-provider-index",
-        plugin_path="examples/provider-plugins/sample-code-provider",
     ),
 )
 
@@ -599,9 +570,6 @@ def _extract_sources_from_index_payload(
 
 
 def _fetch_index_sources(index: ProviderPluginIndexEntry) -> list[ProviderPluginSourceEntry]:
-    if index.url.startswith("builtin://"):
-        return [item for item in _BUILTIN_PROVIDER_PLUGIN_SOURCES if item.index_id == index.id]
-
     try:
         with urllib.request.urlopen(index.url, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -877,22 +845,6 @@ class ProviderPluginManager:
         source = self.get_source(source_id)
         if source is None:
             raise ValueError(f"Unknown provider plugin source '{source_id}'")
-
-        if source.plugin_path and str(source.source_url or "").startswith("builtin://"):
-            root = Path(__file__).resolve().parents[2]
-            directory = root / source.plugin_path
-            if not directory.exists():
-                raise ValueError(f"Provider plugin source path not found: {directory}")
-            return self.import_from_directory(
-                directory,
-                source_type="source",
-                source_ref=source.id,
-                source_class=source.source_class,
-                index_id=source.index_id,
-                repo_url=source.repo_url,
-                tracking_ref=source.tracking_ref,
-                plugin_path=source.plugin_path,
-            )
 
         if source.repo_url:
             return self.install_from_repo(
@@ -1239,21 +1191,7 @@ class ProviderPluginManager:
                     )
                 elif plugin.source_type == "source" and plugin.source_ref:
                     source = self.get_source(plugin.source_ref)
-                    if source and source.plugin_path and str(source.source_url or "").startswith("builtin://"):
-                        root = Path(__file__).resolve().parents[2]
-                        source_dir = root / source.plugin_path
-                        if not source_dir.exists():
-                            raise ValueError("Built-in source path no longer exists")
-                        self._replace_plugin_from_directory(plugin.id, source_dir)
-                        self._set_state(plugin.id, enabled=None, update_error=None)
-                        results.append(
-                            ProviderPluginUpdateResult(
-                                id=plugin.id,
-                                status="updated",
-                                message="Updated from store source",
-                            )
-                        )
-                    elif source and source.repo_url:
+                    if source and source.repo_url:
                         self._update_from_repo(plugin, source=source)
                         results.append(
                             ProviderPluginUpdateResult(
