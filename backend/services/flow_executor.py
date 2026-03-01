@@ -27,7 +27,8 @@ import asyncio
 import logging
 import types
 import uuid
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from backend.services.graph_runtime import GraphRuntime
 from nodes._coerce import coerce

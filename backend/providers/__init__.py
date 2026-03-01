@@ -17,8 +17,8 @@ from ._manifest import MANIFEST_PROVIDERS
 from .adapters import ADAPTER_REGISTRY
 from .options import resolve_common_options
 
-PROVIDERS: Dict[str, Dict[str, Any]] = {}
-ALIASES: Dict[str, str] = {}
+PROVIDERS: dict[str, dict[str, Any]] = {}
+ALIASES: dict[str, str] = {}
 _MANIFEST_PROVIDER_IDS = {
     str(item.get("id") or "").lower().strip().replace("-", "_")
     for item in MANIFEST_PROVIDERS
@@ -30,22 +30,22 @@ _PLUGIN_STORE_PROVIDER_IDS = {
 }
 
 _credential_override: contextvars.ContextVar[
-    Optional[Tuple[Optional[str], Optional[str]]]
+    tuple[str | None, str | None] | None
 ] = contextvars.ContextVar("credential_override", default=None)
 
 
 def _default_get_model_options(
     _model_id: str,
-    _model_metadata: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    _model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {"main": [], "advanced": []}
 
 
 def _default_resolve_options(
     _model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     return resolve_common_options(model_options, node_params)
 
 
@@ -55,7 +55,7 @@ def _normalize_provider_key(value: str) -> str:
 
 def _register_provider(
     provider_id: str,
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
     *,
     aliases: list[str] | None = None,
 ) -> None:
@@ -71,7 +71,7 @@ def _register_provider(
 
 def get_credentials(
     provider_name: str | None = None,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Get API credentials for a provider.
 
     If *provider_name* is given it is used directly; otherwise the provider is
@@ -91,11 +91,11 @@ def get_credentials(
     return None, None
 
 
-def get_api_key(provider_name: str | None = None) -> Optional[str]:
+def get_api_key(provider_name: str | None = None) -> str | None:
     return get_credentials(provider_name)[0]
 
 
-def get_base_url(provider_name: str | None = None) -> Optional[str]:
+def get_base_url(provider_name: str | None = None) -> str | None:
     return get_credentials(provider_name)[1]
 
 
@@ -237,7 +237,7 @@ def _invoke_provider_factory(factory: Any, *, provider_id: str, manifest: dict[s
     return factory()
 
 
-def _load_plugin_entry(manifest: Any) -> Dict[str, Any]:
+def _load_plugin_entry(manifest: Any) -> dict[str, Any]:
     if manifest.entrypoint:
         module_name, factory_name = manifest.entrypoint.rsplit(":", 1)
         module = _load_plugin_module(
@@ -309,7 +309,7 @@ reload_provider_registry()
 def get_model(
     provider: str,
     model_id: str,
-    provider_options: Dict[str, Any] | None = None,
+    provider_options: dict[str, Any] | None = None,
 ) -> Any:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
@@ -320,7 +320,7 @@ def get_model(
     return PROVIDERS[provider]["get_model"](model_id, provider_options=options)
 
 
-async def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
+async def fetch_provider_models(provider: str) -> list[dict[str, Any]]:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
         return []
@@ -330,8 +330,8 @@ async def fetch_provider_models(provider: str) -> List[Dict[str, Any]]:
 def get_provider_model_options(
     provider: str,
     model_id: str,
-    model_metadata: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
         return _default_get_model_options(model_id, model_metadata)
@@ -341,16 +341,16 @@ def get_provider_model_options(
 def resolve_provider_options(
     provider: str,
     model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     provider = _normalize(provider)
     if provider not in PROVIDERS:
         return _default_resolve_options(model_id, model_options, node_params)
     return PROVIDERS[provider]["resolve_options"](model_id, model_options, node_params)
 
 
-def list_providers() -> List[str]:
+def list_providers() -> list[str]:
     return list(PROVIDERS.keys())
 
 
@@ -361,8 +361,8 @@ def _normalize(provider: str) -> str:
 
 async def test_provider_connection(
     provider: str,
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> tuple[bool, str | None]:
     provider = _normalize(provider)
 

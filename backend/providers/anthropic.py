@@ -1,8 +1,10 @@
 """Anthropic Provider - Claude models via Anthropic API"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_api_key
 from .options import resolve_common_options
 
@@ -11,9 +13,9 @@ ALIASES = ["claude"]
 
 def resolve_options(
     model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     _ = model_id
     options = model_options or {}
     resolved = resolve_common_options(model_options, node_params)
@@ -33,7 +35,7 @@ def resolve_options(
 
 def get_anthropic_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     """Create an Anthropic Claude model instance."""
     api_key = get_api_key()
@@ -44,7 +46,7 @@ def get_anthropic_model(
     return LiteLLM(id=f"anthropic/{model_id}", api_key=api_key, **provider_options)
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     """Fetch available models from Anthropic API."""
     api_key = get_api_key()
     if not api_key:
@@ -75,8 +77,8 @@ async def fetch_models() -> List[Dict[str, Any]]:
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return Anthropic model option schema."""
     metadata = model_metadata or {}
     max_output_tokens = _coerce_positive_int(

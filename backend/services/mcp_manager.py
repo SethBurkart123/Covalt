@@ -544,7 +544,7 @@ class MCPManager:
 
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"MCP server {server_label} connection timeout")
 
     async def _connect_sse(self, server_key: str) -> None:
@@ -594,7 +594,7 @@ class MCPManager:
 
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"MCP server {server_label} connection timeout")
 
     async def _connect_streamable_http(self, server_key: str) -> None:
@@ -663,7 +663,7 @@ class MCPManager:
 
         try:
             await asyncio.wait_for(state._connection_event.wait(), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"MCP server {server_label} connection timeout")
 
     async def _run_mcp_session(

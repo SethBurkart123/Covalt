@@ -18,8 +18,7 @@ import pytest
 
 from backend.commands import streaming
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
-from tests.conftest import make_node, make_edge, make_graph
-
+from tests.conftest import make_edge, make_graph, make_node
 
 # ── Stub executors ───────────────────────────────────────────────────
 

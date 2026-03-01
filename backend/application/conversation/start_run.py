@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence
+from typing import Any, Protocol
 
 from zynk import Channel
 
@@ -16,33 +17,33 @@ class LoggerLike(Protocol):
 @dataclass
 class StartRunInput:
     channel: Channel
-    messages: List[ChatMessage]
-    model_id: Optional[str] = None
-    model_options: Optional[Dict[str, Any]] = None
-    chat_id: Optional[str] = None
-    tool_ids: List[str] = field(default_factory=list)
+    messages: list[ChatMessage]
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    chat_id: str | None = None
+    tool_ids: list[str] = field(default_factory=list)
     attachments: Sequence[AttachmentMetaLike] = field(default_factory=list)
 
 
 @dataclass
 class StartRunDependencies:
     validate_model_options: Callable[
-        [Optional[str], Optional[str], Optional[Dict[str, Any]], Channel],
-        Optional[Dict[str, Any]],
+        [str | None, str | None, dict[str, Any] | None, Channel],
+        dict[str, Any] | None,
     ]
-    ensure_chat_initialized: Callable[[Optional[str], Optional[str]], str]
+    ensure_chat_initialized: Callable[[str | None, str | None], str]
     prepare_stream_attachments: Callable[
-        [str, Sequence[AttachmentMetaLike], Optional[str]], StreamAttachmentState
+        [str, Sequence[AttachmentMetaLike], str | None], StreamAttachmentState
     ]
-    get_active_leaf_message_id: Callable[[str], Optional[str]]
+    get_active_leaf_message_id: Callable[[str], str | None]
     save_user_msg: Callable[
-        [ChatMessage, str, Optional[str], Optional[List[Attachment]], Optional[str]],
+        [ChatMessage, str, str | None, list[Attachment] | None, str | None],
         None,
     ]
-    emit_run_started: Callable[[Channel, str, Optional[Dict[str, str]]], None]
-    init_assistant_msg: Callable[[str, Optional[str]], str]
+    emit_run_started: Callable[[Channel, str, dict[str, str] | None], None]
+    init_assistant_msg: Callable[[str, str | None], str]
     emit_assistant_message_id: Callable[[Channel, str], None]
-    get_graph_data_for_chat: Callable[[str, Optional[str], Dict[str, Any]], Dict[str, Any]]
+    get_graph_data_for_chat: Callable[[str, str | None, dict[str, Any]], dict[str, Any]]
     run_graph_chat_runtime: Callable[..., Any]
     handle_streaming_run_error: Callable[..., Any]
     logger: LoggerLike
@@ -52,7 +53,7 @@ async def execute_start_run(
     input_data: StartRunInput,
     deps: StartRunDependencies,
 ) -> None:
-    validated_model_options: Dict[str, Any] = {}
+    validated_model_options: dict[str, Any] = {}
 
     if input_data.model_id:
         validated_model_options = deps.validate_model_options(
@@ -77,9 +78,9 @@ async def execute_start_run(
             return
         validated_model_options = result
 
-    saved_attachments: List[Attachment] = []
-    manifest_id: Optional[str] = None
-    file_renames: Dict[str, str] = {}
+    saved_attachments: list[Attachment] = []
+    manifest_id: str | None = None
+    file_renames: dict[str, str] = {}
 
     if input_data.attachments:
         attachment_state = deps.prepare_stream_attachments(

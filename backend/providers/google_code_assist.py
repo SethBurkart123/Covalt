@@ -5,17 +5,16 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
+from typing import Any
 
 import httpx
-
 from agno.exceptions import ModelProviderError
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.models.metrics import Metrics
 from agno.models.response import ModelResponse
-
 
 DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com"
 ANTIGRAVITY_ENDPOINT_FALLBACKS = (
@@ -36,11 +35,11 @@ def _normalize_tool_call_id(tool_call_id: str) -> str:
 
 
 def _build_function_declarations(
-    tools: Optional[List[Dict[str, Any]]], use_parameters: bool
-) -> Optional[List[Dict[str, Any]]]:
+    tools: list[dict[str, Any]] | None, use_parameters: bool
+) -> list[dict[str, Any]] | None:
     if not tools:
         return None
-    declarations: List[Dict[str, Any]] = []
+    declarations: list[dict[str, Any]] = []
     for tool in tools:
         func = tool.get("function") if isinstance(tool, dict) else None
         if not isinstance(func, dict):
@@ -67,7 +66,7 @@ def _build_function_declarations(
     return [{"functionDeclarations": declarations}]
 
 
-def _map_tool_choice(choice: Optional[Union[str, Dict[str, Any]]]) -> Optional[str]:
+def _map_tool_choice(choice: str | dict[str, Any] | None) -> str | None:
     if choice is None:
         return None
     if isinstance(choice, str):
@@ -79,15 +78,15 @@ def _map_tool_choice(choice: Optional[Union[str, Dict[str, Any]]]) -> Optional[s
     return "AUTO"
 
 
-def _extract_system_prompt(messages: List[Message]) -> Optional[str]:
+def _extract_system_prompt(messages: list[Message]) -> str | None:
     for message in messages:
         if message.role == "system" and isinstance(message.content, str):
             return message.content
     return None
 
 
-def _convert_messages(model_id: str, messages: List[Message]) -> List[Dict[str, Any]]:
-    contents: List[Dict[str, Any]] = []
+def _convert_messages(model_id: str, messages: list[Message]) -> list[dict[str, Any]]:
+    contents: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "system":
             continue
@@ -100,7 +99,7 @@ def _convert_messages(model_id: str, messages: List[Message]) -> List[Dict[str, 
             )
             continue
         if message.role == "assistant":
-            parts: List[Dict[str, Any]] = []
+            parts: list[dict[str, Any]] = []
             if message.content:
                 parts.append({"text": message.get_content_string()})
             if message.tool_calls:
@@ -126,7 +125,7 @@ def _convert_messages(model_id: str, messages: List[Message]) -> List[Dict[str, 
                     )
                     if _requires_tool_call_id(model_id):
                         tool_call_id = _normalize_tool_call_id(tool_call_id)
-                    part: Dict[str, Any] = {
+                    part: dict[str, Any] = {
                         "functionCall": {
                             "name": name,
                             "args": parsed_args,
@@ -178,15 +177,15 @@ def _convert_messages(model_id: str, messages: List[Message]) -> List[Dict[str, 
 @dataclass
 class CloudCodeAssistModel(Model):
     id: str
-    name: Optional[str] = None
-    provider: Optional[str] = None
-    access_token: Optional[str] = None
-    project_id: Optional[str] = None
+    name: str | None = None
+    provider: str | None = None
+    access_token: str | None = None
+    project_id: str | None = None
     base_url: str = "https://cloudcode-pa.googleapis.com"
     is_antigravity: bool = False
 
-    def _get_endpoints(self) -> List[str]:
-        endpoints: List[str] = []
+    def _get_endpoints(self) -> list[str]:
+        endpoints: list[str] = []
         base = (self.base_url or "").rstrip("/")
         if base:
             endpoints.append(base)
@@ -199,21 +198,21 @@ class CloudCodeAssistModel(Model):
         return endpoints
 
     def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return self._invoke_sync(messages, response_format, tools, tool_choice)
 
     async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         return await self._invoke_async(messages, response_format, tools, tool_choice)
 
     def invoke_stream(self, *args: Any, **kwargs: Any) -> Iterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -224,7 +223,7 @@ class CloudCodeAssistModel(Model):
     async def ainvoke_stream(
         self, *args: Any, **kwargs: Any
     ) -> AsyncIterator[ModelResponse]:
-        messages: List[Message] = kwargs.get("messages") or []
+        messages: list[Message] = kwargs.get("messages") or []
         response_format = kwargs.get("response_format")
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
@@ -241,15 +240,15 @@ class CloudCodeAssistModel(Model):
 
     def _invoke_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         for delta in self._invoke_stream_sync(
             messages, response_format, tools, tool_choice
         ):
@@ -273,15 +272,15 @@ class CloudCodeAssistModel(Model):
 
     async def _invoke_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> ModelResponse:
         content = ""
         reasoning = ""
-        tool_calls: List[Dict[str, Any]] = []
-        metrics: Optional[Metrics] = None
+        tool_calls: list[dict[str, Any]] = []
+        metrics: Metrics | None = None
         async for delta in self._invoke_stream_async(
             messages, response_format, tools, tool_choice
         ):
@@ -305,10 +304,10 @@ class CloudCodeAssistModel(Model):
 
     def _invoke_stream_sync(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> Iterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice)
         headers = self._build_headers()
@@ -353,10 +352,10 @@ class CloudCodeAssistModel(Model):
 
     async def _invoke_stream_async(
         self,
-        messages: List[Message],
+        messages: list[Message],
         response_format: Any,
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
     ) -> AsyncIterator[ModelResponse]:
         request_body = self._build_request(messages, tools, tool_choice)
         headers = self._build_headers()
@@ -403,10 +402,10 @@ class CloudCodeAssistModel(Model):
 
     def _build_request(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]],
-        tool_choice: Optional[Union[str, Dict[str, Any]]],
-    ) -> Dict[str, Any]:
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+    ) -> dict[str, Any]:
         if not self.project_id:
             raise ModelProviderError(
                 message="Missing projectId for Cloud Code Assist",
@@ -419,7 +418,7 @@ class CloudCodeAssistModel(Model):
         tool_decls = _build_function_declarations(tools, use_parameters)
         tool_choice_mode = _map_tool_choice(tool_choice)
 
-        request: Dict[str, Any] = {
+        request: dict[str, Any] = {
             "contents": contents,
         }
         system_prompt = _extract_system_prompt(messages)
@@ -435,7 +434,7 @@ class CloudCodeAssistModel(Model):
         request_id = f"covalt-{int(time.time() * 1000)}"
         if self.is_antigravity:
             request_id = f"agent-{int(time.time() * 1000)}-{uuid.uuid4().hex[:9]}"
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "project": self.project_id,
             "model": self.id,
             "request": request,
@@ -446,7 +445,7 @@ class CloudCodeAssistModel(Model):
             payload["requestType"] = "agent"
         return payload
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self) -> dict[str, str]:
         if not self.access_token:
             raise ModelProviderError(
                 message="Missing access token for Cloud Code Assist",
@@ -473,7 +472,7 @@ class CloudCodeAssistModel(Model):
             headers["X-Goog-Api-Client"] = ANTIGRAVITY_API_CLIENT
         return headers
 
-    def _parse_stream_chunk(self, chunk: Dict[str, Any]) -> Iterator[ModelResponse]:
+    def _parse_stream_chunk(self, chunk: dict[str, Any]) -> Iterator[ModelResponse]:
         error = chunk.get("error")
         if isinstance(error, dict) and error:
             message = error.get("message") or json.dumps(error)

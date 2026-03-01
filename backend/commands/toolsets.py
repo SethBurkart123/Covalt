@@ -3,18 +3,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from ..models import normalize_override_tool_id, validate_renderer_override
 from ..services.mcp_manager import get_mcp_manager
+from ..services.node_plugin_catalog import list_node_plugins as list_node_plugin_records
 from ..services.toolset_executor import get_toolset_executor
 from ..services.toolset_manager import get_toolset_manager
 from ..services.workspace_event_broadcaster import broadcast_workspace_files_changed
 from ..services.workspace_events import WorkspaceFilesChanged
-from ..services.node_plugin_catalog import list_node_plugins as list_node_plugin_records
 from ..services.workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ToolsetToolInfo(BaseModel):
     tool_id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     requires_confirmation: bool = False
     enabled: bool = True
 
@@ -32,24 +32,24 @@ class ToolsetInfo(BaseModel):
     id: str
     name: str
     version: str
-    description: Optional[str] = None
+    description: str | None = None
     enabled: bool = True
     user_mcp: bool = False
-    installed_at: Optional[str] = None
-    source_type: Optional[str] = None
+    installed_at: str | None = None
+    source_type: str | None = None
     tool_count: int = 0
 
 
 class ListToolsetsRequest(BaseModel):
-    user_mcp: Optional[bool] = None
+    user_mcp: bool | None = None
 
 
 class ToolsetDetailInfo(ToolsetInfo):
-    tools: List[ToolsetToolInfo] = []
+    tools: list[ToolsetToolInfo] = []
 
 
 class ToolsetsResponse(BaseModel):
-    toolsets: List[ToolsetInfo]
+    toolsets: list[ToolsetInfo]
 
 
 class ToolsetIdRequest(BaseModel):
@@ -83,7 +83,7 @@ class WorkspaceFilesRequest(BaseModel):
 
 
 class WorkspaceFilesResponse(BaseModel):
-    files: List[str]
+    files: list[str]
 
 
 class WorkspaceFileRequest(BaseModel):
@@ -99,15 +99,15 @@ class WorkspaceFileResponse(BaseModel):
 
 class WorkspaceManifestRequest(BaseModel):
     chat_id: str
-    manifest_id: Optional[str] = None
+    manifest_id: str | None = None
 
 
 class WorkspaceManifestResponse(BaseModel):
     id: str
     chat_id: str
-    parent_id: Optional[str] = None
-    files: Dict[str, str]
-    created_at: Optional[str] = None
+    parent_id: str | None = None
+    files: dict[str, str]
+    created_at: str | None = None
     source: str
 
 
@@ -123,7 +123,7 @@ class UpdateWorkspaceFileResponse(BaseModel):
 
 
 @command
-async def list_toolsets(body: Optional[ListToolsetsRequest] = None) -> ToolsetsResponse:
+async def list_toolsets(body: ListToolsetsRequest | None = None) -> ToolsetsResponse:
     manager = get_toolset_manager()
     toolsets = manager.list_toolsets(user_mcp=body.user_mcp if body else None)
 
@@ -218,7 +218,7 @@ async def export_toolset(body: ToolsetIdRequest) -> ExportToolsetResponse:
 
 
 @command
-async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
+async def enable_toolset(body: EnableToolsetRequest) -> dict[str, Any]:
     if not get_toolset_manager().enable_toolset(body.id, body.enabled):
         raise ValueError(f"Toolset '{body.id}' not found")
 
@@ -233,7 +233,7 @@ async def enable_toolset(body: EnableToolsetRequest) -> Dict[str, Any]:
 
 
 @command
-async def uninstall_toolset(body: ToolsetIdRequest) -> Dict[str, bool]:
+async def uninstall_toolset(body: ToolsetIdRequest) -> dict[str, bool]:
     mcp_manager = get_mcp_manager()
     await mcp_manager.disconnect_toolset_servers(body.id)
     if not get_toolset_manager().uninstall(body.id):
@@ -328,7 +328,7 @@ async def update_workspace_file(
 
 
 class NodePluginRuntimeInfo(BaseModel):
-    module_path: Optional[str] = None
+    module_path: str | None = None
     has_execute: bool = False
     has_materialize: bool = False
     has_configure_runtime: bool = False
@@ -336,12 +336,12 @@ class NodePluginRuntimeInfo(BaseModel):
 
 
 class NodePluginDefinitionInfo(BaseModel):
-    module_path: Optional[str] = None
-    definition_path: Optional[str] = None
-    node_id: Optional[str] = None
-    name: Optional[str] = None
-    category: Optional[str] = None
-    execution_mode: Optional[str] = None
+    module_path: str | None = None
+    definition_path: str | None = None
+    node_id: str | None = None
+    name: str | None = None
+    category: str | None = None
+    execution_mode: str | None = None
 
 
 class NodePluginInfo(BaseModel):
@@ -352,7 +352,7 @@ class NodePluginInfo(BaseModel):
 
 
 class NodePluginsResponse(BaseModel):
-    plugins: List[NodePluginInfo]
+    plugins: list[NodePluginInfo]
 
 
 @command
@@ -376,12 +376,12 @@ class SetToolOverrideRequest(BaseModel):
 
     toolset_id: str
     tool_id: str  # e.g., "perplexity:search" for MCP or "my-toolset:my-tool" for Python
-    renderer: Optional[str] = None
-    renderer_config: Optional[Dict[str, Any]] = None
-    name_override: Optional[str] = None
-    description_override: Optional[str] = None
-    requires_confirmation: Optional[bool] = None
-    enabled: Optional[bool] = None
+    renderer: str | None = None
+    renderer_config: dict[str, Any] | None = None
+    name_override: str | None = None
+    description_override: str | None = None
+    requires_confirmation: bool | None = None
+    enabled: bool | None = None
 
 
 class ToolOverrideResponse(BaseModel):
@@ -389,11 +389,11 @@ class ToolOverrideResponse(BaseModel):
 
     toolset_id: str
     tool_id: str
-    renderer: Optional[str] = None
-    renderer_config: Optional[Dict[str, Any]] = None
-    name_override: Optional[str] = None
-    description_override: Optional[str] = None
-    requires_confirmation: Optional[bool] = None
+    renderer: str | None = None
+    renderer_config: dict[str, Any] | None = None
+    name_override: str | None = None
+    description_override: str | None = None
+    requires_confirmation: bool | None = None
     enabled: bool = True
 
 
@@ -401,6 +401,7 @@ class ToolOverrideResponse(BaseModel):
 async def set_tool_override(body: SetToolOverrideRequest) -> ToolOverrideResponse:
     import json
     import uuid
+
     from ..db import db_session
     from ..db.models import ToolOverride, Toolset
 

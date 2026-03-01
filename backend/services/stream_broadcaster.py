@@ -6,7 +6,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 from ..db.core import db_session
 from ..db.models import ActiveStream
@@ -22,19 +22,19 @@ class StreamSubscription:
 class StreamState:
     chat_id: str
     message_id: str
-    run_id: Optional[str] = None
+    run_id: str | None = None
     status: str = "streaming"
-    subscribers: Set[asyncio.Queue] = field(default_factory=set)
+    subscribers: set[asyncio.Queue] = field(default_factory=set)
     recent_events: deque = field(default_factory=lambda: deque(maxlen=100))
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
-_active_streams: Dict[str, StreamState] = {}
+_active_streams: dict[str, StreamState] = {}
 _lock = asyncio.Lock()
 
 
 async def register_stream(
-    chat_id: str, message_id: str, run_id: Optional[str] = None
+    chat_id: str, message_id: str, run_id: str | None = None
 ) -> None:
     async with _lock:
         now = datetime.now().isoformat()
@@ -78,7 +78,7 @@ async def update_stream_run_id(chat_id: str, run_id: str) -> None:
 
 
 async def update_stream_status(
-    chat_id: str, status: str, error_message: Optional[str] = None
+    chat_id: str, status: str, error_message: str | None = None
 ) -> None:
     async with _lock:
         if chat_id in _active_streams:
@@ -114,7 +114,7 @@ async def unregister_stream(chat_id: str) -> None:
                 session.commit()
 
 
-async def broadcast_event(chat_id: str, event: Dict[str, Any]) -> None:
+async def broadcast_event(chat_id: str, event: dict[str, Any]) -> None:
     async with _lock:
         if chat_id not in _active_streams:
             return
@@ -139,7 +139,7 @@ async def broadcast_event(chat_id: str, event: Dict[str, Any]) -> None:
         state.subscribers -= dead_queues
 
 
-async def subscribe(chat_id: str) -> Optional[asyncio.Queue]:
+async def subscribe(chat_id: str) -> asyncio.Queue | None:
     async with _lock:
         if chat_id not in _active_streams:
             return None
@@ -163,7 +163,7 @@ async def unsubscribe(chat_id: str, queue: asyncio.Queue) -> None:
             _active_streams[chat_id].subscribers.discard(queue)
 
 
-def get_stream_state(chat_id: str) -> Optional[StreamState]:
+def get_stream_state(chat_id: str) -> StreamState | None:
     return _active_streams.get(chat_id)
 
 
@@ -172,7 +172,7 @@ def is_stream_active(chat_id: str) -> bool:
     return state is not None and state.status in ("streaming", "paused_hitl")
 
 
-async def get_all_active_streams() -> list[Dict[str, Any]]:
+async def get_all_active_streams() -> list[dict[str, Any]]:
     result = []
 
     async with _lock:

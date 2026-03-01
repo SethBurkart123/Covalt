@@ -1,8 +1,10 @@
 """OpenAI-Like Provider - Custom OpenAI-compatible endpoints"""
 
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
 from agno.models.litellm import LiteLLM
+
 from . import get_credentials
 
 ALIASES = ["openai_compatible", "openai-compatible", "custom"]
@@ -10,7 +12,7 @@ ALIASES = ["openai_compatible", "openai-compatible", "custom"]
 
 def get_openai_like_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> LiteLLM:
     api_key, base_url = get_credentials()
     if not base_url:
@@ -24,7 +26,7 @@ def get_openai_like_model(
     )
 
 
-async def fetch_models() -> List[Dict[str, str]]:
+async def fetch_models() -> list[dict[str, str]]:
     api_key, base_url = get_credentials()
     if not base_url:
         return []
@@ -34,7 +36,7 @@ async def fetch_models() -> List[Dict[str, str]]:
 
 async def _fetch_from_openai_endpoint(
     base_url: str, api_key: str
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     base = base_url.rstrip("/")
     url = f"{base}/models" if (base.endswith("/v1") or base.endswith("/v2")) else f"{base}/v1/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

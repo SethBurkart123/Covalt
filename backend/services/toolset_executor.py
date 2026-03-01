@@ -7,8 +7,9 @@ import json
 import logging
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from agno.tools.function import Function
 

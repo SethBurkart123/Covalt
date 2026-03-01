@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import json
 import logging
 import re
@@ -42,7 +40,7 @@ REASONING_PREFIXES = (
 logger = logging.getLogger(__name__)
 
 
-def _get_event_name(chunk: object) -> Optional[str]:
+def _get_event_name(chunk: object) -> str | None:
     event = getattr(chunk, "event", None)
     return event if isinstance(event, str) and event else None
 
@@ -75,7 +73,7 @@ def _sanitize_raw_title(text: str) -> str:
     return cleaned.strip()
 
 
-def _extract_json_title(text: str) -> Optional[str]:
+def _extract_json_title(text: str) -> str | None:
     stripped = text.strip()
     if not stripped.startswith("{"):
         return None
@@ -111,7 +109,7 @@ def _pick_title_line(text: str) -> str:
     return lines[-1] if len(lines) > 1 else lines[0]
 
 
-def _normalize_title(text: str) -> Optional[str]:
+def _normalize_title(text: str) -> str | None:
     if not text:
         return None
     title = TITLE_PREFIX_RE.sub("", text).strip().strip("\"'").strip()
@@ -126,7 +124,7 @@ def _normalize_title(text: str) -> Optional[str]:
     return title or None
 
 
-def _fallback_title_from_message(user_content: str) -> Optional[str]:
+def _fallback_title_from_message(user_content: str) -> str | None:
     cleaned = _sanitize_raw_title(user_content)
     if not cleaned:
         return None
@@ -139,7 +137,7 @@ def _run_title_request(
     model_id: str,
     instructions: str,
     user_content: str,
-) -> Optional[str]:
+) -> str | None:
     if not provider or not model_id:
         return None
 
@@ -182,7 +180,7 @@ def _run_title_request(
     if final_response is not None and not _run_completed_successfully(final_response):
         return None
 
-    title_raw: Optional[str] = None
+    title_raw: str | None = None
     if final_response is not None and getattr(final_response, "messages", None):
         last_msg = final_response.messages[-1]
         if last_msg and hasattr(last_msg, "content"):
@@ -194,7 +192,7 @@ def _run_title_request(
     return title_raw
 
 
-def generate_title_for_chat(chat_id: str) -> Optional[str]:
+def generate_title_for_chat(chat_id: str) -> str | None:
     try:
         with db.db_session() as sess:
             settings = db.get_auto_title_settings(sess)

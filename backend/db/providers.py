@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ def _legacy_provider_key(provider: str) -> str:
     return provider.replace("_", "-")
 
 
-def _to_record(settings: ProviderSettings, provider_key: str) -> Dict[str, Any]:
+def _to_record(settings: ProviderSettings, provider_key: str) -> dict[str, Any]:
     return {
         "provider": provider_key,
         "api_key": settings.api_key,
@@ -27,9 +27,9 @@ def _to_record(settings: ProviderSettings, provider_key: str) -> Dict[str, Any]:
     }
 
 
-def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, Any]]:
+def get_provider_settings(sess: Session, provider: str) -> dict[str, Any] | None:
     canonical = normalize_provider(provider)
-    settings: Optional[ProviderSettings] = sess.get(ProviderSettings, canonical)
+    settings: ProviderSettings | None = sess.get(ProviderSettings, canonical)
     if settings:
         return _to_record(settings, canonical)
 
@@ -42,9 +42,9 @@ def get_provider_settings(sess: Session, provider: str) -> Optional[Dict[str, An
     return None
 
 
-def get_all_provider_settings(sess: Session) -> Dict[str, Dict[str, Any]]:
+def get_all_provider_settings(sess: Session) -> dict[str, dict[str, Any]]:
     stmt = select(ProviderSettings)
-    result: Dict[str, Dict[str, Any]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for row in sess.scalars(stmt):
         canonical = normalize_provider(row.provider)
         if canonical in result and row.provider != canonical:
@@ -57,13 +57,13 @@ def save_provider_settings(
     sess: Session,
     *,
     provider: str,
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    extra: Optional[Dict[str, Any] | str] = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    extra: dict[str, Any] | str | None = None,
     enabled: bool = True,
 ) -> None:
     canonical = normalize_provider(provider)
-    settings: Optional[ProviderSettings] = sess.get(ProviderSettings, canonical)
+    settings: ProviderSettings | None = sess.get(ProviderSettings, canonical)
 
     if not settings:
         legacy = _legacy_provider_key(canonical)

@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 
 MODELS_DEV_URL = "https://models.dev/api.json"
 MODELS_DEV_TTL_SECONDS = 300
 
-_MODELS_DEV_CACHE: Optional[Dict[str, Any]] = None
+_MODELS_DEV_CACHE: dict[str, Any] | None = None
 _MODELS_DEV_LAST_FETCH = 0.0
 
 
 async def fetch_models_dev_provider(
     provider_key: str,
-    predicate: Optional[Callable[[str, Dict[str, Any]], bool]] = None,
-) -> List[Dict[str, str]]:
+    predicate: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> list[dict[str, str]]:
     data = await _load_models_dev_data()
     if not data:
         return []
@@ -25,7 +26,7 @@ async def fetch_models_dev_provider(
     if not isinstance(models, dict):
         return []
 
-    results: List[Dict[str, str]] = []
+    results: list[dict[str, str]] = []
     for model_id, model_info in models.items():
         if not isinstance(model_id, str):
             continue
@@ -38,7 +39,7 @@ async def fetch_models_dev_provider(
     return results
 
 
-async def _load_models_dev_data() -> Dict[str, Any]:
+async def _load_models_dev_data() -> dict[str, Any]:
     global _MODELS_DEV_CACHE
     global _MODELS_DEV_LAST_FETCH
 

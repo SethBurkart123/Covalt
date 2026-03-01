@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from .models import UserSettings
 
 
-def get_user_setting(sess: Session, key: str) -> Optional[str]:
-    setting: Optional[UserSettings] = sess.get(UserSettings, key)
+def get_user_setting(sess: Session, key: str) -> str | None:
+    setting: UserSettings | None = sess.get(UserSettings, key)
     return setting.value if setting else None
 
 
 def set_user_setting(sess: Session, key: str, value: str) -> None:
-    setting: Optional[UserSettings] = sess.get(UserSettings, key)
+    setting: UserSettings | None = sess.get(UserSettings, key)
 
     if setting:
         setting.value = value
@@ -24,7 +24,7 @@ def set_user_setting(sess: Session, key: str, value: str) -> None:
     sess.commit()
 
 
-def get_default_tool_ids(sess: Session) -> List[str]:
+def get_default_tool_ids(sess: Session) -> list[str]:
     value = get_user_setting(sess, "default_tool_ids")
     if not value:
         return []
@@ -33,11 +33,11 @@ def get_default_tool_ids(sess: Session) -> List[str]:
     return tool_ids if isinstance(tool_ids, list) else []
 
 
-def set_default_tool_ids(sess: Session, tool_ids: List[str]) -> None:
+def set_default_tool_ids(sess: Session, tool_ids: list[str]) -> None:
     set_user_setting(sess, "default_tool_ids", json.dumps(tool_ids))
 
 
-def get_general_settings(sess: Session) -> Dict[str, Any]:
+def get_general_settings(sess: Session) -> dict[str, Any]:
     value = get_user_setting(sess, "general_settings")
     if not value:
         return get_default_general_settings()
@@ -50,13 +50,13 @@ def get_general_settings(sess: Session) -> Dict[str, Any]:
     return settings
 
 
-def update_general_settings(sess: Session, partial_settings: Dict[str, Any]) -> None:
+def update_general_settings(sess: Session, partial_settings: dict[str, Any]) -> None:
     current = get_general_settings(sess)
     current.update(partial_settings)
     set_user_setting(sess, "general_settings", json.dumps(current))
 
 
-def get_default_general_settings() -> Dict[str, Any]:
+def get_default_general_settings() -> dict[str, Any]:
     return {
         "auto_title": {
             "enabled": True,
@@ -69,12 +69,12 @@ def get_default_general_settings() -> Dict[str, Any]:
     }
 
 
-def get_auto_title_settings(sess: Session) -> Dict[str, Any]:
+def get_auto_title_settings(sess: Session) -> dict[str, Any]:
     general = get_general_settings(sess)
     return general.get("auto_title", get_default_general_settings()["auto_title"])
 
 
-def save_auto_title_settings(sess: Session, settings: Dict[str, Any]) -> None:
+def save_auto_title_settings(sess: Session, settings: dict[str, Any]) -> None:
     update_general_settings(sess, {"auto_title": settings})
 
 

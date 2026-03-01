@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 
 @dataclass
 class RespondToToolApprovalInput:
     run_id: str
     approved: bool
-    tool_decisions: Optional[Dict[str, bool]] = None
-    edited_args: Optional[Dict[str, Dict[str, Any]]] = None
+    tool_decisions: dict[str, bool] | None = None
+    edited_args: dict[str, dict[str, Any]] | None = None
 
 
 @dataclass
@@ -18,8 +19,8 @@ class RespondToToolApprovalDependencies:
         [
             str,
             bool,
-            Dict[str, bool],
-            Dict[str, Dict[str, Any]],
+            dict[str, bool],
+            dict[str, dict[str, Any]],
         ],
         None,
     ]
@@ -45,10 +46,10 @@ class CancelRunInput:
 
 @dataclass
 class CancelRunDependencies:
-    get_active_run: Callable[[str], Optional[tuple[Optional[str], Any]]]
+    get_active_run: Callable[[str], tuple[str | None, Any] | None]
     mark_early_cancel: Callable[[str], None]
     mark_message_complete: Callable[[str], None]
-    remove_active_run: Callable[[str], Optional[tuple[Optional[str], Any]]]
+    remove_active_run: Callable[[str], tuple[str | None, Any] | None]
     logger: Any
 
 
@@ -59,9 +60,9 @@ class CancelFlowRunInput:
 
 @dataclass
 class CancelFlowRunDependencies:
-    get_active_run: Callable[[str], Optional[tuple[Optional[str], Any]]]
+    get_active_run: Callable[[str], tuple[str | None, Any] | None]
     mark_early_cancel: Callable[[str], None]
-    remove_active_run: Callable[[str], Optional[tuple[Optional[str], Any]]]
+    remove_active_run: Callable[[str], tuple[str | None, Any] | None]
     logger: Any
 
 

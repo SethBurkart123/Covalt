@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 
 from pydantic import BaseModel, Field
-
 from zynk import Channel, command
 
 from .. import db
@@ -18,9 +17,9 @@ from ..models.chat import (
     ProviderCatalogItem,
     ProviderCatalogResponse,
     ProviderConfig,
+    ProviderOAuthInfo,
     ProviderOverview,
     ProviderOverviewResponse,
-    ProviderOAuthInfo,
     ReasoningInfo,
     SaveAutoTitleSettingsInput,
     SaveModelSettingsInput,
@@ -30,13 +29,15 @@ from ..models.chat import (
     SystemPromptSettings,
     ThinkingTagPromptInfo,
 )
+from ..providers import test_provider_connection
 from ..services.model_factory import (
     get_enabled_providers as get_enabled_providers_from_factory,
+)
+from ..services.model_factory import (
     stream_available_model_batches as stream_model_batches_from_factory,
 )
-from ..providers import test_provider_connection
-from ..services.provider_oauth_manager import get_provider_oauth_manager
 from ..services.provider_catalog import list_provider_catalog
+from ..services.provider_oauth_manager import get_provider_oauth_manager
 
 
 class Person(BaseModel):

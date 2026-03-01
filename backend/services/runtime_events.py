@@ -8,7 +8,11 @@ from zynk import Channel
 from ..models.chat import ChatEvent
 from .runtime_event_contract import (
     KNOWN_RUNTIME_EVENTS as CONTRACT_KNOWN_RUNTIME_EVENTS,
+)
+from .runtime_event_contract import (
     RUNTIME_EVENT_BY_KEY,
+)
+from .runtime_event_contract import (
     RUNTIME_EVENT_CONTRACT_VERSION as CONTRACT_RUNTIME_EVENT_CONTRACT_VERSION,
 )
 

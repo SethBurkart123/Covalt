@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 COMMON_OPTION_KEYS = (
     "temperature",
@@ -13,12 +13,12 @@ COMMON_OPTION_KEYS = (
 
 
 def resolve_common_options(
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     options = model_options or {}
     params = node_params or {}
-    resolved: Dict[str, Any] = {}
+    resolved: dict[str, Any] = {}
 
     for key in COMMON_OPTION_KEYS:
         value = params.get(key)

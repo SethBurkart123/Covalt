@@ -6,7 +6,8 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
 from agno.models.message import Message
 from agno.models.openai.responses import OpenAIResponses
@@ -16,7 +17,7 @@ from ..services.provider_oauth_manager import get_provider_oauth_manager
 from .options import resolve_common_options
 
 
-def _get_codex_credentials() -> Dict[str, Any]:
+def _get_codex_credentials() -> dict[str, Any]:
     creds = get_provider_oauth_manager().get_valid_credentials(
         "openai_codex",
         refresh_if_missing_expiry=True,
@@ -32,7 +33,7 @@ def _is_codex_model_id(model_id: str) -> bool:
     return normalized.startswith("gpt-5") or "codex" in normalized
 
 
-def _extract_system_instructions(messages: Optional[List[Message]]) -> str:
+def _extract_system_instructions(messages: list[Message] | None) -> str:
     if not messages:
         return ""
 
@@ -73,18 +74,18 @@ def _normalize_codex_function_call_id(raw_id: Any) -> str:
 
 
 class OpenAICodexResponses(OpenAIResponses):
-    _codex_tool_name_map: Dict[str, str]
-    _codex_tool_name_reverse_map: Dict[str, str]
+    _codex_tool_name_map: dict[str, str]
+    _codex_tool_name_reverse_map: dict[str, str]
     _codex_reasoning_summary_streamed: bool = False
     _codex_reasoning_summary_buffer: str = ""
 
     def get_request_params(
         self,
-        messages: Optional[List[Message]] = None,
-        response_format: Optional[Any] = None,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        tool_choice: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        messages: list[Message] | None = None,
+        response_format: Any | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: Any | None = None,
+    ) -> dict[str, Any]:
         params = super().get_request_params(
             messages=messages,
             response_format=response_format,
@@ -97,11 +98,11 @@ class OpenAICodexResponses(OpenAIResponses):
         return params
 
     def _format_tool_params(
-        self, messages: List[Message], tools: Optional[List[Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, messages: list[Message], tools: list[Any] | None = None
+    ) -> list[dict[str, Any]]:
         formatted = super()._format_tool_params(messages=messages, tools=tools)
-        name_map: Dict[str, str] = {}
-        reverse_map: Dict[str, str] = {}
+        name_map: dict[str, str] = {}
+        reverse_map: dict[str, str] = {}
         used: set[str] = set()
 
         for tool in formatted:
@@ -127,15 +128,15 @@ class OpenAICodexResponses(OpenAIResponses):
         return name
 
     def _format_messages(
-        self, messages: List[Message], compress_tool_results: bool = False
-    ) -> List[Dict[str, Any] | ResponseReasoningItem]:
-        sanitized_messages: List[Message] = []
-        tool_call_id_map: Dict[str, str] = {}
+        self, messages: list[Message], compress_tool_results: bool = False
+    ) -> list[dict[str, Any] | ResponseReasoningItem]:
+        sanitized_messages: list[Message] = []
+        tool_call_id_map: dict[str, str] = {}
 
         for message in messages:
             tool_calls = getattr(message, "tool_calls", None)
             if tool_calls:
-                sanitized_tool_calls: List[Dict[str, Any]] = []
+                sanitized_tool_calls: list[dict[str, Any]] = []
                 used: set[str] = set()
                 for tool_call in tool_calls:
                     if (
@@ -187,13 +188,13 @@ class OpenAICodexResponses(OpenAIResponses):
         return super()._format_messages(sanitized_messages, compress_tool_results)
 
     def _map_tool_calls_to_original(
-        self, tool_calls: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, tool_calls: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         name_map = getattr(self, "_codex_tool_name_map", None)
         if not name_map:
             return tool_calls
 
-        mapped: List[Dict[str, Any]] = []
+        mapped: list[dict[str, Any]] = []
         for tool_call in tool_calls:
             if not isinstance(tool_call, dict) or tool_call.get("type") != "function":
                 mapped.append(tool_call)
@@ -215,8 +216,8 @@ class OpenAICodexResponses(OpenAIResponses):
         return mapped
 
     def parse_tool_calls(
-        self, tool_calls_data: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, tool_calls_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         return self._map_tool_calls_to_original(tool_calls_data)
 
     def _populate_assistant_message(
@@ -233,8 +234,8 @@ class OpenAICodexResponses(OpenAIResponses):
         self,
         stream_event: Any,
         assistant_message: Message,
-        tool_use: Dict[str, Any],
-    ) -> tuple[Any, Dict[str, Any]]:
+        tool_use: dict[str, Any],
+    ) -> tuple[Any, dict[str, Any]]:
         model_response, tool_use = super()._parse_provider_response_delta(
             stream_event=stream_event,
             assistant_message=assistant_message,
@@ -302,7 +303,7 @@ class OpenAICodexResponses(OpenAIResponses):
         return marker_count % 2 == 1
 
 
-def _build_codex_headers(access_token: str, account_id: str | None) -> Dict[str, str]:
+def _build_codex_headers(access_token: str, account_id: str | None) -> dict[str, str]:
     client_version = _get_codex_client_version()
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -318,7 +319,7 @@ def _build_codex_headers(access_token: str, account_id: str | None) -> Dict[str,
 async def _fetch_codex_models_from_chatgpt(
     access_token: str,
     account_id: str | None,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     headers = _build_codex_headers(access_token, account_id)
     client_version = _get_codex_client_version()
     url = f"{CODEX_MODELS_URL}?client_version={client_version}"
@@ -333,7 +334,7 @@ async def _fetch_codex_models_from_chatgpt(
         print(f"[openai_codex] Failed to fetch models: {exc}")
         return []
 
-    models: List[Dict[str, Any]] = []
+    models: list[dict[str, Any]] = []
     if isinstance(payload, dict):
         if isinstance(payload.get("models"), list):
             models = payload.get("models", [])
@@ -344,7 +345,7 @@ async def _fetch_codex_models_from_chatgpt(
     elif isinstance(payload, list):
         models = payload
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for model in models:
         if not isinstance(model, dict):
             continue
@@ -357,7 +358,7 @@ async def _fetch_codex_models_from_chatgpt(
             or model.get("display_name")
             or model_id
         )
-        model_info: Dict[str, Any] = {"id": model_id, "name": name}
+        model_info: dict[str, Any] = {"id": model_id, "name": name}
 
         reasoning_levels = _extract_reasoning_levels(model)
         if reasoning_levels:
@@ -372,18 +373,18 @@ async def _fetch_codex_models_from_chatgpt(
     return results
 
 
-def _extract_reasoning_levels(model: Dict[str, Any]) -> List[Dict[str, str]]:
+def _extract_reasoning_levels(model: dict[str, Any]) -> list[dict[str, str]]:
     parsed = _parse_reasoning_levels(model.get("supported_reasoning_levels"))
     if parsed:
         return parsed
     return _parse_reasoning_levels(model.get("supported_reasoning_efforts"))
 
 
-def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
+def _parse_reasoning_levels(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
 
-    parsed: List[Dict[str, str]] = []
+    parsed: list[dict[str, str]] = []
     seen_efforts: set[str] = set()
     for item in value:
         effort: str | None = None
@@ -403,7 +404,7 @@ def _parse_reasoning_levels(value: Any) -> List[Dict[str, str]]:
             continue
 
         seen_efforts.add(effort)
-        level_info: Dict[str, str] = {"effort": effort}
+        level_info: dict[str, str] = {"effort": effort}
         if description:
             level_info["description"] = description
         parsed.append(level_info)
@@ -474,7 +475,7 @@ def _get_codex_client_version() -> str:
 
 def get_openai_codex_model(
     model_id: str,
-    provider_options: Dict[str, Any],
+    provider_options: dict[str, Any],
 ) -> OpenAIResponses:
     creds = _get_codex_credentials()
     access_token = creds.get("access_token")
@@ -499,9 +500,9 @@ def get_openai_codex_model(
 
 def resolve_options(
     model_id: str,
-    model_options: Dict[str, Any] | None,
-    node_params: Dict[str, Any] | None,
-) -> Dict[str, Any]:
+    model_options: dict[str, Any] | None,
+    node_params: dict[str, Any] | None,
+) -> dict[str, Any]:
     _ = model_id
     options = model_options or {}
     resolved = resolve_common_options(model_options, node_params)
@@ -515,7 +516,7 @@ def resolve_options(
     return resolved
 
 
-async def fetch_models() -> List[Dict[str, Any]]:
+async def fetch_models() -> list[dict[str, Any]]:
     try:
         creds = _get_codex_credentials()
     except RuntimeError:
@@ -535,8 +536,8 @@ async def fetch_models() -> List[Dict[str, Any]]:
 
 def get_model_options(
     model_id: str,
-    model_metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    model_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     _ = model_id
     metadata = model_metadata or {}
     reasoning_levels = _parse_reasoning_levels(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,7 +11,7 @@ from .models import Base
 
 _engine = None
 _Session = None
-_db_path_override: Optional[Path] = None
+_db_path_override: Path | None = None
 
 
 def set_db_path(path: Path) -> None:

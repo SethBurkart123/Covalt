@@ -15,7 +15,6 @@ import pytest
 from nodes._coerce import COERCION_TABLE, can_coerce, coerce
 from nodes._types import DataValue
 
-
 # ── can_coerce ───────────────────────────────────────────────────────
 
 

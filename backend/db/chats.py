@@ -3,24 +3,24 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import sqlalchemy
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Chat, Message
 from ..models import decode_message_content, normalize_renderer_alias
+from .models import Chat, Message
 
 
-def list_chats(sess: Session) -> List[Chat]:
+def list_chats(sess: Session) -> list[Chat]:
     stmt = select(Chat).order_by(
         Chat.updatedAt.desc().nulls_last(), Chat.createdAt.desc().nulls_last()
     )
     return list(sess.scalars(stmt))
 
 
-def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
+def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.active_leaf_message_id:
         stmt = (
@@ -68,7 +68,7 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
     return messages
 
 
-def _normalize_render_plan_blocks(blocks: List[Dict[str, Any]]) -> None:
+def _normalize_render_plan_blocks(blocks: list[dict[str, Any]]) -> None:
     for block in blocks:
         if not isinstance(block, dict):
             continue
@@ -94,7 +94,7 @@ def create_chat(
     *,
     id: str,
     title: str,
-    model: Optional[str],
+    model: str | None,
     createdAt: str,
     updatedAt: str,
 ) -> None:
@@ -113,10 +113,10 @@ def update_chat(
     sess: Session,
     *,
     id: str,
-    title: Optional[str] = None,
-    model: Optional[str] = None,
-    updatedAt: Optional[str] = None,
-    starred: Optional[bool] = None,
+    title: str | None = None,
+    model: str | None = None,
+    updatedAt: str | None = None,
+    starred: bool | None = None,
 ) -> None:
     chat = sess.get(Chat, id)
     if not chat:
@@ -147,7 +147,7 @@ def append_message(
     role: str,
     content: str,
     createdAt: str,
-    toolCalls: Optional[List[Dict[str, Any]]] = None,
+    toolCalls: list[dict[str, Any]] | None = None,
 ) -> None:
     sess.add(
         Message(
@@ -167,7 +167,7 @@ def update_message_content(
     *,
     messageId: str,
     content: str,
-    toolCalls: Optional[List[Dict[str, Any]]] = None,
+    toolCalls: list[dict[str, Any]] | None = None,
 ) -> None:
     message = sess.get(Message, messageId)
     if not message:
@@ -178,7 +178,7 @@ def update_message_content(
     sess.commit()
 
 
-def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
+def get_message_path(sess: Session, leaf_id: str) -> list[Message]:
     path = []
     current_id = leaf_id
 
@@ -193,8 +193,8 @@ def get_message_path(sess: Session, leaf_id: str) -> List[Message]:
 
 
 def get_message_children(
-    sess: Session, parent_id: Optional[str], chat_id: str
-) -> List[Message]:
+    sess: Session, parent_id: str | None, chat_id: str
+) -> list[Message]:
     stmt = (
         select(Message)
         .where(Message.parent_message_id == parent_id)
@@ -205,7 +205,7 @@ def get_message_children(
 
 
 def get_next_sibling_sequence(
-    sess: Session, parent_id: Optional[str], chat_id: str
+    sess: Session, parent_id: str | None, chat_id: str
 ) -> int:
     stmt = (
         select(sqlalchemy.func.max(Message.sequence))
@@ -226,7 +226,7 @@ def set_active_leaf(sess: Session, chat_id: str, leaf_id: str) -> None:
 def create_branch_message(
     sess: Session,
     *,
-    parent_id: Optional[str],
+    parent_id: str | None,
     role: str,
     content: str,
     chat_id: str,
@@ -281,7 +281,7 @@ def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
         current_id = children[-1].id
 
 
-def get_chat_agent_config(sess: Session, chatId: str) -> Optional[Dict[str, Any]]:
+def get_chat_agent_config(sess: Session, chatId: str) -> dict[str, Any] | None:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.agent_config:
         return None
@@ -292,7 +292,7 @@ def update_chat_agent_config(
     sess: Session,
     *,
     chatId: str,
-    config: Dict[str, Any],
+    config: dict[str, Any],
 ) -> None:
     chat = sess.get(Chat, chatId)
     if not chat:
@@ -302,7 +302,7 @@ def update_chat_agent_config(
     sess.commit()
 
 
-def get_default_agent_config() -> Dict[str, Any]:
+def get_default_agent_config() -> dict[str, Any]:
     return {
         "provider": "openai",
         "model_id": "gpt-4o-mini",
@@ -311,7 +311,7 @@ def get_default_agent_config() -> Dict[str, Any]:
     }
 
 
-def get_manifest_for_message(sess: Session, message_id: str) -> Optional[str]:
+def get_manifest_for_message(sess: Session, message_id: str) -> str | None:
     current_id = message_id
 
     while current_id:

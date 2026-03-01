@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import types
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -12,6 +13,12 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nodes._types import NodeEvent
 
 from .agent_manager import get_agent_manager
+from .node_route_index import rebuild_node_route_index, resolve_node_route
+from .node_route_registry import (
+    NodeRouteContext,
+    NodeRouteResponse,
+    get_node_route_registry,
+)
 from .runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
@@ -23,12 +30,6 @@ from .runtime_events import (
     EVENT_RUN_STARTED,
 )
 from .tool_registry import get_tool_registry
-from .node_route_index import resolve_node_route, rebuild_node_route_index
-from .node_route_registry import (
-    NodeRouteContext,
-    NodeRouteResponse,
-    get_node_route_registry,
-)
 
 try:
     import jsonschema

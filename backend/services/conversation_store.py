@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from .. import db
 from .model_selection import parse_model_id, update_chat_model_selection
 
 
-def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> str:
+def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
     agent_ref: str | None = None
     if model_id and model_id.startswith("agent:"):
         agent_ref = model_id[len("agent:") :]
@@ -61,9 +61,9 @@ def ensure_chat_initialized(chat_id: Optional[str], model_id: Optional[str]) -> 
 def save_user_message(
     message: Any,
     chat_id: str,
-    parent_id: Optional[str] = None,
-    attachments: Optional[list[Any]] = None,
-    manifest_id: Optional[str] = None,
+    parent_id: str | None = None,
+    attachments: list[Any] | None = None,
+    manifest_id: str | None = None,
 ) -> None:
     with db.db_session() as sess:
         now = datetime.now(UTC).isoformat()
@@ -88,7 +88,7 @@ def save_user_message(
         db.update_chat(sess, id=chat_id, updatedAt=now)
 
 
-def init_assistant_message(chat_id: str, parent_id: Optional[str]) -> str:
+def init_assistant_message(chat_id: str, parent_id: str | None) -> str:
     message_id = str(uuid.uuid4())
     with db.db_session() as sess:
         now = datetime.now(UTC).isoformat()
@@ -125,7 +125,7 @@ def init_assistant_message(chat_id: str, parent_id: Optional[str]) -> str:
     return message_id
 
 
-def get_active_leaf_message_id(chat_id: str) -> Optional[str]:
+def get_active_leaf_message_id(chat_id: str) -> str | None:
     with db.db_session() as sess:
         chat = sess.get(db.Chat, chat_id)
         return chat.active_leaf_message_id if chat else None

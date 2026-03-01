@@ -6,7 +6,7 @@ for any provider that speaks the standard OpenAI chat/completions protocol.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from agno.models.litellm import LiteLLM
@@ -18,16 +18,16 @@ from . import register_adapter
 
 def create_provider(
     provider_id: str,
-    base_url: Optional[str] = None,
+    base_url: str | None = None,
     **_kwargs: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a full provider entry for an OpenAI-compatible endpoint.
 
     *provider_id* is used for credential lookup (bypasses stack inspection).
     *base_url* is the default API base; users can override via settings.
     """
 
-    def get_model(model_id: str, provider_options: Dict[str, Any]) -> LiteLLM:
+    def get_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
         api_key, custom_base_url = get_credentials(provider_name=provider_id)
         resolved = custom_base_url or base_url
         if not resolved:
@@ -39,7 +39,7 @@ def create_provider(
             **provider_options,
         )
 
-    async def fetch_models() -> List[Dict[str, Any]]:
+    async def fetch_models() -> list[dict[str, Any]]:
         api_key, custom_base_url = get_credentials(provider_name=provider_id)
         resolved = custom_base_url or base_url
         if not resolved:

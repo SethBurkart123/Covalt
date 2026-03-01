@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from cryptography.fernet import Fernet
 
 _fernet: Fernet | None = None

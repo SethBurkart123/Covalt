@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,49 +9,49 @@ class ToolCall(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     toolName: str
-    toolArgs: Dict[str, Any]
-    toolResult: Optional[str] = None
-    isCompleted: Optional[bool] = None
-    providerData: Optional[Dict[str, Any]] = None
+    toolArgs: dict[str, Any]
+    toolResult: str | None = None
+    isCompleted: bool | None = None
+    providerData: dict[str, Any] | None = None
 
 
 class RenderPlan(BaseModel):
     model_config = ConfigDict(extra="allow")
     renderer: str
-    config: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCallPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     toolName: str
-    toolArgs: Dict[str, Any] = Field(default_factory=dict)
-    toolResult: Optional[str] = None
-    isCompleted: Optional[bool] = None
-    providerData: Optional[Dict[str, Any]] = None
-    renderPlan: Optional[RenderPlan] = None
-    requiresApproval: Optional[bool] = None
-    runId: Optional[str] = None
-    toolCallId: Optional[str] = None
-    approvalStatus: Optional[str] = None
-    editableArgs: Optional[Union[List[str], bool]] = None
-    isDelegation: Optional[bool] = None
+    toolArgs: dict[str, Any] = Field(default_factory=dict)
+    toolResult: str | None = None
+    isCompleted: bool | None = None
+    providerData: dict[str, Any] | None = None
+    renderPlan: RenderPlan | None = None
+    requiresApproval: bool | None = None
+    runId: str | None = None
+    toolCallId: str | None = None
+    approvalStatus: str | None = None
+    editableArgs: list[str] | bool | None = None
+    isDelegation: bool | None = None
 
 
 class ContentBlock(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
-    content: Optional[Union[str, List["ContentBlock"]]] = None
-    id: Optional[str] = None
-    toolName: Optional[str] = None
-    toolArgs: Optional[Dict[str, Any]] = None
-    toolResult: Optional[str] = None
-    isCompleted: Optional[bool] = None
-    renderer: Optional[str] = None
-    requiresApproval: Optional[bool] = None
-    approvalId: Optional[str] = None
-    approvalStatus: Optional[str] = None
-    providerData: Optional[Dict[str, Any]] = None
+    content: str | list[ContentBlock] | None = None
+    id: str | None = None
+    toolName: str | None = None
+    toolArgs: dict[str, Any] | None = None
+    toolResult: str | None = None
+    isCompleted: bool | None = None
+    renderer: str | None = None
+    requiresApproval: bool | None = None
+    approvalId: str | None = None
+    approvalStatus: str | None = None
+    providerData: dict[str, Any] | None = None
 
 
 class Attachment(BaseModel):
@@ -65,46 +65,46 @@ class Attachment(BaseModel):
 class ChatMessage(BaseModel):
     id: str
     role: str
-    content: Union[str, List[ContentBlock]]
-    createdAt: Optional[str] = None
-    toolCalls: Optional[List[ToolCall]] = None
-    attachments: Optional[List[Attachment]] = None
+    content: str | list[ContentBlock]
+    createdAt: str | None = None
+    toolCalls: list[ToolCall] | None = None
+    attachments: list[Attachment] | None = None
 
 
 class ChatData(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     title: str
-    messages: List[ChatMessage] = Field(default_factory=list)
-    model: Optional[str] = None
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    messages: list[ChatMessage] = Field(default_factory=list)
+    model: str | None = None
+    createdAt: str | None = None
+    updatedAt: str | None = None
     starred: bool = False
 
 
 class AllChatsData(BaseModel):
-    chats: Dict[str, ChatData]
+    chats: dict[str, ChatData]
 
 
 class AgentConfig(BaseModel):
     provider: str = "openai"
     modelId: str = "gpt-4o-mini"
-    toolIds: List[str] = Field(default_factory=list)
-    instructions: List[str] = Field(default_factory=list)
-    name: Optional[str] = None
-    description: Optional[str] = None
+    toolIds: list[str] = Field(default_factory=list)
+    instructions: list[str] = Field(default_factory=list)
+    name: str | None = None
+    description: str | None = None
 
 
 class CreateChatInput(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    model: Optional[str] = None
-    agentConfig: Optional[AgentConfig] = None
+    id: str | None = None
+    title: str | None = None
+    model: str | None = None
+    agentConfig: AgentConfig | None = None
 
 
 class UpdateChatInput(BaseModel):
     id: str
-    title: Optional[str] = None
-    model: Optional[str] = None
+    title: str | None = None
+    model: str | None = None
 
 
 class ChatId(BaseModel):
@@ -119,56 +119,56 @@ class ExecutionEventItem(BaseModel):
     seq: int
     ts: str
     eventType: str
-    nodeId: Optional[str] = None
-    nodeType: Optional[str] = None
-    runId: Optional[str] = None
-    payload: Optional[Any] = None
+    nodeId: str | None = None
+    nodeType: str | None = None
+    runId: str | None = None
+    payload: Any | None = None
 
 
 class MessageExecutionTraceResponse(BaseModel):
-    executionId: Optional[str] = None
-    kind: Optional[str] = None
-    status: Optional[str] = None
-    rootRunId: Optional[str] = None
-    startedAt: Optional[str] = None
-    endedAt: Optional[str] = None
-    events: List[ExecutionEventItem] = Field(default_factory=list)
+    executionId: str | None = None
+    kind: str | None = None
+    status: str | None = None
+    rootRunId: str | None = None
+    startedAt: str | None = None
+    endedAt: str | None = None
+    events: list[ExecutionEventItem] = Field(default_factory=list)
 
 
 class ChatStreamRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: list[ChatMessage]
     modelId: str
-    chatId: Optional[str] = None
-    toolIds: List[str] = Field(default_factory=list)
+    chatId: str | None = None
+    toolIds: list[str] = Field(default_factory=list)
 
 
 class ChatEvent(BaseModel):
     event: str
-    content: Optional[str] = None
-    reasoningContent: Optional[str] = None
-    sessionId: Optional[str] = None
-    tool: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    blocks: Optional[List[Dict[str, Any]]] = None
-    fileRenames: Optional[Dict[str, str]] = None
-    memberName: Optional[str] = None
-    memberRunId: Optional[str] = None
-    task: Optional[str] = None
-    groupByNode: Optional[bool] = None
-    nodeId: Optional[str] = None
-    nodeType: Optional[str] = None
-    outputs: Optional[Dict[str, Any]] = None
+    content: str | None = None
+    reasoningContent: str | None = None
+    sessionId: str | None = None
+    tool: dict[str, Any] | None = None
+    error: str | None = None
+    blocks: list[dict[str, Any]] | None = None
+    fileRenames: dict[str, str] | None = None
+    memberName: str | None = None
+    memberRunId: str | None = None
+    task: str | None = None
+    groupByNode: bool | None = None
+    nodeId: str | None = None
+    nodeType: str | None = None
+    outputs: dict[str, Any] | None = None
 
 
 class ToolApprovalResponse(BaseModel):
     approvalId: str
     approved: bool
-    editedArgs: Optional[Dict[str, Any]] = None
+    editedArgs: dict[str, Any] | None = None
 
 
 class ToggleChatToolsInput(BaseModel):
     chatId: str
-    toolIds: List[str]
+    toolIds: list[str]
 
 
 class UpdateChatModelInput(BaseModel):
@@ -179,14 +179,14 @@ class UpdateChatModelInput(BaseModel):
 
 class ToolInfo(BaseModel):
     id: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    toolsetId: Optional[str] = None
-    toolsetName: Optional[str] = None
-    inputSchema: Optional[Dict[str, Any]] = None
-    renderer: Optional[str] = None
-    editable_args: Optional[List[str]] = None
-    requires_confirmation: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    toolsetId: str | None = None
+    toolsetName: str | None = None
+    inputSchema: dict[str, Any] | None = None
+    renderer: str | None = None
+    editable_args: list[str] | None = None
+    requires_confirmation: bool | None = None
 
 
 class MCPToolsetInfo(BaseModel):
@@ -195,12 +195,12 @@ class MCPToolsetInfo(BaseModel):
     id: str  # e.g., "mcp:github"
     name: str  # e.g., "github"
     status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]
-    error: Optional[str] = None
-    tools: List[ToolInfo] = Field(default_factory=list)
+    error: str | None = None
+    tools: list[ToolInfo] = Field(default_factory=list)
 
 
 class AvailableToolsResponse(BaseModel):
-    tools: List[ToolInfo] = Field(default_factory=list)
+    tools: list[ToolInfo] = Field(default_factory=list)
 
 
 class OptionChoice(BaseModel):
@@ -210,7 +210,7 @@ class OptionChoice(BaseModel):
 
 class ShowWhen(BaseModel):
     option: str
-    values: List[Any] = Field(default_factory=list)
+    values: list[Any] = Field(default_factory=list)
 
 
 class OptionDefinition(BaseModel):
@@ -218,16 +218,16 @@ class OptionDefinition(BaseModel):
     label: str
     type: Literal["select", "slider", "number", "boolean"]
     default: Any
-    options: Optional[List[OptionChoice]] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    step: Optional[float] = None
-    showWhen: Optional[ShowWhen] = None
+    options: list[OptionChoice] | None = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    showWhen: ShowWhen | None = None
 
 
 class OptionSchema(BaseModel):
-    main: List[OptionDefinition] = Field(default_factory=list)
-    advanced: List[OptionDefinition] = Field(default_factory=list)
+    main: list[OptionDefinition] = Field(default_factory=list)
+    advanced: list[OptionDefinition] = Field(default_factory=list)
 
 
 class ModelInfo(BaseModel):
@@ -235,35 +235,35 @@ class ModelInfo(BaseModel):
     modelId: str
     displayName: str
     isDefault: bool = False
-    options: Optional[OptionSchema] = None
+    options: OptionSchema | None = None
 
 
 class ProviderConfig(BaseModel):
     provider: str
-    apiKey: Optional[str] = None
-    baseUrl: Optional[str] = None
-    extra: Optional[Any] = None
+    apiKey: str | None = None
+    baseUrl: str | None = None
+    extra: Any | None = None
     enabled: bool = True
 
 
 class SaveProviderConfigInput(BaseModel):
     provider: str
-    apiKey: Optional[str] = None
-    baseUrl: Optional[str] = None
-    extra: Optional[Any] = None
+    apiKey: str | None = None
+    baseUrl: str | None = None
+    extra: Any | None = None
     enabled: bool = True
 
 
 class AllProvidersResponse(BaseModel):
-    providers: List[ProviderConfig]
+    providers: list[ProviderConfig]
 
 
 class ProviderOAuthInfo(BaseModel):
     status: Literal["none", "pending", "authenticated", "error"]
     hasTokens: bool = False
-    authUrl: Optional[str] = None
-    instructions: Optional[str] = None
-    error: Optional[str] = None
+    authUrl: str | None = None
+    instructions: str | None = None
+    error: str | None = None
 
 
 class ProviderCatalogItem(BaseModel):
@@ -273,32 +273,30 @@ class ProviderCatalogItem(BaseModel):
     description: str
     icon: str
     authType: Literal["apiKey", "oauth"] = "apiKey"
-    defaultBaseUrl: Optional[str] = None
+    defaultBaseUrl: str | None = None
     defaultEnabled: bool = True
-    oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
+    oauthVariant: Literal["panel", "compact", "inline-code", "device"] | None = None
     oauthEnterpriseDomain: bool = False
-    fieldMode: Optional[
-        Literal["standard_api_key", "openai_compatible", "local_ollama", "local_vllm"]
-    ] = None
-    aliases: List[str] = Field(default_factory=list)
+    fieldMode: Literal["standard_api_key", "openai_compatible", "local_ollama", "local_vllm"] | None = None
+    aliases: list[str] = Field(default_factory=list)
 
 
 class ProviderCatalogResponse(BaseModel):
-    providers: List[ProviderCatalogItem]
+    providers: list[ProviderCatalogItem]
 
 
 class ProviderOverview(BaseModel):
     provider: str
-    apiKey: Optional[str] = None
-    baseUrl: Optional[str] = None
-    extra: Optional[Any] = None
+    apiKey: str | None = None
+    baseUrl: str | None = None
+    extra: Any | None = None
     enabled: bool = True
     connected: bool = False
-    oauth: Optional[ProviderOAuthInfo] = None
+    oauth: ProviderOAuthInfo | None = None
 
 
 class ProviderOverviewResponse(BaseModel):
-    providers: List[ProviderOverview]
+    providers: list[ProviderOverview]
 
 
 class ProviderPluginInfo(BaseModel):
@@ -308,33 +306,33 @@ class ProviderPluginInfo(BaseModel):
     provider: str
     enabled: bool = True
     blockedByPolicy: bool = False
-    installedAt: Optional[str] = None
-    sourceType: Optional[str] = None
-    sourceRef: Optional[str] = None
+    installedAt: str | None = None
+    sourceType: str | None = None
+    sourceRef: str | None = None
     sourceClass: Literal["official", "community"] = "community"
-    indexId: Optional[str] = None
-    repoUrl: Optional[str] = None
-    trackingRef: Optional[str] = None
-    pluginPath: Optional[str] = None
+    indexId: str | None = None
+    repoUrl: str | None = None
+    trackingRef: str | None = None
+    pluginPath: str | None = None
     autoUpdateOverride: Literal["inherit", "enabled", "disabled"] = "inherit"
     effectiveAutoUpdate: bool = False
     description: str
     icon: str
     authType: Literal["apiKey", "oauth"] = "apiKey"
-    defaultBaseUrl: Optional[str] = None
+    defaultBaseUrl: str | None = None
     defaultEnabled: bool = True
-    oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
+    oauthVariant: Literal["panel", "compact", "inline-code", "device"] | None = None
     oauthEnterpriseDomain: bool = False
-    aliases: List[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
     verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
-    verificationMessage: Optional[str] = None
-    signingKeyId: Optional[str] = None
-    updateError: Optional[str] = None
-    error: Optional[str] = None
+    verificationMessage: str | None = None
+    signingKeyId: str | None = None
+    updateError: str | None = None
+    error: str | None = None
 
 
 class ProviderPluginsResponse(BaseModel):
-    plugins: List[ProviderPluginInfo]
+    plugins: list[ProviderPluginInfo]
 
 
 class ProviderPluginSourceInfo(BaseModel):
@@ -346,18 +344,18 @@ class ProviderPluginSourceInfo(BaseModel):
     description: str
     icon: str
     sourceClass: Literal["official", "community"] = "community"
-    indexId: Optional[str] = None
-    indexName: Optional[str] = None
-    sourceUrl: Optional[str] = None
-    repoUrl: Optional[str] = None
-    trackingRef: Optional[str] = None
-    pluginPath: Optional[str] = None
+    indexId: str | None = None
+    indexName: str | None = None
+    sourceUrl: str | None = None
+    repoUrl: str | None = None
+    trackingRef: str | None = None
+    pluginPath: str | None = None
     blockedByPolicy: bool = False
     installed: bool = False
 
 
 class ProviderPluginSourcesResponse(BaseModel):
-    sources: List[ProviderPluginSourceInfo]
+    sources: list[ProviderPluginSourceInfo]
 
 
 class ProviderPluginPolicy(BaseModel):
@@ -380,7 +378,7 @@ class ProviderPluginIndexInfo(BaseModel):
 
 
 class ProviderPluginIndexesResponse(BaseModel):
-    indexes: List[ProviderPluginIndexInfo]
+    indexes: list[ProviderPluginIndexInfo]
 
 
 class AddProviderPluginIndexInput(BaseModel):
@@ -402,24 +400,24 @@ class InstallProviderPluginSourceInput(BaseModel):
 
 class InstallProviderPluginFromRepoInput(BaseModel):
     repoUrl: str
-    ref: Optional[str] = "main"
-    pluginPath: Optional[str] = None
+    ref: str | None = "main"
+    pluginPath: str | None = None
 
 
 class SetProviderPluginAutoUpdateInput(BaseModel):
     id: str
     override: Literal["inherit", "enabled", "disabled"] = "inherit"
-    trackingRef: Optional[str] = None
+    trackingRef: str | None = None
 
 
 class ProviderPluginUpdateItem(BaseModel):
     id: str
     status: Literal["updated", "skipped", "failed"]
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ProviderPluginUpdateCheckResponse(BaseModel):
-    results: List[ProviderPluginUpdateItem] = Field(default_factory=list)
+    results: list[ProviderPluginUpdateItem] = Field(default_factory=list)
     updated: int = 0
     skipped: int = 0
     failed: int = 0
@@ -440,20 +438,20 @@ class ImportProviderPluginResponse(BaseModel):
     name: str
     version: str
     verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
-    verificationMessage: Optional[str] = None
-    signingKeyId: Optional[str] = None
+    verificationMessage: str | None = None
+    signingKeyId: str | None = None
 
 
 class DefaultToolsResponse(BaseModel):
-    toolIds: List[str]
+    toolIds: list[str]
 
 
 class SetDefaultToolsInput(BaseModel):
-    toolIds: List[str]
+    toolIds: list[str]
 
 
 class ChatAgentConfigResponse(BaseModel):
-    toolIds: List[str]
+    toolIds: list[str]
     provider: str
     modelId: str
 
@@ -497,15 +495,15 @@ class ModelSettingsInfo(BaseModel):
     modelId: str
     parseThinkTags: bool
     reasoning: ReasoningInfo
-    thinkingTagPrompted: Optional[ThinkingTagPromptInfo] = None
+    thinkingTagPrompted: ThinkingTagPromptInfo | None = None
 
 
 class AllModelSettingsResponse(BaseModel):
-    models: List[ModelSettingsInfo]
+    models: list[ModelSettingsInfo]
 
 
 class SaveModelSettingsInput(BaseModel):
     provider: str
     modelId: str
     parseThinkTags: bool = False
-    reasoning: Optional[ReasoningInfo] = None
+    reasoning: ReasoningInfo | None = None

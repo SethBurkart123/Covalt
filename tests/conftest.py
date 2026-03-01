@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Iterator
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from agno.models.base import Model
 from agno.models.response import ModelResponse
-
 
 # ---------------------------------------------------------------------------
 # Mock Models — drop-in replacements for real LLM providers

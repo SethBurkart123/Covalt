@@ -16,12 +16,12 @@ from agno.models.response import ToolExecution
 from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 
+from backend.models.chat import ChatMessage
+from backend.services import run_control
 from backend.services.chat_graph_runner import (
     convert_chat_message_to_agno_messages,
     handle_content_stream,
 )
-from backend.services import run_control
-from backend.models.chat import ChatMessage
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 
