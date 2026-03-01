@@ -7,7 +7,7 @@ import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { getNodeDefinition, resolveNodeParameters, useFlowActions, useNodePicker, type FlowNode as FlowNodeType } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
-import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
+import { buildNodeEdgeIndex, shouldRenderParam, shouldRenderParamControl } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Socket } from './socket';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
@@ -40,7 +40,7 @@ function getSocketSide(param: Parameter): 'left' | 'right' {
 function isSocketOnlyParam(param: Parameter, isConnected: boolean): boolean {
   if (!param.socket) return false;
   if (param.mode === 'input' || param.mode === 'output') return true;
-  return param.mode === 'hybrid' && isConnected;
+  return param.mode === 'hybrid' && !shouldRenderParamControl(param, isConnected);
 }
 
 const CompactSocketRow = memo(function CompactSocketRow({ left, right }: { left?: SocketParamItem; right?: SocketParamItem }) {
