@@ -158,12 +158,15 @@ class OpenAICodexResponses(OpenAIResponses):
                                 remapped_function["name"] = safe
                         remapped["function"] = remapped_function
 
-                    original_id = remapped.get("id") or remapped.get("call_id")
-                    remapped_id = _normalize_codex_function_call_id(original_id)
+                    original_id = remapped.get("id")
+                    original_call_id = remapped.get("call_id")
+                    seed_id = original_id or original_call_id
+                    remapped_id = _normalize_codex_function_call_id(seed_id)
                     remapped["id"] = remapped_id
                     remapped["call_id"] = remapped_id
-                    if isinstance(original_id, str) and original_id:
-                        tool_call_id_map[original_id] = remapped_id
+                    for raw_tool_call_id in (original_id, original_call_id):
+                        if isinstance(raw_tool_call_id, str) and raw_tool_call_id:
+                            tool_call_id_map[raw_tool_call_id] = remapped_id
                     sanitized_tool_calls.append(remapped)
 
                 sanitized_messages.append(
