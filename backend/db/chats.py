@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Chat, Message
+from ..models import decode_message_content
 
 
 def list_chats(sess: Session) -> List[Chat]:
@@ -35,12 +36,7 @@ def get_chat_messages(sess: Session, chatId: str) -> List[Dict[str, Any]]:
     for r in rows:
         toolCalls = json.loads(r.toolCalls) if r.toolCalls else None
 
-        content = r.content
-        if content and content.strip().startswith("["):
-            try:
-                content = json.loads(content)
-            except Exception:
-                pass
+        content = decode_message_content(r.content)
 
         if isinstance(content, list):
             _normalize_render_plan_blocks(content)

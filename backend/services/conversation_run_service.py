@@ -26,6 +26,10 @@ from ..services.chat_graph_runner import (
     append_error_block_to_message,
     extract_error_message,
 )
+from ..models import (
+    decode_message_content,
+    serialize_message_blocks,
+)
 from ..services.option_validation import (
     ModelResolutionError,
     resolve_and_validate_model_options,
@@ -57,12 +61,7 @@ def build_message_history(db_messages: List[Any]) -> List[ChatMessage]:
     result: List[ChatMessage] = []
 
     for m in db_messages:
-        content = m.content
-        if isinstance(content, str) and content.strip().startswith("["):
-            try:
-                content = json.loads(content)
-            except Exception:
-                pass
+        content = decode_message_content(m.content)
 
         attachments = None
         if m.role == "user" and m.attachments:
@@ -147,7 +146,7 @@ async def handle_streaming_run_error(
             logger.error(f"{label} Failed to append error block: {e2}")
             _save_msg_content(
                 assistant_msg_id,
-                json.dumps(
+                serialize_message_blocks(
                     [
                         {
                             "type": "error",
