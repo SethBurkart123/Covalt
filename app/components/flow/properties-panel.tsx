@@ -5,7 +5,7 @@ import { useNodesData, useStore } from '@xyflow/react';
 import type { FlowEdge, Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
-import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
+import { buildNodeEdgeIndex, shouldRenderParam, shouldRenderParamControl, canRenderParamControl } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -122,7 +122,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   const Icon = getFlowIcon(definition.icon);
 
   const panelParams = definition.parameters.filter(p => {
-    if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
+    if (!canRenderParamControl(p)) return false;
     return shouldRenderParam(p, 'inspector', edgeIndex, selectedNodeData.data as Record<string, unknown>);
   });
 
@@ -253,7 +253,7 @@ const ParameterField = memo(function ParameterField({
   fullBleed = false,
 }: ParameterFieldProps) {
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
-  const showControl = (param.mode === 'constant') || (param.mode === 'hybrid' && !isConnected);
+  const showControl = shouldRenderParamControl(param, Boolean(isConnected));
   
   return (
     <div className={cn(fullBleed ? 'h-full' : 'space-y-1.5')}>
