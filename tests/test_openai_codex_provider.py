@@ -412,3 +412,39 @@ def test_codex_preserves_existing_fc_tool_call_ids() -> None:
     assert function_call.get("call_id") == "fc_existing123"
     assert function_output.get("call_id") == "fc_existing123"
 
+
+def test_codex_maps_tool_output_using_original_call_id_when_id_is_regenerated() -> None:
+    model = openai_codex_provider.OpenAICodexResponses(
+        id="gpt-5.3-codex",
+        api_key="test-key",
+        base_url="https://chatgpt.com/backend-api/codex",
+    )
+
+    assistant = Message(
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "call_legacy123",
+                "call_id": "call_legacy123",
+                "type": "function",
+                "function": {
+                    "name": "search_docs",
+                    "arguments": "{}",
+                },
+            }
+        ],
+    )
+    tool = Message(role="tool", tool_call_id="call_legacy123", content="ok")
+
+    formatted = model._format_messages([assistant, tool])
+
+    function_call = formatted[0]
+    function_output = formatted[1]
+    assert isinstance(function_call, dict)
+    assert isinstance(function_output, dict)
+    assert isinstance(function_call.get("id"), str)
+    assert function_call["id"].startswith("fc_")
+    assert function_call.get("call_id") == function_call["id"]
+    assert function_output.get("call_id") == function_call["id"]
+
