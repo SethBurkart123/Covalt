@@ -137,8 +137,8 @@ def test_update_check_failure_keeps_plugin(monkeypatch, tmp_path: Path) -> None:
     manager.set_auto_update(plugin_id, override="enabled", tracking_ref="main")
 
     monkeypatch.setattr(
-        ppm,
-        "_download_github_archive",
+        ppm.plugin_install_utils,
+        "download_github_archive",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("download failed")),
     )
 
@@ -163,7 +163,11 @@ def test_install_from_repo_uses_downloaded_archive(monkeypatch, tmp_path: Path) 
     archive_path = tmp_path / "repo.zip"
     write_zip_from_directory(repo_src, archive_path)
 
-    monkeypatch.setattr(ppm, "_download_github_archive", lambda *_args, **_kwargs: archive_path.read_bytes())
+    monkeypatch.setattr(
+        ppm.plugin_install_utils,
+        "download_github_archive",
+        lambda *_args, **_kwargs: archive_path.read_bytes(),
+    )
 
     plugin_id = manager.install_from_repo(
         repo_url="https://github.com/acme/repo-plugin",
