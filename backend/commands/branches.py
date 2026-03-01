@@ -33,8 +33,8 @@ from ..services.chat_graph_runner import (
     append_error_block_to_message,
     get_graph_data_for_chat,
     run_graph_chat_runtime,
-    update_chat_model_selection,
 )
+from ..services.model_selection import update_chat_model_selection
 from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 from ..services.conversation_run_service import (
     validate_model_options,

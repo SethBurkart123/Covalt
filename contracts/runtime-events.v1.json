@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "events": [
+    { "key": "RUN_STARTED", "name": "RunStarted" },
+    { "key": "ASSISTANT_MESSAGE_ID", "name": "AssistantMessageId" },
+    { "key": "RUN_CONTENT", "name": "RunContent" },
+    { "key": "SEED_BLOCKS", "name": "SeedBlocks" },
+    { "key": "REASONING_STARTED", "name": "ReasoningStarted" },
+    { "key": "REASONING_STEP", "name": "ReasoningStep" },
+    { "key": "REASONING_COMPLETED", "name": "ReasoningCompleted" },
+    { "key": "TOOL_CALL_STARTED", "name": "ToolCallStarted" },
+    { "key": "TOOL_CALL_COMPLETED", "name": "ToolCallCompleted" },
+    { "key": "TOOL_CALL_FAILED", "name": "ToolCallFailed" },
+    { "key": "TOOL_CALL_ERROR", "name": "ToolCallError" },
+    { "key": "TOOL_APPROVAL_REQUIRED", "name": "ToolApprovalRequired" },
+    { "key": "TOOL_APPROVAL_RESOLVED", "name": "ToolApprovalResolved" },
+    { "key": "MEMBER_RUN_STARTED", "name": "MemberRunStarted" },
+    { "key": "MEMBER_RUN_COMPLETED", "name": "MemberRunCompleted" },
+    { "key": "MEMBER_RUN_ERROR", "name": "MemberRunError" },
+    { "key": "FLOW_NODE_STARTED", "name": "FlowNodeStarted" },
+    { "key": "FLOW_NODE_COMPLETED", "name": "FlowNodeCompleted" },
+    { "key": "FLOW_NODE_RESULT", "name": "FlowNodeResult" },
+    { "key": "FLOW_NODE_ERROR", "name": "FlowNodeError" },
+    { "key": "RUN_COMPLETED", "name": "RunCompleted" },
+    { "key": "RUN_CANCELLED", "name": "RunCancelled" },
+    { "key": "RUN_ERROR", "name": "RunError" },
+    { "key": "STREAM_NOT_ACTIVE", "name": "StreamNotActive" },
+    { "key": "STREAM_SUBSCRIBED", "name": "StreamSubscribed" }
+  ],
+  "groups": {
+    "terminal": ["RUN_COMPLETED", "RUN_CANCELLED", "RUN_ERROR"],
+    "tool": [
+      "TOOL_CALL_STARTED",
+      "TOOL_CALL_COMPLETED",
+      "TOOL_CALL_FAILED",
+      "TOOL_CALL_ERROR",
+      "TOOL_APPROVAL_REQUIRED",
+      "TOOL_APPROVAL_RESOLVED"
+    ],
+    "member": ["MEMBER_RUN_STARTED", "MEMBER_RUN_COMPLETED", "MEMBER_RUN_ERROR"],
+    "flowNode": ["FLOW_NODE_STARTED", "FLOW_NODE_COMPLETED", "FLOW_NODE_RESULT", "FLOW_NODE_ERROR"]
+  }
+}

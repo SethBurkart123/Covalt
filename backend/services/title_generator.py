@@ -9,9 +9,15 @@ import re
 from agno.agent import Agent, Message
 
 from .. import db
+from .runtime_events import (
+    EVENT_RUN_CANCELLED,
+    EVENT_RUN_COMPLETED,
+    EVENT_RUN_CONTENT,
+    EVENT_RUN_ERROR,
+)
 
-ERROR_RUN_EVENTS = {"RunError", "RunCancelled"}
-TITLE_CONTENT_EVENTS = {"RunContent", "RunCompleted"}
+ERROR_RUN_EVENTS = {EVENT_RUN_ERROR, EVENT_RUN_CANCELLED}
+TITLE_CONTENT_EVENTS = {EVENT_RUN_CONTENT, EVENT_RUN_COMPLETED}
 
 DEFAULT_PROMPT = (
     "Generate a brief, descriptive title (max 6 words) for this conversation "

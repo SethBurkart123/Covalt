@@ -3,6 +3,7 @@ import pytest
 from backend.services.runtime_events import (
     EVENT_RUN_CONTENT,
     KNOWN_RUNTIME_EVENTS,
+    RUNTIME_EVENT_CONTRACT_VERSION,
     emit_chat_event,
     make_chat_event,
 )
@@ -56,3 +57,8 @@ def test_emit_chat_event_rejects_unknown_when_not_allowed() -> None:
 
 def test_known_runtime_events_contains_core_run_content() -> None:
     assert EVENT_RUN_CONTENT in KNOWN_RUNTIME_EVENTS
+
+
+def test_runtime_event_contract_version_is_exposed() -> None:
+    assert isinstance(RUNTIME_EVENT_CONTRACT_VERSION, str)
+    assert RUNTIME_EVENT_CONTRACT_VERSION

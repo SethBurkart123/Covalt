@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from zynk import Channel
 
+from ...models import parse_message_blocks, serialize_message_blocks
 from ...models.chat import ChatMessage
 
 
@@ -42,26 +42,18 @@ class ContinueRunDependencies:
 
 
 def _extract_existing_blocks(content: Any) -> List[Dict[str, Any]]:
-    if not content or not isinstance(content, str):
+    if content is None:
         return []
 
-    raw = content.strip()
-    if raw.startswith("["):
-        try:
-            existing_blocks: List[Dict[str, Any]] = json.loads(raw)
-        except Exception:
-            existing_blocks = [{"type": "text", "content": content}]
-    else:
-        existing_blocks = [{"type": "text", "content": content}]
+    blocks = parse_message_blocks(content, strip_trailing_errors=True)
 
-    while (
-        existing_blocks
-        and isinstance(existing_blocks[-1], dict)
-        and existing_blocks[-1].get("type") == "error"
-    ):
-        existing_blocks.pop()
+    if blocks:
+        return blocks
 
-    return existing_blocks
+    if isinstance(content, str) and not content.strip():
+        return []
+
+    return [{"type": "text", "content": str(content)}]
 
 
 async def execute_continue_run(
@@ -102,7 +94,7 @@ async def execute_continue_run(
             sess,
             original_msg.parent_message_id,
             "assistant",
-            json.dumps(existing_blocks) if existing_blocks else "",
+            serialize_message_blocks(existing_blocks) if existing_blocks else "",
             input_data.chat_id,
             False,
         )

@@ -12,7 +12,16 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nodes._types import NodeEvent
 
 from .agent_manager import get_agent_manager
-from .flow_executor import run_flow
+from .runtime_events import (
+    EVENT_FLOW_NODE_COMPLETED,
+    EVENT_FLOW_NODE_ERROR,
+    EVENT_FLOW_NODE_RESULT,
+    EVENT_FLOW_NODE_STARTED,
+    EVENT_RUN_COMPLETED,
+    EVENT_RUN_CONTENT,
+    EVENT_RUN_ERROR,
+    EVENT_RUN_STARTED,
+)
 from .tool_registry import get_tool_registry
 from .node_route_index import resolve_node_route, rebuild_node_route_index
 from .node_route_registry import (
@@ -97,14 +106,14 @@ def register_webhook_routes(app: Any) -> None:
         if wants_sse:
             async def event_stream() -> AsyncIterator[str]:
                 nonlocal response_payload
-                yield _sse("RunStarted", {"runId": run_id})
+                yield _sse(EVENT_RUN_STARTED, {"runId": run_id})
                 try:
                     async for item in run_flow(graph_data, context):
                         if isinstance(item, NodeEvent):
                             if item.event_type == "progress":
                                 token = (item.data or {}).get("token", "")
                                 if token:
-                                    yield _sse("RunContent", {"content": token})
+                                    yield _sse(EVENT_RUN_CONTENT, {"content": token})
                                 continue
 
                             if item.event_type == "agent_event":
@@ -123,7 +132,7 @@ def register_webhook_routes(app: Any) -> None:
                                 if payload is not None:
                                     yield _sse(payload[0], payload[1])
                                 yield _sse(
-                                    "RunError",
+                                    EVENT_RUN_ERROR,
                                     {"error": (item.data or {}).get("error", "Unknown node error")},
                                 )
                                 return
@@ -132,13 +141,13 @@ def register_webhook_routes(app: Any) -> None:
                             if payload is not None:
                                 yield _sse(payload[0], payload[1])
                 except Exception as exc:
-                    yield _sse("RunError", {"error": str(exc)})
+                    yield _sse(EVENT_RUN_ERROR, {"error": str(exc)})
                     return
 
                 if response_payload is not None:
-                    yield _sse("RunCompleted", {"response": response_payload})
+                    yield _sse(EVENT_RUN_COMPLETED, {"response": response_payload})
                 else:
-                    yield _sse("RunCompleted", {})
+                    yield _sse(EVENT_RUN_COMPLETED, {})
 
             return StreamingResponse(
                 event_stream(),
@@ -242,17 +251,17 @@ def _find_node(graph_data: dict[str, Any], node_id: str) -> dict[str, Any] | Non
 
 def _node_event_payload(item: NodeEvent) -> tuple[str, dict[str, Any]] | None:
     if item.event_type == "started":
-        return "FlowNodeStarted", {"nodeId": item.node_id, "nodeType": item.node_type}
+        return EVENT_FLOW_NODE_STARTED, {"nodeId": item.node_id, "nodeType": item.node_type}
     if item.event_type == "completed":
-        return "FlowNodeCompleted", {"nodeId": item.node_id, "nodeType": item.node_type}
+        return EVENT_FLOW_NODE_COMPLETED, {"nodeId": item.node_id, "nodeType": item.node_type}
     if item.event_type == "result":
-        return "FlowNodeResult", {
+        return EVENT_FLOW_NODE_RESULT, {
             "nodeId": item.node_id,
             "nodeType": item.node_type,
             "outputs": (item.data or {}).get("outputs", {}),
         }
     if item.event_type == "error":
-        return "FlowNodeError", {
+        return EVENT_FLOW_NODE_ERROR, {
             "nodeId": item.node_id,
             "nodeType": item.node_type,
             "error": (item.data or {}).get("error", "Unknown node error"),

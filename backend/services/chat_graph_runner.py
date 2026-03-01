@@ -23,7 +23,12 @@ from zynk import Channel
 from .. import db
 from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall, ToolCallPayload
 from .runtime_events import (
+    EVENT_FLOW_NODE_COMPLETED,
+    EVENT_FLOW_NODE_ERROR,
+    EVENT_FLOW_NODE_RESULT,
+    EVENT_FLOW_NODE_STARTED,
     EVENT_MEMBER_RUN_COMPLETED,
+    EVENT_MEMBER_RUN_ERROR,
     EVENT_MEMBER_RUN_STARTED,
     EVENT_REASONING_COMPLETED,
     EVENT_REASONING_STARTED,
@@ -49,6 +54,11 @@ from .tool_registry import get_tool_registry, get_original_tool_name
 from .mcp_manager import ensure_mcp_initialized
 from .workspace_manager import get_workspace_manager
 from .toolset_executor import get_toolset_executor
+from .model_selection import parse_model_id
+from ..models import (
+    parse_message_blocks,
+    serialize_message_blocks,
+)
 
 FlowStreamHandler = Callable[..., Awaitable[None]]
 ContentMessageConverter = Callable[[ChatMessage, Optional[str]], list[Any]]
@@ -337,27 +347,6 @@ class FlowRunHandle:
 
     def is_cancel_requested(self) -> bool:
         return self._cancel_requested
-
-
-def parse_model_id(model_id: Optional[str]) -> tuple[str, str]:
-    if not model_id:
-        return "", ""
-    if ":" in model_id:
-        provider, model = model_id.split(":", 1)
-        return provider, model
-    return "", model_id
-
-
-def update_chat_model_selection(sess: Any, chat_id: str, model_id: str) -> None:
-    config = db.get_chat_agent_config(sess, chat_id) or {}
-    if model_id.startswith("agent:"):
-        config["agent_id"] = model_id[len("agent:") :]
-    else:
-        provider, model = parse_model_id(model_id)
-        config["provider"] = provider
-        config["model_id"] = model
-        config.pop("agent_id", None)
-    db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
 
 def _normalize_instruction_list(raw_instructions: Any) -> list[str]:
@@ -970,7 +959,7 @@ def _ensure_tool_call_completed_payload(
     payload: dict[str, Any], chat_id: str | None
 ) -> None:
     event_name = str(payload.get("event") or "")
-    if event_name != "ToolCallCompleted":
+    if event_name != EVENT_TOOL_CALL_COMPLETED:
         return
 
     tool = payload.get("tool")
@@ -1082,39 +1071,6 @@ def load_initial_content(msg_id: str) -> list[dict[str, Any]]:
         return []
 
 
-def parse_message_blocks(
-    content: str,
-    *,
-    strip_trailing_errors: bool = False,
-) -> list[dict[str, Any]]:
-    raw = content.strip()
-    if not raw:
-        return []
-
-    blocks: list[dict[str, Any]]
-    try:
-        if raw.startswith("["):
-            parsed = json.loads(raw)
-            blocks = parsed if isinstance(parsed, list) else []
-        else:
-            blocks = [{"type": "text", "content": content}]
-    except Exception:
-        blocks = [{"type": "text", "content": content}]
-
-    normalized: list[dict[str, Any]] = []
-    for block in blocks:
-        if isinstance(block, dict):
-            normalized.append(block)
-        else:
-            normalized.append({"type": "text", "content": str(block)})
-
-    if strip_trailing_errors:
-        while normalized and normalized[-1].get("type") == "error":
-            normalized.pop()
-
-    return normalized
-
-
 def append_error_block_to_message(
     message_id: str,
     *,
@@ -1138,7 +1094,9 @@ def append_error_block_to_message(
         )
         blocks.append(error_block)
         db.update_message_content(
-            sess, messageId=message_id, content=json.dumps(blocks)
+            sess,
+            messageId=message_id,
+            content=serialize_message_blocks(blocks),
         )
 
 
@@ -1532,7 +1490,7 @@ async def handle_flow_stream(
             member_block = content_blocks[member_state.block_index]
             member_content = member_block["content"]
 
-            if event_name == "RunContent":
+            if event_name == EVENT_RUN_CONTENT:
                 text = str(data.get("content") or "")
                 if not text:
                     return False
@@ -1541,11 +1499,11 @@ async def handle_flow_stream(
                 member_state.current_text += text
                 return True
 
-            if event_name == "ReasoningStarted":
+            if event_name == EVENT_REASONING_STARTED:
                 _flush_member_text(member_state)
                 return True
 
-            if event_name == "ReasoningStep":
+            if event_name == EVENT_REASONING_STEP:
                 text = str(data.get("reasoningContent") or "")
                 if not text:
                     return False
@@ -1554,11 +1512,11 @@ async def handle_flow_stream(
                 member_state.current_reasoning += text
                 return True
 
-            if event_name == "ReasoningCompleted":
+            if event_name == EVENT_REASONING_COMPLETED:
                 _flush_member_reasoning(member_state)
                 return True
 
-            if event_name == "ToolCallStarted":
+            if event_name == EVENT_TOOL_CALL_STARTED:
                 tool = data.get("tool") or {}
                 tool_id = str(tool.get("id") or "")
                 if not tool_id:
@@ -1596,7 +1554,7 @@ async def handle_flow_stream(
                         tool_block["providerData"] = provider_data
                 return True
 
-            if event_name == "ToolCallCompleted":
+            if event_name == EVENT_TOOL_CALL_COMPLETED:
                 tool = data.get("tool") or {}
                 tool_id = str(tool.get("id") or "")
                 if not tool_id:
@@ -1610,7 +1568,7 @@ async def handle_flow_stream(
                     tool_block["renderPlan"] = tool.get("renderPlan")
                 return True
 
-            if event_name == "ToolApprovalRequired":
+            if event_name == EVENT_TOOL_APPROVAL_REQUIRED:
                 tool_payload = data.get("tool") or {}
                 tools = tool_payload.get("tools")
                 if not isinstance(tools, list) or not tools:
@@ -1636,7 +1594,7 @@ async def handle_flow_stream(
                     )
                 return True
 
-            if event_name == "ToolApprovalResolved":
+            if event_name == EVENT_TOOL_APPROVAL_RESOLVED:
                 tool = data.get("tool") or {}
                 tool_id = str(tool.get("id") or "")
                 if not tool_id:
@@ -1652,14 +1610,14 @@ async def handle_flow_stream(
                     tool_block["isCompleted"] = True
                 return True
 
-            if event_name == "MemberRunCompleted":
+            if event_name == EVENT_MEMBER_RUN_COMPLETED:
                 _flush_member_text(member_state)
                 _flush_member_reasoning(member_state)
                 member_block["isCompleted"] = True
                 member_runs.pop(member_state.run_id, None)
                 return True
 
-            if event_name in {"MemberRunError", "RunError"}:
+            if event_name in {EVENT_MEMBER_RUN_ERROR, EVENT_RUN_ERROR}:
                 _flush_member_text(member_state)
                 _flush_member_reasoning(member_state)
                 error_content = str(
@@ -1671,9 +1629,9 @@ async def handle_flow_stream(
                 member_runs.pop(member_state.run_id, None)
                 return True
 
-            return event_name == "MemberRunStarted"
+            return event_name == EVENT_MEMBER_RUN_STARTED
 
-        if event_name == "RunContent":
+        if event_name == EVENT_RUN_CONTENT:
             token = str(data.get("content") or "")
             if not token:
                 return False
@@ -1682,11 +1640,11 @@ async def handle_flow_stream(
             current_text += token
             return True
 
-        if event_name == "ReasoningStarted":
+        if event_name == EVENT_REASONING_STARTED:
             _flush_current_text()
             return True
 
-        if event_name == "ReasoningStep":
+        if event_name == EVENT_REASONING_STEP:
             text = str(data.get("reasoningContent") or "")
             if not text:
                 return False
@@ -1695,11 +1653,11 @@ async def handle_flow_stream(
             current_reasoning += text
             return True
 
-        if event_name == "ReasoningCompleted":
+        if event_name == EVENT_REASONING_COMPLETED:
             _flush_current_reasoning()
             return True
 
-        if event_name == "ToolCallStarted":
+        if event_name == EVENT_TOOL_CALL_STARTED:
             tool = data.get("tool") or {}
             tool_id = str(tool.get("id") or "")
             if not tool_id:
@@ -1727,7 +1685,7 @@ async def handle_flow_stream(
                     tool_block["providerData"] = provider_data
             return True
 
-        if event_name == "ToolCallCompleted":
+        if event_name == EVENT_TOOL_CALL_COMPLETED:
             tool = data.get("tool") or {}
             tool_id = str(tool.get("id") or "")
             if not tool_id:
@@ -1744,7 +1702,7 @@ async def handle_flow_stream(
                 tool_block["providerData"] = provider_data
             return True
 
-        if event_name == "ToolApprovalRequired":
+        if event_name == EVENT_TOOL_APPROVAL_REQUIRED:
             tool_payload = data.get("tool") or {}
             tools = tool_payload.get("tools")
             if not isinstance(tools, list) or not tools:
@@ -1770,7 +1728,7 @@ async def handle_flow_stream(
                 )
             return True
 
-        if event_name == "ToolApprovalResolved":
+        if event_name == EVENT_TOOL_APPROVAL_RESOLVED:
             tool = data.get("tool") or {}
             tool_id = str(tool.get("id") or "")
             if not tool_id:
@@ -1811,7 +1769,7 @@ async def handle_flow_stream(
                         _flush_current_text()
                         _flush_current_reasoning()
                     _send_flow_node_event(
-                        "FlowNodeStarted",
+                        EVENT_FLOW_NODE_STARTED,
                         {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "progress":
@@ -1856,13 +1814,13 @@ async def handle_flow_stream(
                         )
 
                     event_name = str(event_data.get("event") or "")
-                    if event_name == "ToolApprovalRequired" and chat_id:
+                    if event_name == EVENT_TOOL_APPROVAL_REQUIRED and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
-                    elif event_name == "ToolApprovalResolved" and chat_id:
+                    elif event_name == EVENT_TOOL_APPROVAL_RESOLVED and chat_id:
                         await broadcaster.update_stream_status(chat_id, "streaming")
                 elif item.event_type == "cancelled":
                     was_cancelled = True
-                    terminal_event = "RunCancelled"
+                    terminal_event = EVENT_RUN_CANCELLED
                     trace_status = "cancelled"
                     _flush_current_text()
                     _flush_current_reasoning()
@@ -1879,12 +1837,12 @@ async def handle_flow_stream(
                     return
                 elif item.event_type == "completed":
                     _send_flow_node_event(
-                        "FlowNodeCompleted",
+                        EVENT_FLOW_NODE_COMPLETED,
                         {"nodeId": item.node_id, "nodeType": item.node_type},
                     )
                 elif item.event_type == "result":
                     _send_flow_node_event(
-                        "FlowNodeResult",
+                        EVENT_FLOW_NODE_RESULT,
                         {
                             "nodeId": item.node_id,
                             "nodeType": item.node_type,
@@ -1899,7 +1857,7 @@ async def handle_flow_stream(
                     error_msg = (item.data or {}).get("error", "Unknown node error")
                     error_text = f"[{item.node_type}] {error_msg}"
                     _send_flow_node_event(
-                        "FlowNodeError",
+                        EVENT_FLOW_NODE_ERROR,
                         {
                             "nodeId": item.node_id,
                             "nodeType": item.node_type,
@@ -1921,7 +1879,7 @@ async def handle_flow_stream(
                         save_content, assistant_msg_id, json.dumps(content_blocks)
                     )
                     had_error = True
-                    terminal_event = "RunError"
+                    terminal_event = EVENT_RUN_ERROR
                     if chat_id:
                         await broadcaster.update_stream_status(
                             chat_id, "error", error_text
@@ -1977,7 +1935,7 @@ async def handle_flow_stream(
             with db.db_session() as sess:
                 db.mark_message_complete(sess, assistant_msg_id)
 
-        terminal_event = "RunCompleted"
+        terminal_event = EVENT_RUN_COMPLETED
         trace_status = "completed"
         emit_chat_event(ch, EVENT_RUN_COMPLETED)
 
@@ -2013,7 +1971,7 @@ async def handle_flow_stream(
         )
         emit_chat_event(ch, EVENT_RUN_ERROR, content=error_msg)
         had_error = True
-        terminal_event = "RunError"
+        terminal_event = EVENT_RUN_ERROR
 
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "error", str(e))

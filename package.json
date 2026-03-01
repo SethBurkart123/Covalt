@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "backend": "uv run main.py",
+    "generate:runtime-events": "bun scripts/generate-runtime-events.ts",
     "dev": "concurrently \"bun run dev:frontend\" \"bun run dev:backend\"",
     "dev:desktop": "bun run electrobun:build && concurrently \"bun run dev:frontend\" \"bun run electrobun:dev\"",
     "dev:frontend": "next dev --turbopack",
