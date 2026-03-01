@@ -17,6 +17,8 @@
     "build:desktop": "bun run build:frontend && bun run build:backend && bun run electrobun:build",
     "start": "next start -p 4096",
     "lint": "next lint",
+    "lint:python": "uv run --group dev ruff check backend/ tests/ main.py",
+    "lint:python:fix": "uv run --group dev ruff check --fix backend/ tests/ main.py",
     "test": "vitest",
     "test:run": "vitest run && uv run pytest && bun run test:e2e",
     "test:e2e": "bun tests/e2e/toolset-suite.ts"
