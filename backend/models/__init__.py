@@ -5,6 +5,19 @@ from .message_content_codec import (
     parse_message_blocks,
     serialize_message_blocks,
 )
+
+
+from .node_provider import (
+    EnableNodeProviderPluginInput,
+    InstallNodeProviderPluginFromDirectoryInput,
+    InstallNodeProviderPluginFromRepoInput,
+    NodeProviderDefinitionsResponse,
+    NodeProviderNodeDefinition,
+    NodeProviderPluginIdInput,
+    NodeProviderPluginInfo,
+    NodeProviderPluginsResponse,
+)
+
 from .tooling import (
     format_mcp_tool_id,
     format_mcp_toolset_id,
@@ -34,4 +47,12 @@ __all__ = [
     "split_mcp_tool_id",
     "validate_renderer_manifest_entry",
     "validate_renderer_override",
+    "EnableNodeProviderPluginInput",
+    "InstallNodeProviderPluginFromDirectoryInput",
+    "InstallNodeProviderPluginFromRepoInput",
+    "NodeProviderDefinitionsResponse",
+    "NodeProviderNodeDefinition",
+    "NodeProviderPluginIdInput",
+    "NodeProviderPluginInfo",
+    "NodeProviderPluginsResponse",
 ]

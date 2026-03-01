@@ -128,7 +128,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
 
   const panelParams = definition.parameters.filter(p => {
     if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
-    return shouldRenderParam(p, 'inspector', edgeIndex);
+    return shouldRenderParam(p, 'inspector', edgeIndex, selectedNodeData.data as Record<string, unknown>);
   });
 
   const showCard = variant === 'card';

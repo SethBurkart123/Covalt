@@ -94,5 +94,12 @@ def _extract_route_id(node_type: str, node: dict[str, Any]) -> str:
         hook_id = data.get("hookId")
         return str(hook_id).strip() if isinstance(hook_id, str) else ""
 
+    if node_type.startswith("np:"):
+        route_id = data.get("routeId")
+        if isinstance(route_id, str) and route_id.strip():
+            return route_id.strip()
+        hook_id = data.get("hookId")
+        return str(hook_id).strip() if isinstance(hook_id, str) else ""
+
     route_id = data.get("routeId")
     return str(route_id).strip() if isinstance(route_id, str) else ""

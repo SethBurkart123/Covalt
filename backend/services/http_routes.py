@@ -30,6 +30,8 @@ from .runtime_events import (
     EVENT_RUN_STARTED,
 )
 from .tool_registry import get_tool_registry
+from .node_provider_registry import get_provider_node_registration
+from .node_provider_runtime import handle_provider_route
 
 try:
     import jsonschema
@@ -197,8 +199,6 @@ def register_node_routes(app: Any) -> None:
     ):
         registry = get_node_route_registry()
         match = registry.match(node_type=node_type, path=path, method=request.method)
-        if match is None:
-            raise HTTPException(status_code=404, detail="Node route not found")
 
         target = resolve_node_route(node_type, route_id)
         if target is None:
@@ -217,7 +217,48 @@ def register_node_routes(app: Any) -> None:
         node_data = node.get("data") if isinstance(node, dict) else {}
         node_data = node_data if isinstance(node_data, dict) else {}
 
-        route, subpath = match
+
+        route: Any | None = None
+        subpath = ""
+        if match is not None:
+            route, subpath = match
+
+        registration = get_provider_node_registration(node_type)
+        if registration is not None:
+            route_path = route.path if route is not None else path
+            route_result = _handle_provider_node_route(
+                registration=registration,
+                route_path=route_path,
+                request=request,
+                route_id=route_id,
+                node_id=target.node_id,
+                node_data=node_data,
+                subpath=subpath,
+                body=body,
+            )
+            if hasattr(route_result, "__await__"):
+                route_result = await route_result
+
+            if isinstance(route_result, dict) and route_result.get("_trigger_flow"):
+                trigger_payload = route_result.get("payload")
+                if not isinstance(trigger_payload, dict):
+                    trigger_payload = {}
+
+                response_payload = await _run_triggered_node_flow(
+                    graph_data=graph_data,
+                    node_id=target.node_id,
+                    trigger_payload=trigger_payload,
+                )
+                if response_payload is None:
+                    return Response(status_code=204)
+                return _build_http_response(response_payload)
+
+            if isinstance(route_result, NodeRouteResponse):
+                return _build_node_route_response(route_result)
+
+        if route is None:
+            raise HTTPException(status_code=404, detail="Node route not found")
+
         ctx = NodeRouteContext(
             node_type=node_type,
             route_id=route_id,
@@ -424,3 +465,93 @@ async def _parse_request_body(request: Request) -> Any:
         return _get_json_body(raw)
     except Exception:
         return raw
+
+
+async def _run_triggered_node_flow(
+    *,
+    graph_data: dict[str, Any],
+    node_id: str,
+    trigger_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    response_payload: dict[str, Any] | None = None
+    run_id = str(uuid.uuid4())
+    services = types.SimpleNamespace(
+        run_handle=None,
+        extra_tool_ids=[],
+        tool_registry=get_tool_registry(),
+        chat_input=None,
+        webhook=trigger_payload,
+        expression_context={"trigger": trigger_payload},
+        execution=types.SimpleNamespace(entry_node_ids=[node_id], stop_run=False),
+    )
+    context = types.SimpleNamespace(
+        run_id=run_id,
+        chat_id=None,
+        state=types.SimpleNamespace(user_message=""),
+        services=services,
+    )
+
+    async for item in run_flow(graph_data, context):
+        if isinstance(item, NodeEvent) and item.event_type == "result":
+            payload = _extract_webhook_response(item)
+            if payload is not None:
+                response_payload = payload
+                services.execution.stop_run = True
+
+    return response_payload
+
+
+def _handle_provider_node_route(
+    *,
+    registration: Any,
+    route_path: str,
+    request: Request,
+    route_id: str,
+    node_id: str,
+    node_data: dict[str, Any],
+    subpath: str,
+    body: Any,
+) -> NodeRouteResponse | dict[str, Any]:
+    payload = {
+        "providerId": registration.provider_id,
+        "pluginId": registration.plugin_id,
+        "nodeType": registration.node_type,
+        "routeId": route_id,
+        "routePath": route_path,
+        "request": {
+            "method": request.method,
+            "path": request.url.path,
+            "query": dict(request.query_params),
+            "headers": dict(request.headers),
+            "body": body,
+            "subpath": subpath,
+        },
+        "node": {
+            "id": node_id,
+            "data": node_data,
+        },
+    }
+    result = handle_provider_route(registration.runtime_spec, payload)
+
+    mode = str(result.get("mode") or "response").strip().lower()
+    if mode == "trigger_flow":
+        trigger_payload = result.get("payload")
+        if not isinstance(trigger_payload, dict):
+            trigger_payload = {}
+        return {"_trigger_flow": True, "payload": trigger_payload}
+
+    status = result.get("status", 200)
+    try:
+        status_code = int(status)
+    except (TypeError, ValueError):
+        status_code = 200
+
+    headers = result.get("headers")
+    if not isinstance(headers, dict):
+        headers = {}
+
+    return NodeRouteResponse(
+        status=status_code,
+        headers={str(k): str(v) for k, v in headers.items()},
+        body=result.get("body"),
+    )

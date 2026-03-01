@@ -14,6 +14,7 @@ import { McpServerPicker } from './mcp-server-picker';
 import { ToolsetPicker } from './toolset-picker';
 import { NodePicker } from './node-picker';
 import { JsonSchemaControl } from './json-schema';
+import { CollectionControl } from './collection';
 
 /** Props that all control components receive */
 export interface ControlProps {
@@ -41,6 +42,7 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   toolset: ToolsetPicker as AnyControl,
   'node-ref': NodePicker as AnyControl,
   json: JsonSchemaControl as AnyControl,
+  collection: CollectionControl as AnyControl,
 };
 
 /** Get the control component for a parameter type */
@@ -79,3 +81,4 @@ export { McpServerPicker } from './mcp-server-picker';
 export { ToolsetPicker } from './toolset-picker';
 export { NodePicker } from './node-picker';
 export { JsonSchemaControl } from './json-schema';
+export { CollectionControl } from './collection';

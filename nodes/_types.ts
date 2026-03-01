@@ -30,7 +30,8 @@ export type ParameterType =
   | 'toolset'
   | 'tools'
   | 'node-ref'
-  | 'json';
+  | 'json'
+  | 'collection';
 
 /** How the parameter behaves */
 export type ParameterMode =
@@ -77,6 +78,19 @@ export interface ShowWhen {
   notConnectedTo?: string;
   /** Optional channel filter for the connection checks */
   channel?: EdgeChannel;
+
+  /** Show when another parameter equals a specific value */
+  valueEquals?: readonly { paramId: string; value: unknown }[];
+  /** Show when another parameter is one of values */
+  valueIn?: readonly { paramId: string; values: readonly unknown[] }[];
+  /** Show when another parameter does not equal a specific value */
+  valueNotEquals?: readonly { paramId: string; value: unknown }[];
+  /** Show when another parameter is not in values */
+  valueNotIn?: readonly { paramId: string; values: readonly unknown[] }[];
+  /** Show when another parameter exists */
+  exists?: readonly string[];
+  /** Show when another parameter does not exist */
+  notExists?: readonly string[];
 }
 
 /** Base parameter definition */
@@ -218,6 +232,17 @@ export interface DataParameter extends ParameterBase {
   type: 'data';
 }
 
+
+/** Collection parameter */
+export interface CollectionParameter extends ParameterBase {
+  type: 'collection';
+  repeatable?: boolean;
+  minItems?: number;
+  maxItems?: number;
+  fields: readonly Parameter[];
+  default?: unknown;
+}
+
 /** Union of all parameter types */
 export type Parameter =
   | FloatParameter
@@ -234,7 +259,8 @@ export type Parameter =
   | NodeRefParameter
   | ToolsParameter
   | JsonParameter
-  | DataParameter;
+  | DataParameter
+  | CollectionParameter;
 
 /** Node category for palette organization */
 export type NodeCategory =

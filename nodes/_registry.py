@@ -26,6 +26,7 @@ class NodePluginMetadata:
 
 # node_type -> executor instance
 EXECUTORS: dict[str, Any] = {}
+PROVIDER_EXECUTORS: dict[str, Any] = {}
 NODE_PLUGIN_METADATA: dict[str, NodePluginMetadata] = {}
 _ROUTES_INITIALIZED: set[str] = set()
 
@@ -71,11 +72,11 @@ def _discover() -> None:
 
 
 def get_executor(node_type: str) -> Any | None:
-    return EXECUTORS.get(node_type)
+    return PROVIDER_EXECUTORS.get(node_type) or EXECUTORS.get(node_type)
 
 
 def list_node_types() -> list[str]:
-    return list(EXECUTORS.keys())
+    return list(dict.fromkeys([*EXECUTORS.keys(), *PROVIDER_EXECUTORS.keys()]))
 
 
 def list_node_plugin_metadata() -> list[dict[str, Any]]:
@@ -91,6 +92,33 @@ def list_node_plugin_metadata() -> list[dict[str, Any]]:
         for metadata in NODE_PLUGIN_METADATA.values()
     ]
 
+
+
+
+
+def clear_provider_executors() -> None:
+    for node_type in list(PROVIDER_EXECUTORS.keys()):
+        PROVIDER_EXECUTORS.pop(node_type, None)
+        NODE_PLUGIN_METADATA.pop(node_type, None)
+
+
+def register_provider_executor(
+    *,
+    node_type: str,
+    executor: Any,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    PROVIDER_EXECUTORS[node_type] = executor
+    md = metadata or {}
+    module_path = str(md.get("module_path") or f"provider:{md.get('plugin_id', 'unknown')}")
+    NODE_PLUGIN_METADATA[node_type] = NodePluginMetadata(
+        node_type=node_type,
+        module_path=module_path,
+        has_execute=bool(md.get("has_execute", callable(getattr(executor, "execute", None)))),
+        has_materialize=bool(md.get("has_materialize", callable(getattr(executor, "materialize", None)))),
+        has_configure_runtime=bool(md.get("has_configure_runtime", callable(getattr(executor, "configure_runtime", None)))),
+        has_init_routes=bool(md.get("has_init_routes", callable(getattr(executor, "init_routes", None)))),
+    )
 
 def _maybe_init_routes(node_type: str, executor: Any) -> None:
     if node_type in _ROUTES_INITIALIZED:

@@ -22,7 +22,7 @@ import {
   respondToThinkingTagPrompt,
   toggleStarChat,
 } from "@/python/api";
-import { createChannel, type BridgeError } from "@/python/_internal";
+import { createChannel, request, type BridgeError } from "@/python/_internal";
 import { getBackendBaseUrl } from "@/lib/services/backend-url";
 import { RUNTIME_EVENT, isTerminalRuntimeEvent } from "@/lib/services/runtime-events";
 
@@ -256,6 +256,28 @@ export const api = {
 
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
+
+  listNodeProviderPlugins: (): Promise<unknown> =>
+    request('list_node_provider_plugins', {}),
+
+  listNodeProviderDefinitions: (): Promise<unknown> =>
+    request('list_node_provider_definitions', {}),
+
+  installNodeProviderPluginFromRepo: (
+    repoUrl: string,
+    ref?: string,
+    pluginPath?: string,
+  ): Promise<unknown> =>
+    request('install_node_provider_plugin_from_repo', { body: { repoUrl, ref, pluginPath } }),
+
+  importNodeProviderPluginFromDirectory: (path: string): Promise<unknown> =>
+    request('import_node_provider_plugin_from_directory', { body: { path } }),
+
+  enableNodeProviderPlugin: (id: string, enabled: boolean): Promise<unknown> =>
+    request('enable_node_provider_plugin', { body: { id, enabled } }),
+
+  uninstallNodeProviderPlugin: (id: string): Promise<unknown> =>
+    request('uninstall_node_provider_plugin', { body: { id } }),
 
   getMessageSiblingsBatch: (
     chatId: string,
