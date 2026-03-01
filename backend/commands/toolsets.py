@@ -11,6 +11,8 @@ from zynk import UploadFile, command, upload
 from ..services.mcp_manager import get_mcp_manager
 from ..services.toolset_executor import get_toolset_executor
 from ..services.toolset_manager import get_toolset_manager
+from ..services.workspace_event_broadcaster import broadcast_workspace_files_changed
+from ..services.workspace_events import WorkspaceFilesChanged
 from ..services.workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
@@ -306,10 +308,14 @@ async def update_workspace_file(
     )
 
     try:
-        from .events import broadcast_workspace_files_changed
-
         asyncio.create_task(
-            broadcast_workspace_files_changed(body.chat_id, [body.path], [])
+            broadcast_workspace_files_changed(
+                WorkspaceFilesChanged(
+                    chat_id=body.chat_id,
+                    changed_paths=[body.path],
+                    deleted_paths=[],
+                )
+            )
         )
     except Exception as e:
         logger.debug(f"Failed to broadcast workspace change: {e}")

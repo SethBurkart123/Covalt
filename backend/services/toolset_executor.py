@@ -21,6 +21,8 @@ from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolOverride, Toolset
 from .toolset_manager import get_toolset_directory
+from .workspace_event_broadcaster import broadcast_workspace_files_changed
+from .workspace_events import WorkspaceFilesChanged
 from .workspace_manager import WorkspaceManager, get_workspace_manager
 
 logger = logging.getLogger(__name__)
@@ -298,11 +300,13 @@ class ToolsetExecutor:
                     pre_manifest_id, post_manifest_id
                 )
                 if changed_paths or deleted_paths:
-                    from ..commands.events import broadcast_workspace_files_changed
-
                     asyncio.create_task(
                         broadcast_workspace_files_changed(
-                            chat_id, changed_paths, deleted_paths
+                            WorkspaceFilesChanged(
+                                chat_id=chat_id,
+                                changed_paths=changed_paths,
+                                deleted_paths=deleted_paths,
+                            )
                         )
                     )
 

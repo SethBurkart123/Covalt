@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from zynk import WebSocket, message
 
 from ..services.mcp_manager import get_mcp_manager, ServerStatus
+from ..services.workspace_event_broadcaster import register_client, unregister_client
+from ..services.workspace_events import WorkspaceFilesChanged
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +33,6 @@ class McpServerStatus(BaseModel):
 
 class McpServersSnapshot(BaseModel):
     servers: list[McpServerStatus]
-
-
-class WorkspaceFilesChanged(BaseModel):
-    chat_id: str
-    changed_paths: list[str]
-    deleted_paths: list[str]
 
 
 class Ping(BaseModel):
@@ -100,31 +96,6 @@ async def _broadcast_mcp_status(
             _connected_clients.discard(client)
 
 
-async def broadcast_workspace_files_changed(
-    chat_id: str,
-    changed_paths: list[str],
-    deleted_paths: list[str],
-) -> None:
-    event = WorkspaceFilesChanged(
-        chat_id=chat_id,
-        changed_paths=changed_paths,
-        deleted_paths=deleted_paths,
-    )
-
-    async with _clients_lock:
-        disconnected = []
-        for client in _connected_clients:
-            try:
-                if client.is_connected:
-                    await client.send("workspace_files_changed", event)
-            except Exception as e:
-                logger.debug(f"Failed to send workspace change to client: {e}")
-                disconnected.append(client)
-
-        for client in disconnected:
-            _connected_clients.discard(client)
-
-
 def _get_mcp_servers_snapshot() -> McpServersSnapshot:
     mcp = get_mcp_manager()
     servers = mcp.get_servers()
@@ -160,6 +131,7 @@ async def events(ws: EventsWebSocket) -> None:
 
     async with _clients_lock:
         _connected_clients.add(ws)
+    await register_client(ws)
 
     logger.debug("Events WebSocket client connected")
 
@@ -176,4 +148,5 @@ async def events(ws: EventsWebSocket) -> None:
     finally:
         async with _clients_lock:
             _connected_clients.discard(ws)
+        await unregister_client(ws)
         logger.debug("Events WebSocket client disconnected")

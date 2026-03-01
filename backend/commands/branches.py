@@ -35,7 +35,7 @@ from ..services.chat_graph_runner import (
     run_graph_chat_runtime,
     update_chat_model_selection,
 )
-from ..services.workspace_manager import get_workspace_manager
+from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 from ..services.conversation_run_service import (
     validate_model_options,
     build_message_history,
@@ -170,7 +170,7 @@ def _build_continue_run_dependencies() -> ContinueRunDependencies:
         build_message_history=build_message_history,
         create_branch_message=_create_branch_message,
         set_active_leaf=db.set_active_leaf,
-        materialize_to_branch=db.materialize_to_branch,
+        materialize_to_branch=materialize_to_branch,
         emit_run_start_events=_emit_continue_run_start_events,
         get_graph_data_for_chat=_get_graph_data,
         run_graph_chat_runtime=run_graph_chat_runtime,
@@ -216,7 +216,7 @@ def _build_retry_run_dependencies() -> RetryRunDependencies:
         build_message_history=build_message_history,
         create_branch_message=_create_branch_message,
         set_active_leaf=db.set_active_leaf,
-        materialize_to_branch=db.materialize_to_branch,
+        materialize_to_branch=materialize_to_branch,
         emit_run_start_events=_emit_retry_run_start_events,
         get_graph_data_for_chat=_get_graph_data,
         run_graph_chat_runtime=run_graph_chat_runtime,
@@ -314,7 +314,7 @@ def _build_edit_user_message_run_dependencies() -> EditUserMessageRunDependencie
         get_message_path=db.get_message_path,
         build_message_history=build_message_history,
         create_chat_message=_create_chat_message,
-        materialize_to_branch=db.materialize_to_branch,
+        materialize_to_branch=materialize_to_branch,
         emit_run_start_events=_emit_edit_run_start_events,
         get_graph_data_for_chat=_get_graph_data,
         run_graph_chat_runtime=run_graph_chat_runtime,
@@ -372,7 +372,7 @@ async def switch_to_sibling(
         leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
         db.set_active_leaf(sess, body.chatId, leaf_id)
 
-    db.materialize_to_branch(body.chatId, leaf_id)
+    materialize_to_branch(body.chatId, leaf_id)
 
 
 @command

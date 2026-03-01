@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -11,12 +10,12 @@ from typing import Any, Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx
-from cryptography.fernet import Fernet
 from pydantic import AnyUrl
 
 from mcp.client.auth import OAuthClientProvider, TokenStorage
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 
+from ..crypto import decrypt, encrypt
 from ..db import db_session
 from ..db.models import OAuthToken as OAuthTokenModel
 
@@ -35,44 +34,6 @@ class OAuthError(Exception):
         self.error = error
         self.description = description
         super().__init__(f"{error}: {description}" if description else error)
-
-
-_fernet: Fernet | None = None
-
-
-def _get_fernet() -> Fernet:
-    global _fernet
-    if _fernet is not None:
-        return _fernet
-
-    key_env = os.environ.get("COVALT_ENCRYPTION_KEY")
-    if key_env:
-        _fernet = Fernet(key_env.encode())
-        return _fernet
-
-    key_file = os.path.expanduser("~/.covalt/encryption.key")
-    os.makedirs(os.path.dirname(key_file), exist_ok=True)
-
-    if os.path.exists(key_file):
-        with open(key_file, "rb") as f:
-            _fernet = Fernet(f.read())
-            return _fernet
-
-    key = Fernet.generate_key()
-    with open(key_file, "wb") as f:
-        f.write(key)
-    os.chmod(key_file, 0o600)
-
-    _fernet = Fernet(key)
-    return _fernet
-
-
-def _encrypt(data: str) -> str:
-    return _get_fernet().encrypt(data.encode()).decode()
-
-
-def _decrypt(data: str) -> str:
-    return _get_fernet().decrypt(data.encode()).decode()
 
 
 def _redirect_uri(port: int = OAUTH_CALLBACK_PORT) -> str:
@@ -142,12 +103,12 @@ class DatabaseTokenStorage(TokenStorage):
                 return None
 
             try:
-                access_token = _decrypt(row.access_token)
+                access_token = decrypt(row.access_token)
                 if not access_token:
                     return None
 
                 refresh_token = (
-                    _decrypt(row.refresh_token) if row.refresh_token else None
+                    decrypt(row.refresh_token) if row.refresh_token else None
                 )
 
                 return OAuthToken(
@@ -178,9 +139,9 @@ class DatabaseTokenStorage(TokenStorage):
             )
 
             if existing:
-                existing.access_token = _encrypt(tokens.access_token)
+                existing.access_token = encrypt(tokens.access_token)
                 existing.refresh_token = (
-                    _encrypt(tokens.refresh_token) if tokens.refresh_token else None
+                    encrypt(tokens.refresh_token) if tokens.refresh_token else None
                 )
                 existing.token_type = tokens.token_type or "Bearer"
                 existing.expires_at = expires_at
@@ -192,8 +153,8 @@ class DatabaseTokenStorage(TokenStorage):
                         id=str(uuid.uuid4()),
                         server_id=self.server_id,
                         toolset_id=self.toolset_id,
-                        access_token=_encrypt(tokens.access_token),
-                        refresh_token=_encrypt(tokens.refresh_token)
+                        access_token=encrypt(tokens.access_token),
+                        refresh_token=encrypt(tokens.refresh_token)
                         if tokens.refresh_token
                         else None,
                         token_type=tokens.token_type or "Bearer",
@@ -229,7 +190,7 @@ class DatabaseTokenStorage(TokenStorage):
 
                 return OAuthClientInformationFull(
                     client_id=row.client_id,
-                    client_secret=_decrypt(row.client_secret)
+                    client_secret=decrypt(row.client_secret)
                     if row.client_secret
                     else None,
                     redirect_uris=[AnyUrl(_redirect_uri())],
@@ -253,7 +214,7 @@ class DatabaseTokenStorage(TokenStorage):
             if existing:
                 existing.client_id = client_info.client_id
                 existing.client_secret = (
-                    _encrypt(client_info.client_secret)
+                    encrypt(client_info.client_secret)
                     if client_info.client_secret
                     else None
                 )
@@ -265,9 +226,9 @@ class DatabaseTokenStorage(TokenStorage):
                         id=str(uuid.uuid4()),
                         server_id=self.server_id,
                         toolset_id=self.toolset_id,
-                        access_token=_encrypt(""),
+                        access_token=encrypt(""),
                         client_id=client_info.client_id,
-                        client_secret=_encrypt(client_info.client_secret)
+                        client_secret=encrypt(client_info.client_secret)
                         if client_info.client_secret
                         else None,
                         client_metadata=metadata_json,
@@ -470,7 +431,7 @@ class OAuthManager:
                 return False
 
             try:
-                if not _decrypt(token.access_token):
+                if not decrypt(token.access_token):
                     return False
             except Exception:
                 return False
