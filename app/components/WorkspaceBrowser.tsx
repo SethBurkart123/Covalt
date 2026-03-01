@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getWorkspaceFiles, getWorkspaceFile } from "@/python/api";
 import { useWebSocket } from "@/contexts/websocket-context";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,6 +72,85 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
       }));
 
   return sortNodes(root);
+}
+
+type PreviewType = "markdown" | "image" | "video" | "text" | "binary";
+
+function getFileName(filePath: string | null): string {
+  return filePath?.split("/").pop() || "File";
+}
+
+function getFileExtension(fileName: string): string {
+  const idx = fileName.lastIndexOf(".");
+  if (idx < 0) return "";
+  return fileName.slice(idx + 1).toLowerCase();
+}
+
+function getPreviewType(fileName: string): PreviewType {
+  const ext = getFileExtension(fileName);
+  if (ext === "md" || ext === "markdown") return "markdown";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"].includes(ext)) {
+    return "image";
+  }
+  if (["mp4", "webm", "mov", "m4v", "ogg"].includes(ext)) return "video";
+  if (["txt", "json", "yaml", "yml", "py", "js", "ts", "tsx", "jsx", "css", "html", "xml", "csv", "log"].includes(ext)) {
+    return "text";
+  }
+  return "binary";
+}
+
+function getMimeType(fileName: string): string {
+  const ext = getFileExtension(fileName);
+  const map: Record<string, string> = {
+    md: "text/markdown",
+    markdown: "text/markdown",
+    txt: "text/plain",
+    json: "application/json",
+    yaml: "application/x-yaml",
+    yml: "application/x-yaml",
+    html: "text/html",
+    xml: "application/xml",
+    csv: "text/csv",
+    log: "text/plain",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    bmp: "image/bmp",
+    ico: "image/x-icon",
+    avif: "image/avif",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    ogg: "video/ogg",
+  };
+  return map[ext] || "application/octet-stream";
+}
+
+function decodeBase64Utf8(base64: string): string {
+  const bytes = atob(base64);
+  const array = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    array[i] = bytes.charCodeAt(i);
+  }
+  return new TextDecoder().decode(array);
+}
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const bytes = atob(base64);
+  const array = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    array[i] = bytes.charCodeAt(i);
+  }
+  return new Blob([array], { type: mimeType });
+}
+
+function getBase64ByteLength(base64: string): number {
+  const padding = (base64.match(/=+$/)?.[0].length ?? 0);
+  return Math.floor((base64.length * 3) / 4) - padding;
 }
 
 interface FileNodeProps {
@@ -146,19 +226,81 @@ interface FilePreviewDialogProps {
   filePath: string | null;
 }
 
+interface FilePreviewContentProps {
+  previewType: PreviewType;
+  textContent: string | null;
+  objectUrl: string | null;
+  fileName: string;
+  fileSize: number;
+  onDownload: () => void;
+}
+
+function FilePreviewContent({
+  previewType,
+  textContent,
+  objectUrl,
+  fileName,
+  fileSize,
+  onDownload,
+}: FilePreviewContentProps) {
+  if (previewType === "markdown") {
+    return (
+      <div className="h-[400px] border rounded-lg overflow-y-auto p-4">
+        <MarkdownRenderer content={textContent || ""} />
+      </div>
+    );
+  }
+
+  if (previewType === "text") {
+    return (
+      <div className="h-[400px] border rounded-lg overflow-y-auto">
+        <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-all">
+          {textContent}
+        </pre>
+      </div>
+    );
+  }
+
+  if (previewType === "image" && objectUrl) {
+    return (
+      <div className="h-[400px] border rounded-lg overflow-auto bg-muted/20 flex items-center justify-center p-2">
+        <img src={objectUrl} alt={fileName} className="max-w-full max-h-full object-contain" />
+      </div>
+    );
+  }
+
+  if (previewType === "video" && objectUrl) {
+    return (
+      <div className="h-[400px] border rounded-lg overflow-hidden bg-black flex items-center justify-center">
+        <video src={objectUrl} controls className="max-w-full max-h-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 text-center text-muted-foreground">
+      <p>Binary file - {fileSize} bytes</p>
+      <Button onClick={onDownload} className="mt-4">
+        <Download className="size-4" />
+        Download
+      </Button>
+    </div>
+  );
+}
+
 function FilePreviewDialog({
   open,
   onOpenChange,
   chatId,
   filePath,
 }: FilePreviewDialogProps) {
-  const [content, setContent] = useState<string | null>(null);
+  const [base64Content, setBase64Content] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !filePath) {
-      setContent(null);
+      setBase64Content(null);
       setError(null);
       return;
     }
@@ -167,15 +309,42 @@ function FilePreviewDialog({
     setError(null);
 
     getWorkspaceFile({ body: { chatId, path: filePath } })
-      .then((response) => setContent(atob(response.content)))
+      .then((response) => setBase64Content(response.content))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [open, chatId, filePath]);
 
-  const handleDownload = () => {
-    if (!content || !filePath) return;
-    const fileName = filePath.split("/").pop() || "File";
-    const blob = new Blob([content], { type: "text/plain" });
+  const fileName = getFileName(filePath);
+  const mimeType = getMimeType(fileName);
+  const previewType = getPreviewType(fileName);
+
+  const textContent = useMemo(() => {
+    if (!base64Content) return null;
+    if (previewType === "binary" || previewType === "image" || previewType === "video") {
+      return null;
+    }
+    return decodeBase64Utf8(base64Content);
+  }, [base64Content, previewType]);
+
+  const objectUrl = useMemo(() => {
+    if (!base64Content) return null;
+    if (previewType !== "image" && previewType !== "video") return null;
+    const blob = base64ToBlob(base64Content, mimeType);
+    return URL.createObjectURL(blob);
+  }, [base64Content, mimeType, previewType]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [objectUrl]);
+
+  const handleDownload = useCallback(() => {
+    if (!base64Content || !filePath) return;
+
+    const blob = base64ToBlob(base64Content, mimeType);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -184,13 +353,9 @@ function FilePreviewDialog({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, [base64Content, filePath, fileName, mimeType]);
 
-  const fileName = filePath?.split("/").pop() || "File";
-  const isTextFile =
-    /\.(txt|md|json|yaml|yml|py|js|ts|tsx|jsx|css|html|xml|csv|log)$/i.test(
-      fileName
-    );
+  const fileSize = base64Content ? getBase64ByteLength(base64Content) : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -202,7 +367,7 @@ function FilePreviewDialog({
               variant="ghost"
               size="icon"
               onClick={handleDownload}
-              disabled={!content}
+              disabled={!base64Content}
             >
               <Download className="size-4" />
             </Button>
@@ -218,22 +383,15 @@ function FilePreviewDialog({
             <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
               {error}
             </div>
-          ) : content !== null ? (
-            isTextFile ? (
-              <div className="h-[400px] border rounded-lg overflow-y-auto">
-                <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-all">
-                  {content}
-                </pre>
-              </div>
-            ) : (
-              <div className="p-4 text-center text-muted-foreground">
-                <p>Binary file - {content.length} bytes</p>
-                <Button onClick={handleDownload} className="mt-4">
-                  <Download className="size-4" />
-                  Download
-                </Button>
-              </div>
-            )
+          ) : base64Content !== null ? (
+            <FilePreviewContent
+              previewType={previewType}
+              textContent={textContent}
+              objectUrl={objectUrl}
+              fileName={fileName}
+              fileSize={fileSize}
+              onDownload={handleDownload}
+            />
           ) : null}
         </div>
       </DialogContent>
@@ -241,16 +399,20 @@ function FilePreviewDialog({
   );
 }
 
+const EMPTY_CHANGED_PATHS: string[] = [];
+
 interface WorkspaceBrowserProps {
   chatId: string;
   className?: string;
   lastRunChangedPaths?: string[];
+  onFilesCountChange?: (count: number) => void;
 }
 
 export function WorkspaceBrowser({
   chatId,
   className,
-  lastRunChangedPaths = [],
+  lastRunChangedPaths = EMPTY_CHANGED_PATHS,
+  onFilesCountChange,
 }: WorkspaceBrowserProps) {
   const [files, setFiles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -308,6 +470,10 @@ export function WorkspaceBrowser({
       void loadFiles();
     });
   }, [chatId, loadFiles, onWorkspaceFilesChanged]);
+
+  useEffect(() => {
+    onFilesCountChange?.(files.length);
+  }, [files.length, onFilesCountChange]);
 
   const fileTree = useMemo(() => buildFileTree(files), [files]);
 
