@@ -225,7 +225,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   );
 
   const visibleParams = useMemo(
-    () => resolvedParams.filter(param => shouldRenderParam(param, 'node', edgeIndex)),
+    () => resolvedParams.filter(param => shouldRenderParam(param, 'node', edgeIndex, data as Record<string, unknown>)),
     [edgeIndex, resolvedParams]
   );
 

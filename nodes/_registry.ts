@@ -103,7 +103,31 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = Object.fromEntri
 );
 
 export function getNodeDefinition(id: string): NodeDefinition | undefined {
-  return NODE_DEFINITIONS[id];
+  return mergedDefinitions()[id];
+}
+
+
+let DYNAMIC_NODE_DEFINITIONS: Record<string, NodeDefinition> = {};
+
+function mergedDefinitions(): Record<string, NodeDefinition> {
+  return {
+    ...NODE_DEFINITIONS,
+    ...DYNAMIC_NODE_DEFINITIONS,
+  };
+}
+
+export function setDynamicNodeDefinitions(definitions: readonly NodeDefinition[]): void {
+  DYNAMIC_NODE_DEFINITIONS = Object.fromEntries(
+    definitions.map((definition) => [definition.id, definition])
+  );
+}
+
+export function clearDynamicNodeDefinitions(): void {
+  DYNAMIC_NODE_DEFINITIONS = {};
+}
+
+export function listAllNodeDefinitions(): NodeDefinition[] {
+  return Object.values(mergedDefinitions());
 }
 
 export function getNodeDefinitionMetadata(id: string): NodeDefinitionMetadata | undefined {
@@ -111,7 +135,7 @@ export function getNodeDefinitionMetadata(id: string): NodeDefinitionMetadata | 
 }
 
 export function listNodeTypes(): string[] {
-  return Object.keys(NODE_DEFINITIONS);
+  return Object.keys(mergedDefinitions());
 }
 
 export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
@@ -119,7 +143,7 @@ export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
 }
 
 export function getNodesByCategory(category: NodeDefinition['category']): NodeDefinition[] {
-  return NODE_LIST.filter(node => node.category === category);
+  return Object.values(mergedDefinitions()).filter(node => node.category === category);
 }
 
 export function createFlowNode(
@@ -127,7 +151,7 @@ export function createFlowNode(
   position: { x: number; y: number },
   id?: string
 ): FlowNode {
-  const definition = NODE_DEFINITIONS[type];
+  const definition = mergedDefinitions()[type];
   if (!definition) {
     throw new Error(`Unknown node type: ${type}`);
   }
@@ -170,7 +194,7 @@ export function getCompatibleNodeSockets(
 ): CompatibleNodeSocket[] {
   const results: CompatibleNodeSocket[] = [];
 
-  for (const node of NODE_LIST) {
+  for (const node of Object.values(mergedDefinitions())) {
     for (const param of node.parameters) {
       const p = param as Parameter;
       if (!p.socket) continue;

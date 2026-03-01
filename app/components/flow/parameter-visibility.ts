@@ -23,15 +23,16 @@ export function buildNodeEdgeIndex(edges: FlowEdge[], nodeId: string): NodeEdgeI
 export function shouldRenderParam(
   param: Parameter,
   context: ParamRenderContext,
-  index: NodeEdgeIndex
+  index: NodeEdgeIndex,
+  nodeData?: Record<string, unknown>
 ): boolean {
   const scope = param.renderScope ?? 'both';
   if (context === 'node' && scope === 'inspector') return false;
   if (context === 'inspector' && scope === 'node') return false;
-  return matchesShowWhen(param.showWhen, index);
+  return matchesShowWhen(param.showWhen, index, nodeData);
 }
 
-function matchesShowWhen(showWhen: ShowWhen | undefined, index: NodeEdgeIndex): boolean {
+function matchesShowWhen(showWhen: ShowWhen | undefined, index: NodeEdgeIndex, nodeData?: Record<string, unknown>): boolean {
   if (!showWhen) return true;
 
   const conditions: boolean[] = [];
@@ -61,8 +62,41 @@ function matchesShowWhen(showWhen: ShowWhen | undefined, index: NodeEdgeIndex): 
     conditions.push(!hasOutgoingTo(index, showWhen.notConnectedTo, showWhen.channel));
   }
 
-  if (conditions.length === 0) return true;
-  return conditions.every(Boolean);
+
+if (showWhen.valueEquals) {
+  for (const rule of showWhen.valueEquals) {
+    conditions.push(Object.is(nodeData?.[rule.paramId], rule.value));
+  }
+}
+if (showWhen.valueIn) {
+  for (const rule of showWhen.valueIn) {
+    conditions.push(Array.isArray(rule.values) && rule.values.some(value => Object.is(nodeData?.[rule.paramId], value)));
+  }
+}
+if (showWhen.valueNotEquals) {
+  for (const rule of showWhen.valueNotEquals) {
+    conditions.push(!Object.is(nodeData?.[rule.paramId], rule.value));
+  }
+}
+if (showWhen.valueNotIn) {
+  for (const rule of showWhen.valueNotIn) {
+    conditions.push(!(Array.isArray(rule.values) && rule.values.some(value => Object.is(nodeData?.[rule.paramId], value))));
+  }
+}
+if (showWhen.exists) {
+  for (const paramId of showWhen.exists) {
+    conditions.push(nodeData?.[paramId] !== undefined && nodeData?.[paramId] !== null);
+  }
+}
+if (showWhen.notExists) {
+  for (const paramId of showWhen.notExists) {
+    conditions.push(nodeData?.[paramId] === undefined || nodeData?.[paramId] === null);
+  }
+}
+
+if (conditions.length === 0) return true;
+return conditions.every(Boolean);
+
 }
 
 function hasOutgoing(index: NodeEdgeIndex, handleId: string, channel?: EdgeChannel): boolean {

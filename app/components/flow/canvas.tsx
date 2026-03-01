@@ -25,7 +25,7 @@ import { XYHandle } from '@xyflow/system';
 import { Square, X } from 'lucide-react';
 
 import {
-  NODE_DEFINITIONS,
+  listNodeTypes,
   SOCKET_TYPES,
   useFlowState,
   useFlowActions,
@@ -39,6 +39,7 @@ import {
 import { useFlowExecution } from '@/contexts/flow-execution-context';
 import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import { FlowRunPrompt } from './flow-run-prompt';
+import { refreshNodeProviderDefinitions } from '@/lib/services/node-provider-definitions';
 import { FlowNode as FlowNodeComponent } from './node';
 import { RerouteNode } from './reroute-node';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
@@ -54,13 +55,11 @@ interface PendingConnection {
 
 function buildNodeTypes(): NodeTypes {
   const types: NodeTypes = {};
-  for (const id of Object.keys(NODE_DEFINITIONS)) {
+  for (const id of listNodeTypes()) {
     types[id] = id === 'reroute' ? RerouteNode : FlowNodeComponent;
   }
   return types;
 }
-
-const nodeTypes = buildNodeTypes();
 
 const EDGE_INSET = 5;
 
@@ -286,6 +285,16 @@ interface FlowCanvasProps {
 }
 
 function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
+  const [, setDynamicNodeVersion] = useState(0);
+
+  useEffect(() => {
+    refreshNodeProviderDefinitions()
+      .then(() => setDynamicNodeVersion((prev) => prev + 1))
+      .catch(() => {});
+  }, []);
+
+  const nodeTypes = buildNodeTypes();
+
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
   const { executionByNode } = useFlowExecution();
   const { isRunning, stopRun } = useFlowRunner();

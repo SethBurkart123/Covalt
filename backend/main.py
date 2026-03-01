@@ -17,6 +17,7 @@ import nodes  # noqa: F401
 from . import commands  # noqa: F401
 from .db import init_database
 from .services.http_routes import register_http_routes
+from .services.node_provider_registry import reload_node_provider_registry
 from .services.mcp_manager import shutdown_mcp
 from .services.node_route_index import rebuild_node_route_index
 from .services.toolset_manager import get_toolset_manager
@@ -41,6 +42,7 @@ def main() -> int:
     init_database()
     _ensure_e2e_toolset()
     rebuild_node_route_index()
+    reload_node_provider_registry()
 
     output_dir = Path(__file__).parent.parent / "app" / "python"
     dev_mode = os.environ.get("COVALT_DEV_MODE") == "1"
