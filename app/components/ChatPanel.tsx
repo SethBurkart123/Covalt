@@ -189,6 +189,23 @@ export default function ChatPanel() {
     return "Good Evening";
   };
 
+  const chatInputForm = (
+    <ChatInputForm
+      onSubmit={handleSubmit}
+      isLoading={isLoading}
+      selectedModel={selectedModel}
+      setSelectedModel={setSelectedModel}
+      models={availableModels}
+      optionSchema={modelOptionSchema}
+      optionValues={modelOptionValues}
+      onOptionChange={setModelOptionValue}
+      onResetOptions={resetModelOptions}
+      canSendMessage={canSendMessage}
+      onStop={handleStop}
+      hideToolSelector={hideToolSelector}
+    />
+  );
+
   return (
     <ArtifactPanelProvider>
       <div className="flex flex-row min-h-full">
@@ -225,44 +242,14 @@ export default function ChatPanel() {
                   />
                 </div>
               </div>
-              <div className="px-4 pb-4">
-                <ChatInputForm
-                  onSubmit={handleSubmit}
-                  isLoading={isLoading}
-                  selectedModel={selectedModel}
-                  setSelectedModel={setSelectedModel}
-                  models={availableModels}
-                  optionSchema={modelOptionSchema}
-                  optionValues={modelOptionValues}
-                  onOptionChange={setModelOptionValue}
-                  onResetOptions={resetModelOptions}
-                  canSendMessage={canSendMessage}
-                  onStop={handleStop}
-                  hideToolSelector={hideToolSelector}
-                />
-              </div>
+              <div className="px-4 pb-4">{chatInputForm}</div>
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">
               <h1 className="text-4xl mb-8 text-muted-foreground">
                 {getGreeting()}.
               </h1>
-              <div className="w-full max-w-4xl">
-                <ChatInputForm
-                  onSubmit={handleSubmit}
-                  isLoading={isLoading}
-                  selectedModel={selectedModel}
-                  setSelectedModel={setSelectedModel}
-                  models={availableModels}
-                  optionSchema={modelOptionSchema}
-                  optionValues={modelOptionValues}
-                  onOptionChange={setModelOptionValue}
-                  onResetOptions={resetModelOptions}
-                  canSendMessage={canSendMessage}
-                  onStop={handleStop}
-                  hideToolSelector={hideToolSelector}
-                />
-              </div>
+              <div className="w-full max-w-4xl">{chatInputForm}</div>
             </div>
           )}
           {showThinkingPrompt && (
