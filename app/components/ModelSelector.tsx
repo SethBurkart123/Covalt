@@ -16,7 +16,7 @@ import { getProviderMap } from "@/(app)/(pages)/settings/providers/provider-regi
 import { getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
 import { cn } from "@/lib/utils";
-import { getProviderIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
+import { OpenAIIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
 import type { ProviderDefinition } from "@/lib/types/provider-catalog";
 
 const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
@@ -205,7 +205,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
               model,
               key: getModelKey(model),
               isRecent: true,
-              ProviderIcon: def?.icon || getProviderIcon(null),
+              ProviderIcon: def?.icon || OpenAIIcon,
             },
           });
         }
@@ -233,7 +233,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
               model,
               key: getModelKey(model),
               isRecent: false,
-              ProviderIcon: def?.icon || getProviderIcon(null),
+              ProviderIcon: def?.icon || OpenAIIcon,
             },
           });
         }

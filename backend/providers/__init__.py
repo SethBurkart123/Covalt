@@ -19,6 +19,11 @@ from .options import resolve_common_options
 
 PROVIDERS: Dict[str, Dict[str, Any]] = {}
 ALIASES: Dict[str, str] = {}
+_MANIFEST_PROVIDER_IDS = {
+    str(item.get("id") or "").lower().strip().replace("-", "_")
+    for item in MANIFEST_PROVIDERS
+    if isinstance(item, dict) and item.get("id")
+}
 
 _credential_override: contextvars.ContextVar[
     Optional[Tuple[Optional[str], Optional[str]]]
@@ -123,6 +128,10 @@ def _load_python_module_providers() -> None:
     for _, name, _ in pkgutil.iter_modules(__path__):
         if name.startswith("_") or name == "adapters":
             continue
+
+        normalized_name = _normalize_provider_key(name)
+        if normalized_name in _MANIFEST_PROVIDER_IDS:
+            continue
         try:
             module = importlib.import_module(f".{name}", __package__)
             get_func = getattr(module, f"get_{name}_model", None)
@@ -154,6 +163,7 @@ def _load_python_module_providers() -> None:
 
 
 def _load_manifest_providers() -> None:
+    import backend.providers.adapters.anthropic_compatible  # noqa: F401
     import backend.providers.adapters.openai_compatible  # noqa: F401
 
     for cfg in MANIFEST_PROVIDERS:

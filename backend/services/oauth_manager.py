@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import AnyUrl
@@ -18,10 +18,15 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAu
 from ..crypto import decrypt, encrypt
 from ..db import db_session
 from ..db.models import OAuthToken as OAuthTokenModel
+from .oauth_shared import (
+    OAuthStatus,
+    PendingOAuthCallbacks,
+    build_localhost_redirect_uri,
+    extract_state_from_auth_url,
+)
 
 logger = logging.getLogger(__name__)
 
-OAuthStatus = Literal["none", "pending", "authenticated", "error"]
 AuthHint = Literal["oauth", "token"]
 
 OAUTH_CALLBACK_PORT = 3000
@@ -36,41 +41,9 @@ class OAuthError(Exception):
         super().__init__(f"{error}: {description}" if description else error)
 
 
-def _redirect_uri(port: int = OAUTH_CALLBACK_PORT) -> str:
-    return f"http://localhost:{port}/oauth/callback"
-
-
-class PendingOAuthCallbacks:
-    def __init__(self) -> None:
-        self._pending: dict[str, asyncio.Future[tuple[str, str]]] = {}
-
-    def create(self, state: str) -> asyncio.Future[tuple[str, str]]:
-        loop = asyncio.get_event_loop()
-        future: asyncio.Future[tuple[str, str]] = loop.create_future()
-        self._pending[state] = future
-        return future
-
-    def complete(self, code: str, state: str) -> bool:
-        future = self._pending.pop(state, None)
-        if not future or future.done():
-            return False
-        future.set_result((code, state))
-        return True
-
-    def fail(self, state: str, error: str, description: str | None = None) -> bool:
-        future = self._pending.pop(state, None)
-        if not future or future.done():
-            return False
-        future.set_exception(OAuthError(error, description))
-        return True
-
-    def cancel(self, state: str) -> None:
-        future = self._pending.pop(state, None)
-        if future and not future.done():
-            future.cancel()
-
-
-_pending_callbacks = PendingOAuthCallbacks()
+_pending_callbacks = PendingOAuthCallbacks(
+    error_factory=lambda error, description: OAuthError(error, description)
+)
 
 
 @dataclass
@@ -82,7 +55,7 @@ class OAuthFlowState:
     error: str | None = None
     auth_url: str | None = None
     state: str | None = None
-    callback_future: asyncio.Future[tuple[str, str]] | None = None
+    callback_future: asyncio.Future[tuple[str, str | None]] | None = None
 
 
 class DatabaseTokenStorage(TokenStorage):
@@ -193,7 +166,9 @@ class DatabaseTokenStorage(TokenStorage):
                     client_secret=decrypt(row.client_secret)
                     if row.client_secret
                     else None,
-                    redirect_uris=[AnyUrl(_redirect_uri())],
+                    redirect_uris=[
+                        AnyUrl(build_localhost_redirect_uri(OAUTH_CALLBACK_PORT))
+                    ],
                 )
             except Exception as e:
                 logger.error(f"Failed to load client info for {self.server_id}: {e}")
@@ -339,12 +314,12 @@ class OAuthManager:
         self._active_flows[server_key] = flow
 
         auth_url_ready = asyncio.Event()
-        redirect_uri = _redirect_uri(callback_port)
+        redirect_uri = build_localhost_redirect_uri(callback_port)
         storage = DatabaseTokenStorage(server_id, toolset_id)
 
         async def redirect_handler(auth_url: str) -> None:
             flow.auth_url = auth_url
-            flow.state = parse_qs(urlparse(auth_url).query).get("state", [""])[0]
+            flow.state = extract_state_from_auth_url(auth_url)
             if not flow.state:
                 flow.status = "error"
                 flow.error = "Missing state"
@@ -460,7 +435,9 @@ class OAuthManager:
             server_url=server_url,
             client_metadata=OAuthClientMetadata(
                 client_name="Covalt Desktop",
-                redirect_uris=[AnyUrl(_redirect_uri())],
+                redirect_uris=[
+                    AnyUrl(build_localhost_redirect_uri(OAUTH_CALLBACK_PORT))
+                ],
                 grant_types=["authorization_code", "refresh_token"],
                 response_types=["code"],
             ),

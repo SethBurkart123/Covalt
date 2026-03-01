@@ -20,7 +20,7 @@ import {
 import { useFuzzyFilter } from "@/lib/hooks/use-fuzzy-filter";
 import type { ProviderDefinition } from "@/lib/types/provider-catalog";
 import { getProviderMap } from "./providers/provider-registry";
-import { getProviderIcon } from "./providers/provider-icons";
+import { OpenAIIcon } from "./providers/provider-icons";
 
 interface Model {
   provider: string;
@@ -174,7 +174,7 @@ export default function ModelChipSelector({
                       heading={group.providerDef?.name || group.provider}
                     >
                       {group.models.map((model) => {
-                        const ProviderIcon = group.providerDef?.icon || getProviderIcon(null);
+                        const ProviderIcon = group.providerDef?.icon || OpenAIIcon;
                         return (
                           <CommandItem
                             key={getModelKey(model)}
@@ -213,7 +213,7 @@ export default function ModelChipSelector({
         ) : (
           <AnimatePresence mode="popLayout">
             {selectedModels.map((model) => {
-              const ProviderIcon = getProviderDef(model.provider)?.icon || getProviderIcon(null);
+              const ProviderIcon = getProviderDef(model.provider)?.icon || OpenAIIcon;
 
               return (
                 <motion.div

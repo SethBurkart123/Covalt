@@ -277,6 +277,9 @@ class ProviderCatalogItem(BaseModel):
     defaultEnabled: bool = True
     oauthVariant: Optional[Literal["panel", "compact", "inline-code", "device"]] = None
     oauthEnterpriseDomain: bool = False
+    fieldMode: Optional[
+        Literal["standard_api_key", "openai_compatible", "local_ollama", "local_vllm"]
+    ] = None
     aliases: List[str] = Field(default_factory=list)
 
 
