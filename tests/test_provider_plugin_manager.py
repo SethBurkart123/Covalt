@@ -6,84 +6,10 @@ from pathlib import Path
 from cryptography.exceptions import InvalidSignature
 
 from backend.services import provider_plugin_manager as ppm
-
-
-def _write_code_plugin(
-    source_dir: Path,
-    *,
-    signature: str | None = None,
-    signing_key_id: str | None = None,
-    signature_algorithm: str | None = None,
-) -> None:
-    manifest_lines = [
-        "manifest_version: '1'",
-        "id: community-echo",
-        "name: Community Echo",
-        "version: 0.1.0",
-        "provider: community_echo",
-        "entrypoint: plugin:create_provider",
-        "aliases:",
-        "  - community-echo",
-        "description: Community Echo provider",
-        "icon: openai",
-        "default_enabled: true",
-    ]
-
-    if signature is not None:
-        manifest_lines.append(f"signature: {signature}")
-    if signing_key_id is not None:
-        manifest_lines.append(f"signing_key_id: {signing_key_id}")
-    if signature_algorithm is not None:
-        manifest_lines.append(f"signature_algorithm: {signature_algorithm}")
-
-    (source_dir / "provider.yaml").write_text("\n".join(manifest_lines))
-    (source_dir / "plugin.py").write_text(
-        "\n".join(
-            [
-                "from __future__ import annotations",
-                "",
-                "def create_provider(provider_id, **_kwargs):",
-                "    async def fetch_models():",
-                "        return [{'id': 'echo-model', 'name': 'Echo Model'}]",
-                "",
-                "    def get_model(model_id, provider_options=None):",
-                "        return {'provider': provider_id, 'model': model_id, 'options': provider_options or {}}",
-                "",
-                "    async def test_connection():",
-                "        return True, None",
-                "",
-                "    return {",
-                "        'get_model': get_model,",
-                "        'fetch_models': fetch_models,",
-                "        'test_connection': test_connection,",
-                "    }",
-            ]
-        )
-    )
-
-
-def _setup_manager(monkeypatch, tmp_path: Path) -> ppm.ProviderPluginManager:
-    installed_root = tmp_path / "installed"
-    installed_root.mkdir(parents=True, exist_ok=True)
-
-    state_store: dict[str, dict[str, object]] = {}
-
-    monkeypatch.setattr(ppm, "_provider_plugin_manager", None)
-    monkeypatch.setattr(ppm, "_load_plugin_states", lambda: dict(state_store))
-
-    def _save(states: dict[str, dict[str, object]]) -> None:
-        state_store.clear()
-        state_store.update(states)
-
-    monkeypatch.setattr(ppm, "_save_plugin_states", _save)
-    monkeypatch.setattr(ppm, "get_provider_plugins_directory", lambda: installed_root)
-    monkeypatch.setattr(
-        ppm,
-        "get_provider_plugin_directory",
-        lambda plugin_id: installed_root / plugin_id,
-    )
-
-    return ppm.ProviderPluginManager()
+from tests.provider_plugin_test_helpers import (
+    setup_provider_plugin_manager,
+    write_provider_code_plugin,
+)
 
 
 def _attach_signature(
@@ -97,11 +23,18 @@ def _attach_signature(
     expected_payload = manager._build_signature_payload(source_dir, raw_manifest)
     signature_b64 = base64.b64encode(signature_bytes).decode("utf-8")
 
-    _write_code_plugin(
+    write_provider_code_plugin(
         source_dir,
+        plugin_id="community-echo",
+        provider="community_echo",
+        name="Community Echo",
+        aliases=["community-echo"],
+        description="Community Echo provider",
         signature=signature_b64,
         signing_key_id=signer_id,
         signature_algorithm="ed25519",
+        model_id="echo-model",
+        model_name="Echo Model",
     )
     return expected_payload
 
@@ -117,11 +50,20 @@ class _StubVerifier:
 
 
 def test_provider_plugin_manager_lifecycle(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = setup_provider_plugin_manager(monkeypatch, tmp_path)
 
     source_dir = tmp_path / "source-plugin"
     source_dir.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source_dir)
+    write_provider_code_plugin(
+        source_dir,
+        plugin_id="community-echo",
+        provider="community_echo",
+        name="Community Echo",
+        aliases=["community-echo"],
+        description="Community Echo provider",
+        model_id="echo-model",
+        model_name="Echo Model",
+    )
 
     plugin_id = manager.import_from_directory(source_dir)
     assert plugin_id == "community-echo"
@@ -148,11 +90,20 @@ def test_provider_plugin_manager_lifecycle(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_provider_plugin_verification_signed_and_tamper_detected(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = setup_provider_plugin_manager(monkeypatch, tmp_path)
 
     source_dir = tmp_path / "signed-plugin"
     source_dir.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source_dir)
+    write_provider_code_plugin(
+        source_dir,
+        plugin_id="community-echo",
+        provider="community_echo",
+        name="Community Echo",
+        aliases=["community-echo"],
+        description="Community Echo provider",
+        model_id="echo-model",
+        model_name="Echo Model",
+    )
 
     signer_id = "test-signer"
     signature_bytes = b"signed-payload"
@@ -175,7 +126,7 @@ def test_provider_plugin_verification_signed_and_tamper_detected(monkeypatch, tm
     assert info.verification_status == "verified"
     assert info.signing_key_id == signer_id
 
-    installed_plugin = (tmp_path / "installed" / plugin_id / "plugin.py")
+    installed_plugin = tmp_path / "installed" / plugin_id / "plugin.py"
     installed_plugin.write_text(installed_plugin.read_text() + "\n# tampered\n")
 
     tampered = manager.get_plugin_info(plugin_id)
@@ -184,11 +135,20 @@ def test_provider_plugin_verification_signed_and_tamper_detected(monkeypatch, tm
 
 
 def test_provider_plugin_verification_untrusted_signer(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = setup_provider_plugin_manager(monkeypatch, tmp_path)
 
     source_dir = tmp_path / "untrusted-plugin"
     source_dir.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source_dir)
+    write_provider_code_plugin(
+        source_dir,
+        plugin_id="community-echo",
+        provider="community_echo",
+        name="Community Echo",
+        aliases=["community-echo"],
+        description="Community Echo provider",
+        model_id="echo-model",
+        model_name="Echo Model",
+    )
 
     _attach_signature(
         source_dir,
@@ -211,11 +171,18 @@ def test_provider_plugin_signature_manifest_validation(tmp_path: Path) -> None:
     source_dir = tmp_path / "invalid-signature-plugin"
     source_dir.mkdir(parents=True, exist_ok=True)
 
-    _write_code_plugin(
+    write_provider_code_plugin(
         source_dir,
+        plugin_id="community-echo",
+        provider="community_echo",
+        name="Community Echo",
+        aliases=["community-echo"],
+        description="Community Echo provider",
         signature="not-base64",
         signing_key_id="bad-signer",
         signature_algorithm="ed25519",
+        model_id="echo-model",
+        model_name="Echo Model",
     )
 
     manager = ppm.ProviderPluginManager()
