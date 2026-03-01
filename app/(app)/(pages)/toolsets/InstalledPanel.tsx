@@ -47,13 +47,13 @@ import {
 import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
 import { buildMcpServerLabelMap, getMcpServerLabel } from "@/lib/mcp";
+import { getToolDisplayLabel, parseToolId } from "@/lib/tooling";
 
 function ToolCard({ tool }: { tool: ToolsetToolInfo }) {
-  const toolLabel = useMemo(() => {
-    if (tool.name) return tool.name;
-    const id = tool.toolId;
-    return id.split(":").pop() || id;
-  }, [tool.name, tool.toolId]);
+  const toolLabel = useMemo(
+    () => getToolDisplayLabel(tool.toolId, tool.name),
+    [tool.name, tool.toolId]
+  );
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
@@ -280,11 +280,11 @@ export default function InstalledPanel({
   const mcpTools = useMemo(() => {
     const byServer: Record<string, ChatToolInfo[]> = {};
     availableTools.forEach((tool) => {
-      if (tool.id.startsWith("mcp:")) {
-        const serverKey = tool.id.split(":")[1];
-        if (!byServer[serverKey]) byServer[serverKey] = [];
-        byServer[serverKey].push(tool);
-      }
+      const parsed = parseToolId(tool.id);
+      if (parsed.kind !== "mcp_tool" || !parsed.namespace) return;
+      const serverKey = parsed.namespace;
+      if (!byServer[serverKey]) byServer[serverKey] = [];
+      byServer[serverKey].push(tool);
     });
     return byServer;
   }, [availableTools]);

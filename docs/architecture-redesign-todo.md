@@ -1,6 +1,6 @@
 # Covalt Desktop — Architecture Redesign TODO (Execution Document)
 
-_Last updated: 2026-03-01_
+_Last updated: 2026-03-01 (Phase 2 pass + tracker update)_
 
 This is the working execution document for the redesign blueprint. It combines:
 - project context needed to onboard quickly,
@@ -125,11 +125,15 @@ Each phase includes: objective, concrete tasks, target files, acceptance criteri
 Stop cross-layer leakage and remove easiest duplication risks before deeper refactors.
 
 ### TODOs
-- [ ] Remove DB -> service dependency in branch/workspace paths.
-- [ ] Remove service -> command dependency in tool execution events.
-- [ ] Isolate shared crypto helpers away from service internals.
-- [ ] Remove legacy frontend theme provider usage and converge on one provider.
-- [ ] Extract provider plugin settings logic from large settings panel component.
+- [x] Remove DB -> service dependency in branch/workspace paths.
+- [x] Remove service -> command dependency in tool execution events.
+- [x] Isolate shared crypto helpers away from service internals.
+- [x] Remove legacy frontend theme provider usage and converge on one provider.
+- [x] Extract provider plugin settings logic from large settings panel component.
+
+### Status
+- **Completed** in commit `0870540`.
+- Notes: workspace event broadcasting moved to service layer, crypto helpers centralized, provider plugin settings extracted, and theme usage converged in targeted components.
 
 ### File targets
 - `backend/db/chats.py`
@@ -165,11 +169,15 @@ uv run pytest
 Finish conversation orchestration split and establish single runtime event contract.
 
 ### TODOs
-- [ ] Move remaining heavy orchestration helpers out of `commands/streaming.py` into application services.
-- [ ] Extract shared message content codec used by DB/runtime/conversation paths.
-- [ ] Define single canonical runtime event contract source (versioned).
-- [ ] Generate/consume FE runtime event types from canonical source.
-- [ ] Add contract parity tests (BE known events == FE known events).
+- [x] Move remaining heavy orchestration helpers out of `commands/streaming.py` into application services.
+- [x] Extract shared message content codec used by DB/runtime/conversation paths.
+- [x] Define single canonical runtime event contract source (versioned).
+- [x] Generate/consume FE runtime event types from canonical source.
+- [x] Add contract parity tests (BE known events == FE known events).
+
+### Status
+- **Completed** in commit `615a284`.
+- Notes: added canonical runtime event contract (`contracts/runtime-events.v1.json`), FE generator script, parity tests (FE+BE), and extracted stream-agent/flow use-cases plus shared message codec.
 
 ### File targets
 - `backend/commands/streaming.py`
@@ -204,14 +212,21 @@ uv run pytest
 Split mixed workspace/tool orchestration concerns into composable services.
 
 ### TODOs
-- [ ] Split `workspace_manager` responsibilities into focused units:
+- [x] Split `workspace_manager` responsibilities into focused units:
   - Blob store
   - Manifest repository/projection
   - Materializer
   - Diff service
-- [ ] Centralize render plan generation into one builder used by runtime + tool execution.
-- [ ] Remove duplicated renderer alias normalization paths.
-- [ ] Standardize tool/MCP id parse/normalize/format helpers.
+- [x] Centralize render plan generation into one builder used by runtime + tool execution.
+- [x] Remove duplicated renderer alias normalization paths.
+- [x] Standardize tool/MCP id parse/normalize/format helpers.
+
+### Status
+- **Completed (uncommitted in working tree)** via implementation + review/fix loop; final independent review returned PASS.
+- Added workspace-focused modules under `backend/services/workspace/*` with `workspace_manager.py` retained as compatibility facade.
+- Added canonical render-plan builder (`backend/services/render_plan_builder.py`) reused by tool execution and runtime fallback.
+- Added canonical tooling helpers (`backend/models/tooling.py`, `app/lib/tooling.ts`) and migrated key backend/frontend call sites.
+- Fixed MCP tester execution to use canonical parsed tool name from tool id (not display label).
 
 ### File targets
 - `backend/services/workspace_manager.py`
@@ -386,16 +401,14 @@ Program is complete when all are true:
 
 ---
 
-## 10) Immediate next actions (start here)
+## 10) Immediate next actions
 
-1. Execute Phase 0 boundary fixes in small PRs:
-   - DB/service decoupling
-   - service/command decoupling
-   - theme provider convergence
-2. In parallel, prepare Phase 1 contract scaffolding:
-   - runtime event source contract draft
-   - FE parity test harness
-3. Open tracking tickets per Phase section and link each PR back to this document.
+1. Commit Phase 2 changes currently in working tree (already PASS-reviewed).
+2. Start Phase 3 execution with the same orchestrated loop:
+   - implementation subagent
+   - independent review subagent
+   - fix/re-review until PASS
+3. Open/refresh tracking tickets per remaining phase and link PRs/commits back to this document.
 
 ---
 

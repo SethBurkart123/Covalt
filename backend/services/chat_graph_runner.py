@@ -9,6 +9,7 @@ import types
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
 from agno.agent import Agent, Message, RunEvent
@@ -52,6 +53,7 @@ from .flow_executor import run_flow
 from .execution_trace import ExecutionTraceRecorder
 from .tool_registry import get_tool_registry, get_original_tool_name
 from .mcp_manager import ensure_mcp_initialized
+from .render_plan_builder import get_render_plan_builder
 from .workspace_manager import get_workspace_manager
 from .toolset_executor import get_toolset_executor
 from .model_selection import parse_model_id
@@ -1004,14 +1006,34 @@ def _generate_toolset_render_plan(
         return None
     try:
         executor = get_toolset_executor()
-        plan = executor.generate_render_plan(
-            tool_name,
-            tool_args or {},
-            _parse_tool_result(tool_result),
-            chat_id,
+        tool_info = executor.get_tool_metadata(tool_name)
+        if not tool_info:
+            return None
+
+        render_config = tool_info.get("render_config")
+        if not isinstance(render_config, dict):
+            return None
+
+        config = render_config.get("config", {})
+        toolset_dir = Path(executor.get_toolset_directory(tool_name))
+        context = {
+            "args": tool_args or {},
+            "return": _parse_tool_result(tool_result),
+            "chat_id": chat_id,
+            "workspace": str(get_workspace_manager(chat_id).workspace_dir),
+            "toolset": str(toolset_dir),
+        }
+
+        plan = get_render_plan_builder().build(
+            renderer=str(render_config.get("renderer") or "default"),
+            config=config if isinstance(config, dict) else {},
+            context=context,
+            toolset_dir=toolset_dir,
         )
-        if plan is None:
-            logger.warning(f"No render plan available for toolset tool {tool_name}")
+
+        if plan["renderer"] == "html" and "artifact" in plan["config"] and "content" not in plan["config"]:
+            logger.warning("Artifact not found: %s", plan["config"]["artifact"])
+
         return plan
     except Exception as exc:
         logger.warning(f"Failed to generate render plan for tool {tool_name}: {exc}")

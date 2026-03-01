@@ -11,6 +11,7 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
+import { parseToolDisplayParts } from "@/lib/tooling";
 import { ArgumentsDisplay } from "./ArgumentsDisplay";
 import { ResultRenderer } from "./ResultRenderer";
 
@@ -91,6 +92,8 @@ export function DefaultToolCall({
     }
   };
 
+  const toolDisplay = parseToolDisplayParts(toolName);
+
   return (
     <Collapsible
       open={isOpen}
@@ -107,15 +110,15 @@ export function DefaultToolCall({
         <CollapsibleHeader>
           <CollapsibleIcon icon={Wrench} />
           <span className="text-sm font-mono text-foreground">
-            {toolName.includes(":") ? (
+            {toolDisplay.namespace ? (
               <>
-                <span>{toolName.split(":").slice(1).join(":")}</span>
+                <span>{toolDisplay.label}</span>
                 <span className="px-2 italic text-muted-foreground align-middle">
-                  {toolName.split(":")[0].split("~").pop()}
+                  {toolDisplay.namespace}
                 </span>
               </>
             ) : (
-              toolName
+              toolDisplay.label
             )}
           </span>
           {approvalStatus === "denied" && (

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from zynk import command
 
 from .. import db
+from ..models import format_mcp_toolset_id
 from ..models.chat import (
     AllChatsData,
     AvailableToolsResponse,
@@ -223,7 +224,7 @@ async def get_available_tools() -> AvailableToolsResponse:
 
         mcp_toolsets.append(
             MCPToolsetInfo(
-                id=f"mcp:{server_id}",
+                id=format_mcp_toolset_id(server_id),
                 name=server_id,
                 status=server["status"],
                 error=server.get("error"),

@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SchemaFormField } from "./schema-form-field";
 import type { MCPToolInfo } from "@/python/api";
+import { getToolDisplayLabel, splitMcpToolId } from "@/lib/tooling";
 
 interface ToolTesterProps {
   tool: MCPToolInfo;
@@ -70,13 +71,18 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
     });
   }, []);
 
+  const canonicalToolName = useMemo(() => {
+    const parsed = splitMcpToolId(tool.id);
+    return parsed?.toolName ?? tool.name ?? tool.id;
+  }, [tool.id, tool.name]);
+
   const handleRun = useCallback(async () => {
     setIsRunning(true);
     setResponse(null);
-    const result = await onTest(serverId, tool.name || tool.id.split(":").pop() || tool.id, args);
+    const result = await onTest(serverId, canonicalToolName, args);
     setResponse(result);
     setIsRunning(false);
-  }, [serverId, tool.id, tool.name, args, onTest]);
+  }, [serverId, canonicalToolName, args, onTest]);
 
   const formattedResponse = useMemo(() => {
     if (!response) return null;
@@ -93,7 +99,7 @@ export function ToolTester({ tool, serverId, onTest }: ToolTesterProps) {
       <ResizablePanel defaultSize="75%" minSize="10%">
         <div className="overflow-y-auto h-full flex flex-col">
           <div className="px-6 py-4 flex-shrink-0">
-            <h2 className="text-xl font-semibold">{tool.name || tool.id.split(":").pop() || tool.id}</h2>
+            <h2 className="text-xl font-semibold">{getToolDisplayLabel(tool.id, tool.name)}</h2>
             {tool.description && (
               <div className="mt-2">
                 <p

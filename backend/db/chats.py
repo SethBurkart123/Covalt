@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Chat, Message
-from ..models import decode_message_content
+from ..models import decode_message_content, normalize_renderer_alias
 
 
 def list_chats(sess: Session) -> List[Chat]:
@@ -75,14 +75,12 @@ def _normalize_render_plan_blocks(blocks: List[Dict[str, Any]]) -> None:
         if block.get("type") == "tool_call":
             render_plan = block.get("renderPlan")
             if isinstance(render_plan, dict):
-                renderer = render_plan.get("renderer")
-                if renderer == "markdown":
-                    render_plan["renderer"] = "document"
-            else:
-                renderer = block.get("renderer")
+                renderer = normalize_renderer_alias(render_plan.get("renderer"))
                 if renderer:
-                    if renderer == "markdown":
-                        renderer = "document"
+                    render_plan["renderer"] = renderer
+            else:
+                renderer = normalize_renderer_alias(block.get("renderer"))
+                if renderer:
                     block["renderPlan"] = {"renderer": renderer, "config": {}}
 
         if block.get("type") == "member_run":

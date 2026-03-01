@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MCPToolInfo } from "@/python/api";
+import { getToolDisplayLabel } from "@/lib/tooling";
 
 interface ToolListProps {
   tools: MCPToolInfo[];
@@ -52,7 +53,7 @@ export const ToolList = memo(function ToolList({
                   tool.id === selectedToolId && "text-primary"
                 )}
               >
-                {tool.name || tool.id.split(":").pop() || tool.id}
+                {getToolDisplayLabel(tool.id, tool.name)}
               </p>
               {tool.description && (
                 <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
