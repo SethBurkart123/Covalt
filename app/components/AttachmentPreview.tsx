@@ -69,26 +69,28 @@ const AttachmentItem = memo<{
   const [loadError, setLoadError] = useState(false);
   
   const canRemove = !readonly && onRemove && uploadStatus !== "uploading";
+  const localImageSrc = getImageSrc(attachment);
+  const attachmentId = attachment.id;
+  const attachmentName = attachment.name;
+  const attachmentMimeType = attachment.mimeType;
 
   useEffect(() => {
-    if (!isImage) return;
-    
-    const localSrc = getImageSrc(attachment);
-    if (localSrc) {
+    if (!isImage || localImageSrc) {
       return;
     }
-    
+
     if (!chatId) {
       return;
     }
-    
+
     let cancelled = false;
+    setLoadError(false);
     getAttachment({
       body: {
         chatId,
-        attachmentId: attachment.id,
-        mimeType: attachment.mimeType,
-        name: attachment.name,
+        attachmentId,
+        mimeType: attachmentMimeType,
+        name: attachmentName,
       },
     })
       .then((response) => {
@@ -100,15 +102,14 @@ const AttachmentItem = memo<{
         console.error("Failed to load attachment:", err);
         setLoadError(true);
       });
-    
+
     return () => {
       cancelled = true;
     };
-  }, [isImage, attachment, chatId]);
+  }, [isImage, localImageSrc, chatId, attachmentId, attachmentMimeType, attachmentName]);
 
   if (isImage) {
-    const localSrc = getImageSrc(attachment);
-    const src = localSrc || loadedSrc || "";
+    const src = localImageSrc || loadedSrc || "";
 
     return (
       <div className="relative group">
