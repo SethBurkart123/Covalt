@@ -1,0 +1,69 @@
+{
+  "milestone": "confidence-gates",
+  "groupId": "gate-core",
+  "surface": "cli",
+  "toolsUsed": ["read", "grep", "execute", "gh"],
+  "assertions": [
+    {
+      "id": "VAL-GATE-001",
+      "status": "pass",
+      "reason": "CI includes distinct lint, vitest, pytest, and playwright validation layers as separate workflow/job identities.",
+      "evidence": [
+        ".github/workflows/lint.yml: job lint runs 'bun run ci:lint'",
+        ".github/workflows/test.yml: jobs vitest/pytest/playwright run ci:vitest, ci:pytest, ci:playwright",
+        "gh run view 22625800357: jobs named vitest, pytest, playwright all completed success",
+        "gh run view 22625800355: separate Lint workflow exists for lint layer"
+      ]
+    },
+    {
+      "id": "VAL-GATE-002",
+      "status": "pass",
+      "reason": "Local command matrix mirrors CI semantics with explicit script/service mappings for all required layers.",
+      "evidence": [
+        "package.json scripts: ci:lint, ci:vitest, ci:pytest, ci:playwright, ci:full",
+        ".factory/services.yaml commands map lint/test_vitest/test_pytest/test_playwright to same ci:* scripts",
+        "Local runs: bun run ci:lint (exit 0), bun run ci:vitest (11 files/196 tests passed), bun run ci:pytest (341 passed, 43 skipped)",
+        "Local invocation exists for bun run ci:playwright (command executed; environment conflict captured separately)"
+      ]
+    },
+    {
+      "id": "VAL-GATE-003",
+      "status": "pass",
+      "reason": "Gate wiring is fail-closed: no masking patterns found, and a failing required job marks its workflow failed.",
+      "evidence": [
+        "Grep in .github/workflows for 'continue-on-error|\\|\\| true': no matches",
+        "gh run view 22625800355: workflow conclusion=failure because job lint-python failed",
+        "gh run view 22625800355: sibling job lint succeeded but workflow still failed"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "status": "pass",
+      "reason": "Environment contract is consistent on approved mission ports and readiness assumptions across service/config layers.",
+      "evidence": [
+        "Mission AGENTS.md requires backend 3100 and frontend 3101",
+        ".factory/services.yaml defines backend port 3100 and frontend port 3101 with healthchecks on 127.0.0.1",
+        "playwright.config.ts uses localhost:3100 and localhost:3101 with webServer startup commands on same ports",
+        ".factory/library/user-testing.md setup requires 3100/3101 and curl readiness checks"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "status": "blocked",
+      "reason": "A full successful local confidence-stack run could not be validated because Playwright requires exclusive 3100/3101 ownership and those ports were already occupied by existing shared processes.",
+      "evidence": [
+        "bun run ci:full progressed through lint/vitest/pytest then failed at playwright with: 'http://localhost:3100/ is already used'",
+        "bun run ci:playwright failed with same port-occupied error",
+        "lsof -iTCP:3100 -sTCP:LISTEN and lsof -iTCP:3101 -sTCP:LISTEN showed active listeners before Playwright start",
+        "playwright.config.ts sets webServer reuseExistingServer:false for both services"
+      ]
+    }
+  ],
+  "frictions": [
+    "Local Playwright gate cannot execute when mission ports are already occupied by other active workers because webServer reuseExistingServer is false; this interrupted local full-stack reproducibility validation."
+  ],
+  "blockers": [
+    "Shared environment port occupancy on 3100/3101 prevented completion of a successful local bun run ci:full execution for VAL-CROSS-006."
+  ],
+  "notes": "Validated only assigned assertions (VAL-GATE-001/002/003, VAL-CROSS-005/006) on CLI surface within mission boundaries (ports 3100/3101, no Docker). Account flow-validator-core@local and namespace ns-gate-core were respected; no production/business logic changes were made."
+}

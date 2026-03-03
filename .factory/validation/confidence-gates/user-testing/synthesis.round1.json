@@ -1,0 +1,39 @@
+{
+  "milestone": "confidence-gates",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 9,
+    "passed": 7,
+    "failed": 0,
+    "blocked": 2
+  },
+  "passedAssertions": [
+    "VAL-CROSS-005",
+    "VAL-GATE-001",
+    "VAL-GATE-002",
+    "VAL-GATE-003",
+    "VAL-GATE-004",
+    "VAL-GATE-005",
+    "VAL-GATE-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-CROSS-006",
+      "blockedBy": "A full successful local confidence-stack run could not be validated because Playwright requires exclusive 3100/3101 ownership and those ports were already occupied by existing shared processes."
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "blockedBy": "Repeated full-stack reruns on current local revision are blocked at Playwright startup by occupied mission ports, preventing validation of passing-stack repeatability in this session."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented shared-port occupancy quirk that blocks Playwright rerun repeatability checks when 3100/3101 are already in use in multi-worker sessions.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
