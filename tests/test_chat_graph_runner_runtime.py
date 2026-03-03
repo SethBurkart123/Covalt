@@ -670,7 +670,7 @@ async def test_handle_flow_stream_splits_text_blocks_between_nodes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_flow_stream_ignores_trailing_error_block_from_initial_content() -> None:
+async def test_handle_flow_stream_preserves_trailing_error_block_from_initial_content() -> None:
     saved_payloads: list[str] = []
 
     def fake_save_content(_message_id: str, content: str) -> None:

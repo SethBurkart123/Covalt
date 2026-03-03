@@ -36,7 +36,6 @@ BACKEND_INTEGRATION_KEYWORDS = {
     "policy",
     "oauth",
     "plugin",
-    "e2e",
 }
 
 
