@@ -557,7 +557,7 @@ class NodeProviderPluginManager:
             archive_path.write_bytes(archive_bytes)
 
             with zipfile.ZipFile(archive_path, 'r') as zf:
-                zf.extractall(tmp_dir / 'repo')
+                self._safe_extract(zf, tmp_dir / 'repo')
 
             extracted_roots = [path for path in (tmp_dir / 'repo').iterdir() if path.is_dir()]
             if not extracted_roots:
