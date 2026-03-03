@@ -8,7 +8,6 @@ import logging
 import re
 import shutil
 import tempfile
-import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -23,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey a
 
 from .. import db
 from ..config import get_db_directory
+from . import plugin_install_utils
 
 logger = logging.getLogger(__name__)
 
@@ -365,20 +365,6 @@ def _normalize_plugin_path(value: Any) -> str | None:
     return raw or None
 
 
-def _is_http_url(value: str) -> bool:
-    lowered = value.strip().lower()
-    return lowered.startswith("http://") or lowered.startswith("https://")
-
-
-def _normalize_repo_url(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        raise ValueError("repoUrl is required")
-    if not _is_http_url(raw):
-        raise ValueError("repoUrl must be an http(s) URL")
-    if raw.endswith(".git"):
-        raw = raw[:-4]
-    return raw.rstrip("/")
 
 
 def _slugify(value: str) -> str:
@@ -394,7 +380,7 @@ def _safe_index_id(name: str) -> str:
 
 def _validate_index_url(url: str) -> str:
     normalized = url.strip()
-    if not _is_http_url(normalized):
+    if not plugin_install_utils.is_http_url(normalized):
         raise ValueError("Index URL must use http:// or https://")
     return normalized
 
@@ -513,7 +499,11 @@ def _source_entry_to_dict(entry: ProviderPluginSourceEntry) -> dict[str, Any]:
     }
 
 
-def _entry_from_raw(raw: dict[str, Any], *, fallback_index: ProviderPluginIndexEntry) -> ProviderPluginSourceEntry | None:
+def _entry_from_raw(
+    raw: dict[str, Any],
+    *,
+    fallback_index: ProviderPluginIndexEntry,
+) -> ProviderPluginSourceEntry | None:
     source_id = str(raw.get("id") or "").strip()
     plugin_id = str(raw.get("pluginId") or raw.get("plugin_id") or "").strip()
     name = str(raw.get("name") or "").strip()
@@ -532,7 +522,9 @@ def _entry_from_raw(raw: dict[str, Any], *, fallback_index: ProviderPluginIndexE
         provider=provider,
         description=description or name,
         icon=icon,
-        source_class=_normalize_source_class(raw.get("sourceClass") or raw.get("source_class") or fallback_index.source_class),
+        source_class=_normalize_source_class(
+            raw.get("sourceClass") or raw.get("source_class") or fallback_index.source_class
+        ),
         index_id=str(raw.get("indexId") or raw.get("index_id") or fallback_index.id),
         index_name=str(raw.get("indexName") or raw.get("index_name") or fallback_index.name),
         source_url=str(raw.get("sourceUrl") or raw.get("source_url") or fallback_index.url),
@@ -578,33 +570,6 @@ def _fetch_index_sources(index: ProviderPluginIndexEntry) -> list[ProviderPlugin
         return []
 
     return _extract_sources_from_index_payload(payload, fallback_index=index)
-
-
-def _extract_github_owner_repo(repo_url: str) -> tuple[str, str]:
-    normalized = _normalize_repo_url(repo_url)
-    parsed = urllib.parse.urlparse(normalized)
-    host = (parsed.netloc or "").strip().lower()
-    if host != "github.com":
-        raise ValueError("Only GitHub repositories are supported for repo installs")
-
-    parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) < 2:
-        raise ValueError("repoUrl must include owner and repo")
-    return parts[0], parts[1]
-
-
-def _download_github_archive(repo_url: str, ref: str) -> bytes:
-    owner, repo = _extract_github_owner_repo(repo_url)
-    safe_ref = (ref or "main").strip() or "main"
-    archive_url = f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{safe_ref}"
-
-    try:
-        with urllib.request.urlopen(archive_url, timeout=20) as response:
-            return response.read()
-    except Exception:
-        fallback_url = f"https://codeload.github.com/{owner}/{repo}/zip/{safe_ref}"
-        with urllib.request.urlopen(fallback_url, timeout=20) as response:
-            return response.read()
 
 
 def _collect_files_for_zip(base_dir: Path) -> bytes:
@@ -871,11 +836,11 @@ class ProviderPluginManager:
         index_id: str | None = None,
         auto_update_override: str = "inherit",
     ) -> str:
-        normalized_repo = _normalize_repo_url(repo_url)
+        normalized_repo = plugin_install_utils.normalize_repo_url(repo_url)
         tracking_ref = _normalize_tracking_ref(ref) or "main"
         normalized_plugin_path = _normalize_plugin_path_in_archive(plugin_path)
 
-        archive_bytes = _download_github_archive(normalized_repo, tracking_ref)
+        archive_bytes = plugin_install_utils.download_github_archive(normalized_repo, tracking_ref)
         with tempfile.TemporaryDirectory(prefix="provider-plugin-repo-") as tmp:
             tmp_dir = Path(tmp)
             archive_path = tmp_dir / "repo.zip"
@@ -1278,7 +1243,7 @@ class ProviderPluginManager:
             else _normalize_plugin_path(plugin.plugin_path)
         )
 
-        archive_bytes = _download_github_archive(repo_url, ref)
+        archive_bytes = plugin_install_utils.download_github_archive(repo_url, ref)
         with tempfile.TemporaryDirectory(prefix="provider-plugin-update-") as tmp:
             tmp_dir = Path(tmp)
             archive_path = tmp_dir / "repo.zip"

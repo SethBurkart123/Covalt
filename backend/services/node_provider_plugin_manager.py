@@ -6,8 +6,6 @@ import logging
 import re
 import shutil
 import tempfile
-import urllib.parse
-import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,6 +16,7 @@ import yaml
 
 from .. import db
 from ..config import get_db_directory
+from . import plugin_install_utils
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class NodeProviderPluginManifest:
     raw: dict[str, Any]
 
     @classmethod
-    def parse(cls, raw: dict[str, Any], *, path: Path) -> 'NodeProviderPluginManifest':
+    def parse(cls, raw: dict[str, Any], *, path: Path) -> NodeProviderPluginManifest:
         manifest_version = str(raw.get('manifest_version', '1')).strip()
         if manifest_version not in SUPPORTED_MANIFEST_VERSIONS:
             raise ValueError(f'Unsupported node provider manifest version: {manifest_version}')
@@ -125,49 +124,6 @@ def get_node_provider_plugin_directory(plugin_id: str) -> Path:
     return get_node_provider_plugins_directory() / plugin_id
 
 
-def _is_http_url(value: str) -> bool:
-    parsed = urllib.parse.urlparse(value.strip())
-    return parsed.scheme in {'http', 'https'} and bool(parsed.netloc)
-
-
-def _normalize_repo_url(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        raise ValueError('repoUrl is required')
-    if not _is_http_url(raw):
-        raise ValueError('repoUrl must be an http(s) URL')
-    if raw.endswith('.git'):
-        raw = raw[:-4]
-    return raw.rstrip('/')
-
-
-def _extract_github_owner_repo(repo_url: str) -> tuple[str, str]:
-    normalized = _normalize_repo_url(repo_url)
-    parsed = urllib.parse.urlparse(normalized)
-    host = (parsed.netloc or '').strip().lower()
-    if host != 'github.com':
-        raise ValueError('Only GitHub repositories are supported for repo installs')
-
-    parts = [part for part in parsed.path.split('/') if part]
-    if len(parts) < 2:
-        raise ValueError('repoUrl must include owner and repo')
-    return parts[0], parts[1]
-
-
-def _download_github_archive(repo_url: str, ref: str) -> bytes:
-    owner, repo = _extract_github_owner_repo(repo_url)
-    safe_ref = (ref or 'main').strip() or 'main'
-    archive_url = f'https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{safe_ref}'
-
-    try:
-        with urllib.request.urlopen(archive_url, timeout=20) as response:
-            return response.read()
-    except Exception:
-        fallback_url = f'https://codeload.github.com/{owner}/{repo}/zip/{safe_ref}'
-        with urllib.request.urlopen(fallback_url, timeout=20) as response:
-            return response.read()
-
-
 def _normalize_plugin_path(value: str | None) -> str | None:
     if value is None:
         return None
@@ -178,7 +134,7 @@ def _normalize_plugin_path(value: str | None) -> str | None:
     posix = PurePosixPath(raw)
     if posix.is_absolute() or '..' in posix.parts:
         raise ValueError('pluginPath must be a relative path without traversal')
-    return str(posix)
+    return posix.as_posix()
 
 
 def _validate_relative_file_path(value: str, *, field_name: str) -> None:
@@ -426,11 +382,15 @@ class NodeProviderPluginManager:
         source_type: str = 'repo',
         source_ref: str | None = None,
     ) -> str:
-        normalized_repo = _normalize_repo_url(repo_url)
+        normalized_repo = plugin_install_utils.normalize_repo_url(repo_url, require_netloc=True)
         tracking_ref = (ref or 'main').strip() or 'main'
         normalized_plugin_path = _normalize_plugin_path(plugin_path)
 
-        archive_bytes = _download_github_archive(normalized_repo, tracking_ref)
+        archive_bytes = plugin_install_utils.download_github_archive(
+            normalized_repo,
+            tracking_ref,
+            require_netloc=True,
+        )
         with tempfile.TemporaryDirectory(prefix='node-provider-plugin-repo-') as tmp:
             tmp_dir = Path(tmp)
             archive_path = tmp_dir / 'repo.zip'

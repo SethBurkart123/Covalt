@@ -12,6 +12,8 @@ import pytest
 from agno.models.base import Model
 from agno.models.response import ModelResponse
 
+from backend.services import run_control
+
 # ---------------------------------------------------------------------------
 # Mock Models — drop-in replacements for real LLM providers
 # ---------------------------------------------------------------------------
@@ -116,6 +118,13 @@ def flow_ctx() -> FlowContext:
 @pytest.fixture
 def mock_model() -> MockModel:
     return MockModel()
+
+
+@pytest.fixture(autouse=True)
+def _reset_run_control_state() -> Iterator[None]:
+    run_control.reset_state()
+    yield
+    run_control.reset_state()
 
 
 # ---------------------------------------------------------------------------

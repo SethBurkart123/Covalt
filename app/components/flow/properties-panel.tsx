@@ -1,21 +1,16 @@
 'use client';
 
-import { useCallback, useMemo, memo, type ComponentType } from 'react';
+import { useCallback, useMemo, memo } from 'react';
 import { useNodesData, useStore } from '@xyflow/react';
-import * as Icons from 'lucide-react';
 import type { FlowEdge, Parameter } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
-import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
+import { buildNodeEdgeIndex, shouldRenderParam, shouldRenderParamControl, canRenderParamControl } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getBackendBaseUrl } from '@/lib/services/backend-url';
-
-function getIcon(name: string) {
-  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
-  return IconComponent ?? Icons.Circle;
-}
+import { getFlowIcon } from './flow-icon';
 
 /**
  * Properties panel - shows editable properties for the selected node.
@@ -124,10 +119,10 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
     );
   }
 
-  const Icon = getIcon(definition.icon);
+  const Icon = getFlowIcon(definition.icon);
 
   const panelParams = definition.parameters.filter(p => {
-    if (p.mode !== 'constant' && p.mode !== 'hybrid') return false;
+    if (!canRenderParamControl(p)) return false;
     return shouldRenderParam(p, 'inspector', edgeIndex, selectedNodeData.data as Record<string, unknown>);
   });
 
@@ -258,7 +253,7 @@ const ParameterField = memo(function ParameterField({
   fullBleed = false,
 }: ParameterFieldProps) {
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
-  const showControl = (param.mode === 'constant') || (param.mode === 'hybrid' && !isConnected);
+  const showControl = shouldRenderParamControl(param, Boolean(isConnected));
   
   return (
     <div className={cn(fullBleed ? 'h-full' : 'space-y-1.5')}>

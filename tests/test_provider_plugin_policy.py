@@ -1,107 +1,27 @@
 from __future__ import annotations
 
-import json
-import zipfile
 from pathlib import Path
 
 import pytest
 
 from backend.services import provider_plugin_manager as ppm
+from tests.provider_plugin_test_helpers import (
+    setup_provider_plugin_manager,
+    write_provider_code_plugin,
+    write_zip_from_directory,
+)
 
 
-def _write_code_plugin(source_dir: Path, *, plugin_id: str, provider: str) -> None:
-    (source_dir / "provider.yaml").write_text(
-        "\n".join(
-            [
-                "manifest_version: '1'",
-                f"id: {plugin_id}",
-                f"name: {plugin_id}",
-                "version: 0.1.0",
-                f"provider: {provider}",
-                "entrypoint: plugin:create_provider",
-                "description: test plugin",
-                "icon: openai",
-                "default_enabled: true",
-            ]
-        )
+def _make_manager(monkeypatch, tmp_path: Path) -> ppm.ProviderPluginManager:
+    return setup_provider_plugin_manager(
+        monkeypatch,
+        tmp_path,
+        include_policy_storage=True,
     )
-    (source_dir / "plugin.py").write_text(
-        "\n".join(
-            [
-                "from __future__ import annotations",
-                "",
-                "def create_provider(provider_id, **_kwargs):",
-                "    async def fetch_models():",
-                "        return [{'id': 'x', 'name': 'X'}]",
-                "",
-                "    def get_model(model_id, provider_options=None):",
-                "        return {'provider': provider_id, 'model': model_id}",
-                "",
-                "    async def test_connection():",
-                "        return True, None",
-                "",
-                "    return {'get_model': get_model, 'fetch_models': fetch_models, 'test_connection': test_connection}",
-            ]
-        )
-    )
-
-
-def _write_zip_from_dir(source_dir: Path, out_zip: Path) -> None:
-    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file_path in source_dir.rglob("*"):
-            if file_path.is_dir():
-                continue
-            zf.write(file_path, arcname=f"{source_dir.name}/{file_path.relative_to(source_dir).as_posix()}")
-
-
-def _setup_manager(monkeypatch, tmp_path: Path) -> ppm.ProviderPluginManager:
-    installed_root = tmp_path / "installed"
-    installed_root.mkdir(parents=True, exist_ok=True)
-
-    state_store: dict[str, dict[str, object]] = {}
-    policy_store: dict[str, object] = {}
-    index_store: list[dict[str, object]] = []
-
-    monkeypatch.setattr(ppm, "_provider_plugin_manager", None)
-
-    monkeypatch.setattr(ppm, "_load_plugin_states", lambda: dict(state_store))
-
-    def _save_states(states: dict[str, dict[str, object]]) -> None:
-        state_store.clear()
-        state_store.update(states)
-
-    monkeypatch.setattr(ppm, "_save_plugin_states", _save_states)
-
-    def _get_user_setting(_sess, key: str):
-        if key == "provider_plugin_policy":
-            return json.dumps(policy_store) if policy_store else None
-        if key == "provider_plugin_indexes":
-            return json.dumps(index_store)
-        return None
-
-    def _set_user_setting(_sess, key: str, value: str):
-        if key == "provider_plugin_policy":
-            payload = json.loads(value)
-            policy_store.clear()
-            policy_store.update(payload)
-            return
-        if key == "provider_plugin_indexes":
-            payload = json.loads(value)
-            index_store.clear()
-            index_store.extend(payload)
-            return
-
-    monkeypatch.setattr(ppm.db, "get_user_setting", _get_user_setting)
-    monkeypatch.setattr(ppm.db, "set_user_setting", _set_user_setting)
-
-    monkeypatch.setattr(ppm, "get_provider_plugins_directory", lambda: installed_root)
-    monkeypatch.setattr(ppm, "get_provider_plugin_directory", lambda plugin_id: installed_root / plugin_id)
-
-    return ppm.ProviderPluginManager()
 
 
 def test_policy_defaults_and_save(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
 
     policy = manager.get_policy()
     assert policy.mode == "safe"
@@ -116,7 +36,7 @@ def test_policy_defaults_and_save(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_indexes_add_remove_refresh(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
 
     index = manager.add_index(name="Community Index", url="https://example.com/index.json")
     assert index.id.startswith("custom-")
@@ -150,11 +70,11 @@ def test_indexes_add_remove_refresh(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_safe_mode_blocks_community_enable(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
 
     source = tmp_path / "plugin-src"
     source.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
+    write_provider_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
 
     plugin_id = manager.import_from_directory(
         source,
@@ -174,11 +94,11 @@ def test_safe_mode_blocks_community_enable(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_set_auto_update_override(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
 
     source = tmp_path / "plugin-src"
     source.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
+    write_provider_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
 
     plugin_id = manager.import_from_directory(
         source,
@@ -197,12 +117,12 @@ def test_set_auto_update_override(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_update_check_failure_keeps_plugin(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
     manager.save_policy(mode="unsafe", auto_update_enabled=True)
 
     source = tmp_path / "plugin-src"
     source.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
+    write_provider_code_plugin(source, plugin_id="community-plugin", provider="community_plugin")
 
     plugin_id = manager.import_from_directory(
         source,
@@ -216,7 +136,11 @@ def test_update_check_failure_keeps_plugin(monkeypatch, tmp_path: Path) -> None:
     manager.enable_plugin(plugin_id, True)
     manager.set_auto_update(plugin_id, override="enabled", tracking_ref="main")
 
-    monkeypatch.setattr(ppm, "_download_github_archive", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("download failed")))
+    monkeypatch.setattr(
+        ppm.plugin_install_utils,
+        "download_github_archive",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("download failed")),
+    )
 
     results = manager.run_update_check()
     assert len(results) == 1
@@ -229,17 +153,21 @@ def test_update_check_failure_keeps_plugin(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_install_from_repo_uses_downloaded_archive(monkeypatch, tmp_path: Path) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
 
     repo_src = tmp_path / "repo-src"
     plugin_subdir = repo_src / "plugins" / "my-plugin"
     plugin_subdir.mkdir(parents=True, exist_ok=True)
-    _write_code_plugin(plugin_subdir, plugin_id="repo-plugin", provider="repo_plugin")
+    write_provider_code_plugin(plugin_subdir, plugin_id="repo-plugin", provider="repo_plugin")
 
     archive_path = tmp_path / "repo.zip"
-    _write_zip_from_dir(repo_src, archive_path)
+    write_zip_from_directory(repo_src, archive_path)
 
-    monkeypatch.setattr(ppm, "_download_github_archive", lambda *_args, **_kwargs: archive_path.read_bytes())
+    monkeypatch.setattr(
+        ppm.plugin_install_utils,
+        "download_github_archive",
+        lambda *_args, **_kwargs: archive_path.read_bytes(),
+    )
 
     plugin_id = manager.install_from_repo(
         repo_url="https://github.com/acme/repo-plugin",
@@ -266,6 +194,6 @@ def test_install_from_repo_uses_downloaded_archive(monkeypatch, tmp_path: Path) 
     ],
 )
 def test_install_from_repo_validates_url(monkeypatch, tmp_path: Path, repo_url: str) -> None:
-    manager = _setup_manager(monkeypatch, tmp_path)
+    manager = _make_manager(monkeypatch, tmp_path)
     with pytest.raises(ValueError):
         manager.install_from_repo(repo_url=repo_url, ref="main")

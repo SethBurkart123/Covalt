@@ -31,11 +31,6 @@ class _FakeDb:
         self.last_marked_id = message_id
 
 
-@pytest.fixture(autouse=True)
-def _reset_run_control() -> None:
-    run_control.reset_state()
-
-
 @pytest.mark.asyncio
 async def test_respond_to_tool_approval_sets_response_and_signals_waiter() -> None:
     event = asyncio.Event()

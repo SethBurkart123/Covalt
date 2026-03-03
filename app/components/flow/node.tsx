@@ -1,19 +1,19 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useState, type ComponentType, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useStore, type NodeProps } from '@xyflow/react';
 import { ChevronDown, Check, X, Loader2, Play, FastForward, Pin } from 'lucide-react';
-import * as Icons from 'lucide-react';
 import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { getNodeDefinition, resolveNodeParameters, useFlowActions, useNodePicker, type FlowNode as FlowNodeType } from '@/lib/flow';
 import { ParameterRow } from './parameter-row';
-import { buildNodeEdgeIndex, shouldRenderParam } from './parameter-visibility';
+import { buildNodeEdgeIndex, shouldRenderParam, shouldRenderParamControl } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 import { Socket } from './socket';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
 import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { getFlowIcon } from './flow-icon';
 
 interface FlowNodeData {
   [key: string]: unknown;
@@ -33,11 +33,6 @@ type ParamBlock =
   | { kind: 'compact'; items: SocketParamItem[] }
   | { kind: 'normal'; param: Parameter };
 
-function getIcon(name: string) {
-  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
-  return IconComponent ?? Icons.Circle;
-}
-
 function getSocketSide(param: Parameter): 'left' | 'right' {
   return param.socket?.side ?? (param.mode === 'output' ? 'right' : 'left');
 }
@@ -45,7 +40,7 @@ function getSocketSide(param: Parameter): 'left' | 'right' {
 function isSocketOnlyParam(param: Parameter, isConnected: boolean): boolean {
   if (!param.socket) return false;
   if (param.mode === 'input' || param.mode === 'output') return true;
-  return param.mode === 'hybrid' && isConnected;
+  return param.mode === 'hybrid' && !shouldRenderParamControl(param, isConnected);
 }
 
 const CompactSocketRow = memo(function CompactSocketRow({ left, right }: { left?: SocketParamItem; right?: SocketParamItem }) {
@@ -264,7 +259,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
     );
   }
 
-  const Icon = getIcon(definition.icon);
+  const Icon = getFlowIcon(definition.icon);
   const statusRing = status === 'running'
     ? 'flow-node-glow ring-yellow-500/60'
     : status === 'completed'

@@ -103,13 +103,6 @@ class FakeAgent:
         self.cancel_calls.append(run_id)
 
 
-@pytest.fixture(autouse=True)
-def _reset_streaming_state():
-    run_control.reset_state()
-    yield
-    run_control.reset_state()
-
-
 @pytest.mark.asyncio
 async def test_simple_chat_stream_event_sequence() -> None:
     run_id = "run-simple"
