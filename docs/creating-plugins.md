@@ -297,7 +297,7 @@ Lifecycle hooks let plugins participate in core behaviors without hardcoding nod
 # backend hook enum
 class HookType(StrEnum):
     ON_NODE_CREATE = "onNodeCreate"
-    ON_CONNECTION_VALIDATE = "onConnectionValidate"
+    ON_CONNECTION_VALIDATE = "onConnectionValidate"  # declared, but not currently dispatched as a backend enforcement gate
     ON_ROUTE_EXTRACT = "onRouteExtract"
     ON_ENTRY_RESOLVE = "onEntryResolve"
     ON_RESPONSE_EXTRACT = "onResponseExtract"
@@ -311,6 +311,8 @@ export type FrontendHookType =
   | 'onConnectionValidate'
   | 'onSocketTypePropagate';
 ```
+
+`onConnectionValidate` is currently a frontend-only hook. It runs in the editor when users draw connections so plugins can allow or deny specific source/target combinations in the UI. The backend runtime path does not currently dispatch `HookType.ON_CONNECTION_VALIDATE` as a flow-execution enforcement gate, so treat this hook as compatibility filtering in the canvas rather than runtime policy enforcement.
 
 On the frontend, hooks are usually attached per node in `NodeEntry.hooks` and scoped by node type automatically by the plugin registry.
 
@@ -326,7 +328,8 @@ hooks: {
   onConnectionValidate: (context) => {
     const from = context.sourceNodeType;
     const to = context.targetNodeType;
-    if (from === 'example.trigger' && to === 'agent') return true;
+    // UI-only filtering: false prevents creating this edge in the editor.
+    if (from === 'example.trigger' && to !== 'agent') return false;
     return undefined;
   },
 }
