@@ -23,7 +23,7 @@ class NodeRouteTarget:
 
 _ROUTE_INDEX: dict[tuple[str, str], NodeRouteTarget] = {}
 _ROUTES_BY_AGENT: dict[str, set[tuple[str, str]]] = {}
-_ROUTE_ID_INDEX: dict[str, set[tuple[str, str]]] = {}
+_ROUTE_ID_INDEX: dict[str, tuple[str, str]] = {}
 
 
 def rebuild_node_route_index() -> None:
@@ -56,22 +56,22 @@ def resolve_node_route(node_type: str, route_id: str) -> NodeRouteTarget | None:
 
 
 def resolve_node_route_by_id(route_id: str) -> NodeRouteTarget | None:
-    keys = sorted(_ROUTE_ID_INDEX.get(route_id, set()))
-    if not keys:
+    key = _ROUTE_ID_INDEX.get(route_id)
+    if key is None:
         return None
-    return _ROUTE_INDEX.get(keys[0])
+    return _ROUTE_INDEX.get(key)
 
 
 def _remove_agent_routes(agent_id: str) -> None:
     keys = _ROUTES_BY_AGENT.pop(agent_id, set())
     for key in keys:
+        owner = _ROUTE_INDEX.get(key)
+        if owner is None or owner.agent_id != agent_id:
+            continue
+
         _ROUTE_INDEX.pop(key, None)
         route_id = key[1]
-        route_keys = _ROUTE_ID_INDEX.get(route_id)
-        if route_keys is None:
-            continue
-        route_keys.discard(key)
-        if not route_keys:
+        if _ROUTE_ID_INDEX.get(route_id) == key:
             _ROUTE_ID_INDEX.pop(route_id, None)
 
 
@@ -90,21 +90,47 @@ def _index_agent_graph(agent_id: str, graph_data: dict[str, Any]) -> None:
             continue
 
         key = (node_type, route_id)
-        existing = _ROUTE_INDEX.get(key)
-        if existing and (existing.agent_id != agent_id or existing.node_id != node_id):
+        previous_key = _ROUTE_ID_INDEX.get(route_id)
+        previous = _ROUTE_INDEX.get(previous_key) if previous_key is not None else None
+
+        if previous_key is not None and previous_key != key and previous is not None:
             logger.warning(
-                "[node_route_index] duplicate route (%s, %s) from %s/%s; replacing previous %s/%s (last write wins)",
-                node_type,
+                "[node_route_index] duplicate route_id %s from %s/%s (%s); replacing previous %s/%s (%s) (last write wins)",
                 route_id,
                 agent_id,
                 node_id,
-                existing.agent_id,
-                existing.node_id,
+                node_type,
+                previous.agent_id,
+                previous.node_id,
+                previous_key[0],
             )
+            _ROUTE_INDEX.pop(previous_key, None)
+            old_owner_routes = _ROUTES_BY_AGENT.get(previous.agent_id)
+            if old_owner_routes is not None:
+                old_owner_routes.discard(previous_key)
+                if not old_owner_routes:
+                    _ROUTES_BY_AGENT.pop(previous.agent_id, None)
+        else:
+            existing = _ROUTE_INDEX.get(key)
+            if existing and (existing.agent_id != agent_id or existing.node_id != node_id):
+                logger.warning(
+                    "[node_route_index] duplicate route (%s, %s) from %s/%s; replacing previous %s/%s (last write wins)",
+                    node_type,
+                    route_id,
+                    agent_id,
+                    node_id,
+                    existing.agent_id,
+                    existing.node_id,
+                )
+                old_owner_routes = _ROUTES_BY_AGENT.get(existing.agent_id)
+                if old_owner_routes is not None:
+                    old_owner_routes.discard(key)
+                    if not old_owner_routes:
+                        _ROUTES_BY_AGENT.pop(existing.agent_id, None)
 
         _ROUTE_INDEX[key] = NodeRouteTarget(agent_id=agent_id, node_id=node_id)
         _ROUTES_BY_AGENT.setdefault(agent_id, set()).add(key)
-        _ROUTE_ID_INDEX.setdefault(route_id, set()).add(key)
+        _ROUTE_ID_INDEX[route_id] = key
 
 
 def _extract_route_id(node_type: str, node: dict[str, Any]) -> str:
