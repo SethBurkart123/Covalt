@@ -119,6 +119,104 @@ describe('plugin-registry', () => {
     expect(dispatchHook('onNodeCreate', { nodeType: 'other-node', initialData: {} })).toEqual([]);
   });
 
+  it('fires node-scoped onConnectionValidate hooks for both source and target node type matches', () => {
+    registerPlugin(
+      makeManifest({
+        nodes: [
+          {
+            type: 'test-node',
+            definitionPath: 'nodes/test/definition.ts',
+            executorPath: 'nodes/test/executor.py',
+            hooks: {
+              onConnectionValidate: () => false,
+            },
+          },
+        ],
+        definitions: [makeDefinition({ id: 'test-node' })],
+      })
+    );
+
+    expect(
+      dispatchHook('onConnectionValidate', {
+        sourceNodeType: 'test-node',
+        targetNodeType: 'other-node',
+      })
+    ).toEqual([false]);
+
+    expect(
+      dispatchHook('onConnectionValidate', {
+        sourceNodeType: 'other-node',
+        targetNodeType: 'test-node',
+      })
+    ).toEqual([false]);
+
+    expect(
+      dispatchHook('onConnectionValidate', {
+        sourceNodeType: 'other-node',
+        targetNodeType: 'another-node',
+      })
+    ).toEqual([]);
+  });
+
+  it('rolls back partial node and hook registration when plugin registration fails', () => {
+    registerPlugin(
+      makeManifest({
+        id: 'plugin.existing',
+        nodes: [
+          {
+            type: 'conflict-node',
+            definitionPath: 'nodes/existing/definition.ts',
+            executorPath: 'nodes/existing/executor.py',
+          },
+        ],
+        definitions: [makeDefinition({ id: 'conflict-node', name: 'Conflict Node' })],
+      })
+    );
+
+    expect(() =>
+      registerPlugin({
+        id: 'plugin.atomic',
+        name: 'Atomic Plugin',
+        version: '1.0.0',
+        nodes: [
+          {
+            type: 'atomic-one',
+            definitionPath: 'nodes/atomic/one/definition.ts',
+            executorPath: 'nodes/atomic/one/executor.py',
+            hooks: {
+              onNodeCreate: () => ({ rolledBack: false }),
+            },
+          },
+          {
+            type: 'atomic-two',
+            definitionPath: 'nodes/atomic/two/definition.ts',
+            executorPath: 'nodes/atomic/two/executor.py',
+            hooks: {
+              onConnectionValidate: () => false,
+            },
+          },
+          {
+            type: 'conflict-node',
+            definitionPath: 'nodes/atomic/conflict/definition.ts',
+            executorPath: 'nodes/atomic/conflict/executor.py',
+          },
+        ],
+        definitions: [
+          makeDefinition({ id: 'atomic-one', name: 'Atomic One' }),
+          makeDefinition({ id: 'atomic-two', name: 'Atomic Two' }),
+          makeDefinition({ id: 'conflict-node', name: 'Atomic Conflict' }),
+        ],
+      })
+    ).toThrow("Node type 'conflict-node' is already registered by plugin 'plugin.existing'");
+
+    expect(getNodeDefinition('atomic-one')).toBeUndefined();
+    expect(getNodeDefinition('atomic-two')).toBeUndefined();
+    expect(unregisterPlugin('plugin.atomic')).toBe(false);
+
+    expect(dispatchHook('onNodeCreate', { nodeType: 'atomic-one', initialData: {} })).toEqual([]);
+    expect(dispatchHook('onConnectionValidate', { sourceNodeType: 'atomic-two' })).toEqual([]);
+  });
+
   it('unregisters plugin definitions and hooks', () => {
     const manifest = makeManifest({
       hooks: {
