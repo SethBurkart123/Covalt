@@ -39,7 +39,8 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Known Quirks
 - Legacy custom Bun e2e path (`tests/e2e/toolset-suite.ts`) is noisy/failing and should not be used as required mission gate after Playwright migration.
-- Playwright approval-flow runs may emit intermittent backend log noise like `Function e2e_requires_approval not found` even when UI assertions and Playwright status are passing; treat Playwright result + explicit post-approval UI evidence as source of truth.
+- After the e2e tool-resolution alignment fix (commit `40cafe75759183a10a5d732320dbfee6fa55cb21`), approval-flow Playwright runs should no longer emit backend `Function e2e_requires_approval not found` / `Function e2e_echo not found` noise during successful flows; treat any recurrence as a regression signal.
+- In shared multi-worker sessions, local `bun run ci:playwright`/`bun run ci:full` can fail fast with `http://localhost:3100/ is already used` when ports `3100`/`3101` are occupied. Ensure mission ports are free before rerun-based repeatability checks.
 
 ## Flow Validator Guidance: CLI Contract Validation
 - Surface: repository-level command and artifact validation for milestone assertions.

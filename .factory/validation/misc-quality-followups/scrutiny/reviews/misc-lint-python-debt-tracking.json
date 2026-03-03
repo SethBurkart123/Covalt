@@ -1,0 +1,15 @@
+{
+  "featureId": "misc-lint-python-debt-tracking",
+  "reviewedAt": "2026-03-03T16:37:51Z",
+  "commitId": "3563681b57c892c9355a1a906a8270ec1374b9f4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation meets the feature intent: it adds an advisory Ruff debt inventory path that records top categories/files and a triage decision while preserving required merge-gate contexts. The commit introduces scripts/ruff_debt_report.py to aggregate Ruff JSON output into a deterministic artifact, wires package/services commands for local/CI parity, and updates lint-python workflow behavior to publish debt visibility without failing required lint/vitest/pytest/playwright gate semantics.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Pass: transcript skeleton and commit diff align with the feature requirements; lint-python debt is now tracked as an actionable advisory artifact with no required-gate regression identified."
+}

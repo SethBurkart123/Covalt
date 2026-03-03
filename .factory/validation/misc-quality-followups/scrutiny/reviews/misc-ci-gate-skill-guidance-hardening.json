@@ -1,0 +1,15 @@
+{
+  "featureId": "misc-ci-gate-skill-guidance-hardening",
+  "reviewedAt": "2026-03-03T16:35:47Z",
+  "commitId": "83c31fd77e7909b13ede052492a59b50599259c7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation satisfies the feature intent. The commit updates ci-gate-worker guidance to explicitly require same-SHA remote check-run evidence with immutable run IDs/URLs and required-context cross-validation mapping fields before final confidence evidence is marked complete. The change is procedural guidance only and does not alter runtime CI wiring.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Pass: feature requirements are met, transcript skeleton and diff align with the requested guidance hardening, and no blocking quality issues were identified."
+}
