@@ -13,7 +13,7 @@ env:
   NEXT_TELEMETRY_DISABLED: 1
 
 jobs:
-  lint-frontend:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,7 +28,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Lint frontend
-        run: bun run lint
+        run: bun run ci:lint
 
   lint-python:
     runs-on: ubuntu-latest
