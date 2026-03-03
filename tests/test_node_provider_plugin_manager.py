@@ -99,23 +99,40 @@ def test_node_provider_plugin_manager_lifecycle(monkeypatch, tmp_path: Path) -> 
     plugin_id = manager.import_from_directory(source_dir)
     assert plugin_id == 'sample_provider'
 
+    plugin_dir = tmp_path / 'installed' / 'sample_provider'
+    assert plugin_dir.exists()
+
     plugins = manager.list_plugins()
     assert len(plugins) == 1
     assert plugins[0].id == 'sample_provider'
     assert plugins[0].enabled is True
 
-    plugin_registry.register_plugin('sample_provider')
+    plugin_registry.register_plugin(
+        'sample_provider',
+        executors={'sample_provider:echo': object()},
+        metadata={'source': 'provider'},
+    )
+    assert plugin_registry.get_executor('sample_provider:echo') is not None
+
     assert manager.enable_plugin('sample_provider', False) is True
     assert plugin_registry.get_plugin_metadata('sample_provider') is None
+    assert plugin_registry.get_executor('sample_provider:echo') is None
     assert [m.id for m in manager.get_enabled_manifests()] == []
 
     assert manager.enable_plugin('sample_provider', True) is True
     assert [m.id for m in manager.get_enabled_manifests()] == ['sample_provider']
 
-    plugin_registry.register_plugin('sample_provider')
+    plugin_registry.register_plugin(
+        'sample_provider',
+        executors={'sample_provider:echo': object()},
+        metadata={'source': 'provider'},
+    )
     assert manager.uninstall('sample_provider') is True
     assert manager.list_plugins() == []
     assert plugin_registry.get_plugin_metadata('sample_provider') is None
+    assert plugin_registry.get_executor('sample_provider:echo') is None
+    assert 'sample_provider' not in plugin_registry.list_registered_plugins()
+    assert not plugin_dir.exists()
 
 
 def test_install_from_repo_success_with_https_github_and_plugin_path(
