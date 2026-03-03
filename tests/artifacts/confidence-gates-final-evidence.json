@@ -1,131 +1,139 @@
 {
   "artifact": "confidence-gates-final-required-check-evidence",
-  "generatedAt": "2026-03-03T11:18:43.960628+00:00",
+  "generatedAt": "2026-03-03T12:16:30.662986+00:00",
   "repository": "SethBurkart123/Covalt",
   "defaultBranch": "main",
-  "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
+  "revision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
   "validationContractAssertions": [
     "VAL-GATE-004",
     "VAL-GATE-005",
     "VAL-GATE-006",
     "VAL-CROSS-004"
   ],
-  "fullStackRuns": [
-    {
-      "runIndex": 1,
-      "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
-      "layers": {
-        "lint": {
-          "warningCount": 16,
-          "errorMentions": 0,
-          "exitCode": 0,
-          "durationSeconds": 1.542,
-          "summary": "603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ next lint"
-        },
-        "vitest": {
-          "testFilesPassed": 11,
-          "testsPassed": 196,
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 0.647,
-          "summary": " \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  22:17:49\n   Duration  316ms (transform 708ms, setup 0ms, import 884ms, tests 37ms, environment 1ms)\n\n$ vitest --run"
-        },
-        "pytest": {
-          "passed": 341,
-          "skipped": 43,
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 3.909,
-          "summary": "........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.92s"
-        },
-        "playwright": {
-          "passed": 5,
-          "reportedDuration": "20.5s",
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 21.318,
-          "summary": "[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:65439 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:65460 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
-        }
+  "localFullStackRun": {
+    "revision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "layers": {
+      "lint": {
+        "warningCount": 16,
+        "errorMentions": 0,
+        "exitCode": 0,
+        "summary": "./app/components/ui/sidebar.tsx\n545:1  Warning: File has too many lines (638). Maximum allowed is 500.  max-lines\n./app/lib/flow/context.tsx\n603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ bun run lint\n$ next lint"
       },
-      "allPassed": true
+      "vitest": {
+        "testFilesPassed": 11,
+        "testsPassed": 196,
+        "nonVacuous": true,
+        "exitCode": 0,
+        "summary": " \u2713 app/lib/services/stream-processor.test.ts (7 tests) 4ms\n \u2713 app/lib/flow/__tests__/node-contracts.test.ts (72 tests) 6ms\n \u2713 app/lib/flow/__tests__/registry.test.ts (32 tests) 4ms\n \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  23:16:02\n   Duration  400ms (transform 589ms, setup 0ms, import 775ms, tests 35ms, environment 1ms)\n$ bun run test --run\n$ vitest --run"
+      },
+      "pytest": {
+        "passed": 341,
+        "skipped": 43,
+        "failed": 0,
+        "nonVacuous": true,
+        "exitCode": 0,
+        "durationReported": "2.53s",
+        "summary": "........................................................................ [ 56%]\n........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.53s\n$ uv run pytest -q"
+      },
+      "playwright": {
+        "passed": 5,
+        "reportedDuration": "21.9s",
+        "nonVacuous": true,
+        "exitCode": 0,
+        "summary": "[WebServer] INFO:     127.0.0.1:58553 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58587 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58626 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58658 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
+      }
     },
-    {
-      "runIndex": 2,
-      "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
-      "layers": {
-        "lint": {
-          "warningCount": 16,
-          "errorMentions": 0,
-          "exitCode": 0,
-          "durationSeconds": 1.356,
-          "summary": "603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ next lint"
-        },
-        "vitest": {
-          "testFilesPassed": 11,
-          "testsPassed": 196,
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 0.652,
-          "summary": " \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  22:18:16\n   Duration  328ms (transform 686ms, setup 0ms, import 878ms, tests 37ms, environment 1ms)\n\n$ vitest --run"
-        },
-        "pytest": {
-          "passed": 341,
-          "skipped": 43,
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 3.71,
-          "summary": "........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.75s"
-        },
-        "playwright": {
-          "passed": 5,
-          "reportedDuration": "21.0s",
-          "nonVacuous": true,
-          "exitCode": 0,
-          "durationSeconds": 21.793,
-          "summary": "[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:49417 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:49430 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
-        }
+    "allPassed": true
+  },
+  "remoteRevisionResolution": {
+    "command": "gh api repos/SethBurkart123/Covalt/commits/aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "exitCode": 0,
+    "sha": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "htmlUrl": "https://github.com/SethBurkart123/Covalt/commit/aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "authorDate": "2026-03-03T11:36:27Z",
+    "message": "feat(validation): synthesize confidence-gates scrutiny"
+  },
+  "remoteRequiredCheckRuns": {
+    "command": "gh api repos/SethBurkart123/Covalt/commits/aa5b826ae81f8713c54c9371074ff48702ac275e/check-runs --jq '.check_runs[] | {id,name,html_url,conclusion}'",
+    "requiredCheckNames": [
+      "lint",
+      "vitest",
+      "pytest",
+      "playwright"
+    ],
+    "requiredChecks": [
+      {
+        "name": "lint",
+        "id": 65550407855,
+        "status": "completed",
+        "conclusion": "success",
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65550407855",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65550407855",
+        "checkSuiteId": 59177298650,
+        "startedAt": "2026-03-03T12:12:04Z",
+        "completedAt": "2026-03-03T12:12:22Z"
       },
-      "allPassed": true
+      {
+        "name": "vitest",
+        "id": 65550408106,
+        "status": "completed",
+        "conclusion": "success",
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408106",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408106",
+        "checkSuiteId": 59177298609,
+        "startedAt": "2026-03-03T12:12:04Z",
+        "completedAt": "2026-03-03T12:12:20Z"
+      },
+      {
+        "name": "pytest",
+        "id": 65550408145,
+        "status": "completed",
+        "conclusion": "success",
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408145",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408145",
+        "checkSuiteId": 59177298609,
+        "startedAt": "2026-03-03T12:12:04Z",
+        "completedAt": "2026-03-03T12:12:38Z"
+      },
+      {
+        "name": "playwright",
+        "id": 65550408100,
+        "status": "completed",
+        "conclusion": "failure",
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408100",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408100",
+        "checkSuiteId": 59177298609,
+        "startedAt": "2026-03-03T12:12:04Z",
+        "completedAt": "2026-03-03T12:13:56Z"
+      }
+    ],
+    "missingRequiredChecks": [],
+    "allRequiredPresent": true,
+    "allRequiredCompleted": true,
+    "allRequiredSuccessful": false
+  },
+  "sameRevisionBindingProof": {
+    "localRunRevision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "remoteCheckRunsRevision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "sameRevision": true,
+    "immutableProofPointers": {
+      "lint": {
+        "id": 65550407855,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65550407855"
+      },
+      "vitest": {
+        "id": 65550408106,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408106"
+      },
+      "pytest": {
+        "id": 65550408145,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408145"
+      },
+      "playwright": {
+        "id": 65550408100,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65550408100"
+      }
     }
-  ],
-  "stability": {
-    "runSignature1": {
-      "lintExit": 0,
-      "vitest": {
-        "exit": 0,
-        "testFilesPassed": 11,
-        "testsPassed": 196
-      },
-      "pytest": {
-        "exit": 0,
-        "passed": 341,
-        "skipped": 43
-      },
-      "playwright": {
-        "exit": 0,
-        "passed": 5
-      }
-    },
-    "runSignature2": {
-      "lintExit": 0,
-      "vitest": {
-        "exit": 0,
-        "testFilesPassed": 11,
-        "testsPassed": 196
-      },
-      "pytest": {
-        "exit": 0,
-        "passed": 341,
-        "skipped": 43
-      },
-      "playwright": {
-        "exit": 0,
-        "passed": 5
-      }
-    },
-    "outcomesStableAcrossRuns": true,
-    "allRunsGreen": true,
-    "allRunsNonVacuous": true
   },
   "legacyRequiredPathCheck": {
     "command": "rg -n 'tests/e2e/toolset-suite.ts|bun tests/e2e/toolset-suite.ts' package.json .github/workflows .factory/services.yaml",
@@ -214,8 +222,31 @@
   },
   "branchProtectionAssessment": {
     "requiredChecksConfigured": true,
+    "sameShaRemoteProofPresent": true,
     "status": "configured",
     "blocker": "",
     "nextSteps": []
+  },
+  "failClosedSemantics": {
+    "requiredChecksAreDistinct": true,
+    "requiredCheckOutcomesOnRevision": {
+      "lint": {
+        "status": "completed",
+        "conclusion": "success"
+      },
+      "vitest": {
+        "status": "completed",
+        "conclusion": "success"
+      },
+      "pytest": {
+        "status": "completed",
+        "conclusion": "success"
+      },
+      "playwright": {
+        "status": "completed",
+        "conclusion": "failure"
+      }
+    },
+    "anyRequiredFailure": true
   }
 }
