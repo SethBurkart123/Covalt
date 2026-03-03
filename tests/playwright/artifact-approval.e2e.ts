@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 const BACKEND_URL = 'http://127.0.0.1:3100';
 const REQUIRED_TOOL_IDS = ['e2e_echo', 'e2e_requires_approval'];
@@ -132,6 +132,22 @@ function createIsolatedChatId(): string {
   return `pw-${randomUUID().slice(0, 8)}`;
 }
 
+function getLatestAssistantMessage(page: Page): Locator {
+  return page.locator('[class*="assistant-message"]').last();
+}
+
+function getLatestUserMessage(page: Page): Locator {
+  return page.locator('div.rounded-3xl.bg-muted.text-muted-foreground').last();
+}
+
+function getToolCardByName(page: Page, toolName: string): Locator {
+  return getLatestAssistantMessage(page).locator('[data-toolcall]').filter({ hasText: toolName }).first();
+}
+
+function getArtifactPane(page: Page): Locator {
+  return page.locator('div[class*="bg-card/80"][class*="border-l"][class*="rounded-l-xl"]').first();
+}
+
 test.describe('playwright core artifact and approval flows', () => {
   test('validates artifact rendering flow with UI assertions', async ({ page, request }, testInfo) => {
     const chatId = createIsolatedChatId();
@@ -149,15 +165,15 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_echo',
       });
 
-      const artifactCard = page
-        .locator('[data-toolcall]')
-        .filter({ hasText: 'e2e_echo' })
-        .first();
+      const artifactCard = getToolCardByName(page, 'e2e_echo');
 
       await expect(artifactCard).toBeVisible({ timeout: 20_000 });
       await expect(artifactCard).toContainText('e2e_echo');
       await artifactCard.click();
-      await expect(page.getByText('E2E echo')).toBeVisible({ timeout: 10_000 });
+
+      const artifactPane = getArtifactPane(page);
+      await expect(artifactPane).toBeVisible({ timeout: 10_000 });
+      await expect(artifactPane).toContainText('E2E echo');
       await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
     } finally {
       await restore();
@@ -180,10 +196,7 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_requires_approval',
       });
 
-      const approvalCard = page
-        .locator('[data-toolcall]')
-        .filter({ hasText: 'e2e_requires_approval' })
-        .first();
+      const approvalCard = getToolCardByName(page, 'e2e_requires_approval');
 
       await expect(approvalCard).toBeVisible({ timeout: 20_000 });
       await expect(approvalCard.getByRole('button', { name: 'Approve' })).toBeVisible();
@@ -198,7 +211,10 @@ test.describe('playwright core artifact and approval flows', () => {
       await expect(approvalCard.getByText('Denied')).toHaveCount(0);
       await expect(approvalCard).toContainText('e2e_requires_approval');
       await approvalCard.click();
-      await expect(page.getByText('E2E approval')).toBeVisible({ timeout: 10_000 });
+
+      const artifactPane = getArtifactPane(page);
+      await expect(artifactPane).toBeVisible({ timeout: 10_000 });
+      await expect(artifactPane).toContainText('E2E approval');
       await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
     } finally {
       await restore();
@@ -221,10 +237,7 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_requires_approval',
       });
 
-      const approvalCard = page
-        .locator('[data-toolcall]')
-        .filter({ hasText: 'e2e_requires_approval' })
-        .first();
+      const approvalCard = getToolCardByName(page, 'e2e_requires_approval');
 
       await expect(approvalCard).toBeVisible({ timeout: 20_000 });
       await expect(approvalCard.getByRole('button', { name: 'Approve' })).toBeVisible();
@@ -258,10 +271,7 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_echo',
       });
 
-      const artifactCard = page
-        .locator('[data-toolcall]')
-        .filter({ hasText: 'e2e_echo' })
-        .first();
+      const artifactCard = getToolCardByName(page, 'e2e_echo');
 
       await expect(artifactCard).toBeVisible({ timeout: 20_000 });
       await page.waitForURL(/chatId=/, { timeout: 20_000 });
@@ -269,11 +279,16 @@ test.describe('playwright core artifact and approval flows', () => {
       const originalChatId = getChatIdFromPageUrl(page);
       expect(originalChatId).not.toBe('');
 
+      const userPrompt = getLatestUserMessage(page);
+      await expect(userPrompt).toContainText('Persist this output across a reload.');
+
       await page.reload();
       await expect(page.locator('form.chat-input-form')).toBeVisible();
-      await expect(artifactCard).toBeVisible({ timeout: 20_000 });
-      await expect(artifactCard).toContainText('e2e_echo');
-      await expect(page.getByText('Persist this output across a reload.')).toBeVisible();
+
+      const reloadedArtifactCard = getToolCardByName(page, 'e2e_echo');
+      await expect(reloadedArtifactCard).toBeVisible({ timeout: 20_000 });
+      await expect(reloadedArtifactCard).toContainText('e2e_echo');
+      await expect(getLatestUserMessage(page)).toContainText('Persist this output across a reload.');
       expect(getChatIdFromPageUrl(page)).toBe(originalChatId);
     } finally {
       await restore();
