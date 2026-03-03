@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from backend.services.plugin_registry import PluginRegistry
 from nodes import get_executor
-from nodes._types import HookType, NodeEvent
+from nodes._types import DataValue, FlowContext, HookType, NodeEvent
 from nodes.plugin import BUILTIN_EXECUTOR_MODULES, BUILTIN_EXECUTORS, register_builtin_plugin
 
 EXPECTED_BUILTIN_NODE_TYPES = {
@@ -141,3 +145,97 @@ def test_builtin_manifest_definition_executor_coherence() -> None:
 
         assert (_repo_root() / definition_path).exists()
         assert (_repo_root() / executor_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_conditional_merge_and_reroute_executors_are_available_via_registry() -> None:
+    conditional = get_executor("conditional")
+    merge = get_executor("merge")
+    reroute = get_executor("reroute")
+
+    assert conditional is not None
+    assert merge is not None
+    assert reroute is not None
+
+    condition_result = await conditional.execute(
+        {"field": "status", "operator": "notEquals", "value": "active"},
+        {"input": DataValue(type="data", value={"status": "inactive"})},
+        FlowContext(
+            node_id="conditional-1",
+            chat_id=None,
+            run_id="run-1",
+            state=SimpleNamespace(),
+            runtime=None,
+            services=SimpleNamespace(),
+        ),
+    )
+    assert set(condition_result.outputs.keys()) == {"true"}
+
+    merge_result = await merge.execute(
+        {},
+        {
+            "input_2": DataValue(type="data", value="second"),
+            "input": DataValue(type="data", value="first"),
+        },
+        FlowContext(
+            node_id="merge-1",
+            chat_id=None,
+            run_id="run-1",
+            state=SimpleNamespace(),
+            runtime=None,
+            services=SimpleNamespace(),
+        ),
+    )
+    assert merge_result.outputs["output"].value == ["first", "second"]
+
+    reroute_result = await reroute.execute(
+        {"_socketType": "model", "value": "openai:gpt-4o"},
+        {},
+        FlowContext(
+            node_id="reroute-1",
+            chat_id=None,
+            run_id="run-1",
+            state=SimpleNamespace(),
+            runtime=None,
+            services=SimpleNamespace(),
+        ),
+    )
+    assert reroute_result.outputs["output"].type == "model"
+    assert reroute_result.outputs["output"].value == "openai:gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_reroute_materialize_supports_flow_and_link_channels_with_default_fallback() -> None:
+    reroute = get_executor("reroute")
+    assert reroute is not None
+
+    runtime = MagicMock()
+    runtime.incoming_edges.side_effect = [
+        [],
+        [
+            {"source": "tool-1", "sourceHandle": "output"},
+            {"source": "tool-2", "sourceHandle": "output"},
+        ],
+    ]
+    runtime.materialize_output = AsyncMock(side_effect=[["a"], "b"])
+
+    link_only_context = FlowContext(
+        node_id="reroute-1",
+        chat_id=None,
+        run_id="run-1",
+        state=SimpleNamespace(),
+        runtime=runtime,
+        services=SimpleNamespace(),
+    )
+
+    link_result = await reroute.materialize({"value": "fallback"}, "output", link_only_context)
+    assert link_result == ["a", "b"]
+
+    runtime.incoming_edges.side_effect = [[], []]
+    runtime.materialize_output = AsyncMock(return_value=None)
+    fallback_result = await reroute.materialize(
+        {"_socketType": "json", "value": {"fallback": True}},
+        "output",
+        link_only_context,
+    )
+    assert fallback_result == {"fallback": True}

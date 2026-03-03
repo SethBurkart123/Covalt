@@ -33,6 +33,8 @@ from nodes.ai.llm_completion.executor import LlmCompletionExecutor
 from nodes.core.agent.executor import AgentExecutor
 from nodes.core.chat_start.executor import ChatStartExecutor
 from nodes.flow.conditional.executor import ConditionalExecutor
+from nodes.flow.merge.executor import MergeExecutor
+from nodes.flow.reroute.executor import RerouteExecutor
 from nodes.tools.mcp_server.executor import McpServerExecutor
 from nodes.tools.toolset.executor import ToolsetExecutor
 from nodes.utility.model_selector.executor import ModelSelectorExecutor
@@ -1146,8 +1148,219 @@ class TestConditionalExecutor:
         assert "false" in result.outputs
         assert "true" not in result.outputs
 
+    @pytest.mark.asyncio
+    async def test_not_equals_operator_routes_to_true_when_values_differ(self) -> None:
+        executor = ConditionalExecutor()
+        result = await executor.execute(
+            {"field": "status", "operator": "notEquals", "value": "active"},
+            {"input": _dv("data", {"status": "inactive"})},
+            _flow_ctx(),
+        )
+
+        assert "true" in result.outputs
+        assert "false" not in result.outputs
+
+    @pytest.mark.asyncio
+    async def test_not_contains_operator_routes_to_true_when_substring_absent(self) -> None:
+        executor = ConditionalExecutor()
+        result = await executor.execute(
+            {"field": "message", "operator": "notContains", "value": "error"},
+            {"input": _dv("data", {"message": "all good"})},
+            _flow_ctx(),
+        )
+
+        assert "true" in result.outputs
+        assert "false" not in result.outputs
+
+    @pytest.mark.asyncio
+    async def test_exists_with_missing_field_routes_to_false(self) -> None:
+        executor = ConditionalExecutor()
+        result = await executor.execute(
+            {"field": "missing", "operator": "exists"},
+            {"input": _dv("data", {"present": 1})},
+            _flow_ctx(),
+        )
+
+        assert "false" in result.outputs
+        assert "true" not in result.outputs
+
+    @pytest.mark.asyncio
+    async def test_not_exists_with_missing_field_routes_to_true(self) -> None:
+        executor = ConditionalExecutor()
+        result = await executor.execute(
+            {"field": "missing", "operator": "notExists"},
+            {"input": _dv("data", {"present": 1})},
+            _flow_ctx(),
+        )
+
+        assert "true" in result.outputs
+        assert "false" not in result.outputs
+
     def test_node_type_attribute(self) -> None:
         assert ConditionalExecutor().node_type == "conditional"
+
+
+# ====================================================================
+# Merge executor
+# ====================================================================
+
+
+class TestMergeExecutor:
+    @pytest.mark.asyncio
+    async def test_merge_outputs_values_in_handle_index_order(self) -> None:
+        executor = MergeExecutor()
+
+        result = await executor.execute(
+            {},
+            {
+                "input_3": _dv("data", "third"),
+                "input": _dv("data", "first"),
+                "input_2": _dv("data", "second"),
+            },
+            _flow_ctx(),
+        )
+
+        assert isinstance(result, ExecutionResult)
+        assert result.outputs["output"].value == ["first", "second", "third"]
+
+    @pytest.mark.asyncio
+    async def test_merge_ignores_non_input_handles(self) -> None:
+        executor = MergeExecutor()
+
+        result = await executor.execute(
+            {},
+            {
+                "input": _dv("data", "kept"),
+                "foo": _dv("data", "ignored"),
+                "input_0": _dv("data", "ignored"),
+                "input_bad": _dv("data", "ignored"),
+            },
+            _flow_ctx(),
+        )
+
+        assert result.outputs["output"].value == ["kept"]
+
+    def test_node_type_attribute(self) -> None:
+        assert MergeExecutor().node_type == "merge"
+
+
+# ====================================================================
+# Reroute executor
+# ====================================================================
+
+
+class TestRerouteExecutor:
+    @pytest.mark.asyncio
+    async def test_execute_passes_through_connected_input_value(self) -> None:
+        executor = RerouteExecutor()
+
+        result = await executor.execute(
+            {"value": "fallback"},
+            {"input": _dv("json", {"ok": True})},
+            _flow_ctx(),
+        )
+
+        assert result.outputs["output"].type == "json"
+        assert result.outputs["output"].value == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_default_value_with_propagated_socket_type_when_unconnected(
+        self,
+    ) -> None:
+        executor = RerouteExecutor()
+
+        result = await executor.execute(
+            {"_socketType": "model", "value": "openai:gpt-4o"},
+            {},
+            _flow_ctx(),
+        )
+
+        assert result.outputs["output"].type == "model"
+        assert result.outputs["output"].value == "openai:gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_materialize_prefers_flow_channel_then_flattens_link_artifacts(self) -> None:
+        executor = RerouteExecutor()
+
+        runtime = MagicMock()
+        runtime.incoming_edges.side_effect = [
+            [{"source": "upstream", "sourceHandle": "output"}],
+            [{"source": "tool-a", "sourceHandle": "tools"}],
+        ]
+        runtime.materialize_output = AsyncMock(side_effect=[{"payload": 1}, ["tool-1"]])
+
+        result = await executor.materialize(
+            {"value": "fallback"},
+            "output",
+            _flow_ctx(runtime=runtime),
+        )
+
+        assert result == {"payload": 1}
+
+        flow_calls = [
+            call
+            for call in runtime.incoming_edges.call_args_list
+            if call.kwargs.get("channel") == "flow"
+        ]
+        assert len(flow_calls) == 1
+
+        runtime.incoming_edges.reset_mock()
+        runtime.incoming_edges.side_effect = [[], [{"source": "tool-a", "sourceHandle": "tools"}]]
+        runtime.materialize_output = AsyncMock(return_value=["tool-1"])
+
+        _ = await executor.materialize(
+            {"value": "fallback"},
+            "output",
+            _flow_ctx(runtime=runtime),
+        )
+
+        link_calls = [
+            call
+            for call in runtime.incoming_edges.call_args_list
+            if call.kwargs.get("channel") == "link"
+        ]
+        assert len(link_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_materialize_aggregates_link_channel_and_falls_back_to_default(self) -> None:
+        executor = RerouteExecutor()
+
+        runtime = MagicMock()
+        runtime.incoming_edges.side_effect = [
+            [],
+            [
+                {"source": "tool-a", "sourceHandle": "output"},
+                {"source": "tool-b", "sourceHandle": "output"},
+            ],
+        ]
+        runtime.materialize_output = AsyncMock(side_effect=[["a", "b"], "c"])
+
+        artifacts = await executor.materialize(
+            {"value": "fallback"},
+            "output",
+            _flow_ctx(runtime=runtime),
+        )
+
+        assert artifacts == ["a", "b", "c"]
+
+        runtime.incoming_edges.side_effect = [[], []]
+        runtime.materialize_output = AsyncMock(return_value=None)
+
+        fallback = await executor.materialize(
+            {"value": "fallback"},
+            "output",
+            _flow_ctx(runtime=runtime),
+        )
+
+        assert fallback == "fallback"
+
+    @pytest.mark.asyncio
+    async def test_materialize_rejects_unknown_output_handle(self) -> None:
+        with pytest.raises(ValueError, match="unknown output handle"):
+            await RerouteExecutor().materialize({}, "tools", _flow_ctx())
+
+    def test_node_type_attribute(self) -> None:
+        assert RerouteExecutor().node_type == "reroute"
 
 
 # ====================================================================
