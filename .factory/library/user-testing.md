@@ -39,6 +39,7 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Known Quirks
 - Legacy custom Bun e2e path (`tests/e2e/toolset-suite.ts`) is noisy/failing and should not be used as required mission gate after Playwright migration.
+- Playwright approval-flow runs may emit intermittent backend log noise like `Function e2e_requires_approval not found` even when UI assertions and Playwright status are passing; treat Playwright result + explicit post-approval UI evidence as source of truth.
 
 ## Flow Validator Guidance: CLI Contract Validation
 - Surface: repository-level command and artifact validation for milestone assertions.
