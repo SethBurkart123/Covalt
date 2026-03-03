@@ -22,7 +22,9 @@
     "lint:python:fix": "uv run --group dev ruff check --fix backend/ tests/ main.py",
     "test": "vitest",
     "test:run": "vitest run && uv run pytest && bun run test:e2e",
-    "test:e2e": "bun tests/e2e/toolset-suite.ts"
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list",
+    "playwright:install": "playwright install chromium"
   },
   "dependencies": {
     "@ai-sdk/groq": "^1.2.8",
@@ -97,6 +99,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@playwright/test": "^1.55.0",
     "concurrently": "^9.1.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
