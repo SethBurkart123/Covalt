@@ -21,7 +21,8 @@ from agno.team import Team
 from zynk import Channel
 
 from nodes import get_executor
-from nodes._types import DataValue, ExecutionResult, NodeEvent, RuntimeConfigContext
+from nodes._types import DataValue, ExecutionResult, HookType, NodeEvent, RuntimeConfigContext
+from nodes.node_type_ids import AGENT_NODE_TYPE, CHAT_START_NODE_TYPE
 
 from .. import db
 from ..db.models import ToolCall as DbToolCall
@@ -37,6 +38,7 @@ from .execution_trace import ExecutionTraceRecorder
 from .flow_executor import run_flow
 from .mcp_manager import ensure_mcp_initialized
 from .model_selection import parse_model_id
+from .plugin_registry import dispatch_hook
 from .render_plan_builder import get_render_plan_builder
 from .runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
@@ -177,13 +179,54 @@ def _chat_entry_node_ids(
     nodes_by_id: dict[str, dict[str, Any]],
     upstream_by_node: dict[str, list[str]],
 ) -> list[str]:
-    chat_start_ids = sorted(
-        node_id
-        for node_id, node in nodes_by_id.items()
-        if node.get("type") == "chat-start"
+    hook_results = dispatch_hook(
+        HookType.ON_ENTRY_RESOLVE,
+        {
+            "mode": "chat",
+            "nodes_by_id": nodes_by_id,
+            "upstream_by_node": upstream_by_node,
+        },
     )
-    if chat_start_ids:
-        return chat_start_ids
+
+    candidate_ids: set[str] = set()
+    candidate_types: set[str] = set()
+
+    def _collect_candidate(raw: Any) -> None:
+        if isinstance(raw, str) and raw.strip():
+            value = raw.strip()
+            if value in nodes_by_id:
+                candidate_ids.add(value)
+                return
+            candidate_types.add(value)
+            return
+        if isinstance(raw, dict):
+            node_id = raw.get("node_id")
+            if isinstance(node_id, str) and node_id.strip() and node_id.strip() in nodes_by_id:
+                candidate_ids.add(node_id.strip())
+            node_type = raw.get("node_type")
+            if isinstance(node_type, str) and node_type.strip():
+                candidate_types.add(node_type.strip())
+
+    for result in hook_results:
+        if isinstance(result, list):
+            for item in result:
+                _collect_candidate(item)
+            continue
+        _collect_candidate(result)
+
+    preferred_ids = sorted(candidate_ids)
+    if candidate_types:
+        preferred_ids.extend(
+            sorted(
+                node_id
+                for node_id, node in nodes_by_id.items()
+                if str(node.get("type") or "") in candidate_types
+                and node_id not in candidate_ids
+            )
+        )
+
+    if preferred_ids:
+        return preferred_ids
 
     root_ids = sorted(
         node_id for node_id in nodes_by_id if not upstream_by_node.get(node_id)
@@ -415,22 +458,22 @@ def _build_canonical_chat_graph(
     return {
         "nodes": [
             {
-                "id": "chat-start-1",
-                "type": "chat-start",
+                "id": "entry-1",
+                "type": CHAT_START_NODE_TYPE,
                 "position": {"x": 120.0, "y": 160.0},
                 "data": {"includeUserTools": True},
             },
             {
                 "id": "agent-1",
-                "type": "agent",
+                "type": AGENT_NODE_TYPE,
                 "position": {"x": 420.0, "y": 160.0},
                 "data": agent_data,
             },
         ],
         "edges": [
             {
-                "id": "e-chat-start-1-agent-1",
-                "source": "chat-start-1",
+                "id": "e-entry-1-agent-1",
+                "source": "entry-1",
                 "sourceHandle": "output",
                 "target": "agent-1",
                 "targetHandle": "input",
