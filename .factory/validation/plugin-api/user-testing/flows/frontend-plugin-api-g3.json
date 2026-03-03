@@ -1,0 +1,143 @@
+{
+  "groupId": "frontend-plugin-api-g3",
+  "surface": "web-ui",
+  "assignedAssertions": [
+    "VAL-API-001",
+    "VAL-API-003",
+    "VAL-API-004",
+    "VAL-API-005",
+    "VAL-API-009",
+    "VAL-API-012"
+  ],
+  "results": [
+    {
+      "id": "VAL-API-001",
+      "status": "pass",
+      "reason": "Frontend manifest validation behavior verified by focused unit test: plugin-registry rejects incomplete manifests with explicit missing-field errors for id/name/version/nodes.",
+      "evidence": [
+        "vitest: bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts -> 3 files passed, 15 tests passed",
+        "assertion line refs: app/lib/flow/__tests__/plugin-registry.test.ts:248-256"
+      ]
+    },
+    {
+      "id": "VAL-API-003",
+      "status": "pass",
+      "reason": "Frontend plugin registry definition loading verified by unit tests covering registerPlugin/getNodeDefinition/listAllNodeDefinitions and metadata attachment.",
+      "evidence": [
+        "vitest: bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts -> passed",
+        "assertion line refs: app/lib/flow/__tests__/plugin-registry.test.ts:54-67"
+      ]
+    },
+    {
+      "id": "VAL-API-004",
+      "status": "blocked",
+      "reason": "Unit tests for onNodeCreate pass, but required UI-level assertion screenshot of node-creation hook behavior could not be executed because frontend points to API/WebSocket at 127.0.0.1:8000 (connection refused), preventing creation/loading of an agent flow canvas in UI.",
+      "evidence": [
+        "vitest: bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts -> passed",
+        "assertion line refs: app/lib/flow/__tests__/hook-dispatch.test.ts:11-27",
+        "ui screenshot: .factory/validation/plugin-api/user-testing/flows/evidence/frontend-plugin-api-g3/ui-create-agent-modal-stuck.png",
+        "console: createAgent and websocket calls fail with ERR_CONNECTION_REFUSED to 127.0.0.1:8000"
+      ]
+    },
+    {
+      "id": "VAL-API-005",
+      "status": "pass",
+      "reason": "onConnectionValidate lifecycle dispatch behavior verified by focused frontend unit tests for both global and node-scoped hook dispatch paths.",
+      "evidence": [
+        "vitest: bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts -> passed",
+        "assertion line refs: app/lib/flow/__tests__/plugin-registry.test.ts:122-157; app/lib/flow/__tests__/plugin-hooks.test.ts:30-39"
+      ]
+    },
+    {
+      "id": "VAL-API-009",
+      "status": "pass",
+      "reason": "onSocketTypePropagate dispatch and propagation behavior verified by focused frontend unit tests (including failure isolation path and propagation resolution helper).",
+      "evidence": [
+        "vitest: bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts -> passed",
+        "assertion line refs: app/lib/flow/__tests__/hook-dispatch.test.ts:30-51; app/lib/flow/__tests__/plugin-hooks.test.ts:44-54"
+      ]
+    },
+    {
+      "id": "VAL-API-012",
+      "status": "pass",
+      "reason": "Hardcoded frontend node-type literal scan returned zero matches in core flow files per contract grep; additional focused frontend tests for metadata-driven rendering passed.",
+      "evidence": [
+        "scan command exit: rg ... --glob \"!*test*\" -> RG_EXIT:1 (no matches)",
+        "scan artifact: .factory/validation/plugin-api/user-testing/flows/evidence/frontend-plugin-api-g3/val-api-012-rg.txt (empty)",
+        "vitest: bunx vitest run app/components/flow/__tests__/node-types.test.ts app/components/flow/__tests__/properties-panel-route-metadata.test.ts -> 2 files passed, 3 tests passed",
+        "vitest: bunx vitest run app/components/flow/__tests__/node-rendering.test.ts -> 1 file passed, 2 tests passed"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "agent-browser --session frontend-plugin-api-g3 open http://localhost:3000",
+      "exitCode": 0,
+      "observation": "Frontend loaded at localhost:3000."
+    },
+    {
+      "command": "agent-browser --session frontend-plugin-api-g3 open http://localhost:3000/agents",
+      "exitCode": 0,
+      "observation": "Agents page reachable; New Agent button visible."
+    },
+    {
+      "command": "agent-browser --session frontend-plugin-api-g3 click @e8; fill name/description; click create",
+      "exitCode": 0,
+      "observation": "Create modal remained open due to API failures; unable to navigate to /agents/edit?id=... for node-creation UI check."
+    },
+    {
+      "command": "agent-browser --session frontend-plugin-api-g3 console",
+      "exitCode": 0,
+      "observation": "Multiple ERR_CONNECTION_REFUSED errors to 127.0.0.1:8000 for fetch and websocket; createAgent failed."
+    },
+    {
+      "command": "curl -sS -o /dev/null -w \"8000:%{http_code}\\n\" http://127.0.0.1:8000/health; curl -sS -o /dev/null -w \"8899:%{http_code}\\n\" http://127.0.0.1:8899/health",
+      "exitCode": 0,
+      "observation": "Port 8000 unavailable (connection failed), port 8899 healthy (HTTP 200)."
+    },
+    {
+      "command": "bunx vitest run app/lib/flow/__tests__/plugin-registry.test.ts app/lib/flow/__tests__/hook-dispatch.test.ts app/lib/flow/__tests__/plugin-hooks.test.ts",
+      "exitCode": 0,
+      "observation": "3 files passed, 15 tests passed."
+    },
+    {
+      "command": "bunx vitest run app/components/flow/__tests__/node-types.test.ts app/components/flow/__tests__/properties-panel-route-metadata.test.ts",
+      "exitCode": 0,
+      "observation": "2 files passed, 3 tests passed."
+    },
+    {
+      "command": "bunx vitest run app/components/flow/__tests__/node-rendering.test.ts",
+      "exitCode": 0,
+      "observation": "1 file passed, 2 tests passed."
+    },
+    {
+      "command": "rg -w \"chat-start|webhook-trigger|webhook-end|reroute\" app/lib/flow/ app/components/flow/ --glob \"!*test*\"",
+      "exitCode": 1,
+      "observation": "No matches found (expected for VAL-API-012)."
+    }
+  ],
+  "interactiveChecks": [
+    {
+      "action": "Open web UI and verify primary navigation",
+      "observed": "UI loaded with Agents/Toolsets/Settings navigation and New Agent CTA at /agents."
+    },
+    {
+      "action": "Create namespaced agent resource (utv_pluginapi_g3-agent-flow) to reach flow canvas and perform node-create hook check",
+      "observed": "Create action failed due to backend endpoint configured at 127.0.0.1:8000 being unreachable; modal stayed open and flow canvas remained inaccessible."
+    }
+  ],
+  "frictions": [
+    "agent-browser transient 'Resource temporarily unavailable (os error 35)' occurred once during fill/wait; resolved by closing and reopening the same session.",
+    "Validation task specifies login credentials, but current web-ui surface did not present an authentication screen to apply them."
+  ],
+  "blockers": [
+    "Required UI-level onNodeCreate evidence for VAL-API-004 blocked: frontend API/WebSocket target at 127.0.0.1:8000 refused connections, preventing agent creation and access to flow editor node-creation path."
+  ],
+  "toolsUsed": [
+    "agent-browser",
+    "vitest",
+    "rg"
+  ],
+  "namespaceUsed": "utv_pluginapi_g3",
+  "testedAt": "2026-03-03T08:21:07Z"
+}
