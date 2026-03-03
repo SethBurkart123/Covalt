@@ -13,6 +13,7 @@ from nodes.node_type_ids import AGENT_NODE_TYPE, CHAT_START_NODE_TYPE
 from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import Agent
+from .flow_migration import migrate_graph_data, requires_graph_migration
 from .graph_normalizer import normalize_graph_data
 from .node_route_index import remove_agent_routes, update_agent_routes
 
@@ -107,9 +108,13 @@ class AgentManager:
                 return None
 
             raw_graph = json.loads(agent.graph_data)
-            graph = normalize_graph_data(
-                raw_graph.get("nodes", []), raw_graph.get("edges", [])
-            )
+            if requires_graph_migration(raw_graph):
+                graph = migrate_graph_data(raw_graph)
+            else:
+                graph = normalize_graph_data(
+                    raw_graph.get("nodes", []),
+                    raw_graph.get("edges", []),
+                )
             return {
                 "id": agent.id,
                 "name": agent.name,

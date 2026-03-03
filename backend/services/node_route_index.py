@@ -9,6 +9,7 @@ from nodes._types import HookType
 
 from .. import db
 from ..db.models import Agent
+from .flow_migration import migrate_graph_data, requires_graph_migration
 from .graph_normalizer import normalize_graph_data
 from .plugin_registry import dispatch_hook
 
@@ -38,7 +39,13 @@ def rebuild_node_route_index() -> None:
                 graph = json.loads(agent.graph_data)
             except Exception:
                 continue
-            normalized = normalize_graph_data(graph.get("nodes", []), graph.get("edges", []))
+            if requires_graph_migration(graph):
+                normalized = migrate_graph_data(graph)
+            else:
+                normalized = normalize_graph_data(
+                    graph.get("nodes", []),
+                    graph.get("edges", []),
+                )
             _index_agent_graph(agent.id, normalized)
 
 

@@ -753,7 +753,7 @@ class TestFlowEvents:
 
 
 class TestFlowErrors:
-    """Error modes: stop, continue-on-fail, missing executor."""
+    """Error modes: stop, continue-on-fail, missing executor, and legacy node aliases."""
 
     @pytest.mark.asyncio
     async def test_node_raises_flow_stops(self, flow_ctx):
@@ -842,6 +842,30 @@ class TestFlowErrors:
             and e.event_type == "started"
         ]
         assert mystery_started == [], "Node with no executor should not start"
+
+    @pytest.mark.asyncio
+    async def test_legacy_node_type_alias_executes_using_current_executor(self, flow_ctx):
+        graph = make_graph(
+            nodes=[
+                make_node("cs", "chat_start"),
+                make_node("pipe", "passthrough"),
+            ],
+            edges=[make_edge("cs", "pipe", "output", "input")],
+        )
+        flow_ctx.state.user_message = "legacy alias works"
+
+        events: list = []
+        async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
+            events.append(event)
+
+        cs_started = [
+            e
+            for e in events
+            if isinstance(e, NodeEvent)
+            and e.node_id == "cs"
+            and e.event_type == "started"
+        ]
+        assert cs_started, "legacy alias should resolve to chat-start executor"
 
 
 # ═══════════════════════════════════════════════════════════════════════
