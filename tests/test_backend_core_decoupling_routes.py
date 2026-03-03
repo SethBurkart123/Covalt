@@ -82,6 +82,60 @@ def test_node_route_index_route_id_collision_prefers_last_write_with_warning(
     assert "duplicate route" in caplog.text.lower()
 
 
+def test_node_route_index_route_id_collision_across_node_types_uses_global_last_write(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(node_route_index, "dispatch_hook", lambda *_args, **_kwargs: [])
+
+    first_graph = _graph(
+        nodes=[{"id": "node-a", "type": "provider:trigger-a", "data": {"routeId": "dup"}}]
+    )
+    second_graph = _graph(
+        nodes=[{"id": "node-b", "type": "provider:trigger-b", "data": {"routeId": "dup"}}]
+    )
+
+    node_route_index.update_agent_routes("agent-1", first_graph)
+    with caplog.at_level("WARNING"):
+        node_route_index.update_agent_routes("agent-2", second_graph)
+
+    target = node_route_index.resolve_node_route_by_id("dup")
+
+    assert target is not None
+    assert target.agent_id == "agent-2"
+    assert target.node_id == "node-b"
+    assert node_route_index.resolve_node_route("provider:trigger-a", "dup") is None
+    assert node_route_index.resolve_node_route("provider:trigger-b", "dup") is not None
+    assert "last write wins" in caplog.text.lower()
+
+
+def test_node_route_index_transfers_route_ownership_on_overwrite() -> None:
+    graph_one = _graph(
+        nodes=[{"id": "node-1", "type": "provider:trigger", "data": {"routeId": "shared"}}]
+    )
+    graph_two = _graph(
+        nodes=[{"id": "node-2", "type": "provider:trigger", "data": {"routeId": "shared"}}]
+    )
+
+    node_route_index.update_agent_routes("agent-1", graph_one)
+    node_route_index.update_agent_routes("agent-2", graph_two)
+
+    assert ("provider:trigger", "shared") not in node_route_index._ROUTES_BY_AGENT.get("agent-1", set())
+    assert ("provider:trigger", "shared") in node_route_index._ROUTES_BY_AGENT.get("agent-2", set())
+
+    node_route_index.remove_agent_routes("agent-1")
+
+    typed_target = node_route_index.resolve_node_route("provider:trigger", "shared")
+    by_id_target = node_route_index.resolve_node_route_by_id("shared")
+
+    assert typed_target is not None
+    assert typed_target.agent_id == "agent-2"
+    assert typed_target.node_id == "node-2"
+    assert by_id_target is not None
+    assert by_id_target.agent_id == "agent-2"
+    assert by_id_target.node_id == "node-2"
+
+
 def test_webhook_handler_uses_generic_route_lookup(monkeypatch) -> None:
     app = FastAPI()
     http_routes.register_webhook_routes(app)
