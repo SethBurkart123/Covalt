@@ -41,6 +41,7 @@ export function FrameArtifact({
 
   const title = (toolArgs.title as string) || toolName;
   const url = buildUrl(renderPlan?.config?.url, renderPlan?.config?.port);
+  const toolCallTestId = `tool-call-${toolName}`;
 
   const handleClick = () => {
     if (!isCompleted || !url) return;
@@ -58,6 +59,7 @@ export function FrameArtifact({
       isLast={isLast}
       shimmer={!isCompleted}
       disableToggle
+      data-testid={toolCallTestId}
       data-toolcall
     >
       <CollapsibleTrigger onClick={handleClick}>

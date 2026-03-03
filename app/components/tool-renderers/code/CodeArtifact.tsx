@@ -48,6 +48,7 @@ export function CodeArtifact({
     : (renderPlan?.config?.language || inferLanguage(toolArgs));
 
   const isEditable = renderPlan?.config?.editable && filePath && chatId;
+  const toolCallTestId = `tool-call-${toolName}`;
 
   const handleClick = () => {
     if (!isCompleted) return;
@@ -84,6 +85,7 @@ export function CodeArtifact({
       isLast={isLast}
       shimmer={isLoading}
       disableToggle
+      data-testid={toolCallTestId}
       data-toolcall
     >
       <CollapsibleTrigger onClick={handleClick}>

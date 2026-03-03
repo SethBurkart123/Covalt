@@ -74,14 +74,23 @@ async function configureCoreFlowFixtures(
   };
 }
 
+const selectors = {
+  chatInputForm: '[data-testid="chat-input-form"]',
+  chatInputEditor: '[data-testid="chat-input-editor"]',
+  chatInputSubmit: '[data-testid="chat-input-submit"]',
+  chatMessageAssistant: '[data-testid="chat-message-assistant"]',
+  chatMessageUser: '[data-testid="chat-message-user"]',
+  artifactPanel: '[data-testid="artifact-panel"]',
+};
+
 async function openChatWithBackend(page: Page, chatId?: string): Promise<void> {
   await page.goto(buildAppUrl(chatId));
   await expect(page).toHaveTitle(/covalt/i);
-  await expect(page.locator('form.chat-input-form')).toBeVisible();
+  await expect(page.locator(selectors.chatInputForm)).toBeVisible();
 }
 
 async function selectModel(page: Page, modelId: string): Promise<void> {
-  const modelSelector = page.locator('form.chat-input-form [role="combobox"]').first();
+  const modelSelector = page.locator(`${selectors.chatInputForm} [role="combobox"]`).first();
   await modelSelector.click();
 
   const search = page.getByPlaceholder('Search model or agent...');
@@ -101,7 +110,7 @@ async function submitPrompt(
   prompt: string,
   mention?: { value: string },
 ): Promise<void> {
-  const composer = page.locator('form.chat-input-form [contenteditable="true"]').first();
+  const composer = page.locator(`${selectors.chatInputEditor} [contenteditable="true"]`).first();
   await composer.click();
   await page.keyboard.type(prompt);
 
@@ -118,7 +127,7 @@ async function submitPrompt(
     await suggestion.click();
   }
 
-  const submitButton = page.locator('form.chat-input-form button[type="submit"]');
+  const submitButton = page.locator(selectors.chatInputSubmit);
   await expect(submitButton).toBeVisible();
   await submitButton.click();
 }
@@ -133,19 +142,19 @@ function createIsolatedChatId(): string {
 }
 
 function getLatestAssistantMessage(page: Page): Locator {
-  return page.locator('[class*="assistant-message"]').last();
+  return page.locator(selectors.chatMessageAssistant).last();
 }
 
 function getLatestUserMessage(page: Page): Locator {
-  return page.locator('div.rounded-3xl.bg-muted.text-muted-foreground').last();
+  return page.locator(selectors.chatMessageUser).last();
 }
 
 function getToolCardByName(page: Page, toolName: string): Locator {
-  return getLatestAssistantMessage(page).locator('[data-toolcall]').filter({ hasText: toolName }).first();
+  return getLatestAssistantMessage(page).getByTestId(`tool-call-${toolName}`).first();
 }
 
 function getArtifactPane(page: Page): Locator {
-  return page.locator('div[class*="bg-card/80"][class*="border-l"][class*="rounded-l-xl"]').first();
+  return page.locator(selectors.artifactPanel).first();
 }
 
 test.describe('playwright core artifact and approval flows', () => {
@@ -174,7 +183,7 @@ test.describe('playwright core artifact and approval flows', () => {
       const artifactPane = getArtifactPane(page);
       await expect(artifactPane).toBeVisible({ timeout: 10_000 });
       await expect(artifactPane).toContainText('E2E echo');
-      await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
+      await expect(page.locator(selectors.chatInputSubmit)).toBeVisible();
     } finally {
       await restore();
     }
@@ -215,7 +224,7 @@ test.describe('playwright core artifact and approval flows', () => {
       const artifactPane = getArtifactPane(page);
       await expect(artifactPane).toBeVisible({ timeout: 10_000 });
       await expect(artifactPane).toContainText('E2E approval');
-      await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
+      await expect(page.locator(selectors.chatInputSubmit)).toBeVisible();
     } finally {
       await restore();
     }
@@ -249,7 +258,7 @@ test.describe('playwright core artifact and approval flows', () => {
       await expect(approvalCard.getByText('Result')).toHaveCount(0);
       await expect(approvalCard.getByRole('button', { name: 'Approve' })).toHaveCount(0);
       await expect(approvalCard.getByRole('button', { name: 'Deny' })).toHaveCount(0);
-      await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
+      await expect(page.locator(selectors.chatInputSubmit)).toBeVisible();
     } finally {
       await restore();
     }
@@ -283,7 +292,7 @@ test.describe('playwright core artifact and approval flows', () => {
       await expect(userPrompt).toContainText('Persist this output across a reload.');
 
       await page.reload();
-      await expect(page.locator('form.chat-input-form')).toBeVisible();
+      await expect(page.locator(selectors.chatInputForm)).toBeVisible();
 
       const reloadedArtifactCard = getToolCardByName(page, 'e2e_echo');
       await expect(reloadedArtifactCard).toBeVisible({ timeout: 20_000 });

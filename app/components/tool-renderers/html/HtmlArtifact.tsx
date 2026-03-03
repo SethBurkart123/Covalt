@@ -26,6 +26,7 @@ export function HtmlArtifact({
 
   const title = (toolArgs.title as string) || toolName;
   const html = (renderPlan?.config?.content as string) || (toolResult as string) || (toolArgs.html as string) || "";
+  const toolCallTestId = `tool-call-${toolName}`;
 
   const handleClick = () => {
     if (!isCompleted || !html) return;
@@ -43,6 +44,7 @@ export function HtmlArtifact({
       isLast={isLast}
       shimmer={!isCompleted}
       disableToggle
+      data-testid={toolCallTestId}
       data-toolcall
     >
       <CollapsibleTrigger onClick={handleClick}>
