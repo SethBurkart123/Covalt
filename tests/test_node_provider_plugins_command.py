@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import backend.commands.node_provider_plugins as node_provider_plugins
+from backend.models.node_provider import NodeProviderNodeDefinition
 
 
 @pytest.mark.asyncio
@@ -56,3 +57,32 @@ async def test_install_node_provider_plugin_from_repo(monkeypatch) -> None:
 
   assert response['id'] == 'sample'
   assert captured['kwargs']['repo_url'] == 'https://github.com/acme/plugin'
+
+
+@pytest.mark.asyncio
+async def test_list_node_provider_definitions_uses_registry_listing(monkeypatch) -> None:
+  command_fn = node_provider_plugins.list_node_provider_definitions
+
+  monkeypatch.setattr(
+      node_provider_plugins,
+      'list_provider_definitions_from_registry',
+      lambda: [
+          NodeProviderNodeDefinition(
+              type='sample-provider:echo',
+              name='Echo',
+              description='Echo node',
+              category='utility',
+              icon='square',
+              executionMode='flow',
+              parameters=[],
+              providerId='sample-provider',
+              pluginId='sample-provider',
+          )
+      ],
+  )
+
+  response = await command_fn()
+
+  assert len(response.definitions) == 1
+  assert response.definitions[0].type == 'sample-provider:echo'
+  assert response.definitions[0].providerId == 'sample-provider'

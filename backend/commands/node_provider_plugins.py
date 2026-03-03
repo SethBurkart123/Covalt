@@ -17,7 +17,7 @@ from ..models.node_provider import (
 )
 from ..services.node_provider_plugin_manager import get_node_provider_plugin_manager
 from ..services.node_provider_registry import (
-    list_node_provider_definitions,
+    list_node_provider_definitions as list_provider_definitions_from_registry,
     reload_node_provider_registry,
 )
 
@@ -110,7 +110,7 @@ async def uninstall_node_provider_plugin(body: NodeProviderPluginIdInput) -> dic
 
 @command
 async def list_node_provider_definitions() -> NodeProviderDefinitionsResponse:
-    definitions = list_node_provider_definitions()
+    definitions = list_provider_definitions_from_registry()
     return NodeProviderDefinitionsResponse(
         definitions=[
             NodeProviderNodeDefinition.model_validate(item.model_dump())
