@@ -1,0 +1,15 @@
+{
+  "featureId": "ci-gate-layer-split-and-local-ci-parity",
+  "reviewedAt": "2026-03-03T11:30:48Z",
+  "commitId": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation matches the feature contract: CI now exposes distinct fail-closed checks for lint, vitest, pytest, and playwright; local command wiring mirrors those layers through ci:* scripts and services manifest mappings; and mission port/environment assumptions (3100/3101) remain consistent with Playwright and service definitions.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, and commit 756ec61. Changes correctly split CI gates by layer, preserve fail-closed semantics, align local/CI command matrix semantics, and keep the approved 3100/3101 environment contract. No blocking or non-blocking defects were identified for this feature scope."
+}
