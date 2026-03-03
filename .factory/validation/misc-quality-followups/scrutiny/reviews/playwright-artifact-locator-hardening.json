@@ -1,0 +1,33 @@
+{
+  "featureId": "playwright-artifact-locator-hardening",
+  "reviewedAt": "2026-03-03T16:37:53Z",
+  "commitId": "884a93f0a663c22a6bf5096090237397df298869",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation matches the feature intent: artifact assertions were moved away from page-global text matching into scoped card/pane locators, and behavior coverage across artifact render, approve/deny, and persistence scenarios is preserved.",
+    "issues": [
+      {
+        "file": "tests/playwright/artifact-approval.e2e.ts",
+        "line": 139,
+        "severity": "non_blocking",
+        "description": "New helper locators rely on Tailwind class-name selectors (user bubble, assistant message, artifact pane). This still improves over page-global text checks, but these selectors are style-coupled and can break on cosmetic class refactors."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "playwright-worker skill procedure is broader than this follow-up feature reality: it prescribes full `npx playwright test` and evidence artifact paths in handoff, while the feature contract used targeted grep-scoped Playwright execution and did not include artifact path reporting. Skill guidance may need a clause for assertion-only follow-up features.",
+      "evidence": ".factory/skills/playwright-worker/SKILL.md:32-36 requires full run + artifact-path capture; handoff 2026-03-03T16-31-06-908Z__playwright-artifact-locator-hardening__79781bf6-2d27-4e4c-a3ff-e85dfd9a07f1.json lists only command outcomes and no artifact paths."
+    },
+    {
+      "area": "conventions",
+      "observation": "There is no documented stable selector contract for Playwright in AGENTS/library, so tests continue to depend on CSS-class-based locators for message/pane scoping.",
+      "evidence": "tests/playwright/artifact-approval.e2e.ts:135-148 uses class-substring locators; app/components/ChatMessage.tsx and app/components/artifact-panel/ArtifactPanel.tsx expose class names but no dedicated test IDs for these containers."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit 884a93f for playwright-artifact-locator-hardening. The feature achieves scoped artifact/card assertions with preserved flow coverage and no blocking defects; noted one non-blocking selector-coupling concern and two shared-state observations."
+}
