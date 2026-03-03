@@ -17,6 +17,13 @@ Each plugin exports a typed manifest from a TypeScript file. The manifest declar
 - Lifecycle hook system: onNodeCreate, onConnectionValidate, onRouteExtract, onEntryResolve, onResponseExtract, onSocketTypePropagate
 - Executor resolution: plugin-scoped namespace, deterministic precedence
 
+### Route Index Ownership Invariant
+`backend/services/node_route_index.py` treats `route_id` as globally unique at resolve time: `_ROUTE_ID_INDEX` maps each route ID to exactly one active `(node_type, route_id)` key using last-write-wins semantics.
+
+When a duplicate route registration replaces an existing route, ownership in `_ROUTES_BY_AGENT` must transfer to the new owner and be removed from the old owner. `remove_agent_routes(agent_id)` must only delete routes still owned by that agent to avoid removing active mappings after ownership transfer.
+
+Regression coverage for this invariant lives in `tests/test_backend_core_decoupling_routes.py` (cross-type collision resolution and stale-owner removal safety).
+
 ### Frontend Plugin Registry
 - Loads TypeScript node definitions from plugins
 - Supports dynamic registration via setDynamicNodeDefinitions
