@@ -255,6 +255,27 @@ def test_import_from_zip_rejects_path_traversal_entries(monkeypatch, tmp_path: P
         manager.import_from_zip(zip_data=buffer.getvalue())
 
 
+@pytest.mark.parametrize('member_name', ['../evil.txt', '/absolute/evil.txt'])
+def test_install_from_repo_rejects_path_traversal_entries(
+    monkeypatch,
+    tmp_path: Path,
+    member_name: str,
+) -> None:
+    manager = _setup_manager(monkeypatch, tmp_path)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(member_name, 'malicious')
+
+    monkeypatch.setattr(
+        plugin_install_utils,
+        'download_github_archive',
+        lambda *_args, **_kwargs: buffer.getvalue(),
+    )
+
+    with pytest.raises(ValueError, match='Archive contains invalid path traversal entries'):
+        manager.install_from_repo(repo_url='https://github.com/acme/plugin')
+
+
 def test_import_from_zip_rejects_missing_manifest(monkeypatch, tmp_path: Path) -> None:
     manager = _setup_manager(monkeypatch, tmp_path)
     buffer = io.BytesIO()
