@@ -4,6 +4,7 @@ commands:
   install_python: uv sync
   lint: bun run ci:lint
   lint_python: uv run --group dev ruff check backend/ tests/ main.py
+  lint_python_report: bun run ci:lint-python:report
   test_vitest: bun run ci:vitest
   test_pytest: bun run ci:pytest
   test_playwright: bun run ci:playwright
