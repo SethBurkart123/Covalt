@@ -50,3 +50,12 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Write exactly one JSON report to the assigned flow path.
 - Treat pre-existing mission constraints (ports 3100/3101, no Docker) as hard boundaries.
 - If a check is blocked by setup/environment, mark assertion as blocked with explicit root cause evidence.
+
+## Flow Validator Guidance: Playwright Browser E2E
+- Surface: user-visible browser behavior validated through Playwright tests and generated artifacts.
+- Use only assigned credentials and data namespace in prompts/messages when test data is created.
+- Run only assertion-scoped tests (prefer `--grep` or targeted spec file) to avoid cross-flow interference.
+- Do not run legacy Bun e2e tooling; use Playwright-only commands.
+- Keep isolation strict: do not reuse another flow validator’s report path or namespace prefix.
+- If service startup is required, keep it within Playwright/webServer flow and ensure clean teardown evidence in logs.
+- If blocked, record blocking root cause and exact failing command/output in the flow report.
