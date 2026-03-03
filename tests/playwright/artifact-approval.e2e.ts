@@ -117,6 +117,11 @@ async function submitPrompt(
   await submitButton.click();
 }
 
+function getChatIdFromPageUrl(page: Page): string {
+  const chatId = new URL(page.url()).searchParams.get('chatId');
+  return chatId ?? '';
+}
+
 test.describe('playwright core artifact and approval flows', () => {
   test('validates artifact rendering flow with UI assertions', async ({ page, request }) => {
     const restore = await configureCoreFlowFixtures(request);
@@ -195,6 +200,37 @@ test.describe('playwright core artifact and approval flows', () => {
       await expect(approvalCard.getByRole('button', { name: 'Approve' })).toHaveCount(0);
       await expect(approvalCard.getByRole('button', { name: 'Deny' })).toHaveCount(0);
       await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
+    } finally {
+      await restore();
+    }
+  });
+
+  test('keeps generated tool output visible after page reload in the same session', async ({ page, request }) => {
+    const restore = await configureCoreFlowFixtures(request);
+    try {
+      await openChatWithBackend(page);
+      await selectModel(page, 'builtin');
+      await submitPrompt(page, 'Persist this output across a reload.', {
+        value: 'e2e_echo',
+      });
+
+      const artifactCard = page
+        .locator('[data-toolcall]')
+        .filter({ hasText: 'e2e_echo' })
+        .first();
+
+      await expect(artifactCard).toBeVisible({ timeout: 20_000 });
+      await page.waitForURL(/chatId=/, { timeout: 20_000 });
+
+      const originalChatId = getChatIdFromPageUrl(page);
+      expect(originalChatId).not.toBe('');
+
+      await page.reload();
+      await expect(page.locator('form.chat-input-form')).toBeVisible();
+      await expect(artifactCard).toBeVisible({ timeout: 20_000 });
+      await expect(artifactCard).toContainText('e2e_echo');
+      await expect(page.getByText('Persist this output across a reload.')).toBeVisible();
+      expect(getChatIdFromPageUrl(page)).toBe(originalChatId);
     } finally {
       await restore();
     }
