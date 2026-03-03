@@ -20,6 +20,74 @@ class NodeProviderRuntimeSpec:
     entrypoint: str
 
 
+def _output_snippet(value: str | None, *, limit: int = 240) -> str:
+    raw = (value or '').strip()
+    if not raw:
+        return ''
+
+    normalized = raw.replace('\r', '').replace('\n', '\\n')
+    if len(normalized) <= limit:
+        return normalized
+    return f'{normalized[:limit]}…'
+
+
+def _rpc_error_message(
+    spec: NodeProviderRuntimeSpec,
+    *,
+    method: str,
+    summary: str,
+    stderr: str | None = None,
+    output: str | None = None,
+) -> str:
+    parts = [
+        f"Node provider runtime '{spec.plugin_id}' method '{method}' {summary}",
+    ]
+
+    stderr_snippet = _output_snippet(stderr)
+    if stderr_snippet:
+        parts.append(f'stderr: {stderr_snippet}')
+
+    output_snippet = _output_snippet(output)
+    if output_snippet:
+        parts.append(f'output: {output_snippet}')
+
+    return ' | '.join(parts)
+
+
+def _runtime_error(
+    spec: NodeProviderRuntimeSpec,
+    *,
+    method: str,
+    summary: str,
+    stderr: str | None = None,
+    output: str | None = None,
+) -> NodeProviderRuntimeError:
+    return NodeProviderRuntimeError(
+        _rpc_error_message(
+            spec,
+            method=method,
+            summary=summary,
+            stderr=stderr,
+            output=output,
+        )
+    )
+
+
+def _extract_envelope_error_message(error_payload: Any) -> str:
+    if isinstance(error_payload, dict):
+        message = error_payload.get('message')
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    if isinstance(error_payload, str) and error_payload.strip():
+        return error_payload.strip()
+
+    if error_payload is None:
+        return 'unknown provider runtime error'
+
+    return str(error_payload)
+
+
 def _run_bun_rpc(
     spec: NodeProviderRuntimeSpec,
     *,
@@ -47,38 +115,65 @@ def _run_bun_rpc(
         cwd=str(spec.plugin_dir),
     )
 
+    stderr = proc.stderr or ''
+    raw_stdout = proc.stdout or ''
+
     if proc.returncode != 0:
-        stderr = (proc.stderr or '').strip()
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime failed ({spec.plugin_id}): {stderr or 'unknown error'}"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary=f'failed with exit code {proc.returncode}',
+            stderr=stderr,
+            output=raw_stdout,
         )
 
-    raw = (proc.stdout or '').strip()
+    raw = raw_stdout.strip()
     if not raw:
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime '{spec.plugin_id}' returned empty output"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary='returned empty response',
+            stderr=stderr,
         )
 
     try:
         data = json.loads(raw)
     except Exception as exc:
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime '{spec.plugin_id}' returned invalid JSON"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary='returned invalid JSON',
+            stderr=stderr,
+            output=raw,
         ) from exc
 
     if not isinstance(data, dict):
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime '{spec.plugin_id}' returned non-object response"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary='returned non-object envelope (expected JSON object)',
+            stderr=stderr,
+            output=raw,
         )
 
     if data.get('ok') is False:
-        message = str(data.get('error') or 'unknown provider runtime error')
-        raise NodeProviderRuntimeError(message)
+        error_message = _extract_envelope_error_message(data.get('error'))
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary=f"returned error envelope: {error_message}",
+            stderr=stderr,
+            output=raw,
+        )
 
     result = data.get('result')
     if not isinstance(result, dict):
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime '{spec.plugin_id}' missing object result"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary='returned invalid result shape (expected object at result)',
+            stderr=stderr,
+            output=raw,
         )
 
     return result
