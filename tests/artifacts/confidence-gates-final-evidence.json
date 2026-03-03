@@ -1,9 +1,9 @@
 {
   "artifact": "confidence-gates-final-required-check-evidence",
-  "generatedAt": "2026-03-03T13:01:28.617050+00:00",
+  "generatedAt": "2026-03-03T13:43:50.308145+00:00",
   "repository": "SethBurkart123/Covalt",
   "defaultBranch": "main",
-  "revision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+  "revision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
   "validationContractAssertions": [
     "VAL-GATE-004",
     "VAL-GATE-005",
@@ -11,20 +11,20 @@
     "VAL-CROSS-004"
   ],
   "localFullStackRun": {
-    "revision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "revision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
     "layers": {
       "lint": {
         "warningCount": 16,
         "errorMentions": 0,
         "exitCode": 0,
-        "summary": "./app/components/ui/sidebar.tsx\n545:1  Warning: File has too many lines (638). Maximum allowed is 500.  max-lines\n./app/lib/flow/context.tsx\n603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ bun run lint\n$ next lint"
+        "summary": "Local rerun on target SHA via bun run ci:full completed; known warning-only lint findings remained non-blocking."
       },
       "vitest": {
         "testFilesPassed": 11,
         "testsPassed": 196,
         "nonVacuous": true,
         "exitCode": 0,
-        "summary": " \u2713 app/lib/services/stream-processor.test.ts (7 tests) 4ms\n \u2713 app/lib/flow/__tests__/node-contracts.test.ts (72 tests) 6ms\n \u2713 app/lib/flow/__tests__/registry.test.ts (32 tests) 4ms\n \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  23:16:02\n   Duration  400ms (transform 589ms, setup 0ms, import 775ms, tests 35ms, environment 1ms)\n$ bun run test --run\n$ vitest --run"
+        "summary": "Local rerun on target SHA reported 11 passed test files and 196 passed tests."
       },
       "pytest": {
         "passed": 341,
@@ -32,29 +32,29 @@
         "failed": 0,
         "nonVacuous": true,
         "exitCode": 0,
-        "durationReported": "2.53s",
-        "summary": "........................................................................ [ 56%]\n........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.53s\n$ uv run pytest -q"
+        "durationReported": "2.70s",
+        "summary": "Local rerun on target SHA reported 341 passed and 43 skipped."
       },
       "playwright": {
         "passed": 5,
-        "reportedDuration": "21.9s",
+        "reportedDuration": "16.9s",
         "nonVacuous": true,
         "exitCode": 0,
-        "summary": "[WebServer] INFO:     127.0.0.1:58553 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58587 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58626 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:58658 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
+        "summary": "Local rerun on target SHA reported 5 passed Playwright tests."
       }
     },
     "allPassed": true
   },
   "remoteRevisionResolution": {
-    "command": "gh api repos/SethBurkart123/Covalt/commits/aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "command": "gh api repos/SethBurkart123/Covalt/commits/560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
     "exitCode": 0,
-    "sha": "aa5b826ae81f8713c54c9371074ff48702ac275e",
-    "htmlUrl": "https://github.com/SethBurkart123/Covalt/commit/aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "sha": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
+    "htmlUrl": "https://github.com/SethBurkart123/Covalt/commit/560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
     "authorDate": "REDACTED",
-    "message": "feat(validation): synthesize confidence-gates scrutiny"
+    "message": "feat(ci): stabilize Playwright gate and refresh same-SHA evidence"
   },
   "remoteRequiredCheckRuns": {
-    "command": "gh api repos/SethBurkart123/Covalt/commits/aa5b826ae81f8713c54c9371074ff48702ac275e/check-runs --jq '.check_runs[] | {id,name,html_url,conclusion}'",
+    "command": "gh api repos/SethBurkart123/Covalt/commits/560ddbcdc320d48a14e1b195bf3d50439c4c8c5c/check-runs --jq '.check_runs[] | {id,name,html_url,conclusion}'",
     "requiredCheckNames": [
       "lint",
       "vitest",
@@ -64,47 +64,47 @@
     "requiredChecks": [
       {
         "name": "lint",
-        "id": 65555962202,
+        "id": 65561160752,
         "status": "completed",
         "conclusion": "success",
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65555962202",
-        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65555962202",
-        "checkSuiteId": 59177298650,
-        "startedAt": "2026-03-03T12:58:16Z",
-        "completedAt": "2026-03-03T12:58:36Z"
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555428/job/65561160752",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555428/job/65561160752",
+        "checkSuiteId": 59186686097,
+        "startedAt": "2026-03-03T13:39:20Z",
+        "completedAt": "2026-03-03T13:39:41Z"
       },
       {
         "name": "vitest",
-        "id": 65555940205,
+        "id": 65561160749,
         "status": "completed",
         "conclusion": "success",
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940205",
-        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940205",
-        "checkSuiteId": 59177298609,
-        "startedAt": "2026-03-03T12:58:05Z",
-        "completedAt": "2026-03-03T12:58:19Z"
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160749",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160749",
+        "checkSuiteId": 59186686082,
+        "startedAt": "2026-03-03T13:39:19Z",
+        "completedAt": "2026-03-03T13:39:33Z"
       },
       {
         "name": "pytest",
-        "id": 65555940199,
+        "id": 65561160785,
         "status": "completed",
         "conclusion": "success",
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940199",
-        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940199",
-        "checkSuiteId": 59177298609,
-        "startedAt": "2026-03-03T12:58:04Z",
-        "completedAt": "2026-03-03T12:58:35Z"
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160785",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160785",
+        "checkSuiteId": 59186686082,
+        "startedAt": "2026-03-03T13:39:20Z",
+        "completedAt": "2026-03-03T13:39:52Z"
       },
       {
         "name": "playwright",
-        "id": 65555940221,
+        "id": 65561160798,
         "status": "completed",
         "conclusion": "success",
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940221",
-        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940221",
-        "checkSuiteId": 59177298609,
-        "startedAt": "2026-03-03T12:58:04Z",
-        "completedAt": "2026-03-03T12:59:43Z"
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160798",
+        "detailsUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160798",
+        "checkSuiteId": 59186686082,
+        "startedAt": "2026-03-03T13:39:19Z",
+        "completedAt": "2026-03-03T13:40:53Z"
       }
     ],
     "missingRequiredChecks": [],
@@ -113,25 +113,25 @@
     "allRequiredSuccessful": true
   },
   "sameRevisionBindingProof": {
-    "localRunRevision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
-    "remoteCheckRunsRevision": "aa5b826ae81f8713c54c9371074ff48702ac275e",
+    "localRunRevision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
+    "remoteCheckRunsRevision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
     "sameRevision": true,
     "immutableProofPointers": {
       "lint": {
-        "id": 65555962202,
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425385/job/65555962202"
+        "id": 65561160752,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555428/job/65561160752"
       },
       "vitest": {
-        "id": 65555940205,
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940205"
+        "id": 65561160749,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160749"
       },
       "pytest": {
-        "id": 65555940199,
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940199"
+        "id": 65561160785,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160785"
       },
       "playwright": {
-        "id": 65555940221,
-        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22622425374/job/65555940221"
+        "id": 65561160798,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160798"
       }
     }
   },
@@ -153,17 +153,13 @@
         "playwright"
       ],
       "raw": {
-        "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection",
         "required_status_checks": {
-          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_status_checks",
-          "strict": true,
           "contexts": [
             "lint",
             "vitest",
             "pytest",
             "playwright"
           ],
-          "contexts_url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_status_checks/contexts",
           "checks": [
             {
               "context": "lint",
@@ -181,36 +177,8 @@
               "context": "playwright",
               "app_id": null
             }
-          ]
-        },
-        "required_signatures": {
-          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_signatures",
-          "enabled": false
-        },
-        "enforce_admins": {
-          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/enforce_admins",
-          "enabled": false
-        },
-        "required_linear_history": {
-          "enabled": false
-        },
-        "allow_force_pushes": {
-          "enabled": false
-        },
-        "allow_deletions": {
-          "enabled": false
-        },
-        "block_creations": {
-          "enabled": false
-        },
-        "required_conversation_resolution": {
-          "enabled": false
-        },
-        "lock_branch": {
-          "enabled": false
-        },
-        "allow_fork_syncing": {
-          "enabled": false
+          ],
+          "strict": true
         }
       }
     },
