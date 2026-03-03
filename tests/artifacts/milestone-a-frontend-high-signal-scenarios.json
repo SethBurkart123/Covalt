@@ -1,0 +1,48 @@
+{
+  "artifact": "milestone-a-frontend-high-signal-scenarios",
+  "generatedBy": "test-reset-rebuild-frontend-high-signal-tests",
+  "generatedAt": "2026-03-03T17:49:00Z",
+  "validationContractAssertions": [
+    "VAL-TEST-005",
+    "VAL-TEST-009",
+    "VAL-TEST-011"
+  ],
+  "scenarios": [
+    {
+      "scenario": "Runtime stream event handling keeps behavior-focused content assembly",
+      "tests": [
+        "app/lib/services/stream-processor.test.ts::handles text and reasoning event family",
+        "app/lib/services/stream-processor.test.ts::handles tool lifecycle event family",
+        "app/lib/services/stream-processor.test.ts::handles member-run event family",
+        "app/lib/services/stream-processor.test.ts::keeps member-scoped approval updates top-level ordered and removes resolved member tool blocks"
+      ],
+      "diagnosticSignal": "Assertions compare rendered content-block behavior per event family and include failure messages for missing/incorrect member-run ordering transitions."
+    },
+    {
+      "scenario": "Unknown runtime events pass through with controlled warnings",
+      "tests": [
+        "app/lib/services/stream-processor.test.ts::passes unknown events through onEvent and warns once per event type",
+        "app/lib/services/stream-processor.test.ts::does not schedule UI updates for unknown runtime events"
+      ],
+      "diagnosticSignal": "Assertions verify exact warning payload strings and event forwarding counts, making unknown-event regressions immediately actionable."
+    },
+    {
+      "scenario": "Stream-state/provider ordering invariants remain deterministic",
+      "tests": [
+        "app/lib/hooks/use-models-stream-state.test.ts::keeps provider ordering deterministic from expectedProviders",
+        "app/lib/hooks/use-models-stream-state.test.ts::keeps first unique expected provider order when stream reports duplicate providers",
+        "app/lib/hooks/use-models-stream-state.test.ts::prunes stale cached providers that were not seen in the completed stream"
+      ],
+      "diagnosticSignal": "Assertions validate provider/model order and default-flag transitions from expectedProviders semantics instead of internal map shape."
+    }
+  ],
+  "determinismControls": [
+    {
+      "control": "requestAnimationFrame is manually queued/flushed in tests",
+      "tests": [
+        "app/lib/services/stream-processor.test.ts"
+      ],
+      "reason": "Removes timing sensitivity by preventing asynchronous callback races and explicitly draining pending updates."
+    }
+  ]
+}
