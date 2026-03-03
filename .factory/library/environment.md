@@ -7,7 +7,16 @@ Environment variables, external dependencies, and setup notes.
 
 ---
 
-- Python 3.12, managed by uv, venv at `.venv/`
-- Node v20 via nvm, bun as package manager
-- No external databases or services required for this refactor
-- `COVALT_GENERATE_TS=1` env var triggers TypeScript API client generation from Python backend
+- Runtime toolchain:
+  - Bun (frontend scripts)
+  - Python 3.12 + uv (backend/test tooling)
+  - Node/npm available for Playwright CLI (`npx playwright`)
+- No Docker dependency for this mission.
+- Mission test env variables:
+  - `COVALT_BACKEND_PORT=3100`
+  - `COVALT_DEV_MODE=1`
+  - `PORT=3101` (frontend)
+  - Backend generation mode differs by runner:
+    - General backend/dev startup uses `COVALT_GENERATE_TS=1`
+    - Playwright backend startup uses `COVALT_GENERATE_TS=0` and `COVALT_E2E_TESTS=1`
+- If branch protection/ruleset edits are required but unavailable due permissions, escalate to orchestrator/user with exact blocker.

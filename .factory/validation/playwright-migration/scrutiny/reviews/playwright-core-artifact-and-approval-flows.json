@@ -1,0 +1,33 @@
+{
+  "featureId": "playwright-core-artifact-and-approval-flows",
+  "reviewedAt": "2026-03-03T09:21:04Z",
+  "commitId": "2301292932658cbf5486b47b36aced6cac6c87a8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds Playwright coverage for artifact rendering and approval approve/deny flows with deterministic fixture setup/restore, and it correctly enables e2e backend mode for Playwright runs. However, the approve-path test does not assert completed expected output after approval, so end-to-end completion semantics required by VAL-PW-006/feature expected behavior are not fully validated.",
+    "issues": [
+      {
+        "file": "tests/playwright/artifact-approval.e2e.ts",
+        "line": 168,
+        "severity": "blocking",
+        "description": "In the approve-flow case, assertions only verify that Approve/Deny controls disappear and that 'Denied' is absent; the test never asserts that the approved run completes with expected output content/result. This leaves the core approve end-state under-validated relative to the requirement that approval completes with expected output."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The Playwright skill procedure requires capturing explicit artifact paths (trace/screenshot/report) in handoff evidence, but this handoff only lists command outcomes without concrete artifact file paths.",
+      "evidence": ".factory/skills/playwright-worker/SKILL.md:36 requires 'Capture evidence artifacts (trace/screenshot/report paths) in handoff'; handoff verification section lists commands/exit codes only with no artifact paths (/Users/sethburkart/.factory/missions/8399d8d9-99ec-4a36-a907-3427be9c8227/handoffs/2026-03-03T08-59-36-968Z__playwright-core-artifact-and-approval-flows__130fb5ab-8156-4166-be79-dee9fba90f42.json:16-47)."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Mission environment knowledge does not currently document the COVALT_E2E_TESTS flag even though Playwright execution now depends on it to enable e2e tool/provider behavior.",
+      "evidence": "playwright.config.ts sets backend webServer command with COVALT_E2E_TESTS=1 (line 32), while .factory/library/environment.md mission env variable list includes COVALT_BACKEND_PORT/COVALT_DEV_MODE/COVALT_GENERATE_TS/PORT only (lines 15-19)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature playwright-core-artifact-and-approval-flows using the worker transcript skeleton, handoff, skill procedure, and commit 2301292932658cbf5486b47b36aced6cac6c87a8 diff. Artifact and deny-path coverage are present, but approve-path validation misses required expected-output end-state assertion, so this review fails with one blocking issue."
+}
