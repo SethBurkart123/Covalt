@@ -1,25 +1,27 @@
 commands:
-  install: bun install
+  install: bun install --frozen-lockfile && uv sync
+  install_js: bun install --frozen-lockfile
   install_python: uv sync
-  typecheck_generate: COVALT_GENERATE_TS=1 timeout 2 uv run main.py || true
+  lint: bun run ci:lint
+  lint_python: uv run --group dev ruff check backend/ tests/ main.py
+  test_vitest: bun run ci:vitest
+  test_pytest: bun run ci:pytest
+  test_playwright: bun run ci:playwright
+  test: bun run ci:lint && bun run ci:vitest && bun run ci:pytest
+  test_full: bun run ci:full
   build: bun run build
-  test: uv run pytest -x -q --tb=short && bun run test --run
-  test_python: uv run pytest -x -q --tb=short
-  test_frontend: bun run test --run
-  lint: bun run lint
-  lint_python: uv run ruff check backend/ tests/ main.py nodes/
 
 services:
-  frontend:
-    start: bun run dev:frontend
-    stop: lsof -ti :3000 | xargs kill
-    healthcheck: curl -sf http://localhost:3000
-    port: 3000
+  backend:
+    start: COVALT_BACKEND_PORT=3100 COVALT_DEV_MODE=1 COVALT_GENERATE_TS=1 uv run main.py
+    stop: lsof -ti :3100 | xargs kill
+    healthcheck: curl -sf http://127.0.0.1:3100/
+    port: 3100
     depends_on: []
 
-  backend:
-    start: uv run main.py
-    stop: lsof -ti :8899 | xargs kill
-    healthcheck: curl -sf http://localhost:8899/health
-    port: 8899
-    depends_on: []
+  frontend:
+    start: PORT=3101 bun run dev:frontend
+    stop: lsof -ti :3101 | xargs kill
+    healthcheck: curl -sf http://127.0.0.1:3101/
+    port: 3101
+    depends_on: [backend]
