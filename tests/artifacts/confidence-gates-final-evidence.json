@@ -1,6 +1,6 @@
 {
   "artifact": "confidence-gates-final-required-check-evidence",
-  "generatedAt": "2026-03-03T13:43:50.308145+00:00",
+  "generatedAt": "2026-03-03T14:30:39.852088+00:00",
   "repository": "SethBurkart123/Covalt",
   "defaultBranch": "main",
   "revision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
@@ -193,7 +193,18 @@
     "sameShaRemoteProofPresent": true,
     "status": "configured",
     "blocker": "",
-    "nextSteps": []
+    "nextSteps": [],
+    "requiredContextMappingVerified": true,
+    "allRequiredContextsMappedToSameShaRuns": true,
+    "allMappedRunsHaveImmutableIdentity": true,
+    "allMappedRunsSuccessful": true,
+    "mappedRequiredContexts": [
+      "lint",
+      "vitest",
+      "pytest",
+      "playwright"
+    ],
+    "unmappedRequiredContexts": []
   },
   "failClosedSemantics": {
     "requiredChecksAreDistinct": true,
@@ -216,5 +227,55 @@
       }
     },
     "anyRequiredFailure": false
+  },
+  "requiredContextCrossValidation": {
+    "revision": "560ddbcdc320d48a14e1b195bf3d50439c4c8c5c",
+    "branchProtectionRequiredContexts": [
+      "lint",
+      "vitest",
+      "pytest",
+      "playwright"
+    ],
+    "sameShaRequiredCheckRunNames": [
+      "lint",
+      "playwright",
+      "pytest",
+      "vitest"
+    ],
+    "contextToRunIdentity": {
+      "lint": {
+        "id": 65561160752,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555428/job/65561160752",
+        "status": "completed",
+        "conclusion": "success",
+        "sameRevision": true
+      },
+      "vitest": {
+        "id": 65561160749,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160749",
+        "status": "completed",
+        "conclusion": "success",
+        "sameRevision": true
+      },
+      "pytest": {
+        "id": 65561160785,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160785",
+        "status": "completed",
+        "conclusion": "success",
+        "sameRevision": true
+      },
+      "playwright": {
+        "id": 65561160798,
+        "htmlUrl": "https://github.com/SethBurkart123/Covalt/actions/runs/22625555427/job/65561160798",
+        "status": "completed",
+        "conclusion": "success",
+        "sameRevision": true
+      }
+    },
+    "unmappedRequiredContexts": [],
+    "contextsWithoutImmutableRunIdentity": [],
+    "allRequiredContextsMapped": true,
+    "allMappedRunsHaveImmutableIdentity": true,
+    "allMappedRunsSuccessful": true
   }
 }
