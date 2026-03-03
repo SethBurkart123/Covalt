@@ -20,6 +20,16 @@ export function buildNodeEdgeIndex(edges: FlowEdge[], nodeId: string): NodeEdgeI
   return { incoming, outgoing };
 }
 
+export function canRenderParamControl(param: Parameter): boolean {
+  return param.mode === 'constant' || param.mode === 'hybrid';
+}
+
+export function shouldRenderParamControl(param: Parameter, isConnected: boolean): boolean {
+  if (param.mode === 'constant') return true;
+  if (param.mode === 'hybrid') return !isConnected;
+  return false;
+}
+
 export function shouldRenderParam(
   param: Parameter,
   context: ParamRenderContext,

@@ -322,39 +322,39 @@ def _extract_webhook_response(item: NodeEvent) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _build_http_response(response_payload: dict[str, Any]) -> Response:
-    status = response_payload.get("status", 200)
+def _coerce_status_code(value: Any, *, default: int = 200) -> int:
     try:
-        status_code = int(status)
+        return int(value)
     except (TypeError, ValueError):
-        status_code = 200
+        return default
 
-    headers = response_payload.get("headers")
-    headers = headers if isinstance(headers, dict) else {}
 
-    body = response_payload.get("body")
+def _shape_http_response(*, status_code: int, headers: dict[str, Any], body: Any) -> Response:
     if status_code == 204:
         return Response(status_code=status_code, headers=headers)
     if isinstance(body, (str, bytes)):
         return Response(content=body, status_code=status_code, headers=headers)
-
     return JSONResponse(content=body, status_code=status_code, headers=headers)
 
 
+def _build_http_response(response_payload: dict[str, Any]) -> Response:
+    status_code = _coerce_status_code(response_payload.get("status", 200), default=200)
+
+    headers = response_payload.get("headers")
+    headers = headers if isinstance(headers, dict) else {}
+
+    return _shape_http_response(
+        status_code=status_code,
+        headers=headers,
+        body=response_payload.get("body"),
+    )
+
+
 def _build_node_route_response(response: NodeRouteResponse) -> Response:
-    body = response.body
-    if response.status == 204:
-        return Response(status_code=response.status, headers=response.headers)
-    if isinstance(body, (str, bytes)):
-        return Response(
-            content=body,
-            status_code=response.status,
-            headers=response.headers,
-        )
-    return JSONResponse(
-        content=body,
+    return _shape_http_response(
         status_code=response.status,
         headers=response.headers,
+        body=response.body,
     )
 
 
@@ -540,11 +540,7 @@ def _handle_provider_node_route(
             trigger_payload = {}
         return {"_trigger_flow": True, "payload": trigger_payload}
 
-    status = result.get("status", 200)
-    try:
-        status_code = int(status)
-    except (TypeError, ValueError):
-        status_code = 200
+    status_code = _coerce_status_code(result.get("status", 200), default=200)
 
     headers = result.get("headers")
     if not isinstance(headers, dict):

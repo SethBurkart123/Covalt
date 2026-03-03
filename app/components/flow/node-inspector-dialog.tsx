@@ -7,11 +7,9 @@ import {
   useEffect,
   type DragEvent,
   type MouseEvent,
-  type ComponentType,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, CircleDot, Database, FastForward, Loader2, Pin, Play, Search, X } from 'lucide-react';
-import * as Icons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -36,6 +34,7 @@ import {
 } from './flow-data-utils';
 import { TEMPLATE_DRAG_ACTIVE_CLASS } from './template-editor/template-editor-constants';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { getFlowIcon } from './flow-icon';
 
 type InspectorView = 'schema' | 'json';
 
@@ -122,11 +121,6 @@ function ViewTabs({
       ))}
     </div>
   );
-}
-
-function getIcon(name: string) {
-  const IconComponent = (Icons as unknown as Record<string, ComponentType<{ className?: string }>>)[name];
-  return IconComponent ?? Icons.Circle;
 }
 
 function RunMenuButton({
@@ -705,7 +699,7 @@ export function NodeInspectorDialog({
     [selectedNode]
   );
   const HeaderIcon = useMemo(
-    () => getIcon(definition?.icon ?? 'Circle'),
+    () => getFlowIcon(definition?.icon),
     [definition?.icon]
   );
   const currentNodeName = selectedNode ? getNodeName(selectedNode) : 'Node';

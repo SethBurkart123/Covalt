@@ -53,9 +53,9 @@ interface PendingConnection {
   socketType: SocketTypeId;
 }
 
-function buildNodeTypes(): NodeTypes {
+function buildNodeTypes(nodeTypeIds: string[]): NodeTypes {
   const types: NodeTypes = {};
-  for (const id of listNodeTypes()) {
+  for (const id of nodeTypeIds) {
     types[id] = id === 'reroute' ? RerouteNode : FlowNodeComponent;
   }
   return types;
@@ -285,7 +285,7 @@ interface FlowCanvasProps {
 }
 
 function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
-  const [, setDynamicNodeVersion] = useState(0);
+  const [dynamicNodeVersion, setDynamicNodeVersion] = useState(0);
 
   useEffect(() => {
     refreshNodeProviderDefinitions()
@@ -293,7 +293,11 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       .catch(() => {});
   }, []);
 
-  const nodeTypes = buildNodeTypes();
+  const nodeTypeIds = useMemo(() => {
+    void dynamicNodeVersion;
+    return listNodeTypes();
+  }, [dynamicNodeVersion]);
+  const nodeTypes = useMemo(() => buildNodeTypes(nodeTypeIds), [nodeTypeIds]);
 
   const { nodes, edges, onNodesChange, onEdgesChange, canUndo, canRedo } = useFlowState();
   const { executionByNode } = useFlowExecution();

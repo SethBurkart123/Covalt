@@ -4,6 +4,7 @@ import { memo, useCallback } from 'react';
 import type { Parameter } from '@/lib/flow';
 import { Socket } from './socket';
 import { ParameterControl } from './controls';
+import { shouldRenderParamControl } from './parameter-visibility';
 import { cn } from '@/lib/utils';
 
 interface ParameterRowProps {
@@ -27,7 +28,7 @@ export const ParameterRow = memo(function ParameterRow({ param, value, isConnect
   
   const handleChange = useCallback((v: unknown) => onParamChange(param.id, v), [param.id, onParamChange]);
   
-  const showControl = (mode === 'constant') || (mode === 'hybrid' && !isConnected);
+  const showControl = shouldRenderParamControl(param, Boolean(isConnected));
   const hasSocket = socket && (mode === 'input' || mode === 'output' || mode === 'hybrid');
   const socketSide = socket?.side ?? (mode === 'output' ? 'right' : 'left');
   const hideLabel = param.type === 'messages';
