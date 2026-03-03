@@ -106,7 +106,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
   }, [edgeIndex]);
 
   const nodeType = selectedNodeData?.type ?? null;
-  const definition = nodeType ? getNodeDefinition(nodeType) : null;
+  const definition = nodeType ? getNodeDefinition(nodeType) ?? null : null;
   const nodeData = useMemo(
     () => (selectedNodeData?.data ?? {}) as Record<string, unknown>,
     [selectedNodeData?.data]
