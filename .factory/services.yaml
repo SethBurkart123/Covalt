@@ -7,6 +7,8 @@ commands:
   test_vitest: bun run ci:vitest
   test_pytest: bun run ci:pytest
   test_playwright: bun run ci:playwright
+  test_playwright_reuse: bun run test:e2e:reuse
+  test_playwright_exclusive: bun run test:e2e:exclusive
   test: bun run ci:lint && bun run ci:vitest && bun run ci:pytest
   test_full: bun run ci:full
   build: bun run build

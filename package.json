@@ -23,12 +23,14 @@
     "test": "vitest",
     "test:run": "bun run ci:full",
     "test:e2e": "playwright test",
+    "test:e2e:reuse": "PLAYWRIGHT_SERVER_MODE=reuse playwright test",
+    "test:e2e:exclusive": "PLAYWRIGHT_SERVER_MODE=exclusive playwright test",
     "test:e2e:list": "playwright test --list",
     "playwright:install": "playwright install chromium",
     "ci:lint": "bun run lint",
     "ci:vitest": "bun run test --run",
     "ci:pytest": "uv run pytest -q",
-    "ci:playwright": "bun run test:e2e",
+    "ci:playwright": "bun run test:e2e:exclusive",
     "ci:full": "bun run ci:lint && bun run ci:vitest && bun run ci:pytest && bun run ci:playwright"
   },
   "dependencies": {

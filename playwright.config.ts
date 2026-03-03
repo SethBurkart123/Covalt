@@ -1,9 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolvePlaywrightServerMode } from './tests/playwright/server-mode';
 
 const FRONTEND_URL = 'http://localhost:3101';
 const BACKEND_URL = 'http://localhost:3100/';
+const PLAYWRIGHT_SERVER_MODE = resolvePlaywrightServerMode({
+  ci: !!process.env.CI,
+  envValue: process.env.PLAYWRIGHT_SERVER_MODE,
+});
+const SHOULD_REUSE_EXISTING_SERVER = PLAYWRIGHT_SERVER_MODE === 'reuse';
 
 export default defineConfig({
+  globalSetup: './tests/playwright/global-setup.ts',
   testDir: './tests/playwright',
   testMatch: '**/*.e2e.ts',
   fullyParallel: false,
@@ -31,7 +38,7 @@ export default defineConfig({
     {
       command: 'COVALT_BACKEND_PORT=3100 COVALT_DEV_MODE=1 COVALT_GENERATE_TS=0 COVALT_E2E_TESTS=1 uv run main.py',
       url: BACKEND_URL,
-      reuseExistingServer: false,
+      reuseExistingServer: SHOULD_REUSE_EXISTING_SERVER,
       timeout: 180_000,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -39,7 +46,7 @@ export default defineConfig({
     {
       command: 'PORT=3101 bun run dev:frontend',
       url: FRONTEND_URL,
-      reuseExistingServer: false,
+      reuseExistingServer: SHOULD_REUSE_EXISTING_SERVER,
       timeout: 180_000,
       stdout: 'pipe',
       stderr: 'pipe',
