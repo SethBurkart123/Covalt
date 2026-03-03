@@ -102,8 +102,10 @@ def _run_bun_rpc(
 
     entrypoint_path = (spec.plugin_dir / spec.entrypoint).resolve()
     if not entrypoint_path.exists():
-        raise NodeProviderRuntimeError(
-            f"Node provider plugin '{spec.plugin_id}' missing runtime entrypoint: {entrypoint_path}"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary=f"missing runtime entrypoint: {entrypoint_path}",
         )
 
     proc = subprocess.run(
@@ -182,11 +184,14 @@ def _run_bun_rpc(
 def list_provider_definitions(
     spec: NodeProviderRuntimeSpec,
 ) -> list[dict[str, Any]]:
-    result = _run_bun_rpc(spec, method='list_definitions', payload={})
+    method = 'list_definitions'
+    result = _run_bun_rpc(spec, method=method, payload={})
     definitions = result.get('definitions')
     if not isinstance(definitions, list):
-        raise NodeProviderRuntimeError(
-            f"Node provider runtime '{spec.plugin_id}' returned invalid definitions"
+        raise _runtime_error(
+            spec,
+            method=method,
+            summary='returned invalid definitions',
         )
 
     normalized: list[dict[str, Any]] = []

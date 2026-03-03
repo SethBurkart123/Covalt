@@ -228,6 +228,14 @@ def _chat_entry_node_ids(
     if preferred_ids:
         return preferred_ids
 
+    chat_start_ids = sorted(
+        node_id
+        for node_id, node in nodes_by_id.items()
+        if str(node.get("type") or "") == CHAT_START_NODE_TYPE
+    )
+    if chat_start_ids:
+        return chat_start_ids
+
     root_ids = sorted(
         node_id for node_id in nodes_by_id if not upstream_by_node.get(node_id)
     )

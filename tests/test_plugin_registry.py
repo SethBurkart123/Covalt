@@ -195,6 +195,15 @@ class TestPluginRegistry:
         with pytest.raises(TypeError, match="callable"):
             registry.register_plugin("plugin.alpha", hooks={HookType.ON_NODE_CREATE: ["bad"]})
 
+    def test_register_plugin_rejects_non_hook_type_keys(self) -> None:
+        registry = PluginRegistry()
+
+        with pytest.raises(TypeError, match="HookType"):
+            registry.register_plugin(
+                "plugin.alpha",
+                hooks={"onNodeCreate": [lambda _context: "ok"]},  # type: ignore[arg-type]
+            )
+
 
 class TestPluginRegistryModuleHelpers:
     def test_module_level_registration_and_deregistration(self) -> None:

@@ -57,6 +57,31 @@ def test_node_route_index_falls_back_to_generic_hook_id_for_route_capable_nodes(
     assert node_route_index.resolve_node_route("provider:trigger", "hook-22") is not None
 
 
+def test_node_route_index_route_id_collision_prefers_last_write_with_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(node_route_index, "dispatch_hook", lambda *_args, **_kwargs: [])
+
+    first_graph = _graph(
+        nodes=[{"id": "node-1", "type": "provider:trigger", "data": {"routeId": "dup"}}]
+    )
+    second_graph = _graph(
+        nodes=[{"id": "node-2", "type": "provider:trigger", "data": {"routeId": "dup"}}]
+    )
+
+    node_route_index.update_agent_routes("agent-1", first_graph)
+    with caplog.at_level("WARNING"):
+        node_route_index.update_agent_routes("agent-2", second_graph)
+
+    target = node_route_index.resolve_node_route("provider:trigger", "dup")
+
+    assert target is not None
+    assert target.agent_id == "agent-2"
+    assert target.node_id == "node-2"
+    assert "duplicate route" in caplog.text.lower()
+
+
 def test_webhook_handler_uses_generic_route_lookup(monkeypatch) -> None:
     app = FastAPI()
     http_routes.register_webhook_routes(app)

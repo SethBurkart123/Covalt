@@ -141,7 +141,11 @@ class PluginRegistry:
                 )
 
     def _validate_hooks(self, hooks: dict[HookType, list[Any]]) -> None:
-        for handlers in hooks.values():
+        for hook_type, handlers in hooks.items():
+            if not isinstance(hook_type, HookType):
+                raise TypeError(
+                    f"hook type keys must be HookType values; got {hook_type!r}"
+                )
             for handler in handlers:
                 if not callable(handler):
                     raise TypeError("hook handlers must be callable")
