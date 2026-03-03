@@ -845,6 +845,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onSelect={handleAddNode}
         connectionFilter={connectionFilter ?? undefined}
         onSelectWithSocket={handleAddNodeWithSocket}
+        definitionsVersion={dynamicNodeVersion}
       />
       <FlowRunPrompt />
       {picker.active && (
