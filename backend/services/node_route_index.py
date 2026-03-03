@@ -92,12 +92,14 @@ def _index_agent_graph(agent_id: str, graph_data: dict[str, Any]) -> None:
         key = (node_type, route_id)
         existing = _ROUTE_INDEX.get(key)
         if existing and (existing.agent_id != agent_id or existing.node_id != node_id):
-            logger.error(
-                "[node_route_index] Duplicate route (%s, %s) from %s/%s; overwriting",
+            logger.warning(
+                "[node_route_index] duplicate route (%s, %s) from %s/%s; replacing previous %s/%s (last write wins)",
                 node_type,
                 route_id,
                 agent_id,
                 node_id,
+                existing.agent_id,
+                existing.node_id,
             )
 
         _ROUTE_INDEX[key] = NodeRouteTarget(agent_id=agent_id, node_id=node_id)

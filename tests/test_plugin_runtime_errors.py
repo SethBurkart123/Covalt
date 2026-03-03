@@ -142,3 +142,43 @@ def test_non_zero_exit_error_includes_plugin_method_and_stderr(
     assert "configure_runtime" in message
     assert "exit" in message.lower()
     assert "bun runtime blew up" in message
+
+
+def test_missing_entrypoint_error_includes_plugin_and_method_context(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin-missing-entry"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+
+    spec = runtime.NodeProviderRuntimeSpec(
+        plugin_id="plugin-123",
+        provider_id="provider-123",
+        plugin_dir=plugin_dir,
+        entrypoint="missing-runtime.js",
+    )
+
+    with pytest.raises(runtime.NodeProviderRuntimeError) as exc_info:
+        runtime.list_provider_definitions(spec)
+
+    message = str(exc_info.value)
+    assert "plugin-123" in message
+    assert "list_definitions" in message
+    assert "missing runtime entrypoint" in message.lower()
+
+
+def test_invalid_definitions_shape_error_includes_method_context(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _runtime_spec(tmp_path)
+    _mock_run(
+        monkeypatch,
+        stdout=json.dumps({"ok": True, "result": {"definitions": "not-a-list"}}),
+        stderr="",
+    )
+
+    with pytest.raises(runtime.NodeProviderRuntimeError) as exc_info:
+        runtime.list_provider_definitions(spec)
+
+    message = str(exc_info.value)
+    assert "plugin-123" in message
+    assert "list_definitions" in message
+    assert "invalid definitions" in message.lower()

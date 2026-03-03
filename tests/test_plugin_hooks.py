@@ -79,6 +79,22 @@ def test_dispatch_isolates_hook_failures(caplog) -> None:
     assert "onNodeCreate" in caplog.text
 
 
+def test_dispatch_failure_logging_handles_non_enum_hook_type(caplog) -> None:
+    hooks = PluginHooks()
+
+    def failing(_context: dict[str, object]) -> None:
+        raise RuntimeError("boom")
+
+    hooks._hooks["not-a-hook-type"] = [("plugin.bad", failing)]  # type: ignore[index]
+
+    with caplog.at_level(logging.ERROR):
+        results = hooks.dispatch_hook("not-a-hook-type", {"value": 1})  # type: ignore[arg-type]
+
+    assert results == []
+    assert "plugin.bad" in caplog.text
+    assert "not-a-hook-type" in caplog.text
+
+
 def test_deregister_hooks_removes_only_target_plugin() -> None:
     hooks = PluginHooks()
 

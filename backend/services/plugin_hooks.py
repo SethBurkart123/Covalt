@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 HookHandler = Callable[[dict[str, Any]], Any]
 
 
+def _stringify_hook_type(hook_type: Any) -> str:
+    if isinstance(hook_type, HookType):
+        return hook_type.value
+    return str(hook_type)
+
+
 class PluginHooks:
     """Stores lifecycle hooks and dispatches them in registration order."""
 
@@ -26,6 +32,8 @@ class PluginHooks:
     ) -> None:
         if not isinstance(plugin_id, str) or not plugin_id.strip():
             raise ValueError("plugin_id must be a non-empty string")
+        if not isinstance(hook_type, HookType):
+            raise TypeError("hook_type must be a HookType")
         if not callable(handler):
             raise TypeError("handler must be callable")
 
@@ -37,6 +45,7 @@ class PluginHooks:
         context: dict[str, Any],
     ) -> list[Any]:
         results: list[Any] = []
+        hook_label = _stringify_hook_type(hook_type)
 
         for plugin_id, handler in list(self._hooks.get(hook_type, [])):
             try:
@@ -45,7 +54,7 @@ class PluginHooks:
                 logger.error(
                     "plugin-hooks: %s hook '%s' failed: %s",
                     plugin_id,
-                    hook_type.value,
+                    hook_label,
                     exc,
                 )
                 continue

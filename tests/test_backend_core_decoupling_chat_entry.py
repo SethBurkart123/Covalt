@@ -50,7 +50,35 @@ def test_build_entry_node_ids_accepts_node_id_candidates_from_hook(monkeypatch) 
     assert chat_graph_runner._build_entry_node_ids(graph_data) == ["preferred-entry"]
 
 
-def test_build_entry_node_ids_falls_back_to_roots_when_hooks_return_no_candidates(
+def test_build_entry_node_ids_falls_back_to_chat_start_preference_when_hooks_return_no_candidates(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        chat_graph_runner,
+        "dispatch_hook",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+
+    graph_data = _graph(
+        nodes=[
+            {"id": "chat", "type": "chat-start", "data": {}},
+            {"id": "root", "type": "alpha", "data": {}},
+            {"id": "child", "type": "beta", "data": {}},
+        ],
+        edges=[
+            {
+                "source": "root",
+                "target": "child",
+                "data": {"channel": "flow"},
+            }
+        ],
+    )
+
+    assert chat_graph_runner._build_entry_node_ids(graph_data) == ["chat"]
+
+
+def test_build_entry_node_ids_falls_back_to_roots_when_no_hook_candidates_and_no_chat_start(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
