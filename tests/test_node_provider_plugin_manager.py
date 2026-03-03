@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.services import node_provider_plugin_manager as npm
+from backend.services import plugin_registry
 
 
 def _write_plugin(source_dir: Path, *, plugin_id: str = 'sample_provider') -> None:
@@ -53,6 +54,7 @@ def _setup_manager(monkeypatch, tmp_path: Path) -> npm.NodeProviderPluginManager
 
 
 def test_node_provider_plugin_manager_lifecycle(monkeypatch, tmp_path: Path) -> None:
+    plugin_registry.unregister_plugin('sample_provider')
     manager = _setup_manager(monkeypatch, tmp_path)
     source_dir = tmp_path / 'source-plugin'
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -66,11 +68,15 @@ def test_node_provider_plugin_manager_lifecycle(monkeypatch, tmp_path: Path) -> 
     assert plugins[0].id == 'sample_provider'
     assert plugins[0].enabled is True
 
+    plugin_registry.register_plugin('sample_provider')
     assert manager.enable_plugin('sample_provider', False) is True
+    assert plugin_registry.get_plugin_metadata('sample_provider') is None
     assert [m.id for m in manager.get_enabled_manifests()] == []
 
     assert manager.enable_plugin('sample_provider', True) is True
     assert [m.id for m in manager.get_enabled_manifests()] == ['sample_provider']
 
+    plugin_registry.register_plugin('sample_provider')
     assert manager.uninstall('sample_provider') is True
     assert manager.list_plugins() == []
+    assert plugin_registry.get_plugin_metadata('sample_provider') is None

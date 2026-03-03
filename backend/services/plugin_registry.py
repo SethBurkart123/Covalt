@@ -177,8 +177,28 @@ def deregister_plugin(plugin_id: str) -> bool:
     return _DEFAULT_PLUGIN_REGISTRY.deregister_plugin(plugin_id)
 
 
+def unregister_plugin(plugin_id: str) -> bool:
+    return deregister_plugin(plugin_id)
+
+
 def get_executor(node_type: str) -> Any | None:
     return _DEFAULT_PLUGIN_REGISTRY.get_executor(node_type)
+
+
+def list_node_types() -> list[str]:
+    return _DEFAULT_PLUGIN_REGISTRY.list_node_types()
+
+
+def plugin_for_node_type(node_type: str) -> str | None:
+    return _DEFAULT_PLUGIN_REGISTRY.plugin_for_node_type(node_type)
+
+
+def list_registered_plugins() -> list[str]:
+    return _DEFAULT_PLUGIN_REGISTRY.list_registered_plugins()
+
+
+def get_plugin_metadata(plugin_id: str) -> dict[str, Any] | None:
+    return _DEFAULT_PLUGIN_REGISTRY.get_plugin_metadata(plugin_id)
 
 
 def dispatch_hook(hook_type: HookType, context: dict[str, Any]) -> list[Any]:

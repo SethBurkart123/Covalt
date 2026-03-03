@@ -17,6 +17,7 @@ import yaml
 from .. import db
 from ..config import get_db_directory
 from . import plugin_install_utils
+from .plugin_registry import unregister_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -269,15 +270,26 @@ class NodeProviderPluginManager:
         return items
 
     def enable_plugin(self, plugin_id: str, enabled: bool) -> bool:
-        if self.get_manifest(plugin_id) is None:
+        manifest = self.get_manifest(plugin_id)
+        if manifest is None:
             return False
+
+        if not enabled:
+            unregister_plugin(manifest.id)
+
         self._set_state(plugin_id, enabled=bool(enabled))
         return True
 
     def uninstall(self, plugin_id: str) -> bool:
+        manifest = self.get_manifest(plugin_id)
         plugin_dir = get_node_provider_plugin_directory(plugin_id)
         if not plugin_dir.exists() or not plugin_dir.is_dir():
             return False
+
+        if manifest is not None:
+            unregister_plugin(manifest.id)
+        unregister_plugin(plugin_id)
+
         shutil.rmtree(plugin_dir)
         self._states.pop(plugin_id, None)
         self._persist_states()
