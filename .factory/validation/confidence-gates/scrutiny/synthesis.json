@@ -1,7 +1,7 @@
 {
   "milestone": "confidence-gates",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,29 +20,21 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
+    "total": 1,
     "passed": 1,
-    "failed": 1,
-    "failedFeatures": [
-      "confidence-final-required-check-evidence-and-stability"
-    ]
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "confidence-final-required-check-evidence-and-stability",
-      "severity": "blocking",
-      "description": "Final evidence artifact is anchored to revision 756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9 but still lacks immutable same-SHA remote check-run IDs/URLs for lint, vitest, pytest, and playwright, so required-check end-state is not proven in remote merge-gate context for that revision."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skill:ci-gate-worker",
       "suggestion": "Require an explicit same-SHA remote check-run proof step (IDs/URLs for lint, vitest, pytest, playwright on the asserted revision) before marking final confidence-gate evidence complete.",
-      "evidence": "confidence-final-required-check-evidence-and-stability review reports the artifact as missing immutable same-SHA check-run evidence despite claiming required-check readiness.",
+      "evidence": "The fix review for confidence-gates-evidence-immutable-proof-fix notes the previous miss originated from an underspecified evidence requirement in ci-gate-worker guidance and was corrected by explicit required-context cross-validation fields.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/confidence-gates/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/confidence-gates/scrutiny/synthesis.round2.json"
 }
