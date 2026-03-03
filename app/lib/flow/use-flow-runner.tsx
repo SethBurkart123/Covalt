@@ -79,29 +79,19 @@ function pickPreferredTriggerId(
   triggerIds: Set<string>
 ): string | null {
   if (triggerIds.size === 0) return null;
-  const chatStart = nodes.find(node => triggerIds.has(node.id) && node.type === "chat-start");
-  if (chatStart) return chatStart.id;
-  const firstTrigger = nodes.find(node => triggerIds.has(node.id));
-  return firstTrigger ? firstTrigger.id : null;
-}
 
-function selectPreferredTrigger(
-  nodes: FlowNode[],
-  candidateIds: Set<string>
-): { preferredId: string | null; excludedIds: Set<string> } {
-  if (candidateIds.size <= 1) {
-    const onlyId = candidateIds.values().next().value ?? null;
-    return { preferredId: onlyId, excludedIds: new Set() };
-  }
+  const sorted = nodes
+    .filter(node => triggerIds.has(node.id))
+    .sort((a, b) => {
+      const aDefinition = getNodeDefinition(a.type || "");
+      const bDefinition = getNodeDefinition(b.type || "");
+      const aPriority = typeof aDefinition?.metadata?.route === "object" ? 0 : 1;
+      const bPriority = typeof bDefinition?.metadata?.route === "object" ? 0 : 1;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a.id.localeCompare(b.id);
+    });
 
-  const preferredId = pickPreferredTriggerId(nodes, candidateIds);
-  const excludedIds = new Set<string>();
-  for (const id of candidateIds) {
-    if (!preferredId || id !== preferredId) {
-      excludedIds.add(id);
-    }
-  }
-  return { preferredId: preferredId ?? null, excludedIds };
+  return sorted[0]?.id ?? null;
 }
 
 interface RunPlan {
@@ -141,12 +131,11 @@ export function computeRunPlan(
     effectiveTriggerId = pickPreferredTriggerId(nodes, triggerCandidates);
   }
 
-  const { excludedIds: excludedTriggerIds } = selectPreferredTrigger(
-    nodes,
-    triggerCandidates
-  );
-  if (effectiveTriggerId) {
-    excludedTriggerIds.delete(effectiveTriggerId);
+  const excludedTriggerIds = new Set<string>();
+  for (const id of triggerCandidates) {
+    if (!effectiveTriggerId || id !== effectiveTriggerId) {
+      excludedTriggerIds.add(id);
+    }
   }
 
   if (mode === "runFrom") {

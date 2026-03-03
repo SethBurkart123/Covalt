@@ -61,6 +61,17 @@ const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
     type: 'webhook-trigger',
     definitionPath: 'nodes/core/webhook_trigger/definition.ts',
     executorPath: 'nodes/core/webhook_trigger/executor.py',
+    hooks: {
+      onNodeCreate: (context) => {
+        const existing = context.initialData.hookId;
+        if (typeof existing === 'string' && existing.trim()) {
+          return undefined;
+        }
+        return {
+          hookId: `hook_${Math.random().toString(36).slice(2, 10)}`,
+        };
+      },
+    },
   },
   {
     type: 'webhook-end',
@@ -101,6 +112,15 @@ const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
     type: 'reroute',
     definitionPath: 'nodes/flow/reroute/definition.ts',
     executorPath: 'nodes/flow/reroute/executor.py',
+    hooks: {
+      onSocketTypePropagate: (context) => {
+        const raw = context.data?._socketType;
+        if (typeof raw === 'string' && raw.trim()) {
+          return raw;
+        }
+        return context.currentType;
+      },
+    },
   },
   {
     type: 'code',

@@ -40,6 +40,12 @@ export type {
 export { SOCKET_TYPES, canConnect, canCoerce, getSocketStyle } from './sockets';
 export type { SocketType } from './sockets';
 
+export {
+  applyNodeCreateHooks,
+  getSocketTypePropagationConfig,
+  resolveSocketTypePropagation,
+} from './hook-dispatch';
+
 export { resolveNodeParameters, resolveParameterForHandle } from './node-parameters';
 
 export {

@@ -339,6 +339,26 @@ export type FrontendHookHandlers = Partial<{
   [K in FrontendHookType]: FrontendHookHandler<K>;
 }>;
 
+export interface RouteMetadata {
+  idField: string;
+  path: string;
+  label?: string;
+  idPrefix?: string;
+  emptyValuePlaceholder?: string;
+}
+
+export interface SocketTypePropagationMetadata {
+  stateField?: string;
+  inputHandle?: string;
+  outputHandle?: string;
+  supportsEdgeInsertion?: boolean;
+}
+
+export interface NodeDefinitionMetadata {
+  route?: RouteMetadata;
+  socketTypePropagation?: SocketTypePropagationMetadata;
+}
+
 /** Complete node definition */
 export interface NodeDefinition {
   id: string;
@@ -348,6 +368,7 @@ export interface NodeDefinition {
   icon: string;  // Lucide icon name
   executionMode: ExecutionMode;
   parameters: readonly Parameter[];
+  metadata?: NodeDefinitionMetadata;
   component?: unknown;
 }
 

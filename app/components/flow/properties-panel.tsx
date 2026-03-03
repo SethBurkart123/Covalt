@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, memo } from 'react';
 import { useNodesData, useStore } from '@xyflow/react';
-import type { FlowEdge, Parameter } from '@/lib/flow';
+import type { FlowEdge, Parameter, NodeDefinition } from '@/lib/flow';
 import { getNodeDefinition, useSelection, useFlowActions } from '@/lib/flow';
 import { ParameterControl } from './controls';
 import { buildNodeEdgeIndex, shouldRenderParam, shouldRenderParamControl, canRenderParamControl } from './parameter-visibility';
@@ -11,6 +11,51 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getBackendBaseUrl } from '@/lib/services/backend-url';
 import { getFlowIcon } from './flow-icon';
+
+export interface RouteDisplayState {
+  label: string;
+  idField: string;
+  value: string;
+  url: string | null;
+  canGenerate: boolean;
+  emptyValuePlaceholder: string;
+  idPrefix: string;
+}
+
+interface BuildRouteDisplayStateArgs {
+  definition: NodeDefinition | null;
+  data: Record<string, unknown>;
+  backendBaseUrl: string;
+}
+
+function resolveRoutePath(pathTemplate: string, value: string): string {
+  return pathTemplate.replace('{id}', encodeURIComponent(value));
+}
+
+export function buildRouteDisplayState({
+  definition,
+  data,
+  backendBaseUrl,
+}: BuildRouteDisplayStateArgs): RouteDisplayState | null {
+  const route = definition?.metadata?.route;
+  if (!route) return null;
+
+  const idField = route.idField;
+  const idPrefix = route.idPrefix ?? '';
+  const rawValue = data[idField];
+  const value = typeof rawValue === 'string' ? rawValue.trim() : '';
+  const resolvedPath = value ? resolveRoutePath(route.path, value) : null;
+
+  return {
+    label: route.label ?? 'Route URL',
+    idField,
+    value,
+    url: resolvedPath ? `${backendBaseUrl}${resolvedPath}` : null,
+    canGenerate: value.length === 0 && idPrefix.length > 0,
+    emptyValuePlaceholder: route.emptyValuePlaceholder ?? 'Generate an id first',
+    idPrefix,
+  };
+}
 
 /**
  * Properties panel - shows editable properties for the selected node.
@@ -62,50 +107,32 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
 
   const nodeType = selectedNodeData?.type ?? null;
   const definition = nodeType ? getNodeDefinition(nodeType) : null;
-  const hookId = selectedNodeData?.data?.hookId;
-  const routeId = selectedNodeData?.data?.routeId;
+  const nodeData = useMemo(
+    () => (selectedNodeData?.data ?? {}) as Record<string, unknown>,
+    [selectedNodeData?.data]
+  );
   const backendBaseUrl = useMemo(() => getBackendBaseUrl(), []);
-  const webhookUrl = useMemo(() => {
-    if (definition?.id !== 'webhook-trigger') return null;
-    if (typeof hookId !== 'string' || !hookId.trim()) return null;
-    return `${backendBaseUrl}/webhooks/${hookId}`;
-  }, [backendBaseUrl, definition?.id, hookId]);
 
-  const handleCopyWebhook = useCallback(() => {
-    if (!webhookUrl) return;
-    navigator.clipboard?.writeText(webhookUrl).catch(() => {});
-  }, [webhookUrl]);
+  const routeDisplay = useMemo(
+    () =>
+      buildRouteDisplayState({
+        definition,
+        data: nodeData,
+        backendBaseUrl,
+      }),
+    [backendBaseUrl, definition, nodeData]
+  );
 
-  const handleGenerateHookId = useCallback(() => {
-    if (definition?.id !== 'webhook-trigger' || !effectiveNodeId) return;
-    const nextId = `hook_${Math.random().toString(36).slice(2, 10)}`;
-    updateNodeData(effectiveNodeId, 'hookId', nextId);
-  }, [definition?.id, effectiveNodeId, updateNodeData]);
-
-  const showRouteId = useMemo(() => {
-    if (!definition) return false;
-    const hasParam = definition.parameters.some(param => param.id === 'routeId');
-    return hasParam || typeof routeId === 'string';
-  }, [definition, routeId]);
-
-  const nodeRouteUrl = useMemo(() => {
-    if (!showRouteId) return null;
-    if (typeof routeId !== 'string' || !routeId.trim()) return null;
-    const resolvedNodeType = definition?.id ?? nodeType;
-    if (!resolvedNodeType) return null;
-    return `${backendBaseUrl}/nodes/${resolvedNodeType}/${routeId}`;
-  }, [backendBaseUrl, definition?.id, nodeType, routeId, showRouteId]);
-
-  const handleCopyNodeRoute = useCallback(() => {
-    if (!nodeRouteUrl) return;
-    navigator.clipboard?.writeText(nodeRouteUrl).catch(() => {});
-  }, [nodeRouteUrl]);
+  const handleCopyRoute = useCallback(() => {
+    if (!routeDisplay?.url) return;
+    navigator.clipboard?.writeText(routeDisplay.url).catch(() => {});
+  }, [routeDisplay]);
 
   const handleGenerateRouteId = useCallback(() => {
-    if (!showRouteId || !effectiveNodeId) return;
-    const nextId = `route_${Math.random().toString(36).slice(2, 10)}`;
-    updateNodeData(effectiveNodeId, 'routeId', nextId);
-  }, [effectiveNodeId, showRouteId, updateNodeData]);
+    if (!routeDisplay?.canGenerate || !effectiveNodeId) return;
+    const nextId = `${routeDisplay.idPrefix}${Math.random().toString(36).slice(2, 10)}`;
+    updateNodeData(effectiveNodeId, routeDisplay.idField, nextId);
+  }, [effectiveNodeId, routeDisplay, updateNodeData]);
 
   if (!effectiveNodeId || !nodeType) {
     return null;
@@ -191,41 +218,34 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
           </div>
         )}
 
-        {definition.id === 'webhook-trigger' && (
+        {routeDisplay && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Webhook URL</label>
+            <label className="text-xs font-medium text-muted-foreground">{routeDisplay.label}</label>
             <div className="flex items-center gap-2">
-              <Input value={webhookUrl ?? ''} readOnly placeholder="Generate a hook id first" />
-              <Button type="button" variant="secondary" size="sm" onClick={handleCopyWebhook} disabled={!webhookUrl}>
+              <Input
+                value={routeDisplay.url ?? ''}
+                readOnly
+                placeholder={routeDisplay.emptyValuePlaceholder}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleCopyRoute}
+                disabled={!routeDisplay.url}
+              >
                 Copy
               </Button>
             </div>
-            {(!hookId || (typeof hookId === 'string' && !hookId.trim())) && (
-              <Button type="button" variant="secondary" size="sm" onClick={handleGenerateHookId}>
-                Generate Hook ID
-              </Button>
-            )}
-          </div>
-        )}
-
-        {showRouteId && definition.id !== 'webhook-trigger' && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Node Route URL</label>
-            <div className="flex items-center gap-2">
-              <Input value={nodeRouteUrl ?? ''} readOnly placeholder="Generate a route id first" />
-              <Button type="button" variant="secondary" size="sm" onClick={handleCopyNodeRoute} disabled={!nodeRouteUrl}>
-                Copy
-              </Button>
-            </div>
-            {(!routeId || (typeof routeId === 'string' && !routeId.trim())) && (
+            {routeDisplay.canGenerate && (
               <Button type="button" variant="secondary" size="sm" onClick={handleGenerateRouteId}>
-                Generate Route ID
+                Generate ID
               </Button>
             )}
           </div>
         )}
 
-        {panelParams.length === 0 && !webhookUrl && !nodeRouteUrl && definition.id !== 'webhook-trigger' && (
+        {panelParams.length === 0 && !routeDisplay && (
           <p className="text-sm text-muted-foreground italic">
             No configurable properties
           </p>
