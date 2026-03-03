@@ -1,39 +1,34 @@
 {
   "featureId": "confidence-final-required-check-evidence-and-stability",
-  "reviewedAt": "2026-03-03T11:31:43Z",
+  "reviewedAt": "2026-03-03T14:12:11Z",
   "commitId": "bff2a939bb6789200b0775ce0d19d6865dca39ce",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The feature adds a single evidence artifact with strong local run data and branch-protection snapshots, but it does not provide verifiable same-revision remote gate evidence for the stated end-state claim. The artifact asserts final required-check readiness as configured/green while the referenced revision cannot be resolved via GitHub API, leaving the merge-check proof incomplete.",
+    "summary": "The feature adds a final evidence artifact with strong local run and branch-protection snapshots, but it does not satisfy the required immutable same-revision remote-check proof for the asserted SHA.",
     "issues": [
       {
         "file": "tests/artifacts/confidence-gates-final-evidence.json",
         "line": 6,
         "severity": "blocking",
-        "description": "Artifact-level claim is anchored to revision 756ec61..., but that SHA is not resolvable through GitHub check-runs API (422: No commit found), so the report does not prove required-check end-state for the same revision in remote merge-gate context. This leaves VAL-GATE-004/VAL-GATE-006 end-state evidence incomplete."
+        "description": "The artifact is anchored to revision 756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9, but it does not include immutable remote check-run IDs/URLs for lint, vitest, pytest, and playwright on that same revision. This misses the feature expected behavior requiring same-SHA required-check evidence."
       },
       {
         "file": "tests/artifacts/confidence-gates-final-evidence.json",
         "line": 216,
         "severity": "non_blocking",
-        "description": "branchProtectionAssessment.requiredChecksConfigured is set true based on configured context names, but the artifact does not include a same-revision check-run identity cross-check (or run URLs/IDs) to prove those required contexts are actively produced by CI for the referenced revision."
+        "description": "branchProtectionAssessment marks required checks as configured from protection contexts alone, without cross-validating that those exact context identities were produced and completed for the asserted revision; this can overstate end-state confidence if context names drift."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The ci-gate-worker procedure does not explicitly require validating required check context names against check-runs for the exact revision used in final evidence before marking end-state configured.",
-      "evidence": ".factory/skills/ci-gate-worker/SKILL.md step 5 is generic; transcript shows check-runs queried on SHA df737447... (names: build/test/lint-frontend/lint-python) while final artifact anchors to 756ec61... with required contexts lint/vitest/pytest/playwright."
-    },
-    {
-      "area": "conventions",
-      "observation": "Mission/shared guidance lacks a standard that final validation artifacts must include immutable remote evidence pointers (e.g., check-run IDs/URLs tied to the asserted SHA), which weakens auditability of end-state gate claims.",
-      "evidence": "Mission AGENTS.md and .factory/library/* define gate goals but do not define artifact metadata conventions for same-SHA remote proof; this artifact contains summaries and branch protection snapshot only."
+      "observation": "The ci-gate-worker procedure is missing an explicit same-SHA remote check-run proof step before declaring final confidence-gate evidence complete.",
+      "evidence": ".factory/skills/ci-gate-worker/SKILL.md step 5 only says to collect evidence generally; transcript skeleton for this feature shows no successful immutable check-run evidence capture for revision 756ec61... despite expected behavior requiring check-run IDs/URLs per required context."
     }
   ],
   "addressesFailureFrom": null,
-  "summary": "Fail: evidence quality is close but not sufficient for final end-state confidence-gate proof because same-revision remote required-check validation is not established for the SHA recorded in the artifact."
+  "summary": "Fail: implementation provides local green/stability evidence and branch-protection configuration, but does not provide immutable same-revision remote required-check proof for the asserted SHA."
 }
