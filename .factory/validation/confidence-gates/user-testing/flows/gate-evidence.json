@@ -1,0 +1,55 @@
+{
+  "milestone": "confidence-gates",
+  "groupId": "gate-evidence",
+  "surface": "cli",
+  "toolsUsed": ["read", "grep", "execute", "gh api"],
+  "assertions": [
+    {
+      "id": "VAL-GATE-004",
+      "status": "pass",
+      "reason": "A single revision has non-vacuous full-gate evidence with all four required checks successful on the same SHA.",
+      "evidence": [
+        "tests/artifacts/confidence-gates-final-evidence.json: revision=560ddbcdc320d48a14e1b195bf3d50439c4c8c5c; localFullStackRun.allPassed=true",
+        "tests/artifacts/confidence-gates-final-evidence.json: non-vacuous counts -> vitest testsPassed=196, pytest passed=341, playwright passed=5",
+        "gh api repos/SethBurkart123/Covalt/commits/560ddbcdc320d48a14e1b195bf3d50439c4c8c5c/check-runs returned lint/vitest/pytest/playwright all completed success with immutable IDs 65561160752/65561160749/65561160785/65561160798"
+      ]
+    },
+    {
+      "id": "VAL-GATE-005",
+      "status": "pass",
+      "reason": "Required local/CI gate paths no longer reference the legacy custom Bun e2e path.",
+      "evidence": [
+        "grep in .github/workflows/*.yml for 'tests/e2e/toolset-suite.ts|bun tests/e2e' -> no matches",
+        "grep in package.json for 'tests/e2e/toolset-suite.ts|bun tests/e2e' -> no matches",
+        "grep in .factory/services.yaml for 'tests/e2e/toolset-suite.ts|bun tests/e2e' -> no matches"
+      ]
+    },
+    {
+      "id": "VAL-GATE-006",
+      "status": "pass",
+      "reason": "Main branch protection requires the four gate checks before merge.",
+      "evidence": [
+        "gh api repos/SethBurkart123/Covalt/branches/main/protection -> required_status_checks.contexts=[lint,vitest,pytest,playwright]",
+        "gh api repos/SethBurkart123/Covalt/rulesets -> [] (classic branch protection is active and contains required checks)"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "status": "blocked",
+      "reason": "Repeated full-stack reruns on current local revision are blocked at Playwright startup by occupied mission ports, preventing validation of passing-stack repeatability in this session.",
+      "evidence": [
+        "/tmp/ns-gate-evidence/stack-summary.txt: 3 reruns show lint/vitest/pytest exitCode=0 and playwright exitCode=1 each run",
+        "/tmp/ns-gate-evidence/run1-playwright.log (and run2/run3): 'Error: http://localhost:3100/ is already used'",
+        "lsof -nP -iTCP:3100 -sTCP:LISTEN and lsof -nP -iTCP:3101 -sTCP:LISTEN showed active listeners before reruns"
+      ]
+    }
+  ],
+  "frictions": [
+    "Playwright config uses webServer reuseExistingServer:false, so shared mission port occupancy (3100/3101) immediately blocks local ci:playwright reruns in multi-worker environments.",
+    "CLI evidence for VAL-GATE-004 required combining repository artifact verification with GitHub API check-run inspection because current HEAD is not the same SHA as the immutable gate-evidence artifact revision."
+  ],
+  "blockers": [
+    "Shared process listeners on 3100/3101 blocked local repeated passing full-stack executions needed to directly validate VAL-CROSS-004 on current HEAD."
+  ],
+  "notes": "Validated only assigned assertions (VAL-GATE-004, VAL-GATE-005, VAL-GATE-006, VAL-CROSS-004) on the CLI contract surface. Used namespace ns-gate-evidence for temporary local run logs under /tmp/ns-gate-evidence. No production/business-logic files were modified."
+}
