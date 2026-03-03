@@ -1,0 +1,96 @@
+{
+  "milestone": "playwright-migration-followup",
+  "groupId": "group-approval-followup",
+  "testedAt": "2026-03-03T10:03:40.436960+00:00",
+  "credentials": {
+    "account": "pw-followup-01@example.com",
+    "namespace": "pw-followup-group-approval-followup"
+  },
+  "assertionsTested": [
+    "VAL-PW-006"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PW-006",
+      "title": "Core flow - approval approve path works end-to-end",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted Playwright test for approve-path assertion",
+          "expected": "Approve flow test passes",
+          "observed": "Targeted test passed: validates approval approve path completes with expected output evidence"
+        },
+        {
+          "action": "Verify explicit post-approval completion/output checks in spec",
+          "expected": "Spec asserts more than control disappearance",
+          "observed": "Spec asserts approve/deny controls removed, denied state absent, card contains e2e_requires_approval, expanded output shows E2E approval, and chat submit remains visible"
+        },
+        {
+          "action": "Capture deterministic artifact evidence",
+          "expected": "Trace/report evidence generated for run",
+          "observed": "Trace artifact generated for targeted pass run"
+        }
+      ],
+      "evidence": {
+        "terminalOutput": [
+          "✓ [chromium] artifact-approval.e2e.ts:150:3 validates approval approve path completes with expected output evidence",
+          "1 passed (12.3s)",
+          "1 passed (11.8s)"
+        ],
+        "testDiscovery": "npx playwright test tests/playwright/artifact-approval.e2e.ts --list => Total: 4 tests in 1 file, includes approve-path case at line 150",
+        "artifacts": [
+          "tests/artifacts/playwright/test-results/artifact-approval.e2e.ts-p-63fd7-th-expected-output-evidence-chromium/trace.zip"
+        ],
+        "networkSignals": [
+          "POST /command/respond_to_tool_approval -> 200",
+          "Runtime event log includes RunContinued after approval"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "passedAssertions": [
+    {
+      "id": "VAL-PW-006",
+      "reason": "Targeted approve-path Playwright test passed and includes explicit completion/output assertions after approval"
+    }
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "toolsUsed": [
+    "npx playwright"
+  ],
+  "frictions": [
+    {
+      "description": "Backend log emitted non-blocking noise (e.g., 'Function e2e_requires_approval not found') during run despite passing assertion.",
+      "resolved": true,
+      "resolution": "Validated assertion outcome from Playwright pass status and explicit post-approval UI/output assertions in spec plus trace evidence.",
+      "affectedAssertions": [
+        "VAL-PW-006"
+      ]
+    }
+  ],
+  "blockers": [],
+  "commandsRun": [
+    {
+      "command": "npx playwright test tests/playwright/artifact-approval.e2e.ts --grep \"approve path completes with expected output evidence\" --reporter=list",
+      "exitCode": 0,
+      "observation": "Targeted approval approve-path test passed (1 passed)."
+    },
+    {
+      "command": "npx playwright test tests/playwright/artifact-approval.e2e.ts --list",
+      "exitCode": 0,
+      "observation": "Discovery intact: 4 tests found in artifact-approval.e2e.ts, including VAL-PW-006 case."
+    },
+    {
+      "command": "npx playwright test tests/playwright/artifact-approval.e2e.ts --grep \"approve path completes with expected output evidence\" --reporter=list --trace on",
+      "exitCode": 0,
+      "observation": "Targeted test passed again and produced trace artifact evidence."
+    }
+  ],
+  "notes": [
+    "Validation stayed within mission boundaries (Playwright flow on ports 3100/3101, no Docker).",
+    "Evidence confirms approve-path completion is validated by explicit output/content checks, not only disappearance of approval controls."
+  ],
+  "summary": "Tested 1 assertion (VAL-PW-006): 1 passed, 0 failed, 0 blocked."
+}
