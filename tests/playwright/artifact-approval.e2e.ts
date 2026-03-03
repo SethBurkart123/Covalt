@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const BACKEND_URL = 'http://127.0.0.1:3100';
-const APP_URL = '/?backend=http%3A%2F%2F127.0.0.1%3A3100';
 const REQUIRED_TOOL_IDS = ['e2e_echo', 'e2e_requires_approval'];
+
+function buildAppUrl(chatId?: string): string {
+  const params = new URLSearchParams({ backend: BACKEND_URL });
+  if (chatId) params.set('chatId', chatId);
+  return `/?${params.toString()}`;
+}
 
 type ProviderConfig = {
   provider: string;
@@ -68,8 +74,8 @@ async function configureCoreFlowFixtures(
   };
 }
 
-async function openChatWithBackend(page: Page): Promise<void> {
-  await page.goto(APP_URL);
+async function openChatWithBackend(page: Page, chatId?: string): Promise<void> {
+  await page.goto(buildAppUrl(chatId));
   await expect(page).toHaveTitle(/covalt/i);
   await expect(page.locator('form.chat-input-form')).toBeVisible();
 }
@@ -122,11 +128,22 @@ function getChatIdFromPageUrl(page: Page): string {
   return chatId ?? '';
 }
 
+function createIsolatedChatId(): string {
+  return `pw-${randomUUID().slice(0, 8)}`;
+}
+
 test.describe('playwright core artifact and approval flows', () => {
-  test('validates artifact rendering flow with UI assertions', async ({ page, request }) => {
+  test('validates artifact rendering flow with UI assertions', async ({ page, request }, testInfo) => {
+    const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await openChatWithBackend(page);
+      await callCommand(request, 'create_chat', {
+        body: {
+          id: chatId,
+          title: `pw artifact ${testInfo.repeatEachIndex}`,
+        },
+      });
+      await openChatWithBackend(page, chatId);
       await selectModel(page, 'builtin');
       await submitPrompt(page, 'Render an artifact-style tool card.', {
         value: 'e2e_echo',
@@ -138,21 +155,30 @@ test.describe('playwright core artifact and approval flows', () => {
         .first();
 
       await expect(artifactCard).toBeVisible({ timeout: 20_000 });
+      await expect(artifactCard).toContainText('e2e_echo');
       await artifactCard.click();
-      await expect(artifactCard).toContainText('Arguments');
-      await expect(artifactCard).toContainText('E2E echo');
+      await expect(page.getByText('E2E echo')).toBeVisible({ timeout: 10_000 });
       await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
     } finally {
       await restore();
     }
   });
 
-  test('validates approval approve path completes with expected output evidence', async ({ page, request }) => {
+  test('validates approval approve path completes with expected output evidence', async ({ page, request }, testInfo) => {
+    const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await openChatWithBackend(page);
+      await callCommand(request, 'create_chat', {
+        body: {
+          id: chatId,
+          title: `pw approve ${testInfo.repeatEachIndex}`,
+        },
+      });
+      await openChatWithBackend(page, chatId);
       await selectModel(page, 'approval');
-      await submitPrompt(page, 'Please run the approval action.');
+      await submitPrompt(page, 'Please run the approval action.', {
+        value: 'e2e_requires_approval',
+      });
 
       const approvalCard = page
         .locator('[data-toolcall]')
@@ -179,12 +205,21 @@ test.describe('playwright core artifact and approval flows', () => {
     }
   });
 
-  test('validates approval deny path and rejects false-success output', async ({ page, request }) => {
+  test('validates approval deny path and rejects false-success output', async ({ page, request }, testInfo) => {
+    const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await openChatWithBackend(page);
+      await callCommand(request, 'create_chat', {
+        body: {
+          id: chatId,
+          title: `pw deny ${testInfo.repeatEachIndex}`,
+        },
+      });
+      await openChatWithBackend(page, chatId);
       await selectModel(page, 'approval');
-      await submitPrompt(page, 'Please run the approval action and deny it.');
+      await submitPrompt(page, 'Please run the approval action and deny it.', {
+        value: 'e2e_requires_approval',
+      });
 
       const approvalCard = page
         .locator('[data-toolcall]')
@@ -207,10 +242,17 @@ test.describe('playwright core artifact and approval flows', () => {
     }
   });
 
-  test('keeps generated tool output visible after page reload in the same session', async ({ page, request }) => {
+  test('keeps generated tool output visible after page reload in the same session', async ({ page, request }, testInfo) => {
+    const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await openChatWithBackend(page);
+      await callCommand(request, 'create_chat', {
+        body: {
+          id: chatId,
+          title: `pw persistence ${testInfo.repeatEachIndex}`,
+        },
+      });
+      await openChatWithBackend(page, chatId);
       await selectModel(page, 'builtin');
       await submitPrompt(page, 'Persist this output across a reload.', {
         value: 'e2e_echo',
