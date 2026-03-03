@@ -5,7 +5,10 @@ import json
 import logging
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
+import urllib.parse
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,6 +31,13 @@ _PLUGIN_ID_RE = re.compile(r'^[a-z0-9][a-z0-9_-]*$')
 
 
 @dataclass(frozen=True)
+class NodeProviderDependencyInstallResult:
+    success: bool
+    message: str | None = None
+
+
+
+@dataclass(frozen=True)
 class NodeProviderPluginManifest:
     id: str
     name: str
@@ -36,6 +46,7 @@ class NodeProviderPluginManifest:
     runtime_entrypoint: str
     definitions_source: str
     definitions_file: str | None
+    python_dependencies: list[str]
     path: Path
     raw: dict[str, Any]
 
@@ -87,6 +98,8 @@ class NodeProviderPluginManifest:
                 raise ValueError("definitions.file is required when definitions.source='file'")
             _validate_relative_file_path(definitions_file, field_name='definitions.file')
 
+        python_dependencies = _parse_python_dependencies(raw)
+
         return cls(
             id=plugin_id,
             name=name,
@@ -95,6 +108,7 @@ class NodeProviderPluginManifest:
             runtime_entrypoint=runtime_entrypoint,
             definitions_source=definitions_source,
             definitions_file=definitions_file,
+            python_dependencies=python_dependencies,
             path=path,
             raw=dict(raw),
         )
@@ -128,12 +142,20 @@ def get_node_provider_plugin_directory(plugin_id: str) -> Path:
 def _normalize_plugin_path(value: str | None) -> str | None:
     if value is None:
         return None
-    raw = str(value).strip().strip('/')
-    if not raw:
+
+    raw_value = str(value).strip()
+    if not raw_value:
         return None
 
-    posix = PurePosixPath(raw)
-    if posix.is_absolute() or '..' in posix.parts:
+    if PurePosixPath(raw_value).is_absolute():
+        raise ValueError('pluginPath must be a relative path without traversal')
+
+    normalized = raw_value.strip('/')
+    if not normalized:
+        return None
+
+    posix = PurePosixPath(normalized)
+    if '..' in posix.parts:
         raise ValueError('pluginPath must be a relative path without traversal')
     return posix.as_posix()
 
@@ -145,6 +167,127 @@ def _validate_relative_file_path(value: str, *, field_name: str) -> None:
     p = PurePosixPath(raw)
     if p.is_absolute() or '..' in p.parts:
         raise ValueError(f'{field_name} must be a relative path without traversal')
+
+
+def _parse_python_dependencies(raw_manifest: dict[str, Any]) -> list[str]:
+    raw_dependencies = raw_manifest.get('python_dependencies')
+    if raw_dependencies is None:
+        dependencies = raw_manifest.get('dependencies')
+        if isinstance(dependencies, dict):
+            raw_dependencies = dependencies.get('python')
+
+    if raw_dependencies is None:
+        return []
+
+    if not isinstance(raw_dependencies, list):
+        raise ValueError(
+            'Node provider manifest field python_dependencies must be a list of requirement strings'
+        )
+
+    dependencies: list[str] = []
+    for item in raw_dependencies:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError('Node provider python dependency entries must be non-empty strings')
+
+        requirement = item.strip()
+        if '\n' in requirement or '\r' in requirement:
+            raise ValueError(
+                'Node provider python dependency entries must be single-line requirement strings'
+            )
+        dependencies.append(requirement)
+
+    return dependencies
+
+
+def _validate_repo_install_url(repo_url: str) -> str:
+    normalized = plugin_install_utils.normalize_repo_url(repo_url, require_netloc=True)
+    parsed = urllib.parse.urlparse(normalized)
+
+    if parsed.scheme.lower() != 'https':
+        raise ValueError('repoUrl must use https:// for GitHub installs')
+
+    if parsed.netloc.strip().lower() != 'github.com':
+        raise ValueError('Only GitHub repositories are supported for repo installs')
+
+    return normalized
+
+
+def _install_python_dependencies(
+    dependencies: list[str],
+    *,
+    plugin_id: str,
+    working_directory: Path,
+) -> NodeProviderDependencyInstallResult:
+    if not dependencies:
+        return NodeProviderDependencyInstallResult(success=True)
+
+    commands: list[tuple[list[str], str]] = [
+        (['uv', 'pip', 'install', *dependencies], 'uv pip install'),
+        ([sys.executable, '-m', 'pip', 'install', *dependencies], 'python -m pip install'),
+    ]
+
+    last_error: str | None = None
+    for command, label in commands:
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=str(working_directory),
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            return NodeProviderDependencyInstallResult(
+                success=False,
+                message=f'{label} failed for plugin {plugin_id}: {exc}',
+            )
+
+        if proc.returncode == 0:
+            return NodeProviderDependencyInstallResult(success=True)
+
+        stderr = (proc.stderr or '').strip()
+        stdout = (proc.stdout or '').strip()
+        detail = stderr or stdout or f'process exited with code {proc.returncode}'
+        last_error = f'{label} failed for plugin {plugin_id}: {detail}'
+
+    if last_error:
+        return NodeProviderDependencyInstallResult(success=False, message=last_error)
+
+    return NodeProviderDependencyInstallResult(
+        success=False,
+        message=f'No Python package installer available for plugin {plugin_id} (uv/pip not found)',
+    )
+
+
+def _resolve_archive_source_dir(extract_dir: Path) -> Path:
+    manifest_locations = sorted(
+        {
+            path.parent
+            for path in extract_dir.rglob('node-provider.yaml')
+            if path.is_file()
+        },
+        key=lambda path: (len(path.relative_to(extract_dir).parts), path.as_posix()),
+    )
+
+    if not manifest_locations:
+        raise ValueError('Node provider plugin is missing node-provider.yaml')
+
+    if len(manifest_locations) == 1:
+        return manifest_locations[0]
+
+    shallowest = len(manifest_locations[0].relative_to(extract_dir).parts)
+    shallow_candidates = [
+        path
+        for path in manifest_locations
+        if len(path.relative_to(extract_dir).parts) == shallowest
+    ]
+    if len(shallow_candidates) != 1:
+        raise ValueError(
+            'Archive contains multiple node-provider.yaml manifests; include exactly one plugin manifest'
+        )
+
+    return shallow_candidates[0]
 
 
 def _read_manifest_from_directory(source_dir: Path) -> NodeProviderPluginManifest:
@@ -329,11 +472,7 @@ class NodeProviderPluginManager:
             with zipfile.ZipFile(archive_path, 'r') as zf:
                 self._safe_extract(zf, extract_dir)
 
-            candidate_dirs = [p for p in extract_dir.iterdir() if p.is_dir()]
-            if len(candidate_dirs) == 1 and not (candidate_dirs[0] / 'node-provider.yaml').exists():
-                source_dir = candidate_dirs[0]
-            else:
-                source_dir = extract_dir
+            source_dir = _resolve_archive_source_dir(extract_dir)
 
             return self.import_from_directory(
                 source_dir,
@@ -373,6 +512,15 @@ class NodeProviderPluginManager:
             shutil.rmtree(dest_dir)
         shutil.copytree(source_dir, dest_dir)
 
+        dep_result = _install_python_dependencies(
+            manifest.python_dependencies,
+            plugin_id=plugin_id,
+            working_directory=dest_dir,
+        )
+        if not dep_result.success:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+            raise ValueError(dep_result.message or f'Failed installing Python dependencies for {plugin_id}')
+
         self._set_state(
             plugin_id,
             enabled=True,
@@ -394,7 +542,7 @@ class NodeProviderPluginManager:
         source_type: str = 'repo',
         source_ref: str | None = None,
     ) -> str:
-        normalized_repo = plugin_install_utils.normalize_repo_url(repo_url, require_netloc=True)
+        normalized_repo = _validate_repo_install_url(repo_url)
         tracking_ref = (ref or 'main').strip() or 'main'
         normalized_plugin_path = _normalize_plugin_path(plugin_path)
 
