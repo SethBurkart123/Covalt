@@ -258,8 +258,8 @@ def _normalize_registration(
         return None
 
     normalized_type = node_key
-    if not normalized_type.startswith('np:'):
-        normalized_type = f'np:{manifest_id}:{node_key}'
+    if ':' not in normalized_type:
+        normalized_type = f'{manifest_id}:{node_key}'
 
     definition = copy.deepcopy(raw_definition)
     definition['type'] = normalized_type
