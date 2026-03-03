@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-route-index-ownership",
+  "reviewedAt": "2026-03-03T07:55:12Z",
+  "commitId": "19fa35017ca7644767bc25bb33c622d9a3bf2762",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the prior failed implementation (commit 9f2237a) and the fix commit (19fa350). The fix resolves both prior blocking node_route_index issues: route-id lookup ambiguity is removed by mapping each route_id to a single active key for deterministic resolve_node_route_by_id behavior, and overwrite ownership is correctly transferred so remove_agent_routes only deletes routes still owned by the removed agent. Regression tests added in tests/test_backend_core_decoupling_routes.py cover both cross-node-type route_id collision behavior and stale-ownership removal safety. No new blocking correctness issues were found in the changed route-index and webhook lookup paths.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker deviated from baseline validation because known pre-existing frontend test failures caused commands.test to fail, but the current worker-base procedure does not clearly codify this allowed continuation path.",
+      "evidence": "Handoff skillFeedback for session 565b5ae1-ded4-4912-b1df-45ce37014888 marks followedProcedure=false at baseline step 1.3, while mission AGENTS.md lists the same covalt-n8n-nodes Vitest failures as known pre-existing and .factory/services.yaml provides test_frontend_filtered for this case."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The shared library does not document the route-id ownership invariant now enforced by node_route_index (single active owner per route_id with last-write-wins), which previously caused repeated scrutiny churn.",
+      "evidence": "backend/services/node_route_index.py now enforces _ROUTE_ID_INDEX: dict[str, tuple[str, str]] and global overwrite behavior; tests/test_backend_core_decoupling_routes.py asserts cross-node-type collision winner semantics, but .factory/library/architecture.md does not capture this invariant."
+    }
+  ],
+  "addressesFailureFrom": "/Users/sethburkart/Documents/Coding/agno-app-electron/.factory/validation/plugin-api/scrutiny/reviews/fix-backend-scrutiny-issues.json",
+  "summary": "PASS — fix-route-index-ownership adequately addresses the two prior blocking route-index failures from fix-backend-scrutiny-issues, with focused regression coverage and no new blockers identified in scope."
+}
