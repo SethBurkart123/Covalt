@@ -103,47 +103,107 @@ function resolveNodeDefinition(
   };
 }
 
+interface StagedHookRegistration {
+  hookType: FrontendHookType;
+  handler: FrontendHookHandler;
+  filterNodeType?: string;
+}
+
+function contextMatchesNodeType(
+  context: { nodeType?: unknown; sourceNodeType?: unknown; targetNodeType?: unknown },
+  nodeType: string
+): boolean {
+  return (
+    context.nodeType === nodeType
+    || context.sourceNodeType === nodeType
+    || context.targetNodeType === nodeType
+  );
+}
+
 function filterHookByNodeType<T extends FrontendHookType>(
   handler: FrontendHookHandler<T>,
   nodeType: string
 ): FrontendHookHandler<T> {
   return ((context: FrontendHookContextMap[T]) => {
-    const contextNodeType = (context as { nodeType?: unknown }).nodeType;
-    if (contextNodeType !== nodeType) {
+    const scopedContext = context as {
+      nodeType?: unknown;
+      sourceNodeType?: unknown;
+      targetNodeType?: unknown;
+    };
+
+    if (!contextMatchesNodeType(scopedContext, nodeType)) {
       return undefined as FrontendHookResultMap[T];
     }
+
     return handler(context);
   }) as FrontendHookHandler<T>;
 }
 
-function registerHookCollection(
-  pluginId: string,
+function collectHookRegistrations(
   hooks: FrontendHookHandlers | undefined,
   filterNodeType?: string
-): void {
+): StagedHookRegistration[] {
   if (!hooks) {
-    return;
+    return [];
   }
 
+  const registrations: StagedHookRegistration[] = [];
   const hookTypes = Object.keys(hooks) as FrontendHookType[];
+
   for (const hookType of hookTypes) {
-    const handler = hooks[hookType] as FrontendHookHandler<typeof hookType> | undefined;
-    if (!handler) {
+    const handler = hooks[hookType] as FrontendHookHandler | undefined;
+    if (handler === undefined) {
       continue;
     }
+    if (typeof handler !== 'function') {
+      throw new TypeError(`Hook '${hookType}' must be a function`);
+    }
 
-    const next = filterNodeType ? filterHookByNodeType(handler, filterNodeType) : handler;
-    registerHook(pluginId, hookType, next);
+    registrations.push({
+      hookType,
+      handler,
+      filterNodeType,
+    });
+  }
+
+  return registrations;
+}
+
+function registerStagedHooks(pluginId: string, registrations: StagedHookRegistration[]): void {
+  for (const registration of registrations) {
+    const handler = registration.filterNodeType
+      ? filterHookByNodeType(registration.handler, registration.filterNodeType)
+      : registration.handler;
+
+    registerHook(pluginId, registration.hookType, handler);
+  }
+}
+
+function rollbackPluginState(pluginId: string): void {
+  for (const [nodeType, stack] of nodesByType.entries()) {
+    const remaining = stack.filter((node) => node.pluginId !== pluginId);
+    if (remaining.length === 0) {
+      nodesByType.delete(nodeType);
+    } else {
+      nodesByType.set(nodeType, remaining);
+    }
+  }
+
+  deregisterHooks(pluginId);
+  plugins.delete(pluginId);
+}
+
+function assertNodeTypeAvailable(nodeType: string, pluginId: string): void {
+  const existing = nodesByType.get(nodeType) ?? [];
+  if (existing.length > 0 && !isOverridingPlugin(pluginId)) {
+    const owner = existing[existing.length - 1]?.pluginId ?? existing[0].pluginId;
+    throw new Error(`Node type '${nodeType}' is already registered by plugin '${owner}'`);
   }
 }
 
 function pushRegisteredNode(nodeType: string, node: RegisteredNode): void {
+  assertNodeTypeAvailable(nodeType, node.pluginId);
   const existing = nodesByType.get(nodeType) ?? [];
-  if (existing.length > 0 && !isOverridingPlugin(node.pluginId)) {
-    const owner = existing[existing.length - 1]?.pluginId ?? existing[0].pluginId;
-    throw new Error(`Node type '${nodeType}' is already registered by plugin '${owner}'`);
-  }
-
   nodesByType.set(nodeType, [...existing, node]);
 }
 
@@ -189,8 +249,9 @@ export function registerPlugin(manifest: PluginManifest): void {
   }
 
   const definitionsByType = createDefinitionIndex(manifest.definitions);
-  const registeredNodeTypes: string[] = [];
   const seenNodeTypes = new Set<string>();
+  const stagedNodes: RegisteredNode[] = [];
+  const stagedNodeHooks: StagedHookRegistration[] = [];
 
   for (const entry of manifest.nodes) {
     const nodeType = normalizeNodeType(pluginId, entry.type);
@@ -199,19 +260,34 @@ export function registerPlugin(manifest: PluginManifest): void {
     }
     seenNodeTypes.add(nodeType);
 
+    assertNodeTypeAvailable(nodeType, pluginId);
+
     const definition = resolveNodeDefinition(manifest, definitionsByType, nodeType, entry);
-    pushRegisteredNode(nodeType, {
+    const normalizedEntry: NodeEntry = { ...entry, type: nodeType };
+
+    stagedNodes.push({
       pluginId,
-      entry: { ...entry, type: nodeType },
+      entry: normalizedEntry,
       definition,
     });
 
-    registerHookCollection(pluginId, entry.hooks, nodeType);
-    registeredNodeTypes.push(nodeType);
+    stagedNodeHooks.push(...collectHookRegistrations(entry.hooks, nodeType));
   }
 
-  registerHookCollection(pluginId, manifest.hooks);
-  plugins.set(pluginId, { nodeTypes: registeredNodeTypes });
+  const stagedManifestHooks = collectHookRegistrations(manifest.hooks);
+
+  try {
+    for (const node of stagedNodes) {
+      pushRegisteredNode(node.entry.type, node);
+    }
+
+    registerStagedHooks(pluginId, stagedNodeHooks);
+    registerStagedHooks(pluginId, stagedManifestHooks);
+    plugins.set(pluginId, { nodeTypes: stagedNodes.map((node) => node.entry.type) });
+  } catch (error) {
+    rollbackPluginState(pluginId);
+    throw error;
+  }
 }
 
 export function unregisterPlugin(pluginId: string): boolean {
