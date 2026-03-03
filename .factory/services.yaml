@@ -3,8 +3,8 @@ commands:
   install_python: uv sync
   typecheck_generate: COVALT_GENERATE_TS=1 timeout 2 uv run main.py || true
   build: bun run build
-  test: uv run pytest -x -q --tb=short -n 8 && bun run test --run
-  test_python: uv run pytest -x -q --tb=short -n 8
+  test: uv run pytest -x -q --tb=short && bun run test --run
+  test_python: uv run pytest -x -q --tb=short
   test_frontend: bun run test --run
   lint: bun run lint
   lint_python: uv run ruff check backend/ tests/ main.py nodes/
