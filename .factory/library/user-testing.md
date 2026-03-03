@@ -39,3 +39,6 @@ Use only your assigned data namespace when creating flows, node names, hook IDs,
 
 ## Flow Validator Guidance: backend-api
 Use only your assigned data namespace for webhook hook IDs, route payload markers, and any test artifacts written through API calls. Do not call destructive endpoints outside your own namespaced resources. Use curl against the provided backend URL and record full request/response details (status code, key body fields, and headers when relevant). If an assertion cannot be tested through public HTTP/API surface, mark it blocked with the exact missing surface or prerequisite.
+
+## Flow Validator Guidance: docs-review
+Use only repository files as evidence, and cite concrete section headings or line ranges for each assertion decision. Do not infer coverage from commit messages or PR descriptions alone—verify directly in the documentation file content. Record exactly which required topics and examples were found (manifest, definition, executor, hooks, testing, installation via GitHub/zip, distribution, and debugging), and mark assertions blocked only if the repository file cannot be read.
