@@ -1,0 +1,75 @@
+{
+  "artifact": "milestone-a-backend-high-signal-scenarios",
+  "generatedBy": "test-reset-rebuild-backend-high-signal-tests",
+  "generatedAt": "2026-03-03T18:10:00Z",
+  "validationContractAssertions": [
+    "VAL-TEST-006",
+    "VAL-TEST-009",
+    "VAL-TEST-011"
+  ],
+  "scenarios": [
+    {
+      "scenario": "Run-control and approval/cancel behavior is deterministic across command and use-case boundaries",
+      "tests": [
+        "tests/test_run_control.py::test_register_active_run_applies_pending_cancel_intent_to_request_handle",
+        "tests/test_run_control.py::test_set_active_run_id_applies_pending_cancel_intent_to_run_id_handle",
+        "tests/test_stream_run_control_commands.py::test_respond_to_tool_approval_sets_response_and_signals_waiter",
+        "tests/test_stream_run_control_commands.py::test_cancel_run_with_run_id_cancels_agent_and_clears_state",
+        "tests/test_stream_run_control_commands.py::test_cancel_run_without_run_id_marks_early_cancel",
+        "tests/test_stream_run_control_commands.py::test_cancel_flow_run_with_bound_run_id_cancels_and_removes_active_state",
+        "tests/test_stream_run_control_commands.py::test_cancel_flow_run_without_run_id_marks_early_cancel_and_requests_handle_cancel",
+        "tests/test_stream_run_control_commands.py::test_cancel_flow_run_without_active_run_returns_false_without_marking_intent"
+      ],
+      "diagnosticSignal": "Assertions verify exact cancellation state transitions and payload capture (`approved`, `tool_decisions`, `edited_args`) so failures point to specific broken control-plane invariants."
+    },
+    {
+      "scenario": "Branching/runtime delegation envelopes preserve message-shape and event envelope contracts",
+      "tests": [
+        "tests/test_branch_runtime_characterization.py::test_continue_message_current_event_and_delegation_shape",
+        "tests/test_branch_runtime_characterization.py::test_retry_message_current_event_and_delegation_shape",
+        "tests/test_branch_runtime_characterization.py::test_edit_user_message_current_event_and_delegation_shape",
+        "tests/test_chat_runtime_characterization.py::test_member_run_delegation_event_sequence",
+        "tests/test_chat_graph_runner_runtime.py::test_runtime_delegates_to_flow_handler_without_prebuilt_agent"
+      ],
+      "diagnosticSignal": "Tests assert emitted event order and delegated runtime call envelopes (`graph_data`, `assistant_msg_id`, message role/content) instead of private implementation details."
+    },
+    {
+      "scenario": "Persistence ordering/content guarantees remain stable for flow runtime saves",
+      "tests": [
+        "tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_persists_ordered_execution_events",
+        "tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_persists_member_run_blocks_in_saved_content",
+        "tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_splits_text_blocks_between_nodes",
+        "tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_ignores_trailing_error_block_from_initial_content",
+        "tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_keeps_existing_tool_call_and_updates_completion_payload"
+      ],
+      "diagnosticSignal": "Assertions validate serialized content-block sequence and ordered execution-trace records, including update-in-place tool completion payload semantics."
+    },
+    {
+      "scenario": "Provider/plugin trust boundaries enforce safe-mode policy and signature trust states",
+      "tests": [
+        "tests/test_provider_plugin_policy.py::test_safe_mode_blocks_community_enable",
+        "tests/test_provider_plugin_sources_command.py::test_import_provider_plugin_blocks_in_safe_mode",
+        "tests/test_provider_plugin_manager.py::test_provider_plugin_verification_signed_and_tamper_detected",
+        "tests/test_provider_plugin_manager.py::test_provider_plugin_verification_untrusted_signer",
+        "tests/test_provider_plugin_sources_command.py::test_list_provider_plugin_sources_marks_installed_and_policy_flags"
+      ],
+      "diagnosticSignal": "Tests assert explicit trust outcomes (`verified`, `untrusted`, `invalid`) and policy gating behavior (`blockedByPolicy`) at command/runtime edges."
+    }
+  ],
+  "determinismControls": [
+    {
+      "control": "run_control state reset fixture",
+      "tests": [
+        "tests/conftest.py"
+      ],
+      "reason": "Autouse fixture resets active runs, pending cancels, and approval waiters between tests to prevent shared-state flake."
+    },
+    {
+      "control": "explicit async event synchronization",
+      "tests": [
+        "tests/test_chat_runtime_characterization.py::test_approval_pause_resume_event_sequence"
+      ],
+      "reason": "Approval waiter is polled and resolved deterministically before continuing run, avoiding timing races."
+    }
+  ]
+}
