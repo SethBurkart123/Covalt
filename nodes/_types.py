@@ -2,9 +2,73 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Protocol
 import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any, Protocol
+
+# ── Plugin manifest + lifecycle hooks ──────────────────────────────
+
+
+class HookType(StrEnum):
+    ON_NODE_CREATE = "onNodeCreate"
+    ON_CONNECTION_VALIDATE = "onConnectionValidate"
+    ON_ROUTE_EXTRACT = "onRouteExtract"
+    ON_ENTRY_RESOLVE = "onEntryResolve"
+    ON_RESPONSE_EXTRACT = "onResponseExtract"
+    ON_SOCKET_TYPE_PROPAGATE = "onSocketTypePropagate"
+
+
+class OnNodeCreateHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> dict[str, Any] | None: ...
+
+
+class OnConnectionValidateHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> bool | None: ...
+
+
+class OnRouteExtractHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> str | None: ...
+
+
+class OnEntryResolveHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> str | list[str] | None: ...
+
+
+class OnResponseExtractHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> dict[str, Any] | None: ...
+
+
+class OnSocketTypePropagateHook(Protocol):
+    def __call__(self, context: dict[str, Any]) -> str | None: ...
+
+
+PluginHookHandler = (
+    OnNodeCreateHook
+    | OnConnectionValidateHook
+    | OnRouteExtractHook
+    | OnEntryResolveHook
+    | OnResponseExtractHook
+    | OnSocketTypePropagateHook
+)
+
+
+@dataclass(frozen=True)
+class PluginManifest:
+    id: str
+    name: str
+    version: str
+    nodes: list[str]
+    hooks: dict[HookType, list[PluginHookHandler]] = field(default_factory=dict)
+
+
+class PluginManifestProtocol(Protocol):
+    id: str
+    name: str
+    version: str
+    nodes: list[str]
+    hooks: dict[HookType, list[PluginHookHandler]]
 
 
 # ── Runtime data ────────────────────────────────────────────────────
