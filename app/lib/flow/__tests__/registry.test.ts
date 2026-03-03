@@ -14,7 +14,10 @@ const EXPECTED_NODE_IDS = [
   'mcp-server',
   'toolset',
   'llm-completion',
+  'prompt-template',
   'conditional',
+  'merge',
+  'reroute',
   'code',
   'model-selector',
 ]

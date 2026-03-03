@@ -60,10 +60,6 @@ export {
   listAllNodeDefinitions,
   setDynamicNodeDefinitions,
   clearDynamicNodeDefinitions,
-  chatStart,
-  agent,
-  mcpServer,
-  toolset,
 } from '@nodes/_registry';
 export type { CompatibleNodeSocket } from '@nodes/_registry';
 
