@@ -147,7 +147,7 @@ test.describe('playwright core artifact and approval flows', () => {
     }
   });
 
-  test('validates approval approve path end-to-end', async ({ page, request }) => {
+  test('validates approval approve path completes with expected output evidence', async ({ page, request }) => {
     const restore = await configureCoreFlowFixtures(request);
     try {
       await openChatWithBackend(page);
@@ -171,6 +171,8 @@ test.describe('playwright core artifact and approval flows', () => {
       await expect(approvalCard.getByRole('button', { name: 'Deny' })).toHaveCount(0);
       await expect(approvalCard.getByText('Denied')).toHaveCount(0);
       await expect(approvalCard).toContainText('e2e_requires_approval');
+      await approvalCard.click();
+      await expect(page.getByText('E2E approval')).toBeVisible({ timeout: 10_000 });
       await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
     } finally {
       await restore();
