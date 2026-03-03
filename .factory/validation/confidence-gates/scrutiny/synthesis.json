@@ -1,0 +1,54 @@
+{
+  "milestone": "confidence-gates",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "bun run ci:full",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "bunx tsc --noEmit",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "bun run ci:lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": [
+      "confidence-final-required-check-evidence-and-stability"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "confidence-final-required-check-evidence-and-stability",
+      "severity": "blocking",
+      "description": "Final evidence artifact is anchored to revision 756ec61... but that SHA is not resolvable through GitHub check-runs API, so required-check end-state is not proven for the same revision in remote merge-gate context."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:ci-gate-worker",
+      "suggestion": "Require same-revision validation that required check context names are verified against check-runs for the exact SHA used in final evidence before marking gate end-state configured.",
+      "evidence": "Review for confidence-final-required-check-evidence-and-stability found check-runs queried on a different SHA than the artifact's asserted revision.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a validation-artifact convention requiring immutable remote evidence pointers (for example, check-run IDs/URLs tied to asserted SHA) for final gate-readiness claims.",
+      "evidence": "Confidence-gates final evidence report included branch-protection snapshots and local runs, but lacked same-SHA remote check-run linkage, reducing auditability.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
