@@ -1,0 +1,221 @@
+{
+  "artifact": "confidence-gates-final-required-check-evidence",
+  "generatedAt": "2026-03-03T11:18:43.960628+00:00",
+  "repository": "SethBurkart123/Covalt",
+  "defaultBranch": "main",
+  "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
+  "validationContractAssertions": [
+    "VAL-GATE-004",
+    "VAL-GATE-005",
+    "VAL-GATE-006",
+    "VAL-CROSS-004"
+  ],
+  "fullStackRuns": [
+    {
+      "runIndex": 1,
+      "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
+      "layers": {
+        "lint": {
+          "warningCount": 16,
+          "errorMentions": 0,
+          "exitCode": 0,
+          "durationSeconds": 1.542,
+          "summary": "603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ next lint"
+        },
+        "vitest": {
+          "testFilesPassed": 11,
+          "testsPassed": 196,
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 0.647,
+          "summary": " \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  22:17:49\n   Duration  316ms (transform 708ms, setup 0ms, import 884ms, tests 37ms, environment 1ms)\n\n$ vitest --run"
+        },
+        "pytest": {
+          "passed": 341,
+          "skipped": 43,
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 3.909,
+          "summary": "........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.92s"
+        },
+        "playwright": {
+          "passed": 5,
+          "reportedDuration": "20.5s",
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 21.318,
+          "summary": "[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:65439 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:65460 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
+        }
+      },
+      "allPassed": true
+    },
+    {
+      "runIndex": 2,
+      "revision": "756ec61dfd0a064d538b4adb912fd8a7ae6e2cc9",
+      "layers": {
+        "lint": {
+          "warningCount": 16,
+          "errorMentions": 0,
+          "exitCode": 0,
+          "durationSeconds": 1.356,
+          "summary": "603:1  Warning: File has too many lines (747). Maximum allowed is 500.  max-lines\n\n./app/python/_internal.ts\n43:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n68:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules\n$ next lint"
+        },
+        "vitest": {
+          "testFilesPassed": 11,
+          "testsPassed": 196,
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 0.652,
+          "summary": " \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  11 passed (11)\n      Tests  196 passed (196)\n   Start at  22:18:16\n   Duration  328ms (transform 686ms, setup 0ms, import 878ms, tests 37ms, environment 1ms)\n\n$ vitest --run"
+        },
+        "pytest": {
+          "passed": 341,
+          "skipped": 43,
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 3.71,
+          "summary": "........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n341 passed, 43 skipped in 2.75s"
+        },
+        "playwright": {
+          "passed": 5,
+          "reportedDuration": "21.0s",
+          "nonVacuous": true,
+          "exitCode": 0,
+          "durationSeconds": 21.793,
+          "summary": "[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:49417 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed\n[WebServer] INFO:     127.0.0.1:49430 - \"WebSocket /ws/events\" [accepted]\n[WebServer] INFO:     connection open\n[WebServer] INFO:     connection closed"
+        }
+      },
+      "allPassed": true
+    }
+  ],
+  "stability": {
+    "runSignature1": {
+      "lintExit": 0,
+      "vitest": {
+        "exit": 0,
+        "testFilesPassed": 11,
+        "testsPassed": 196
+      },
+      "pytest": {
+        "exit": 0,
+        "passed": 341,
+        "skipped": 43
+      },
+      "playwright": {
+        "exit": 0,
+        "passed": 5
+      }
+    },
+    "runSignature2": {
+      "lintExit": 0,
+      "vitest": {
+        "exit": 0,
+        "testFilesPassed": 11,
+        "testsPassed": 196
+      },
+      "pytest": {
+        "exit": 0,
+        "passed": 341,
+        "skipped": 43
+      },
+      "playwright": {
+        "exit": 0,
+        "passed": 5
+      }
+    },
+    "outcomesStableAcrossRuns": true,
+    "allRunsGreen": true,
+    "allRunsNonVacuous": true
+  },
+  "legacyRequiredPathCheck": {
+    "command": "rg -n 'tests/e2e/toolset-suite.ts|bun tests/e2e/toolset-suite.ts' package.json .github/workflows .factory/services.yaml",
+    "exitCode": 1,
+    "matchesFound": false,
+    "output": ""
+  },
+  "branchProtectionEvidence": {
+    "mainProtection": {
+      "command": "gh api repos/SethBurkart123/Covalt/branches/main/protection",
+      "exitCode": 0,
+      "isProtected": true,
+      "requiredStatusChecks": [
+        "lint",
+        "vitest",
+        "pytest",
+        "playwright"
+      ],
+      "raw": {
+        "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection",
+        "required_status_checks": {
+          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_status_checks",
+          "strict": true,
+          "contexts": [
+            "lint",
+            "vitest",
+            "pytest",
+            "playwright"
+          ],
+          "contexts_url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_status_checks/contexts",
+          "checks": [
+            {
+              "context": "lint",
+              "app_id": null
+            },
+            {
+              "context": "vitest",
+              "app_id": null
+            },
+            {
+              "context": "pytest",
+              "app_id": null
+            },
+            {
+              "context": "playwright",
+              "app_id": null
+            }
+          ]
+        },
+        "required_signatures": {
+          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/required_signatures",
+          "enabled": false
+        },
+        "enforce_admins": {
+          "url": "https://api.github.com/repos/SethBurkart123/Covalt/branches/main/protection/enforce_admins",
+          "enabled": false
+        },
+        "required_linear_history": {
+          "enabled": false
+        },
+        "allow_force_pushes": {
+          "enabled": false
+        },
+        "allow_deletions": {
+          "enabled": false
+        },
+        "block_creations": {
+          "enabled": false
+        },
+        "required_conversation_resolution": {
+          "enabled": false
+        },
+        "lock_branch": {
+          "enabled": false
+        },
+        "allow_fork_syncing": {
+          "enabled": false
+        }
+      }
+    },
+    "rulesets": {
+      "command": "gh api repos/SethBurkart123/Covalt/rulesets",
+      "exitCode": 0,
+      "raw": []
+    }
+  },
+  "branchProtectionAssessment": {
+    "requiredChecksConfigured": true,
+    "status": "configured",
+    "blocker": "",
+    "nextSteps": []
+  }
+}
