@@ -24,6 +24,9 @@ EXPECTED_BUILTIN_NODE_TYPES = {
     "model-selector",
 }
 
+CHAT_START_DEFINITION_PATH = "nodes/core/chat_start/definition.ts"
+CHAT_START_EXECUTOR_PATH = "nodes/core/chat_start/executor.py"
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -109,6 +112,15 @@ def test_register_builtin_plugin_registers_required_backend_hooks() -> None:
             "headers": {"x-test": "1"},
             "body": {"ok": True},
         }
+    ]
+
+
+def test_chat_start_manifest_entry_points_to_definition_and_executor_paths() -> None:
+    entries = _manifest_entries()
+    chat_start_entries = [entry for entry in entries if entry[0] == "chat-start"]
+
+    assert chat_start_entries == [
+        ("chat-start", CHAT_START_DEFINITION_PATH, CHAT_START_EXECUTOR_PATH)
     ]
 
 

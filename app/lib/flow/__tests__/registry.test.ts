@@ -39,6 +39,13 @@ describe('registry', () => {
       expect(def!.id).toBe(id)
     })
 
+    it('returns expected chat-start metadata for palette rendering', () => {
+      const chatStart = getNodeDefinition('chat-start')
+      expect(chatStart).toBeDefined()
+      expect(chatStart!.category).toBe('trigger')
+      expect(chatStart!.icon).toBe('MessageSquare')
+    })
+
     it('returns undefined for unknown ID', () => {
       expect(getNodeDefinition('nonexistent-node')).toBeUndefined()
     })
