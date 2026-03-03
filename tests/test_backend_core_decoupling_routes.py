@@ -153,6 +153,103 @@ def test_webhook_handler_uses_generic_route_lookup(monkeypatch) -> None:
     assert response.json()["detail"] == "Webhook not found"
 
 
+def test_node_route_index_prefers_webhook_hook_id_from_builtin_hook() -> None:
+    node_route_index.update_agent_routes(
+        "agent-webhook-priority",
+        _graph(
+            nodes=[
+                {
+                    "id": "trigger-1",
+                    "type": "webhook-trigger",
+                    "data": {"hookId": "hook-priority", "routeId": "route-fallback"},
+                }
+            ]
+        ),
+    )
+
+    preferred_target = node_route_index.resolve_node_route_by_id("hook-priority")
+    fallback_target = node_route_index.resolve_node_route_by_id("route-fallback")
+
+    assert preferred_target is not None
+    assert preferred_target.agent_id == "agent-webhook-priority"
+    assert preferred_target.node_id == "trigger-1"
+    assert fallback_target is None
+
+
+class _FakeAgentManager:
+    def __init__(self, graph_data: dict[str, Any]) -> None:
+        self._graph_data = graph_data
+
+    def get_agent(self, agent_id: str) -> dict[str, Any] | None:
+        if agent_id != "agent-webhook-flow":
+            return None
+        return {
+            "id": agent_id,
+            "graph_data": self._graph_data,
+        }
+
+
+def test_webhook_handler_executes_webhook_flow_end_to_end(monkeypatch) -> None:
+    app = FastAPI()
+    http_routes.register_webhook_routes(app)
+
+    graph_data = {
+        "nodes": [
+            {
+                "id": "trigger-1",
+                "type": "webhook-trigger",
+                "position": {"x": 0, "y": 0},
+                "data": {"hookId": "hook-e2e"},
+            },
+            {
+                "id": "end-1",
+                "type": "webhook-end",
+                "position": {"x": 240, "y": 0},
+                "data": {
+                    "status": 201,
+                    "headers": {"x-webhook-flow": "ok"},
+                },
+            },
+        ],
+        "edges": [
+            {
+                "id": "e-trigger-end",
+                "source": "trigger-1",
+                "sourceHandle": "output",
+                "target": "end-1",
+                "targetHandle": "body",
+                "data": {
+                    "channel": "flow",
+                    "sourceType": "data",
+                    "targetType": "data",
+                },
+            }
+        ],
+    }
+
+    node_route_index.update_agent_routes("agent-webhook-flow", graph_data)
+    monkeypatch.setattr(
+        http_routes,
+        "get_agent_manager",
+        lambda: _FakeAgentManager(graph_data),
+        raising=False,
+    )
+
+    client = TestClient(app)
+    response = client.post("/webhooks/hook-e2e", json={"test": True})
+
+    assert response.status_code == 201
+    assert response.headers.get("x-webhook-flow") == "ok"
+
+    payload = response.json()
+    assert payload["hook_id"] == "hook-e2e"
+    assert payload["agent_id"] == "agent-webhook-flow"
+    assert payload["node_id"] == "trigger-1"
+    assert payload["method"] == "POST"
+    assert payload["path"] == "/webhooks/hook-e2e"
+    assert payload["body"] == {"test": True}
+
+
 def test_extract_node_response_uses_on_response_extract_hook(monkeypatch) -> None:
     seen: list[dict[str, Any]] = []
 
