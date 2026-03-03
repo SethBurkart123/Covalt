@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from backend.services.plugin_registry import PluginRegistry
+from nodes import get_executor
+from nodes._types import HookType, NodeEvent
+from nodes.plugin import BUILTIN_EXECUTOR_MODULES, BUILTIN_EXECUTORS, register_builtin_plugin
+
+EXPECTED_BUILTIN_NODE_TYPES = {
+    "chat-start",
+    "webhook-trigger",
+    "webhook-end",
+    "agent",
+    "llm-completion",
+    "prompt-template",
+    "conditional",
+    "merge",
+    "reroute",
+    "mcp-server",
+    "toolset",
+    "code",
+    "model-selector",
+}
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _node_type_from_path(path: str) -> str:
+    return Path(path).parent.name.replace("_", "-")
+
+
+def _manifest_entries() -> list[tuple[str, str, str]]:
+    manifest_path = _repo_root() / "nodes" / "manifest.ts"
+    source = manifest_path.read_text(encoding="utf-8")
+
+    pattern = re.compile(
+        r"\{\s*type:\s*'([^']+)'\s*,\s*definitionPath:\s*'([^']+)'\s*,\s*executorPath:\s*'([^']+)'",
+        re.MULTILINE,
+    )
+    return pattern.findall(source)
+
+
+def test_builtin_plugin_registers_all_13_node_executors() -> None:
+    assert set(BUILTIN_EXECUTORS.keys()) == EXPECTED_BUILTIN_NODE_TYPES
+    assert set(BUILTIN_EXECUTOR_MODULES.keys()) == EXPECTED_BUILTIN_NODE_TYPES
+
+
+def test_builtin_plugin_is_loaded_in_default_registry() -> None:
+    for node_type, executor in BUILTIN_EXECUTORS.items():
+        assert get_executor(node_type) is executor
+
+
+def test_register_builtin_plugin_registers_required_backend_hooks() -> None:
+    registry = PluginRegistry()
+    register_builtin_plugin(registry)
+
+    assert registry.dispatch_hook(HookType.ON_ENTRY_RESOLVE, {"mode": "chat"}) == [
+        "chat-start"
+    ]
+    assert registry.dispatch_hook(HookType.ON_ENTRY_RESOLVE, {"mode": "flow"}) == []
+
+    assert registry.dispatch_hook(
+        HookType.ON_ROUTE_EXTRACT,
+        {
+            "node_type": "webhook-trigger",
+            "data": {"hookId": "hook_123"},
+        },
+    ) == ["hook_123"]
+    assert registry.dispatch_hook(
+        HookType.ON_ROUTE_EXTRACT,
+        {
+            "node_type": "other",
+            "data": {"hookId": "hook_999"},
+        },
+    ) == []
+
+    event = NodeEvent(
+        node_id="n1",
+        node_type="webhook-end",
+        event_type="result",
+        run_id="run-1",
+        data={
+            "outputs": {
+                "response": {
+                    "type": "data",
+                    "value": {
+                        "status": 201,
+                        "headers": {"x-test": "1"},
+                        "body": {"ok": True},
+                    },
+                }
+            }
+        },
+    )
+
+    assert registry.dispatch_hook(
+        HookType.ON_RESPONSE_EXTRACT,
+        {
+            "node_type": "webhook-end",
+            "event": event,
+        },
+    ) == [
+        {
+            "status": 201,
+            "headers": {"x-test": "1"},
+            "body": {"ok": True},
+        }
+    ]
+
+
+def test_builtin_manifest_definition_executor_coherence() -> None:
+    entries = _manifest_entries()
+
+    assert len(entries) == 13
+
+    entry_types = {node_type for node_type, _definition_path, _executor_path in entries}
+    assert entry_types == EXPECTED_BUILTIN_NODE_TYPES
+
+    for node_type, definition_path, executor_path in entries:
+        definition_type = _node_type_from_path(definition_path)
+        executor_type = _node_type_from_path(executor_path)
+
+        assert definition_type == node_type
+        assert executor_type == node_type
+
+        assert (_repo_root() / definition_path).exists()
+        assert (_repo_root() / executor_path).exists()
