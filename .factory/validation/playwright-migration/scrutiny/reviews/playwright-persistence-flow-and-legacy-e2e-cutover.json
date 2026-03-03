@@ -1,0 +1,40 @@
+{
+  "featureId": "playwright-persistence-flow-and-legacy-e2e-cutover",
+  "reviewedAt": "2026-03-03T09:19:21Z",
+  "commitId": "4a2a9cbe317ea5c3098fe06ca67b913f8e7f2157",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature delivers the requested persistence-after-reload Playwright coverage and adds explicit cutover artifacts (parity matrix + transition timeline). Required-path legacy Bun e2e references are absent from package/workflow/services required paths. I found evidence-quality gaps in the new artifacts, but they do not block functional acceptance of the feature.",
+    "issues": [
+      {
+        "file": "tests/artifacts/playwright/legacy-cutover-transition-timeline.json",
+        "line": 37,
+        "severity": "non_blocking",
+        "description": "Transition step 3 records commit as \"working-tree\" instead of an immutable SHA, which weakens auditability for the ordering claim (VAL-CROSS-003 evidence is less directly traceable to git history)."
+      },
+      {
+        "file": "tests/artifacts/playwright/legacy-cutover-transition-timeline.json",
+        "line": 4,
+        "severity": "non_blocking",
+        "description": "The artifact uses a fixed generatedAt timestamp rather than run-derived metadata, reducing confidence that the timeline evidence was produced from the reviewed revision." 
+      },
+      {
+        "file": "tests/artifacts/playwright/legacy-to-playwright-parity-matrix.json",
+        "line": 22,
+        "severity": "non_blocking",
+        "description": "The matrix marks \"Builtin Renderer Fallback\" as equivalent_or_stronger via the artifact rendering UI case, but the mapped Playwright test does not assert renderer fallback semantics directly (it asserts visible tool card content; see tests/playwright/artifact-approval.e2e.ts:126-144)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission/shared guidance does not currently define a convention for evidence artifacts to use immutable commit references and generated-at metadata derived from execution context. This likely contributed to \"working-tree\" and fixed timestamp values in committed transition evidence.",
+      "evidence": "tests/artifacts/playwright/legacy-cutover-transition-timeline.json:4,37; mission AGENTS.md testing guidance describes required evidence types but not metadata conventions for evidence artifacts."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature is implemented and behavior goals are covered (including reload persistence flow and cutover evidence artifacts), with only non-blocking evidence-fidelity gaps in artifact metadata/parity claim precision."
+}
