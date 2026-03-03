@@ -282,6 +282,63 @@ export type NodeCategory =
  */
 export type ExecutionMode = 'structural' | 'flow' | 'hybrid';
 
+export type FrontendHookType =
+  | 'onNodeCreate'
+  | 'onConnectionValidate'
+  | 'onSocketTypePropagate';
+
+export interface OnNodeCreateContext {
+  nodeType: string;
+  initialData: Record<string, unknown>;
+  nodeId?: string;
+  position?: { x: number; y: number };
+  definition?: NodeDefinition;
+  [key: string]: unknown;
+}
+
+export interface OnConnectionValidateContext {
+  nodeType?: string;
+  sourceNodeType?: string;
+  targetNodeType?: string;
+  sourceNodeId?: string;
+  targetNodeId?: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  sourceType?: SocketTypeId;
+  targetType?: SocketTypeId;
+  channel?: EdgeChannel;
+  [key: string]: unknown;
+}
+
+export interface OnSocketTypePropagateContext {
+  nodeType: string;
+  nodeId?: string;
+  handleId?: string | null;
+  currentType?: SocketTypeId;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface FrontendHookContextMap {
+  onNodeCreate: OnNodeCreateContext;
+  onConnectionValidate: OnConnectionValidateContext;
+  onSocketTypePropagate: OnSocketTypePropagateContext;
+}
+
+export interface FrontendHookResultMap {
+  onNodeCreate: Record<string, unknown> | undefined | null;
+  onConnectionValidate: boolean | undefined | null;
+  onSocketTypePropagate: SocketTypeId | string | undefined | null;
+}
+
+export type FrontendHookHandler<T extends FrontendHookType = FrontendHookType> = (
+  context: FrontendHookContextMap[T]
+) => FrontendHookResultMap[T];
+
+export type FrontendHookHandlers = Partial<{
+  [K in FrontendHookType]: FrontendHookHandler<K>;
+}>;
+
 /** Complete node definition */
 export interface NodeDefinition {
   id: string;
@@ -291,6 +348,7 @@ export interface NodeDefinition {
   icon: string;  // Lucide icon name
   executionMode: ExecutionMode;
   parameters: readonly Parameter[];
+  component?: unknown;
 }
 
 /** Runtime node instance (what React Flow sees) */
