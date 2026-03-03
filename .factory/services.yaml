@@ -1,0 +1,25 @@
+commands:
+  install: bun install
+  install_python: uv sync
+  typecheck_generate: COVALT_GENERATE_TS=1 timeout 2 uv run main.py || true
+  build: bun run build
+  test: uv run pytest -x -q --tb=short -n 8 && bun run test --run
+  test_python: uv run pytest -x -q --tb=short -n 8
+  test_frontend: bun run test --run
+  lint: bun run lint
+  lint_python: uv run ruff check backend/ tests/ main.py nodes/
+
+services:
+  frontend:
+    start: bun run dev:frontend
+    stop: lsof -ti :3000 | xargs kill
+    healthcheck: curl -sf http://localhost:3000
+    port: 3000
+    depends_on: []
+
+  backend:
+    start: uv run main.py
+    stop: lsof -ti :8899 | xargs kill
+    healthcheck: curl -sf http://localhost:8899/health
+    port: 8899
+    depends_on: []
