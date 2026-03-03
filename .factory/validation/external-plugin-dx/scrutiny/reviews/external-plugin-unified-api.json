@@ -1,0 +1,33 @@
+{
+  "featureId": "external-plugin-unified-api",
+  "reviewedAt": "2026-03-03T17:13:30.698011+00:00",
+  "commitId": "df46f7c5d41220a5048f7d34dbd6e8c4eb3a3668",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature substantially unifies external provider plugins under the central backend/frontend plugin registries and removes forced np: namespacing, but it introduces a blocking reserved-plugin-ID collision that can clobber builtin registration.",
+    "issues": [
+      {
+        "file": "backend/services/node_provider_registry.py",
+        "line": 273,
+        "severity": "blocking",
+        "description": "External provider manifests are only regex-validated (`backend/services/node_provider_plugin_manager.py:48-52`) and can use reserved IDs such as `builtin`. Reload then unconditionally executes `unregister_plugin(manifest.id)` before registering provider executors (`backend/services/node_provider_registry.py:273-279`). A provider with id `builtin` will deregister the core builtin plugin and replace its registry ownership/metadata, breaking builtin executor/hook behavior. The frontend refresh path has the same collision surface by unregistering arbitrary provider plugin IDs (`app/lib/services/node-provider-definitions.ts:51-59`) before registering manifests (`:87-89`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Reserved plugin IDs and ownership boundaries are runtime-significant but not explicitly documented/enforced as mission-level convention.",
+      "evidence": "Builtin manifest uses `id: 'builtin'` (`nodes/manifest.ts:131-133`), frontend plugin registry has override semantics for `dynamic` (`app/lib/flow/plugin-registry.ts:30`), while external provider manifest parsing accepts any regex match without reserved-ID denial (`backend/services/node_provider_plugin_manager.py:48-52`)."
+    },
+    {
+      "area": "skills",
+      "observation": "Validation contract evidence for VAL-EXT-007 includes agent-browser screenshot, but backend-worker procedure emphasizes CLI/tests only, so workers can satisfy skill steps while missing expected evidence shape.",
+      "evidence": "`validation-contract.md` VAL-EXT-007 lists evidence as unit tests + agent-browser screenshot; `.factory/skills/backend-worker/SKILL.md` procedure covers tests/grep/manual CLI checks; reviewed handoff for session `01d90dc7-4fa8-4300-a73e-2678381ad34c` reports `interactiveChecks: []`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit diff for external-plugin-unified-api. Unified registry goals are mostly met, but there is a blocking correctness regression: external plugins can use reserved IDs (notably `builtin`) and overwrite/deregister builtin plugin registration."
+}

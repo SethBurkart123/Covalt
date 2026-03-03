@@ -20,7 +20,7 @@ services:
 
   backend:
     start: uv run main.py
-    stop: lsof -ti :8899 | xargs kill
-    healthcheck: curl -sf http://localhost:8899/health
-    port: 8899
+    stop: lsof -ti :8000 | xargs kill
+    healthcheck: curl -sf http://localhost:8000/openapi.json
+    port: 8000
     depends_on: []

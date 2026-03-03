@@ -1,0 +1,28 @@
+{
+  "featureId": "migration-script-and-cleanup",
+  "reviewedAt": "2026-03-03T16:40:50Z",
+  "commitId": "68133bf",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds useful migration helpers, unknown-node runtime error surfacing, and dead-code cleanup, but it has a blocking migration-gating flaw: legacy graphs that only need edge-data migration are not migrated and can still fail at load/runtime.",
+    "issues": [
+      {
+        "file": "backend/services/flow_migration.py",
+        "line": 73,
+        "severity": "blocking",
+        "description": "requires_graph_migration() only checks node-type alias rewrites and ignores legacy edge schema problems (e.g., missing edge.data.channel). As a result, edge-only legacy graphs skip migrate_graph_data() and hit strict channel validation later (agent_manager.get_agent -> normalize_graph_data at backend/services/agent_manager.py:111-117, and route index rebuild at backend/services/node_route_index.py:42-47), violating the migration requirement that legacy flows be transformed to include required edge fields."
+      },
+      {
+        "file": "tests/test_flow_migration.py",
+        "line": 12,
+        "severity": "non_blocking",
+        "description": "Coverage verifies migrate_graph_data() behavior when called directly, but does not test the requires_graph_migration() gate for edge-only legacy payloads. This missed the blocking path where migration is skipped and strict validators raise errors on load."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, commit 68133bf diff, transcript skeleton, and backend-worker skill usage. Found a blocking correctness issue in migration gating: edge-only legacy graphs are not detected for migration, so required edge channel backfill can be skipped and loading can fail under strict normalization. Report marked fail until migration detection includes edge-schema checks (and corresponding tests)."
+}
