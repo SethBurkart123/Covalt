@@ -36,6 +36,7 @@ from . import stream_broadcaster as broadcaster
 from .agent_manager import get_agent_manager
 from .execution_trace import ExecutionTraceRecorder
 from .flow_executor import run_flow
+from .flow_migration import migrate_graph_data, requires_graph_migration
 from .mcp_manager import ensure_mcp_initialized
 from .model_selection import parse_model_id
 from .plugin_registry import dispatch_hook
@@ -1340,7 +1341,11 @@ async def handle_flow_stream(
     chat_history = build_chat_runtime_history(messages)
     openai_messages = build_openai_messages_for_chat(messages)
     agno_messages = build_agno_messages_for_chat(messages, chat_id)
-    entry_node_ids = _build_entry_node_ids(graph_data)
+    if requires_graph_migration(graph_data):
+        normalized_graph_data = migrate_graph_data(graph_data)
+    else:
+        normalized_graph_data = graph_data
+    entry_node_ids = _build_entry_node_ids(normalized_graph_data)
     trigger_payload = _build_trigger_payload(
         user_message,
         chat_history,
@@ -1364,13 +1369,13 @@ async def handle_flow_stream(
         expression_context={"trigger": trigger_payload},
         execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
     )
-    _apply_runtime_config(graph_data, services, mode="chat")
+    _apply_runtime_config(normalized_graph_data, services, mode="chat")
     if services is not None:
         chat_output = getattr(services, "chat_output", None)
         if (
             chat_output is not None
             and not getattr(chat_output, "primary_agent_id", None)
-            and _count_agent_nodes(graph_data) > 1
+            and _count_agent_nodes(normalized_graph_data) > 1
         ):
             setattr(chat_output, "group_by_node", True)
 
@@ -1830,7 +1835,7 @@ async def handle_flow_stream(
         )
 
     try:
-        async for item in runtime_run_flow(graph_data, context):
+        async for item in runtime_run_flow(normalized_graph_data, context):
             if isinstance(item, NodeEvent):
                 trace_recorder.record(
                     event_type=f"runtime.node.{item.event_type}",

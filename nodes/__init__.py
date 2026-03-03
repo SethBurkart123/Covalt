@@ -66,31 +66,12 @@ def list_node_plugin_metadata() -> list[dict[str, Any]]:
     return _registry_module().list_node_plugin_metadata()
 
 
-def clear_provider_executors() -> None:
-    _registry_module().clear_provider_executors()
-
-
-def register_provider_executor(
-    *,
-    node_type: str,
-    executor: Any,
-    metadata: dict[str, Any] | None = None,
-) -> None:
-    _registry_module().register_provider_executor(
-        node_type=node_type,
-        executor=executor,
-        metadata=metadata,
-    )
-
-
 # Attempt registration immediately when safe; if plugin registry is still
 # initializing, wrappers above will retry on first access.
 _try_register_builtin_plugin()
 
 __all__ = [
-    "clear_provider_executors",
     "get_executor",
     "list_node_plugin_metadata",
     "list_node_types",
-    "register_provider_executor",
 ]

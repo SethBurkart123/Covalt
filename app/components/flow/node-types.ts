@@ -4,7 +4,8 @@ import { FlowNode as FlowNodeComponent } from './node';
 
 export function buildNodeTypes(nodeTypeIds: string[]): NodeTypes {
   const types: NodeTypes = {};
-  for (const id of nodeTypeIds) {
+  const sortedIds = [...nodeTypeIds].sort((a, b) => a.localeCompare(b));
+  for (const id of sortedIds) {
     types[id] = FlowNodeComponent;
   }
   return types;

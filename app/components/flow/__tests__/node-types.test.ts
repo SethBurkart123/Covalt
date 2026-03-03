@@ -10,4 +10,9 @@ describe('buildNodeTypes', () => {
     expect(result.alpha).toBe(result.beta);
     expect(result.beta).toBe(result.gamma);
   });
+
+  it('returns deterministically sorted node type keys', () => {
+    const result = buildNodeTypes(['gamma', 'alpha', 'beta']);
+    expect(Object.keys(result)).toEqual(['alpha', 'beta', 'gamma']);
+  });
 });
