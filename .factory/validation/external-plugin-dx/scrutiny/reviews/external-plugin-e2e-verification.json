@@ -1,0 +1,44 @@
+{
+  "featureId": "external-plugin-e2e-verification",
+  "reviewedAt": "2026-03-03T17:39:12Z",
+  "commitId": "5c9f825d3abdf09d069e3d6ce668dab1fb825c6b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The transcript demonstrates install/list/palette refresh and cleanup for an external plugin, but it does not verify required cross-plugin runtime behaviors (co-execution and cross-boundary connection compatibility) defined for this feature.",
+    "issues": [
+      {
+        "file": "/Users/sethburkart/.factory/missions/02430ade-dc6b-48ec-80f4-1f143a4f55fb/features.json",
+        "line": 847,
+        "severity": "blocking",
+        "description": "Expected behavior requires proving builtin and external plugins coexist and execute together, but the reviewed handoff/transcript contain no flow run with both node types and no execution-event evidence for mixed-plugin execution."
+      },
+      {
+        "file": "/Users/sethburkart/.factory/missions/02430ade-dc6b-48ec-80f4-1f143a4f55fb/features.json",
+        "line": 848,
+        "severity": "blocking",
+        "description": "Expected behavior requires validating connection compatibility across plugin boundaries, but verification stops at Add Node palette visibility and does not exercise builtin\u2194external edge creation/validation (allowed and rejected cases)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "Mission shared-state docs and runtime default backend port are inconsistent, which can mislead validators about which backend to target.",
+      "evidence": "Mission AGENTS.md declares backend :8899; .factory/services.yaml backend.port is 8899; backend/main.py defaults COVALT_BACKEND_PORT to 8000; reviewed transcript/handoff used http://127.0.0.1:8000."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill is implementation/TDD-oriented and does not describe a verification-only path, creating procedure ambiguity for verification-only features like this one.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md steps 3-4 require writing tests first and implementing code; this feature performed verification-only work (handoff tests.added/updated empty)."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Feature instructions include an outdated request field name for directory import payload.",
+      "evidence": "features.json step 1 says use body.source_path, but backend/models/node_provider.py defines InstallNodeProviderPluginFromDirectoryInput.path and worker used body.path successfully."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: required cross-plugin execution and connection-compatibility behaviors were not verified, despite successful external plugin install/list/palette visibility/test/lifecycle cleanup checks."
+}

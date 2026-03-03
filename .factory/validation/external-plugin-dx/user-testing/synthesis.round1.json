@@ -1,0 +1,86 @@
+{
+  "milestone": "external-plugin-dx",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 17,
+    "passed": 16,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-008",
+    "VAL-CROSS-010",
+    "VAL-CROSS-011",
+    "VAL-EXT-001",
+    "VAL-EXT-002",
+    "VAL-EXT-003",
+    "VAL-EXT-005",
+    "VAL-EXT-006",
+    "VAL-EXT-007",
+    "VAL-EXT-008",
+    "VAL-EXT-009",
+    "VAL-EXT-010",
+    "VAL-EXT-011",
+    "VAL-EXT-012"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-EXT-004",
+      "reason": "Security enforcement is incomplete for repo installs: zip upload protections exist, but repo archive extraction uses raw extractall without traversal guard in install_from_repo, leaving an explicit validation gap."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Updated backend testing surface to prefer localhost:8000 command API and openapi health check; documented 8899 as legacy surface.",
+      "source": "flow-report",
+      "path": ".factory/library/user-testing.md"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Aligned backend service port/healthcheck to localhost:8000 with /openapi.json for reliable setup checks.",
+      "source": "setup",
+      "path": ".factory/services.yaml"
+    }
+  ],
+  "previousRound": null,
+  "meta": {
+    "generatedAt": "2026-03-03T19:15:13.700287+00:00",
+    "flowReports": [
+      ".factory/validation/external-plugin-dx/user-testing/flows/external-cross-e2e-g3.json",
+      ".factory/validation/external-plugin-dx/user-testing/flows/external-cross-remaining-g4.json",
+      ".factory/validation/external-plugin-dx/user-testing/flows/external-install-security-g1.json",
+      ".factory/validation/external-plugin-dx/user-testing/flows/external-lifecycle-runtime-g2.json"
+    ],
+    "toolsUsed": [
+      "agent-browser",
+      "agent-browser evidence (pre-captured screenshots)",
+      "chrome-devtools (read attempt only)",
+      "curl",
+      "grep",
+      "pytest",
+      "python3",
+      "rg",
+      "vitest"
+    ],
+    "frictions": [
+      "Assigned account/password were not needed because this surface did not require an auth/login interaction for the tested flows.",
+      "Backend /health on port 8000 returned 404 while /command endpoints were healthy.",
+      "Backend health endpoint at /health on port 8000 returned 404 while /command and /channel endpoints were healthy.",
+      "Backend health probe at /health returned 404 while API root/openapi/command routes were healthy; used /openapi.json and command endpoints for validation.",
+      "Direct /channel/stream_flow_run call after uninstall returned RunStarted/RunCompleted without surfacing the unknown-node error in this setup.",
+      "Direct channel payload must send {body:{...}} for stream_flow_run; unwrapped payload returns missing-body error.",
+      "In-session chrome-devtools browser automation was blocked by an existing locked profile.",
+      "Live install from arbitrary GitHub sample repo URL returned 404, so VAL-EXT-001 relied on targeted unit tests for successful repo-install path confirmation.",
+      "Provided credentials were not usable because this web surface did not present a login step during assigned flows.",
+      "agent-browser returned a transient 'Resource temporarily unavailable (os error 35)' once while waiting for navigation."
+    ],
+    "blockersObserved": [
+      "Could not start new chrome-devtools-controlled browser session because shared profile was already in use."
+    ]
+  }
+}

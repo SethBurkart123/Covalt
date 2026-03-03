@@ -1,0 +1,107 @@
+{
+  "groupId": "external-install-security-r2-g1",
+  "surface": "backend-api",
+  "assignedAssertions": [
+    "VAL-EXT-004"
+  ],
+  "results": [
+    {
+      "id": "VAL-EXT-004",
+      "status": "pass",
+      "reason": "Retest confirms plugin installation security enforcement is active across zip upload and repo install paths, including the prior regression target (repo archive traversal during extraction), and rejected inputs return clear actionable errors while a valid install path still succeeds.",
+      "evidence": [
+        "Zip >20MB rejected via API: POST /upload/import_node_provider_plugin (utv_ext_r2_g1_oversized.zip, 22,020,208 bytes) -> {code: UPLOAD_VALIDATION_ERROR, message: \"File 'utv_ext_r2_g1_oversized.zip' (21.0MB) exceeds maximum size (20.0MB)\"}",
+        "Zip traversal entry rejected via API: POST /upload/import_node_provider_plugin (utv_ext_r2_g1_traversal.zip;type=application/zip) -> {code: EXECUTION_ERROR, message: \"Archive contains invalid path traversal entries\"}",
+        "Repo non-HTTPS URL rejected via API: POST /command/install_node_provider_plugin_from_repo with repoUrl=http://github.com/utv_ext_r2_g1/sample-plugin -> {code: EXECUTION_ERROR, message: \"repoUrl must use https:// for GitHub installs\"}",
+        "Repo pluginPath traversal rejected via API: pluginPath=../escape -> {code: EXECUTION_ERROR, message: \"pluginPath must be a relative path without traversal\"}",
+        "Repo absolute pluginPath rejected via API: pluginPath=/absolute/path -> {code: EXECUTION_ERROR, message: \"pluginPath must be a relative path without traversal\"}",
+        "Regression target verified by targeted tests: uv run pytest -vv tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_path_traversal_entries[...] -> PASSED for ../evil.txt and /absolute/evil.txt",
+        "Repo extraction path uses guarded extraction: rg hit in backend/services/node_provider_plugin_manager.py shows install_from_repo calls self._safe_extract(...), and _safe_extract blocks absolute/'..' members with \"Archive contains invalid path traversal entries\"",
+        "Valid path still works (no over-blocking): POST /upload/import_node_provider_plugin with utv_ext_r2_g1_valid_plugin.zip -> {result:{id:\"utv-ext-r2-g1-plugin\"}}, then uninstall succeeded; plus pytest test_install_from_repo_success_with_https_github_and_plugin_path -> PASSED"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "curl -sS -o /tmp/utv_r2_openapi.json -w '%{http_code}' http://localhost:8000/openapi.json",
+      "exitCode": 0,
+      "observation": "200"
+    },
+    {
+      "command": "uv run pytest -vv tests/test_node_provider_plugin_manager.py::test_import_from_zip_rejects_oversized_archive tests/test_node_provider_plugin_manager.py::test_import_from_zip_rejects_path_traversal_entries tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_invalid_urls tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_invalid_plugin_path tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_path_traversal_entries tests/test_node_provider_plugin_manager.py::test_install_from_repo_success_with_https_github_and_plugin_path",
+      "exitCode": 0,
+      "observation": "9 passed in 0.11s"
+    },
+    {
+      "command": "python3 fixture generator for /tmp/utv_ext_r2_g1_valid_plugin.zip, /tmp/utv_ext_r2_g1_traversal.zip, /tmp/utv_ext_r2_g1_oversized.zip",
+      "exitCode": 0,
+      "observation": "Created namespaced fixtures; oversized archive size=22,020,208 bytes"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_r2_g1_oversized.zip -F _args={}",
+      "exitCode": 0,
+      "observation": "UPLOAD_VALIDATION_ERROR: exceeds maximum size (20MB)"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_r2_g1_traversal.zip;type=application/zip -F _args={}",
+      "exitCode": 0,
+      "observation": "EXECUTION_ERROR: Archive contains invalid path traversal entries"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_r2_g1_valid_plugin.zip;type=application/zip -F _args={}",
+      "exitCode": 0,
+      "observation": "Installed plugin id utv-ext-r2-g1-plugin"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/command/install_node_provider_plugin_from_repo -H Content-Type:application/json -d {body:{repoUrl:http://github.com/utv_ext_r2_g1/sample-plugin,ref:main}}",
+      "exitCode": 0,
+      "observation": "EXECUTION_ERROR: repoUrl must use https:// for GitHub installs"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/command/install_node_provider_plugin_from_repo -H Content-Type:application/json -d {body:{repoUrl:https://github.com/utv_ext_r2_g1/sample-plugin,ref:main,pluginPath:../escape}}",
+      "exitCode": 0,
+      "observation": "EXECUTION_ERROR: pluginPath must be a relative path without traversal"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/command/install_node_provider_plugin_from_repo -H Content-Type:application/json -d {body:{repoUrl:https://github.com/utv_ext_r2_g1/sample-plugin,ref:main,pluginPath:/absolute/path}}",
+      "exitCode": 0,
+      "observation": "EXECUTION_ERROR: pluginPath must be a relative path without traversal"
+    },
+    {
+      "command": "rg -n \"def _safe_extract|extractall\\(|MAX_NODE_PROVIDER_PLUGIN_SIZE_BYTES|repoUrl must use https|pluginPath must be a relative path without traversal\" backend/services/node_provider_plugin_manager.py",
+      "exitCode": 0,
+      "observation": "Found _safe_extract guard and install_from_repo path using self._safe_extract; constants/messages present"
+    },
+    {
+      "command": "curl -sS -X POST http://localhost:8000/command/uninstall_node_provider_plugin -H Content-Type:application/json -d {body:{id:utv-ext-r2-g1-plugin}}",
+      "exitCode": 0,
+      "observation": "Removed namespaced test plugin successfully"
+    }
+  ],
+  "interactiveChecks": [
+    {
+      "action": "Run rejection checks for zip upload and repo install inputs through live backend API on localhost:8000",
+      "observed": "All targeted invalid cases were rejected with specific validation messages"
+    },
+    {
+      "action": "Install and uninstall a namespaced valid zip plugin",
+      "observed": "Valid install succeeded and cleanup succeeded, confirming no over-blocking"
+    }
+  ],
+  "frictions": [
+    "Traversal zip upload defaulted to application/octet-stream and was pre-rejected by upload content-type gate; retried with explicit ;type=application/zip to reach archive traversal validation."
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "curl",
+    "pytest",
+    "python3",
+    "rg"
+  ],
+  "namespaceUsed": "utv_ext_r2_g1",
+  "credentials": {
+    "account": "utv_r2_g1@example.com",
+    "namespace": "utv_ext_r2_g1"
+  },
+  "testedAt": "2026-03-03T19:27:56Z"
+}

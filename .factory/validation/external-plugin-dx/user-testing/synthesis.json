@@ -1,0 +1,41 @@
+{
+  "milestone": "external-plugin-dx",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-EXT-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented multipart upload quirk for traversal-zip tests: set ;type=application/zip to reach archive traversal validation instead of MIME validation.",
+      "source": "flow-report",
+      "path": ".factory/library/user-testing.md"
+    }
+  ],
+  "previousRound": ".factory/validation/external-plugin-dx/user-testing/synthesis.round1.json",
+  "meta": {
+    "generatedAt": "2026-03-03T19:31:37.225969+00:00",
+    "flowReports": [
+      ".factory/validation/external-plugin-dx/user-testing/flows/external-install-security-r2-g1.json"
+    ],
+    "toolsUsed": [
+      "curl",
+      "pytest",
+      "python3",
+      "rg"
+    ],
+    "frictions": [
+      "Traversal zip upload defaulted to application/octet-stream and was pre-rejected by upload content-type gate; retried with explicit ;type=application/zip to reach archive traversal validation."
+    ],
+    "blockersObserved": []
+  }
+}
