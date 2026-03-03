@@ -20,6 +20,8 @@
     "lint": "next lint",
     "lint:python": "uv run --group dev ruff check backend/ tests/ main.py",
     "lint:python:fix": "uv run --group dev ruff check --fix backend/ tests/ main.py",
+    "lint:python:report": "python3 scripts/ruff_debt_report.py --advisory --inventory tests/artifacts/lint-python-debt-inventory.json",
+    "ci:lint-python:report": "bun run lint:python:report",
     "test": "vitest",
     "test:run": "bun run ci:full",
     "test:e2e": "playwright test",
