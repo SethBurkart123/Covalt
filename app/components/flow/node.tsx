@@ -33,7 +33,7 @@ interface FlowNodeProps extends NodeProps {
 }
 
 export function resolveNodeRendererComponent(
-  definition: NodeDefinition | null
+  definition: NodeDefinition | null | undefined
 ): ComponentType<FlowNodeProps> | null {
   if (!definition?.component || typeof definition.component !== 'function') {
     return null;
