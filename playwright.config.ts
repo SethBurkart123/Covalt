@@ -29,7 +29,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'COVALT_BACKEND_PORT=3100 COVALT_DEV_MODE=1 COVALT_GENERATE_TS=0 uv run main.py',
+      command: 'COVALT_BACKEND_PORT=3100 COVALT_DEV_MODE=1 COVALT_GENERATE_TS=0 COVALT_E2E_TESTS=1 uv run main.py',
       url: BACKEND_URL,
       reuseExistingServer: false,
       timeout: 180_000,
