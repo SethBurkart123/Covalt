@@ -6,6 +6,7 @@ commands:
   test: uv run pytest -x -q --tb=short && bun run test --run
   test_python: uv run pytest -x -q --tb=short
   test_frontend: bun run test --run
+  test_frontend_filtered: bunx vitest --run --exclude "db/node_provider_plugins/covalt-n8n-nodes/tests/**"
   lint: bun run lint
   lint_python: uv run ruff check backend/ tests/ main.py nodes/
 

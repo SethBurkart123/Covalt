@@ -22,6 +22,9 @@ Each plugin exports a typed manifest from a TypeScript file. The manifest declar
 - Supports dynamic registration via setDynamicNodeDefinitions
 - Optional custom React components per node type with generic fallback
 
+### Frontend Hook Context Contracts
+For connection validation hooks, context must carry `sourceNodeType` and `targetNodeType` as the canonical node-type fields. Generic helpers that filter hooks by node type should evaluate those fields (or an explicitly normalized `nodeType`) to avoid silently skipping node-scoped `onConnectionValidate` handlers.
+
 ### Builtin Plugin
 - Lives in `nodes/` directory
 - All 13 built-in node types registered through the plugin API
