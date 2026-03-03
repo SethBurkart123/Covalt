@@ -1,0 +1,34 @@
+{
+  "milestone": "test-value-reset",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TEST-001",
+    "VAL-TEST-002",
+    "VAL-TEST-003",
+    "VAL-TEST-004",
+    "VAL-TEST-005",
+    "VAL-TEST-006",
+    "VAL-TEST-007",
+    "VAL-TEST-008",
+    "VAL-TEST-009",
+    "VAL-TEST-010",
+    "VAL-TEST-011"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance section for CLI Contract Validation to codify isolation and reporting boundaries for parallel user-testing subagents.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}
