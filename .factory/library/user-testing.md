@@ -28,3 +28,10 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Frontend dev server uses Turbopack — hot reload is fast but sometimes needs a full page refresh
 - Backend must be running for flow execution to work
 - 7 Vitest suites in covalt-n8n-nodes fail due to bun:test imports — ignore these
+- If port 3000 is occupied or serving a stale/broken build, start a fresh frontend dev server and use its printed local URL (commonly http://localhost:3003) for user testing
+
+## Flow Validator Guidance: web-ui
+Use only your assigned data namespace when creating flows, node names, hook IDs, or payload text. Prefix all created resources with your namespace so parallel validators cannot collide. Do not delete or modify flows that do not match your namespace prefix. Use agent-browser for all UI interactions and capture concrete evidence (observed node labels, form values, toast/errors, and screenshots if available). If the UI fails to load on port 3000, switch to the assigned app URL in your prompt and continue.
+
+## Flow Validator Guidance: backend-api
+Use only your assigned data namespace for webhook hook IDs, route payload markers, and any test artifacts written through API calls. Do not call destructive endpoints outside your own namespaced resources. Use curl against the provided backend URL and record full request/response details (status code, key body fields, and headers when relevant). If an assertion cannot be tested through public HTTP/API surface, mark it blocked with the exact missing surface or prerequisite.
