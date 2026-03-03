@@ -8,6 +8,11 @@ from typing import Any
 
 import pytest
 
+from backend.application.tooling import (
+    CancelFlowRunDependencies,
+    CancelFlowRunInput,
+    execute_cancel_flow_run,
+)
 from backend.commands import streaming
 from backend.services import run_control
 from backend.services.chat_graph_runner import FlowRunHandle
@@ -19,6 +24,22 @@ class _FakeAgent:
 
     def cancel_run(self, run_id: str) -> None:
         self.cancelled_run_ids.append(run_id)
+
+
+class _RequestOnlyHandle:
+    def __init__(self) -> None:
+        self.requested = 0
+
+    def request_cancel(self) -> None:
+        self.requested += 1
+
+
+class _CancelFlowLogger:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def info(self, message: str) -> None:
+        self.messages.append(message)
 
 
 class _FakeDb:
@@ -150,3 +171,58 @@ async def test_cancel_run_with_graph_flow_handle_cancels_bound_agent(
     assert result == {"cancelled": True}
     assert fake_agent.cancelled_run_ids == ["run-flow"]
     assert run_control.get_active_run("msg-flow") is None
+
+
+def _cancel_flow_dependencies(logger: _CancelFlowLogger) -> CancelFlowRunDependencies:
+    return CancelFlowRunDependencies(
+        get_active_run=run_control.get_active_run,
+        mark_early_cancel=run_control.mark_early_cancel,
+        remove_active_run=run_control.remove_active_run,
+        logger=logger,
+    )
+
+
+def test_cancel_flow_run_with_bound_run_id_cancels_and_removes_active_state() -> None:
+    logger = _CancelFlowLogger()
+    handle = _FakeAgent()
+    run_control.register_active_run("flow-run-1", handle)
+    run_control.set_active_run_id("flow-run-1", "runtime-1")
+
+    result = execute_cancel_flow_run(
+        CancelFlowRunInput(run_id="flow-run-1"),
+        _cancel_flow_dependencies(logger),
+    )
+
+    assert result == {"cancelled": True}
+    assert handle.cancelled_run_ids == ["runtime-1"]
+    assert run_control.get_active_run("flow-run-1") is None
+
+
+def test_cancel_flow_run_without_run_id_marks_early_cancel_and_requests_handle_cancel() -> (
+    None
+):
+    logger = _CancelFlowLogger()
+    handle = _RequestOnlyHandle()
+    run_control.register_active_run("flow-run-early", handle)
+
+    result = execute_cancel_flow_run(
+        CancelFlowRunInput(run_id="flow-run-early"),
+        _cancel_flow_dependencies(logger),
+    )
+
+    assert result == {"cancelled": True}
+    assert handle.requested == 1
+    assert run_control.consume_early_cancel("flow-run-early") is True
+    assert run_control.get_active_run("flow-run-early") == (None, handle)
+
+
+def test_cancel_flow_run_without_active_run_returns_false_without_marking_intent() -> None:
+    logger = _CancelFlowLogger()
+
+    result = execute_cancel_flow_run(
+        CancelFlowRunInput(run_id="missing-flow-run"),
+        _cancel_flow_dependencies(logger),
+    )
+
+    assert result == {"cancelled": False}
+    assert run_control.consume_early_cancel("missing-flow-run") is False

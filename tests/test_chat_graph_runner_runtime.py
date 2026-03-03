@@ -667,3 +667,104 @@ async def test_handle_flow_stream_splits_text_blocks_between_nodes() -> None:
     final_blocks = json.loads(saved_payloads[-1])
     text_blocks = [block.get("content") for block in final_blocks if block.get("type") == "text"]
     assert text_blocks == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_ignores_trailing_error_block_from_initial_content() -> None:
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ok"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [
+            {"type": "text", "content": "kept"},
+            {"type": "error", "content": "stale"},
+        ],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    assert final_blocks == [
+        {"type": "text", "content": "kept"},
+        {"type": "error", "content": "stale"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_keeps_existing_tool_call_and_updates_completion_payload() -> (
+    None
+):
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "ToolCallCompleted",
+                "tool": {
+                    "id": "tool-1",
+                    "toolName": "search_docs",
+                    "toolArgs": {"query": "cats"},
+                    "toolResult": "done",
+                    "providerData": {"provider": "openai"},
+                },
+            },
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ignored"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [
+            {
+                "type": "tool_call",
+                "id": "tool-1",
+                "toolName": "search_docs",
+                "toolArgs": {"query": "cats"},
+                "isCompleted": False,
+            }
+        ],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    assert len(final_blocks) == 2
+
+    tool_block = final_blocks[0]
+    assert tool_block["type"] == "tool_call"
+    assert tool_block["id"] == "tool-1"
+    assert tool_block["toolName"] == "search_docs"
+    assert tool_block["toolArgs"] == {"query": "cats"}
+    assert tool_block["toolResult"] == "done"
+    assert tool_block["isCompleted"] is True
+    assert tool_block["providerData"] == {"provider": "openai"}
+
+    assert final_blocks[1] == {"type": "text", "content": "ignored"}
