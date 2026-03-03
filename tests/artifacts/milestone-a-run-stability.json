@@ -1,0 +1,113 @@
+{
+  "artifact": "milestone-a-run-stability",
+  "generatedAt": "2026-03-03T07:13:46.964329+00:00",
+  "validationContractAssertions": [
+    "VAL-TEST-008"
+  ],
+  "verificationCommands": {
+    "vitest": "bun run test --run && bun run test --run && bun run test --run",
+    "pytest": "uv run pytest -q && uv run pytest -q && uv run pytest -q"
+  },
+  "vitestRuns": [
+    {
+      "run": 1,
+      "command": "bun run test --run",
+      "exitCode": 0,
+      "totals": {
+        "filesPassed": 11,
+        "testsPassed": 196,
+        "testsFailed": 0,
+        "testsSkipped": 0,
+        "suiteDuration": "285ms (transform 613ms, setup 0ms, import 812ms, tests 37ms, environment 1ms)"
+      },
+      "summaryLine": "11 files passed, 196 tests passed, 0 failed, 0 skipped"
+    },
+    {
+      "run": 2,
+      "command": "bun run test --run",
+      "exitCode": 0,
+      "totals": {
+        "filesPassed": 11,
+        "testsPassed": 196,
+        "testsFailed": 0,
+        "testsSkipped": 0,
+        "suiteDuration": "274ms (transform 546ms, setup 0ms, import 780ms, tests 36ms, environment 1ms)"
+      },
+      "summaryLine": "11 files passed, 196 tests passed, 0 failed, 0 skipped"
+    },
+    {
+      "run": 3,
+      "command": "bun run test --run",
+      "exitCode": 0,
+      "totals": {
+        "filesPassed": 11,
+        "testsPassed": 196,
+        "testsFailed": 0,
+        "testsSkipped": 0,
+        "suiteDuration": "292ms (transform 657ms, setup 0ms, import 844ms, tests 39ms, environment 1ms)"
+      },
+      "summaryLine": "11 files passed, 196 tests passed, 0 failed, 0 skipped"
+    }
+  ],
+  "pytestRuns": [
+    {
+      "run": 1,
+      "command": "uv run pytest -q",
+      "exitCode": 0,
+      "totals": {
+        "testsPassed": 341,
+        "testsSkipped": 43,
+        "testsFailed": 0,
+        "suiteDuration": "2.69s"
+      },
+      "summaryLine": "341 passed, 43 skipped, 0 failed"
+    },
+    {
+      "run": 2,
+      "command": "uv run pytest -q",
+      "exitCode": 0,
+      "totals": {
+        "testsPassed": 341,
+        "testsSkipped": 43,
+        "testsFailed": 0,
+        "suiteDuration": "2.60s"
+      },
+      "summaryLine": "341 passed, 43 skipped, 0 failed"
+    },
+    {
+      "run": 3,
+      "command": "uv run pytest -q",
+      "exitCode": 0,
+      "totals": {
+        "testsPassed": 341,
+        "testsSkipped": 43,
+        "testsFailed": 0,
+        "suiteDuration": "2.60s"
+      },
+      "summaryLine": "341 passed, 43 skipped, 0 failed"
+    }
+  ],
+  "stabilityCheck": {
+    "vitest": {
+      "allExitCodesZero": true,
+      "stableTotals": true,
+      "stableFields": [
+        "filesPassed",
+        "testsPassed",
+        "testsFailed",
+        "testsSkipped"
+      ]
+    },
+    "pytest": {
+      "allExitCodesZero": true,
+      "stableTotals": true,
+      "stableFields": [
+        "testsPassed",
+        "testsSkipped",
+        "testsFailed"
+      ]
+    },
+    "intermittentFailuresObserved": false,
+    "milestoneADeterminismSatisfied": true
+  }
+}
