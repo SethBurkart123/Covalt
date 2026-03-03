@@ -143,18 +143,21 @@ interface SubmitButtonProps {
   isLoading: boolean;
   canSubmit: boolean;
   onStop?: () => void;
+  testId?: string;
 }
 
 const SubmitButton = memo(function SubmitButton({
   isLoading,
   canSubmit,
   onStop,
+  testId,
 }: SubmitButtonProps) {
   if (isLoading) {
     return (
       <Button
         type="button"
         size="icon"
+        data-testid={testId}
         onClick={onStop}
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
       >
@@ -167,6 +170,7 @@ const SubmitButton = memo(function SubmitButton({
     <Button
       type="submit"
       size="icon"
+      data-testid={testId}
       className={clsx(
         "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90",
         canSubmit ? "opacity-100" : "cursor-not-allowed opacity-50"
@@ -663,6 +667,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     return (
       <form
         ref={formRef}
+        data-testid="chat-input-form"
         onSubmit={handleFormSubmit}
         className={clsx(
           "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card p-3 shadow-lg",
@@ -687,6 +692,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           <div className="w-full min-h-[40px] max-h-[200px]">
             <EditorContent
               editor={editor}
+              data-testid="chat-input-editor"
               className="chat-input-editor"
               onKeyDown={handleKeyDown}
             />
@@ -715,6 +721,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 isLoading={isLoading}
                 canSubmit={canSubmit}
                 onStop={onStop}
+                testId="chat-input-submit"
               />
             </LayoutGroup>
           </div>

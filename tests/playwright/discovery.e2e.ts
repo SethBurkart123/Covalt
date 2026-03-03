@@ -5,8 +5,8 @@ test.describe('playwright foundation discovery', () => {
     await page.goto('/');
 
     await expect(page).toHaveTitle(/covalt/i);
-    await expect(page.locator('form.chat-input-form')).toBeVisible();
-    await expect(page.locator('form.chat-input-form [contenteditable="true"]').first()).toBeVisible();
-    await expect(page.locator('form.chat-input-form button[type="submit"]')).toBeVisible();
+    await expect(page.locator('[data-testid="chat-input-form"]')).toBeVisible();
+    await expect(page.locator('[data-testid="chat-input-editor"] [contenteditable="true"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="chat-input-submit"]')).toBeVisible();
   });
 });
