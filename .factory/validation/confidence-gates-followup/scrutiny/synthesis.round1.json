@@ -1,0 +1,54 @@
+{
+  "milestone": "confidence-gates-followup",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "bun run ci:vitest && bun run ci:pytest",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "bunx tsc --noEmit",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "bun run ci:lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": [
+      "ci-playwright-remote-parity-fix"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "ci-playwright-remote-parity-fix",
+      "severity": "blocking",
+      "description": "Remote required-check evidence in tests/artifacts/confidence-gates-final-evidence.json is anchored to SHA aa5b826..., while the parity fix lives in commit 560ddbc..., so same-SHA proof for the revision containing the fix is incomplete."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:ci-gate-worker",
+      "suggestion": "Require remote required-check proof to be captured for the same pushed revision that contains the implementation fix, and codify an explicit retrieval sequence (identify pushed SHA -> wait for required checks -> capture check-run IDs/URLs for that SHA -> write evidence artifact).",
+      "evidence": "Review for ci-playwright-remote-parity-fix failed due to evidence SHA mismatch (aa5b826... vs fix commit 560ddbc...). Additional reviewer observation from confidence-evidence-same-sha-checkrun-proof-fix shows repeated ad-hoc check-run exploration before converging on a valid proof workflow.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a validation-artifact convention for code-changing follow-up fixes: evidence artifact revision must match the commit/SHA under review, with immutable check-run links bound to that same SHA.",
+      "evidence": "Mission AGENTS guidance currently defines required gate layers but does not define strict SHA-binding convention for evidence artifacts, enabling mismatch between evidence revision and fix revision.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

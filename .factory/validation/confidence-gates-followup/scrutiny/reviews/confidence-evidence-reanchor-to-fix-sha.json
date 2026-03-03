@@ -1,0 +1,26 @@
+{
+  "featureId": "confidence-evidence-reanchor-to-fix-sha",
+  "reviewedAt": "2026-03-03T13:52:19Z",
+  "commitId": "7dc98528295502f898c50ac24524ca6be5cae909",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This fix feature updates the confidence evidence artifact and now correctly anchors revision/localRunRevision/remoteCheckRunsRevision to 560ddbcdc320d48a14e1b195bf3d50439c4c8c5c (the ci-playwright-remote-parity-fix revision). Required remote check-runs for lint, vitest, pytest, and playwright include immutable IDs/URLs and all conclude success on that same SHA, resolving the prior same-SHA blocking failure.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The ci-gate-worker procedure does not explicitly require making historical target SHAs remotely reachable before check-run capture, which led to ad-hoc temporary-branch handling during this fix.",
+      "evidence": "handoffs/2026-03-03T13-46-52-098Z__confidence-evidence-reanchor-to-fix-sha__5f99ef51-7034-4646-b9cb-4dbb18df6426.json skillFeedback.deviations[0] documents pushing a temporary evidence branch; .factory/skills/ci-gate-worker/SKILL.md step 5 is generic evidence collection guidance."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared mission knowledge does not document Droid-Shield timestamp-like redaction constraints for validation artifacts, despite this workflow requiring authorDate redaction to allow push.",
+      "evidence": "handoffs/2026-03-03T13-46-52-098Z__confidence-evidence-reanchor-to-fix-sha__5f99ef51-7034-4646-b9cb-4dbb18df6426.json skillFeedback.deviations[1] shows remoteRevisionResolution.authorDate was set to REDACTED; .factory/library/environment.md currently has no scanner/redaction note."
+    }
+  ],
+  "addressesFailureFrom": "ci-playwright-remote-parity-fix",
+  "summary": "Pass: same-SHA remote proof is now satisfied for the fix revision. The evidence artifact is re-anchored to parity-fix SHA 560ddbc and contains immutable successful lint/vitest/pytest/playwright check-run IDs/URLs for that exact SHA."
+}

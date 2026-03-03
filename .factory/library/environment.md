@@ -20,3 +20,5 @@ Environment variables, external dependencies, and setup notes.
     - General backend/dev startup uses `COVALT_GENERATE_TS=1`
     - Playwright backend startup uses `COVALT_GENERATE_TS=0` and `COVALT_E2E_TESTS=1`
 - If branch protection/ruleset edits are required but unavailable due permissions, escalate to orchestrator/user with exact blocker.
+- GitHub check-runs API evidence capture requires the target SHA to be reachable on a remote ref; for historical SHAs, pushing a temporary evidence branch may be required before collecting immutable check-run IDs/URLs.
+- Validation evidence artifacts may be scanned by Droid-Shield; timestamp-like fields can trigger push blocking and may require redaction-safe placeholders (for example, `REDACTED`) when raw timestamps are not required for contract proof.
