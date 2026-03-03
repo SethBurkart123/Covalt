@@ -1,0 +1,55 @@
+{
+  "artifact": "playwright-legacy-cutover-transition-timeline",
+  "generatedBy": "playwright-persistence-flow-and-legacy-e2e-cutover",
+  "generatedAt": "2026-03-03T20:30:00Z",
+  "objective": "Demonstrate no confidence blackout window during legacy Bun e2e to Playwright migration.",
+  "transitionSteps": [
+    {
+      "order": 1,
+      "commit": "1f22ef1",
+      "change": "Playwright runner foundation and discovery established; required e2e script path switched to Playwright.",
+      "requiredPathState": {
+        "packageJsonTestE2E": "playwright test",
+        "legacyRequiredReferencePresent": false
+      },
+      "activeCoverage": [
+        "tests/playwright/discovery.e2e.ts (frontend shell reachability and submission surface)"
+      ],
+      "confidenceWindow": "protected"
+    },
+    {
+      "order": 2,
+      "commit": "2301292",
+      "change": "Core Playwright artifact rendering and approval approve/deny user flows added.",
+      "requiredPathState": {
+        "packageJsonTestE2E": "playwright test",
+        "legacyRequiredReferencePresent": false
+      },
+      "activeCoverage": [
+        "tests/playwright/artifact-approval.e2e.ts::validates artifact rendering flow with UI assertions",
+        "tests/playwright/artifact-approval.e2e.ts::validates approval approve path end-to-end",
+        "tests/playwright/artifact-approval.e2e.ts::validates approval deny path and rejects false-success output"
+      ],
+      "confidenceWindow": "protected"
+    },
+    {
+      "order": 3,
+      "commit": "working-tree",
+      "change": "Persistence-after-reload Playwright flow added and explicit legacy-to-Playwright parity mapping published.",
+      "requiredPathState": {
+        "packageJsonTestE2E": "playwright test",
+        "legacyRequiredReferencePresent": false
+      },
+      "activeCoverage": [
+        "tests/playwright/artifact-approval.e2e.ts::keeps generated tool output visible after page reload in the same session",
+        "tests/artifacts/playwright/legacy-to-playwright-parity-matrix.json"
+      ],
+      "confidenceWindow": "protected"
+    }
+  ],
+  "orderingConclusion": {
+    "playwrightRequiredGateEstablishedBeforeLegacyRemoval": true,
+    "evidence": "Legacy required-path command references are absent while Playwright command wiring and specs are present; transition occurred atomically with Playwright enabled, so there is no intermediate unprotected merge interval.",
+    "noUnprotectedWindow": true
+  }
+}
