@@ -1,0 +1,86 @@
+{
+  "artifact": "milestone-a-prune-low-value-mapping",
+  "generatedBy": "test-reset-prune-clearly-low-value-tests",
+  "generatedAt": "2026-03-03T17:36:30Z",
+  "validationContractAssertions": [
+    "VAL-TEST-002",
+    "VAL-TEST-003",
+    "VAL-TEST-010"
+  ],
+  "lowValueCriteria": [
+    {
+      "id": "LV-IMPLEMENTATION-DUPLICATE",
+      "description": "Assertion verifies implementation detail already enforced by canonical parity/contract tests and does not add distinct behavior signal."
+    },
+    {
+      "id": "LV-REDUNDANT-PRESENCE-CHECK",
+      "description": "Assertion only checks symbol/value non-emptiness already guaranteed by stronger structural equality or contract mapping assertions."
+    }
+  ],
+  "removedTests": [
+    {
+      "testId": "tests/test_runtime_events.py::test_known_runtime_events_contains_core_run_content",
+      "category": "LV-IMPLEMENTATION-DUPLICATE",
+      "rationale": "This test only asserts that one constant appears in the known event set. The canonical runtime-event parity suites already verify full backend and frontend alignment with the contract, which is strictly stronger coverage.",
+      "confidenceCritical": true,
+      "replacementCoverage": {
+        "strategy": "mapped-to-stronger-existing-tests",
+        "tests": [
+          {
+            "testId": "tests/test_runtime_event_contract_parity.py::test_backend_known_runtime_events_match_canonical_contract",
+            "whyStronger": "Validates the entire backend KNOWN_RUNTIME_EVENTS set against canonical contract events, subsuming single-event membership assertions."
+          },
+          {
+            "testId": "tests/test_runtime_event_contract_parity.py::test_backend_and_frontend_runtime_event_contract_are_identical",
+            "whyStronger": "Enforces backend/frontend/runtime-contract identity by key and value, preventing drift that a single constant-membership assertion cannot detect."
+          }
+        ]
+      }
+    },
+    {
+      "testId": "tests/test_runtime_events.py::test_runtime_event_contract_version_is_exposed",
+      "category": "LV-REDUNDANT-PRESENCE-CHECK",
+      "rationale": "The removed test only checks that the contract version is a non-empty string. A stronger parity test already validates exact equality between runtime service version and contract file version.",
+      "confidenceCritical": true,
+      "replacementCoverage": {
+        "strategy": "mapped-to-stronger-existing-tests",
+        "tests": [
+          {
+            "testId": "tests/test_runtime_event_contract_parity.py::test_backend_runtime_event_contract_version_matches_contract_file",
+            "whyStronger": "Checks exact version equality against canonical contract source instead of only non-empty-string existence."
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "removedCount": 2,
+    "confidenceCriticalRemovedCount": 2,
+    "allCriticalHaveReplacement": true,
+    "confidenceGapOpened": false
+  },
+  "skipDebt": {
+    "baseline": {
+      "source": "tests/artifacts/milestone-a-baseline.snapshot.json",
+      "pytestSkipped": 43,
+      "skipReasonClasses": [
+        "Phase 5+ executors not yet implemented"
+      ],
+      "skipLocationsCount": 22
+    },
+    "final": {
+      "sourceCommand": "uv run pytest -q -rs",
+      "pytestSkipped": 43,
+      "skipReasonClasses": [
+        "Phase 5+ executors not yet implemented"
+      ],
+      "skipLocationsCount": 22
+    },
+    "delta": {
+      "pytestSkipped": 0,
+      "skipReasonClassesAdded": [],
+      "newSkipLocations": []
+    },
+    "ownerRationaleForSkipChanges": []
+  }
+}
