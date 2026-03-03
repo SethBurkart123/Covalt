@@ -61,4 +61,17 @@ export {
 } from '@nodes/_registry';
 export type { CompatibleNodeSocket } from '@nodes/_registry';
 
+export {
+  registerPlugin,
+  unregisterPlugin,
+  resetPluginRegistryForTests,
+} from './plugin-registry';
+
+export {
+  registerHook,
+  dispatchHook,
+  deregisterHooks,
+  resetHooksForTests,
+} from './plugin-hooks';
+
 export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection, useNodePicker } from './context';
