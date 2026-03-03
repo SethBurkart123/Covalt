@@ -28,6 +28,7 @@ import {
   formatSchemaPreview,
   getNodeName,
   isRecord,
+  isTriggerNode,
   pickPrimaryOutput,
   sampleArrayValue,
   valueType,
@@ -634,11 +635,11 @@ export function NodeInspectorDialog({
   const triggerSource = useMemo(() => {
     for (const id of upstreamIds) {
       const node = nodesById.get(id);
-      if (node?.type === 'chat-start') return node;
+      if (node && isTriggerNode(node.type)) return node;
     }
 
     for (const node of nodes) {
-      if (node.type === 'chat-start') return node;
+      if (isTriggerNode(node.type)) return node;
     }
 
     return null;
@@ -771,7 +772,7 @@ export function NodeInspectorDialog({
               <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 divide-y divide-border">
                 <DataSection
                   title="Trigger"
-                  subtitle={triggerSource ? `From ${getNodeName(triggerSource)}` : 'No chat-start data'}
+                  subtitle={triggerSource ? `From ${getNodeName(triggerSource)}` : 'No trigger data'}
                   schemaNodes={filterSchemaNodes(buildSchemaNodes(triggerOutput.value), search)}
                   view={leftView}
                   jsonValue={triggerOutput.value}

@@ -144,7 +144,7 @@ export function FlowRunPrompt() {
               <Input
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Optional message for chat-start"
+                placeholder="Optional message for trigger"
               />
             </div>
 
