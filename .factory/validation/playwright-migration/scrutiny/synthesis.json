@@ -1,7 +1,7 @@
 {
   "milestone": "playwright-migration",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,45 +20,14 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
-    "failed": 1,
-    "failedFeatures": [
-      "playwright-core-artifact-and-approval-flows"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "playwright-core-artifact-and-approval-flows",
-      "severity": "blocking",
-      "description": "Approve-path Playwright test does not assert post-approval expected output/completion content; it only checks that Approve/Deny controls disappear and deny state is absent, leaving VAL-PW-006 end-state under-validated.",
-      "evidence": "tests/playwright/artifact-approval.e2e.ts:168"
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated .factory/library/environment.md to document Playwright backend env contract: COVALT_GENERATE_TS=0 and COVALT_E2E_TESTS=1 for Playwright runs, while general backend/dev startup keeps COVALT_GENERATE_TS=1.",
-      "sourceFeature": "playwright-foundation-and-discovery"
-    }
-  ],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add a validation-artifact convention requiring immutable commit references (full SHA) and run-derived generatedAt metadata in evidence JSON artifacts used for transition/gating claims.",
-      "evidence": "playwright-persistence-flow-and-legacy-e2e-cutover review found transition artifact entries using commit=\"working-tree\" and fixed timestamp values, reducing auditability of ordering claims.",
-      "isSystemic": false
-    }
-  ],
-  "rejectedObservations": [
-    {
-      "observation": "Mission environment docs are missing COVALT_E2E_TESTS and Playwright-specific COVALT_GENERATE_TS behavior.",
-      "reason": "applied-now"
-    },
-    {
-      "observation": "Playwright worker handoff did not include artifact paths even though the skill asks for them.",
-      "reason": "already-documented"
-    }
-  ],
-  "previousRound": null
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/playwright-migration/scrutiny/synthesis.round1.json"
 }
