@@ -1,7 +1,7 @@
 {
   "artifact": "milestone-a-baseline-quality-snapshot",
-  "generatedAt": "2026-03-03T06:07:01.869841+00:00",
-  "gitSha": "cff3132ccca1d4d7b8f097faf1404b4f816f7de1",
+  "generatedAt": "2026-03-03T15:47:45.487808+00:00",
+  "gitSha": "4b237f3b0d14ff2fd333e8a228643de3d0c472f7",
   "validationContractAssertions": [
     "VAL-TEST-001",
     "VAL-TEST-004",
@@ -255,7 +255,7 @@
         "file": "tests/test_e2e_flow.py",
         "surface": "backend",
         "taxonomyLayer": "integration",
-        "rationale": "Filename contains 'e2e', indicating cross-module/runtime boundary coverage."
+        "rationale": "Filename contains 'flow', indicating cross-module/runtime boundary coverage."
       },
       {
         "file": "tests/test_flow_execution.py",
@@ -444,11 +444,11 @@
       "command": "bun run test --run",
       "exitCode": 0,
       "parsed": {
-        "filesPassed": 11,
-        "testsPassed": 193,
+        "filesPassed": 12,
+        "testsPassed": 202,
         "testsFailed": 0,
         "testsSkipped": 0,
-        "suiteDuration": "484ms (transform 491ms, setup 0ms, import 704ms, tests 33ms, environment 1ms)",
+        "suiteDuration": "724ms (transform 601ms, setup 0ms, import 820ms, tests 38ms, environment 1ms)",
         "topFileDurations": [
           {
             "file": "app/lib/services/runtime-events-contract-parity.test.ts",
@@ -466,18 +466,28 @@
             "durationMs": 4
           },
           {
+            "file": "app/lib/services/stream-processor.test.ts",
+            "tests": 7,
+            "durationMs": 4
+          },
+          {
             "file": "app/lib/flow/__tests__/registry.test.ts",
             "tests": 32,
             "durationMs": 4
           },
           {
-            "file": "app/lib/services/stream-processor.test.ts",
-            "tests": 5,
+            "file": "app/lib/services/provider-catalog.test.ts",
+            "tests": 2,
             "durationMs": 3
           },
           {
+            "file": "tests/playwright/server-mode.test.ts",
+            "tests": 6,
+            "durationMs": 2
+          },
+          {
             "file": "app/lib/hooks/use-models-stream-state.test.ts",
-            "tests": 3,
+            "tests": 4,
             "durationMs": 2
           },
           {
@@ -486,32 +496,22 @@
             "durationMs": 2
           },
           {
-            "file": "app/lib/services/provider-catalog.test.ts",
-            "tests": 2,
-            "durationMs": 2
-          },
-          {
             "file": "app/lib/flow/__tests__/execution-cache.test.ts",
             "tests": 4,
             "durationMs": 2
-          },
-          {
-            "file": "app/lib/services/runtime-events.test.ts",
-            "tests": 3,
-            "durationMs": 1
           }
         ]
       },
-      "rawOutput": "\n RUN  v4.0.18 /Users/sethburkart/Documents/Coding/agno-app-electron-changes\n\n \u2713 app/lib/services/runtime-events.test.ts (3 tests) 1ms\n \u2713 app/lib/hooks/use-models-stream-state.test.ts (3 tests) 2ms\n \u2713 app/lib/flow/__tests__/parameter-visibility.test.ts (5 tests) 2ms\n \u2713 app/lib/flow/__tests__/sockets.test.ts (62 tests) 4ms\n \u2713 app/lib/services/provider-plugin-trust.test.ts (4 tests) 1ms\n \u2713 app/lib/services/runtime-events-contract-parity.test.ts (1 test) 7ms\n \u2713 app/lib/services/provider-catalog.test.ts (2 tests) 2ms\n \u2713 app/lib/services/stream-processor.test.ts (5 tests) 3ms\n \u2713 app/lib/flow/__tests__/registry.test.ts (32 tests) 4ms\n \u2713 app/lib/flow/__tests__/node-contracts.test.ts (72 tests) 6ms\n \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  11 passed (11)\n      Tests  193 passed (193)\n   Start at  17:06:58\n   Duration  484ms (transform 491ms, setup 0ms, import 704ms, tests 33ms, environment 1ms)\n\n$ vitest --run\n"
+      "rawOutput": "\n RUN  v4.0.18 /Users/sethburkart/Documents/Coding/agno-app-electron-changes\n\n \u2713 tests/playwright/server-mode.test.ts (6 tests) 2ms\n \u2713 app/lib/services/provider-plugin-trust.test.ts (4 tests) 1ms\n \u2713 app/lib/services/runtime-events.test.ts (3 tests) 1ms\n \u2713 app/lib/hooks/use-models-stream-state.test.ts (4 tests) 2ms\n \u2713 app/lib/flow/__tests__/sockets.test.ts (62 tests) 4ms\n \u2713 app/lib/flow/__tests__/parameter-visibility.test.ts (5 tests) 2ms\n \u2713 app/lib/services/runtime-events-contract-parity.test.ts (1 test) 7ms\n \u2713 app/lib/services/provider-catalog.test.ts (2 tests) 3ms\n \u2713 app/lib/services/stream-processor.test.ts (7 tests) 4ms\n \u2713 app/lib/flow/__tests__/registry.test.ts (32 tests) 4ms\n \u2713 app/lib/flow/__tests__/node-contracts.test.ts (72 tests) 6ms\n \u2713 app/lib/flow/__tests__/execution-cache.test.ts (4 tests) 2ms\n\n Test Files  12 passed (12)\n      Tests  202 passed (202)\n   Start at  02:47:40\n   Duration  724ms (transform 601ms, setup 0ms, import 820ms, tests 38ms, environment 1ms)\n\n$ vitest --run\n"
     },
     "pytest": {
       "command": "uv run pytest -q -rs --durations=10",
       "exitCode": 0,
       "parsed": {
-        "testsPassed": 338,
+        "testsPassed": 341,
         "testsSkipped": 43,
         "testsFailed": 0,
-        "suiteDurationSeconds": "2.47s",
+        "suiteDurationSeconds": "2.64s",
         "skipReasons": [
           {
             "reason": "Phase 5+ executors not yet implemented",
@@ -632,7 +632,7 @@
         ],
         "topDurations": [
           {
-            "seconds": 0.51,
+            "seconds": 0.52,
             "test": "tests/test_provider_oauth_manager.py::test_callback_server_success_completes_pending_future"
           },
           {
@@ -640,20 +640,8 @@
             "test": "tests/test_provider_oauth_manager.py::test_callback_server_state_mismatch_returns_failed_response"
           },
           {
-            "seconds": 0.06,
-            "test": "tests/nodes/test_flow_executors.py::TestAgentExecutor::test_materialize_resolves_runtime_link_dependencies"
-          },
-          {
             "seconds": 0.04,
             "test": "tests/test_model_factory_streaming.py::test_stream_available_model_batches_yields_completion_order"
-          },
-          {
-            "seconds": 0.01,
-            "test": "tests/test_model_factory_streaming.py::test_stream_available_model_batches_cancels_pending_tasks_on_close"
-          },
-          {
-            "seconds": 0.01,
-            "test": "tests/test_model_factory_streaming.py::test_stream_available_model_batches_marks_timeout_as_failure"
           },
           {
             "seconds": 0.01,
@@ -661,11 +649,27 @@
           },
           {
             "seconds": 0.01,
+            "test": "tests/test_model_factory_streaming.py::test_stream_available_model_batches_marks_timeout_as_failure"
+          },
+          {
+            "seconds": 0.01,
+            "test": "tests/test_model_factory_streaming.py::test_stream_available_model_batches_cancels_pending_tasks_on_close"
+          },
+          {
+            "seconds": 0.01,
             "test": "tests/test_chat_graph_runner_runtime.py::test_get_message_execution_trace_returns_latest_run_events"
+          },
+          {
+            "seconds": 0.01,
+            "test": "tests/test_flow_streaming.py::TestFlowStreamingBasic::test_non_streaming_falsy_output_is_emitted"
+          },
+          {
+            "seconds": 0.01,
+            "test": "tests/test_flow_streaming.py::TestFlowStreamingBasic::test_non_streaming_flow_sends_completed"
           }
         ]
       },
-      "rawOutput": "..............................................................ssssssssss [ 18%]\nsssssssssssssssssssssssssssssssss....................................... [ 37%]\n........................................................................ [ 56%]\n........................................................................ [ 75%]\n........................................................................ [ 94%]\n.....................                                                    [100%]\n============================= slowest 10 durations =============================\n0.51s call     tests/test_provider_oauth_manager.py::test_callback_server_success_completes_pending_future\n0.51s call     tests/test_provider_oauth_manager.py::test_callback_server_state_mismatch_returns_failed_response\n0.06s call     tests/nodes/test_flow_executors.py::TestAgentExecutor::test_materialize_resolves_runtime_link_dependencies\n0.04s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_yields_completion_order\n0.01s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_cancels_pending_tasks_on_close\n0.01s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_marks_timeout_as_failure\n0.01s call     tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_persists_ordered_execution_events\n0.01s call     tests/test_chat_graph_runner_runtime.py::test_get_message_execution_trace_returns_latest_run_events\n\n(2 durations < 0.005s hidden.  Use -vv to show these durations.)\n=========================== short test summary info ============================\nSKIPPED [1] tests/nodes/test_flow_executors.py:1088: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1115: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1142: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1170: Phase 5+ executors not yet implemented\nSKIPPED [5] tests/nodes/test_flow_executors.py:1191: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1221: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1249: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1262: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1282: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1296: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1310: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1322: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1334: Phase 5+ executors not yet implemented\nSKIPPED [18] tests/nodes/test_flow_executors.py:1347: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1409: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1420: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1433: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1445: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1462: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1474: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1487: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1500: Phase 5+ executors not yet implemented\n338 passed, 43 skipped in 2.47s\n"
+      "rawOutput": "..............................................................ssssssssss [ 18%]\nsssssssssssssssssssssssssssssssss....................................... [ 37%]\n........................................................................ [ 56%]\n........................................................................ [ 75%]\n........................................................................ [ 93%]\n........................                                                 [100%]\n============================= slowest 10 durations =============================\n0.52s call     tests/test_provider_oauth_manager.py::test_callback_server_success_completes_pending_future\n0.51s call     tests/test_provider_oauth_manager.py::test_callback_server_state_mismatch_returns_failed_response\n0.04s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_yields_completion_order\n0.01s call     tests/test_chat_graph_runner_runtime.py::test_handle_flow_stream_persists_ordered_execution_events\n0.01s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_marks_timeout_as_failure\n0.01s call     tests/test_model_factory_streaming.py::test_stream_available_model_batches_cancels_pending_tasks_on_close\n0.01s call     tests/test_chat_graph_runner_runtime.py::test_get_message_execution_trace_returns_latest_run_events\n0.01s call     tests/test_flow_streaming.py::TestFlowStreamingBasic::test_non_streaming_falsy_output_is_emitted\n0.01s call     tests/test_flow_streaming.py::TestFlowStreamingBasic::test_non_streaming_flow_sends_completed\n\n(1 durations < 0.005s hidden.  Use -vv to show these durations.)\n=========================== short test summary info ============================\nSKIPPED [1] tests/nodes/test_flow_executors.py:1088: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1115: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1142: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1170: Phase 5+ executors not yet implemented\nSKIPPED [5] tests/nodes/test_flow_executors.py:1191: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1221: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1249: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1262: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1282: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1296: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1310: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1322: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1334: Phase 5+ executors not yet implemented\nSKIPPED [18] tests/nodes/test_flow_executors.py:1347: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1409: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1420: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1433: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1445: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1462: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1474: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1487: Phase 5+ executors not yet implemented\nSKIPPED [1] tests/nodes/test_flow_executors.py:1500: Phase 5+ executors not yet implemented\n341 passed, 43 skipped in 2.64s\n"
     }
   }
 }
