@@ -1,0 +1,20 @@
+{
+  "featureId": "test-reset-baseline-inventory-and-taxonomy",
+  "milestone": "test-value-reset",
+  "reviewedAt": "2026-03-03T07:40:00Z",
+  "commitId": "f8668e51f4b295f8465566c37cd9d48234885bd6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "issues": [
+    {
+      "file": "scripts/generate_milestone_a_baseline.py",
+      "line": 39,
+      "severity": "non_blocking",
+      "description": "Backend taxonomy heuristics include the keyword 'e2e' as an integration signal, so file naming can drive classification rationale even when e2e is defined as tests/e2e path coverage.",
+      "evidence": "scripts/generate_milestone_a_baseline.py:39 includes 'e2e' in BACKEND_INTEGRATION_KEYWORDS and lines 170-175 classify by keyword; tests/artifacts/milestone-a-baseline.snapshot.json:255-258 classifies tests/test_e2e_flow.py as integration with rationale 'Filename contains \'e2e\'' while classificationCriteria.e2e states tests/e2e path coverage."
+    }
+  ],
+  "sharedStateObservations": [],
+  "summary": "Reviewed feature metadata, handoff, transcript skeleton, and commit diff for f8668e51f4b295f8465566c37cd9d48234885bd6. The implementation delivers the required baseline artifact, pass/fail/skip snapshot, skip-reason capture, top durations, and Milestone-A command matrix scoped to unit+integration; one non-blocking taxonomy-rationale consistency issue was identified."
+}
