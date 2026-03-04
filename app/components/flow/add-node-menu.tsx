@@ -19,6 +19,7 @@ interface AddNodeMenuProps {
   onSelect: (nodeType: string) => void;
   connectionFilter?: ConnectionFilter;
   onSelectWithSocket?: (nodeType: string, socketId: string) => void;
+  definitionsVersion?: number;
 }
 
 interface HoveredItem {
@@ -50,6 +51,7 @@ export function AddNodeMenu({
   onSelect,
   connectionFilter,
   onSelectWithSocket,
+  definitionsVersion = 0,
 }: AddNodeMenuProps) {
   const [mode, setMode] = useState<'browse' | 'search'>('browse');
   const [search, setSearch] = useState('');
@@ -68,6 +70,8 @@ export function AddNodeMenu({
   }, [connectionFilter]);
 
   const nodesByCategory = useMemo(() => {
+    void definitionsVersion;
+
     if (compatibleSockets) {
       const grouped = new Map<NodeDefinition['category'], typeof compatibleSockets>();
       for (const item of compatibleSockets) {
@@ -84,9 +88,11 @@ export function AddNodeMenu({
       if (nodes.length > 0) grouped.set(id, nodes);
     }
     return grouped;
-  }, [compatibleSockets]);
+  }, [compatibleSockets, definitionsVersion]);
 
   const flatItems = useMemo(() => {
+    void definitionsVersion;
+
     if (compatibleSockets) {
       return compatibleSockets.map(item => ({
         id: `${item.nodeId}-${item.socketId}`,
@@ -110,7 +116,7 @@ export function AddNodeMenu({
         description: node.description,
       }))
     );
-  }, [compatibleSockets]);
+  }, [compatibleSockets, definitionsVersion]);
 
   const filteredItems = useMemo(() => {
     const query = search.toLowerCase().trim();

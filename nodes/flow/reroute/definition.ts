@@ -24,6 +24,15 @@ export const reroute = {
   icon: 'Dot',
   executionMode: 'flow',
 
+  metadata: {
+    socketTypePropagation: {
+      stateField: '_socketType',
+      inputHandle: 'input',
+      outputHandle: 'output',
+      supportsEdgeInsertion: true,
+    },
+  },
+
   parameters: [
     {
       id: 'input',

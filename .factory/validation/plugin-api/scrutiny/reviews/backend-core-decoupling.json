@@ -1,0 +1,34 @@
+{
+  "featureId": "backend-core-decoupling",
+  "reviewedAt": "2026-03-03T06:52:16.262119+00:00",
+  "commitId": "ff3286e01b0360ccb30de856b7eda0b3cfe89f64",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The refactor replaces hardcoded checks with hook dispatch and adds targeted tests, but it introduces functional regressions against the feature requirement to preserve prior behavior: chat entry selection no longer preserves the previous chat-start preference when no hooks are registered, and webhook route-id resolution is ambiguous across node types and can dispatch to the wrong node.",
+    "issues": [
+      {
+        "file": "backend/services/chat_graph_runner.py",
+        "line": 231,
+        "severity": "blocking",
+        "description": "When no onEntryResolve hook returns candidates, _chat_entry_node_ids now falls back directly to all root nodes. Previously it preferred chat-start nodes first. There is no backend runtime hook registration for ON_ENTRY_RESOLVE in non-test code, so existing behavior is not preserved in graphs that contain chat-start plus other root nodes (contradicting the feature's requirement to keep behavior identical)."
+      },
+      {
+        "file": "backend/services/node_route_index.py",
+        "line": 58,
+        "severity": "blocking",
+        "description": "resolve_node_route_by_id chooses the first lexicographically sorted (node_type, route_id) key for a route id. _ROUTE_ID_INDEX stores multiple node types under the same route id (line 105) with no collision guard, so /webhooks/{hook_id} can resolve to an unintended node type when route ids overlap, creating incorrect routing behavior." 
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Mission/library docs describe backend lifecycle hooks as part of the architecture, but there is no non-test backend runtime registration path for built-in ON_ENTRY_RESOLVE/ON_ROUTE_EXTRACT/ON_RESPONSE_EXTRACT handlers in the repository state reviewed here.",
+      "evidence": "Code search shows hook dispatch points in backend/services/chat_graph_runner.py, backend/services/node_route_index.py, and backend/services/http_routes.py, but register_plugin/register_hook usage appears only in backend/services/plugin_registry.py internals and tests (e.g., tests/test_plugin_registry.py, tests/test_plugin_hooks.py)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: hook-dispatch refactors are present, but two blocking behavior regressions remain (chat entry fallback parity and ambiguous webhook route-id resolution)."
+}

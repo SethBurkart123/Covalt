@@ -23,8 +23,13 @@ import {
 } from '@xyflow/react';
 
 import type { EdgeChannel, FlowNode, FlowEdge, NodeDefinition, Parameter, SocketTypeId } from '@nodes/_types';
-import { getNodeDefinition } from '@nodes/_registry';
+import { getNodeDefinition, listAllNodeDefinitions } from '@nodes/_registry';
 import { canConnect, canCoerce } from './sockets';
+import {
+  applyNodeCreateHooks,
+  getSocketTypePropagationConfig,
+  resolveSocketTypePropagation,
+} from './hook-dispatch';
 import { resolveParameterForHandle } from './node-parameters';
 
 function getSocketTypeFromParam(param: Parameter): SocketTypeId {
@@ -54,18 +59,30 @@ function getSocketTypeForHandle(
   const node = nodes.find(n => n.id === nodeId);
   if (!node) return isSource ? 'data' : 'tools';
 
-  if (node.type === 'reroute') {
-    const socketType = (node.data as { _socketType?: unknown } | undefined)?._socketType;
-    if (typeof socketType === 'string' && socketType) {
-      return socketType as SocketTypeId;
-    }
-  }
-
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return isSource ? 'data' : 'tools';
 
+  const propagationConfig = getSocketTypePropagationConfig(definition);
+  const currentType = propagationConfig
+    ? (node.data as Record<string, unknown>)[propagationConfig.stateField]
+    : undefined;
+
+  const propagatedType = resolveSocketTypePropagation({
+    nodeType: node.type || '',
+    nodeId: node.id,
+    handleId,
+    currentType: typeof currentType === 'string' ? (currentType as SocketTypeId) : undefined,
+    data: node.data as Record<string, unknown>,
+  });
+
+  if (propagatedType) {
+    return propagatedType;
+  }
+
   const param = resolveParameterForHandle(definition, handleId);
-  if (!param) return isSource ? 'data' : 'tools';
+  if (!param) {
+    return isSource ? 'data' : 'tools';
+  }
 
   return getSocketTypeFromParam(param);
 }
@@ -161,7 +178,11 @@ function generateEdgeId(source: string, target: string): string {
   return `e-${source}-${target}-${Date.now()}`;
 }
 
-function buildNodeData(definition: NodeDefinition, type: string): Record<string, unknown> {
+function buildNodeData(
+  definition: NodeDefinition,
+  type: string,
+  context?: { nodeId?: string; position?: { x: number; y: number } }
+): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   for (const param of definition.parameters) {
     if ('default' in param && param.default !== undefined) {
@@ -169,15 +190,14 @@ function buildNodeData(definition: NodeDefinition, type: string): Record<string,
     }
   }
 
-  if (type === 'webhook-trigger') {
-    const hookId = typeof data.hookId === 'string' ? data.hookId.trim() : '';
-    if (!hookId) {
-      data.hookId = `hook_${Math.random().toString(36).slice(2, 10)}`;
-    }
-  }
-
   data._label = definition.name;
-  return data;
+  return applyNodeCreateHooks({
+    nodeType: type,
+    nodeId: context?.nodeId,
+    position: context?.position,
+    definition,
+    initialData: data,
+  });
 }
 
 interface HistoryEntry {
@@ -240,7 +260,7 @@ interface FlowActionsValue {
   isValidConnection: (connection: Connection | Edge) => boolean;
   addNode: (type: string, position: { x: number; y: number }) => string;
   removeNode: (id: string) => void;
-  insertRerouteOnEdge: (edgeId: string, position: { x: number; y: number }) => string | null;
+  insertSocketPropagationNodeOnEdge: (edgeId: string, position: { x: number; y: number }) => string | null;
   updateNodeData: (nodeId: string, paramId: string, value: unknown) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   loadGraph: (nodes: FlowNode[], edges: FlowEdge[], options?: { skipHistory?: boolean }) => void;
@@ -420,24 +440,37 @@ export function FlowProvider({ children }: { children: ReactNode }) {
 
       if (!sourceParam || !targetParam) return false;
 
-      const sourceRerouteType = (sourceNode?.data as { _socketType?: unknown } | undefined)?._socketType;
-      const targetRerouteType = (targetNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+      const sourceDefinition = sourceNode ? getNodeDefinition(sourceNode.type || '') : undefined;
+      const sourcePropagation = getSocketTypePropagationConfig(sourceDefinition);
+      const sourceStateField = sourcePropagation?.stateField ?? '_socketType';
+      const sourceOutputHandle = sourcePropagation?.outputHandle ?? 'output';
+      const sourceStoredType = sourceNode
+        ? (sourceNode.data as Record<string, unknown>)[sourceStateField]
+        : undefined;
 
       if (
-        sourceNode?.type === 'reroute' &&
-        normalized.sourceHandle === 'output' &&
-        (typeof sourceRerouteType !== 'string' || !sourceRerouteType)
+        sourcePropagation &&
+        normalized.sourceHandle === sourceOutputHandle &&
+        (typeof sourceStoredType !== 'string' || !sourceStoredType)
       ) {
         return true;
       }
 
+      const targetDefinition = targetNode ? getNodeDefinition(targetNode.type || '') : undefined;
+      const targetPropagation = getSocketTypePropagationConfig(targetDefinition);
+      const targetStateField = targetPropagation?.stateField ?? '_socketType';
+      const targetInputHandle = targetPropagation?.inputHandle ?? 'input';
+      const targetStoredType = targetNode
+        ? (targetNode.data as Record<string, unknown>)[targetStateField]
+        : undefined;
+
       if (
-        targetNode?.type === 'reroute' &&
-        normalized.targetHandle === 'input' &&
-        typeof targetRerouteType === 'string' &&
-        targetRerouteType
+        targetPropagation &&
+        normalized.targetHandle === targetInputHandle &&
+        typeof targetStoredType === 'string' &&
+        targetStoredType
       ) {
-        return canCoerce(sourceType, targetRerouteType as SocketTypeId);
+        return canCoerce(sourceType, targetStoredType as SocketTypeId);
       }
 
       return canConnect(sourceType, targetParam);
@@ -474,13 +507,20 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         normalized.targetHandle
       );
 
-      const updateRerouteSocketType = (nodeId: string, socketType: SocketTypeId) => {
+      const updateSocketPropagationType = (
+        nodeId: string,
+        stateField: string,
+        socketType: SocketTypeId
+      ) => {
         setNodes(nds =>
           nds.map(node => {
             if (node.id !== nodeId) return node;
-            const current = (node.data as { _socketType?: unknown } | undefined)?._socketType;
+            const current = (node.data as Record<string, unknown>)[stateField];
             if (current === socketType) return node;
-            return { ...node, data: { ...node.data, _socketType: socketType } };
+            return {
+              ...node,
+              data: { ...(node.data as Record<string, unknown>), [stateField]: socketType },
+            };
           })
         );
       };
@@ -488,26 +528,33 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       const sourceNode = nodesRef.current.find(node => node.id === normalized.source);
       const targetNode = nodesRef.current.find(node => node.id === normalized.target);
 
-      const sourceRerouteType = (sourceNode?.data as { _socketType?: unknown } | undefined)?._socketType;
-      const targetRerouteType = (targetNode?.data as { _socketType?: unknown } | undefined)?._socketType;
+      const sourceDefinition = sourceNode ? getNodeDefinition(sourceNode.type || '') : undefined;
+      const sourcePropagation = getSocketTypePropagationConfig(sourceDefinition);
+      const sourceStateField = sourcePropagation?.stateField ?? '_socketType';
+      const sourceOutputHandle = sourcePropagation?.outputHandle ?? 'output';
+      const sourceStoredType = sourceNode
+        ? (sourceNode.data as Record<string, unknown>)[sourceStateField]
+        : undefined;
 
-      if (normalized.source && normalized.sourceHandle === 'output') {
-        if (
-          sourceNode?.type === 'reroute' &&
-          (typeof sourceRerouteType !== 'string' || !sourceRerouteType)
-        ) {
+      if (normalized.source && normalized.sourceHandle === sourceOutputHandle) {
+        if (sourcePropagation && (typeof sourceStoredType !== 'string' || !sourceStoredType)) {
           sourceType = targetType;
-          updateRerouteSocketType(normalized.source, sourceType);
+          updateSocketPropagationType(normalized.source, sourceStateField, sourceType);
         }
       }
 
-      if (normalized.target && normalized.targetHandle === 'input') {
-        if (
-          targetNode?.type === 'reroute' &&
-          (typeof targetRerouteType !== 'string' || !targetRerouteType)
-        ) {
+      const targetDefinition = targetNode ? getNodeDefinition(targetNode.type || '') : undefined;
+      const targetPropagation = getSocketTypePropagationConfig(targetDefinition);
+      const targetStateField = targetPropagation?.stateField ?? '_socketType';
+      const targetInputHandle = targetPropagation?.inputHandle ?? 'input';
+      const targetStoredType = targetNode
+        ? (targetNode.data as Record<string, unknown>)[targetStateField]
+        : undefined;
+
+      if (normalized.target && normalized.targetHandle === targetInputHandle) {
+        if (targetPropagation && (typeof targetStoredType !== 'string' || !targetStoredType)) {
           targetType = sourceType;
-          updateRerouteSocketType(normalized.target, targetType);
+          updateSocketPropagationType(normalized.target, targetStateField, targetType);
         }
       }
 
@@ -553,8 +600,8 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         throw new Error(`Unknown node type: ${type}`);
       }
 
-      const data = buildNodeData(definition, type);
       const id = generateNodeId(type);
+      const data = buildNodeData(definition, type, { nodeId: id, position });
       const node: Node = { id, type, position, data };
 
       setNodes(nds => [...nds, node]);
@@ -577,13 +624,38 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     [setNodes, setEdges, selectedNodeId, pushHistory]
   );
 
-  const insertRerouteOnEdge = useCallback(
+  const insertSocketPropagationNodeOnEdge = useCallback(
     (edgeId: string, position: { x: number; y: number }): string | null => {
       const edge = edgesRef.current.find(e => e.id === edgeId);
       if (!edge) return null;
 
-      const definition = getNodeDefinition('reroute');
-      if (!definition) return null;
+      const sourceNode = nodesRef.current.find(node => node.id === edge.source);
+      const targetNode = nodesRef.current.find(node => node.id === edge.target);
+      const definitions = listAllNodeDefinitions();
+      const candidates = definitions.filter((definition) =>
+        Boolean(definition.metadata?.socketTypePropagation?.supportsEdgeInsertion)
+      );
+
+      const selectedDefinition =
+        candidates.find((definition) => {
+          const inputHandle =
+            definition.metadata?.socketTypePropagation?.inputHandle?.trim() || 'input';
+          const outputHandle =
+            definition.metadata?.socketTypePropagation?.outputHandle?.trim() || 'output';
+
+          const hasInput = Boolean(resolveParameterForHandle(definition, inputHandle));
+          const hasOutput = Boolean(resolveParameterForHandle(definition, outputHandle));
+          return hasInput && hasOutput;
+        }) ?? null;
+
+      if (!selectedDefinition) {
+        return null;
+      }
+
+      const propagation = getSocketTypePropagationConfig(selectedDefinition);
+      if (!propagation) {
+        return null;
+      }
 
       pushHistory();
 
@@ -600,34 +672,35 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         (edge.data as { channel?: EdgeChannel } | undefined)?.channel ??
         getEdgeChannel(sourceParam, targetParam, sourceType, targetType);
 
-      const rerouteId = generateNodeId('reroute');
-      const rerouteData = buildNodeData(definition, 'reroute');
-      rerouteData._socketType = sourceType;
+      const nodeType = selectedDefinition.id;
+      const nodeId = generateNodeId(nodeType);
+      const nodeData = buildNodeData(selectedDefinition, nodeType, { nodeId, position });
+      nodeData[propagation.stateField] = sourceType;
 
       const node: Node = {
-        id: rerouteId,
-        type: 'reroute',
+        id: nodeId,
+        type: nodeType,
         position,
-        data: rerouteData,
+        data: nodeData,
       };
 
       const sourceHandle = edge.sourceHandle ?? 'output';
       const targetHandle = edge.targetHandle ?? 'input';
 
       const inboundEdge: Edge = {
-        id: generateEdgeId(edge.source, rerouteId),
+        id: generateEdgeId(edge.source, nodeId),
         source: edge.source,
         sourceHandle,
-        target: rerouteId,
-        targetHandle: 'input',
+        target: nodeId,
+        targetHandle: propagation.inputHandle,
         type: 'gradient',
         data: { sourceType, targetType: sourceType, channel },
       };
 
       const outboundEdge: Edge = {
-        id: generateEdgeId(rerouteId, edge.target),
-        source: rerouteId,
-        sourceHandle: 'output',
+        id: generateEdgeId(nodeId, edge.target),
+        source: nodeId,
+        sourceHandle: propagation.outputHandle,
         target: edge.target,
         targetHandle,
         type: 'gradient',
@@ -640,7 +713,42 @@ export function FlowProvider({ children }: { children: ReactNode }) {
         return [...filtered, inboundEdge, outboundEdge];
       });
 
-      return rerouteId;
+      const sourceDefinition = sourceNode ? getNodeDefinition(sourceNode.type || '') : undefined;
+      const targetDefinition = targetNode ? getNodeDefinition(targetNode.type || '') : undefined;
+      const sourcePropagation = getSocketTypePropagationConfig(sourceDefinition);
+      const targetPropagation = getSocketTypePropagationConfig(targetDefinition);
+
+      if (sourceNode && sourcePropagation && sourceHandle === sourcePropagation.outputHandle) {
+        setNodes(nds =>
+          nds.map(existing => {
+            if (existing.id !== sourceNode.id) return existing;
+            return {
+              ...existing,
+              data: {
+                ...(existing.data as Record<string, unknown>),
+                [sourcePropagation.stateField]: sourceType,
+              },
+            };
+          })
+        );
+      }
+
+      if (targetNode && targetPropagation && targetHandle === targetPropagation.inputHandle) {
+        setNodes(nds =>
+          nds.map(existing => {
+            if (existing.id !== targetNode.id) return existing;
+            return {
+              ...existing,
+              data: {
+                ...(existing.data as Record<string, unknown>),
+                [targetPropagation.stateField]: sourceType,
+              },
+            };
+          })
+        );
+      }
+
+      return nodeId;
     },
     [pushHistory, setEdges, setNodes]
   );
@@ -810,7 +918,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       isValidConnection,
       addNode,
       removeNode,
-      insertRerouteOnEdge,
+      insertSocketPropagationNodeOnEdge,
       updateNodeData,
       updateNodePosition,
       loadGraph,
@@ -821,7 +929,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       redo,
       recordDragEnd,
     }),
-    [onConnect, isValidConnection, addNode, removeNode, insertRerouteOnEdge, updateNodeData, 
+    [onConnect, isValidConnection, addNode, removeNode, insertSocketPropagationNodeOnEdge, updateNodeData, 
      updateNodePosition, loadGraph, clearGraph, getNode, getConnectedInputs, undo, redo, recordDragEnd]
   );
 

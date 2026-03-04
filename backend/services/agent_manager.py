@@ -8,9 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from nodes.node_type_ids import AGENT_NODE_TYPE, CHAT_START_NODE_TYPE
+
 from ..config import get_db_directory
 from ..db import db_session
 from ..db.models import Agent
+from .flow_migration import migrate_graph_data, requires_graph_migration
 from .graph_normalizer import normalize_graph_data
 from .node_route_index import remove_agent_routes, update_agent_routes
 
@@ -33,14 +36,14 @@ def get_agent_directory(agent_id: str) -> Path:
 DEFAULT_GRAPH = {
     "nodes": [
         {
-            "id": "chat-start-1",
-            "type": "chat-start",
+            "id": "entry-1",
+            "type": CHAT_START_NODE_TYPE,
             "position": {"x": 100, "y": 200},
             "data": {},
         },
         {
             "id": "agent-1",
-            "type": "agent",
+            "type": AGENT_NODE_TYPE,
             "position": {"x": 400, "y": 200},
             "data": {},
         },
@@ -48,7 +51,7 @@ DEFAULT_GRAPH = {
     "edges": [
         {
             "id": "e1",
-            "source": "chat-start-1",
+            "source": "entry-1",
             "sourceHandle": "output",
             "target": "agent-1",
             "targetHandle": "input",
@@ -76,7 +79,7 @@ class AgentManager:
                 try:
                     graph = json.loads(a.graph_data)
                     for node in graph.get("nodes", []):
-                        if node.get("type") == "chat-start":
+                        if node.get("type") == CHAT_START_NODE_TYPE:
                             include_user_tools = bool(
                                 node.get("data", {}).get("includeUserTools", False)
                             )
@@ -105,9 +108,13 @@ class AgentManager:
                 return None
 
             raw_graph = json.loads(agent.graph_data)
-            graph = normalize_graph_data(
-                raw_graph.get("nodes", []), raw_graph.get("edges", [])
-            )
+            if requires_graph_migration(raw_graph):
+                graph = migrate_graph_data(raw_graph)
+            else:
+                graph = normalize_graph_data(
+                    raw_graph.get("nodes", []),
+                    raw_graph.get("edges", []),
+                )
             return {
                 "id": agent.id,
                 "name": agent.name,

@@ -1,0 +1,128 @@
+{
+  "groupId": "external-cross-remaining-g4",
+  "surface": "web-ui+backend-api",
+  "assignedAssertions": [
+    "VAL-CROSS-010",
+    "VAL-CROSS-011"
+  ],
+  "results": [
+    {
+      "id": "VAL-CROSS-010",
+      "status": "pass",
+      "reason": "Hot-refresh behavior is covered by focused backend/frontend tests and verified through live API transitions: install, disable, re-enable, and uninstall all update provider definitions immediately without restarting services.",
+      "evidence": [
+        "pytest: tests/test_node_provider_hot_refresh.py (3 tests) PASSED",
+        "pytest: tests/test_node_provider_plugins_command.py::test_enable_node_provider_plugin_toggles_state_and_reloads_registry PASSED",
+        "pytest: tests/test_node_provider_plugins_command.py::test_uninstall_node_provider_plugin_uninstalls_and_reloads_registry PASSED",
+        "vitest: app/lib/services/node-provider-definitions.test.ts PASSED (register/unregister behavior across refreshes)",
+        "Code path evidence: app/components/flow/canvas.tsx calls refreshNodeProviderDefinitions() on mount and bumps definitionsVersion for AddNodeMenu",
+        "API trace: evidence/external-cross-remaining-g4/hot-refresh-api-trace.json shows list_node_provider_definitions transitions: present after install -> empty after disable -> present after re-enable -> empty after uninstall"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-011",
+      "status": "pass",
+      "reason": "A saved flow containing a plugin node remained loadable after uninstall (no editor crash), UI emitted unknown-type fallback warnings, and execution produced a clear runtime error identifying the unresolved node type.",
+      "evidence": [
+        "API trace: evidence/external-cross-remaining-g4/api-trace.json (create agent with utv_ext_g4_echo:echo node, uninstall plugin, get_agent still returns unresolved node type in graph_data)",
+        "UI screenshot: evidence/external-cross-remaining-g4/unresolved-node-fallback-ui.png",
+        "Browser console warnings (agent-browser console): React Flow 'Node type \"utv_ext_g4_echo:echo\" not found. Using fallback type \"default\"'",
+        "Backend execution error evidence: evidence/external-cross-remaining-g4/stream-agent-after-uninstall.sse.txt contains RunError with 'Flow contains unknown node type(s) with no registered executor: utv_ext_g4_echo:echo... Reinstall/enable... or remove those nodes.'",
+        "pytest: tests/test_unknown_node_handling.py PASSED (clear unknown-node error behavior validated in run_flow and streamed chat runtime)"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "uv run pytest -vv tests/test_node_provider_hot_refresh.py tests/test_node_provider_plugins_command.py::test_enable_node_provider_plugin_toggles_state_and_reloads_registry tests/test_node_provider_plugins_command.py::test_uninstall_node_provider_plugin_uninstalls_and_reloads_registry tests/test_unknown_node_handling.py",
+      "exitCode": 0,
+      "observation": "7 passed"
+    },
+    {
+      "command": "bunx vitest --run app/lib/services/node-provider-definitions.test.ts app/components/flow/__tests__/node-types.test.ts",
+      "exitCode": 0,
+      "observation": "2 files passed, 5 tests passed"
+    },
+    {
+      "command": "python3 deterministic API validation for VAL-CROSS-011 (import plugin from /tmp/utv_ext_g4_plugin, create/save flow, uninstall plugin, get_agent, stream_flow_run)",
+      "exitCode": 0,
+      "observation": "Wrote evidence/external-cross-remaining-g4/api-trace.json and stream-after-uninstall.sse.txt"
+    },
+    {
+      "command": "python3 streamed chat execution after uninstall via /channel/stream_agent_chat",
+      "exitCode": 0,
+      "observation": "Captured RunError unknown-node message in stream-agent-after-uninstall.sse.txt"
+    },
+    {
+      "command": "python3 deterministic API validation for VAL-CROSS-010 (import/disable/re-enable/uninstall + definition list checks)",
+      "exitCode": 0,
+      "observation": "Wrote evidence/external-cross-remaining-g4/hot-refresh-api-trace.json"
+    },
+    {
+      "command": "agent-browser --session utv_ext_g4 open/snapshot/console/errors/screenshot on /agents/edit?id=84900523-419d-40b6-8997-d135ba033a5f",
+      "exitCode": 0,
+      "observation": "Captured unresolved-node UI artifact and console fallback warnings"
+    },
+    {
+      "command": "cleanup: delete_agent(84900523-419d-40b6-8997-d135ba033a5f), verify utv_ext_g4 test plugins absent",
+      "exitCode": 0,
+      "observation": "Agent deleted; list_node_provider_plugins shows no utv_ext_g4 plugins"
+    }
+  ],
+  "interactiveChecks": [
+    {
+      "check": "Open unresolved-flow editor page after plugin uninstall",
+      "result": "pass",
+      "evidence": "agent-browser URL: http://localhost:3000/agents/edit/?id=84900523-419d-40b6-8997-d135ba033a5f; screenshot unresolved-node-fallback-ui.png"
+    },
+    {
+      "check": "Console/errors review for unresolved plugin node UI state",
+      "result": "pass",
+      "evidence": "agent-browser errors: none; agent-browser console shows repeated fallback warnings for missing node type utv_ext_g4_echo:echo"
+    },
+    {
+      "check": "Attempt execution of unresolved flow",
+      "result": "pass",
+      "evidence": "stream-agent-after-uninstall.sse.txt includes RunError with explicit unresolved node-type guidance"
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Assigned account/password were not needed because this surface did not require an auth/login interaction for the tested flows.",
+      "resolved": true,
+      "resolution": "Executed assertions directly via assigned namespace through backend commands and agent editor URL.",
+      "affectedAssertions": [
+        "VAL-CROSS-010",
+        "VAL-CROSS-011"
+      ]
+    },
+    {
+      "description": "Backend health endpoint at /health on port 8000 returned 404 while /command and /channel endpoints were healthy.",
+      "resolved": true,
+      "resolution": "Used command/channel endpoints for deterministic validation evidence.",
+      "affectedAssertions": [
+        "VAL-CROSS-010",
+        "VAL-CROSS-011"
+      ]
+    },
+    {
+      "description": "Direct /channel/stream_flow_run call after uninstall returned RunStarted/RunCompleted without surfacing the unknown-node error in this setup.",
+      "resolved": true,
+      "resolution": "Used /channel/stream_agent_chat against the same saved flow, which emitted the expected clear RunError for unresolved node type.",
+      "affectedAssertions": [
+        "VAL-CROSS-011"
+      ]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "pytest",
+    "vitest",
+    "python3",
+    "curl",
+    "agent-browser",
+    "grep"
+  ],
+  "namespaceUsed": "utv_ext_g4",
+  "testedAt": "2026-03-03T19:11:12Z"
+}

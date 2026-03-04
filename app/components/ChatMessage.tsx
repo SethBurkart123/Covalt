@@ -126,7 +126,10 @@ function ChatMessage({
                 <AttachmentPreview attachments={message.attachments} readonly chatId={chatId} />
               </div>
             )}
-            <div className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit overflow-x-scroll max-w-full">
+            <div
+              data-testid="chat-message-user"
+              className="rounded-3xl text-base leading-relaxed bg-muted text-muted-foreground px-5 py-2.5 w-fit overflow-x-scroll max-w-full"
+            >
               {typeof content === "string" ? (
                 <MarkdownRenderer content={content} trimLast />
               ) : (
@@ -143,6 +146,7 @@ function ChatMessage({
           >
           <div
             ref={contentRef}
+            data-testid="chat-message-assistant"
             className="relative assistant-message w-full prose !max-w-none dark:prose-invert prose-zinc"
           >
             {Array.isArray(content) && (

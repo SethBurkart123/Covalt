@@ -10,7 +10,6 @@ import {
   type Node,
   type Edge,
   type NodeChange,
-  type NodeTypes,
   type EdgeProps,
   type ConnectionLineComponentProps,
   type OnConnectStartParams,
@@ -35,13 +34,13 @@ import {
   type SocketTypeId,
   useNodePicker,
   resolveParameterForHandle,
+  getSocketTypePropagationConfig,
 } from '@/lib/flow';
 import { useFlowExecution } from '@/contexts/flow-execution-context';
 import { useFlowRunner } from '@/lib/flow/use-flow-runner';
 import { FlowRunPrompt } from './flow-run-prompt';
 import { refreshNodeProviderDefinitions } from '@/lib/services/node-provider-definitions';
-import { FlowNode as FlowNodeComponent } from './node';
-import { RerouteNode } from './reroute-node';
+import { buildNodeTypes } from './node-types';
 import { AddNodeMenu, type ConnectionFilter } from './add-node-menu';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -53,13 +52,6 @@ interface PendingConnection {
   socketType: SocketTypeId;
 }
 
-function buildNodeTypes(nodeTypeIds: string[]): NodeTypes {
-  const types: NodeTypes = {};
-  for (const id of nodeTypeIds) {
-    types[id] = id === 'reroute' ? RerouteNode : FlowNodeComponent;
-  }
-  return types;
-}
 
 const EDGE_INSET = 5;
 
@@ -309,7 +301,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     isValidConnection,
     addNode,
     removeNode,
-    insertRerouteOnEdge,
+    insertSocketPropagationNodeOnEdge,
     updateNodePosition,
     updateNodeData,
     undo,
@@ -328,7 +320,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const [placingNodeId, setPlacingNodeId] = useState<string | null>(null);
   const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pendingConnectionRef = useRef<PendingConnection | null>(null);
-  const rerouteDragActiveRef = useRef(false);
+  const socketPropagationDragActiveRef = useRef(false);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter | null>(null);
 
   const displayNodes = useMemo(() => {
@@ -415,7 +407,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
 
   useEffect(() => {
     const handleMouseUp = () => {
-      rerouteDragActiveRef.current = false;
+      socketPropagationDragActiveRef.current = false;
     };
     window.addEventListener('mouseup', handleMouseUp);
     return () => window.removeEventListener('mouseup', handleMouseUp);
@@ -464,14 +456,18 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
   const getSocketTypeFromHandle = useCallback((nodeId: string, handleId: string): SocketTypeId | null => {
     const node = nodesRef.current.find(n => n.id === nodeId);
     if (!node) return null;
-    if (node.type === 'reroute') {
-      const socketType = (node.data as { _socketType?: unknown } | undefined)?._socketType;
-      if (typeof socketType === 'string' && socketType) {
-        return socketType as SocketTypeId;
-      }
-    }
+
     const definition = getNodeDefinition(node.type || '');
     if (!definition) return null;
+
+    const propagation = getSocketTypePropagationConfig(definition);
+    if (propagation) {
+      const raw = (node.data as Record<string, unknown>)[propagation.stateField];
+      if (typeof raw === 'string' && raw) {
+        return raw as SocketTypeId;
+      }
+    }
+
     const param = resolveParameterForHandle(definition, handleId);
     if (!param || !('socket' in param) || !param.socket) return null;
     return param.socket.type as SocketTypeId;
@@ -589,14 +585,14 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     [openAddMenu, getNodes, screenToFlowPosition, handleAddNodeWithSocket]
   );
 
-  const startConnectionFromReroute = useCallback(
-    (nodeId: string, clientX: number, clientY: number) => {
+  const startConnectionFromNode = useCallback(
+    (nodeId: string, handleId: string, clientX: number, clientY: number) => {
       const state = store.getState();
       const domNode = state.domNode;
       if (!domNode) return;
 
       const handleDomNode = domNode.querySelector(
-        `.react-flow__node[data-id=\"${nodeId}\"] .react-flow__handle[data-handleid=\"output\"]`
+        `.react-flow__node[data-id=\"${nodeId}\"] .react-flow__handle[data-handleid=\"${handleId}\"]`
       ) as HTMLElement | null;
       if (!handleDomNode) return;
 
@@ -615,7 +611,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       XYHandle.onPointerDown(fakeEvent, {
         connectionMode: state.connectionMode,
         connectionRadius: state.connectionRadius,
-        handleId: 'output',
+        handleId,
         nodeId,
         edgeUpdaterType: undefined,
         isTarget: false,
@@ -641,44 +637,54 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     [store]
   );
 
-  const maybeInsertReroute = useCallback(
+  const maybeInsertSocketPropagationNode = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       if (!event.shiftKey) return;
       const rightButtonDown = (event.buttons & 2) === 2;
       if (!rightButtonDown) return;
-      if (rerouteDragActiveRef.current) return;
+      if (socketPropagationDragActiveRef.current) return;
 
       event.preventDefault();
       event.stopPropagation();
-      rerouteDragActiveRef.current = true;
+      socketPropagationDragActiveRef.current = true;
 
       const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const rerouteId = insertRerouteOnEdge(edge.id, flowPos);
-      if (!rerouteId) {
-        rerouteDragActiveRef.current = false;
+      const insertedId = insertSocketPropagationNodeOnEdge(edge.id, flowPos);
+      if (!insertedId) {
+        socketPropagationDragActiveRef.current = false;
         return;
       }
 
+      const insertedNode = getNodes().find((node) => node.id === insertedId);
+      const definition = insertedNode ? getNodeDefinition(insertedNode.type || '') : undefined;
+      const propagation = getSocketTypePropagationConfig(definition);
+      const outputHandle = propagation?.outputHandle ?? 'output';
+
       const { clientX, clientY } = event;
       requestAnimationFrame(() => {
-        startConnectionFromReroute(rerouteId, clientX, clientY);
+        startConnectionFromNode(insertedId, outputHandle, clientX, clientY);
       });
     },
-    [insertRerouteOnEdge, screenToFlowPosition, startConnectionFromReroute]
+    [
+      getNodes,
+      insertSocketPropagationNodeOnEdge,
+      screenToFlowPosition,
+      startConnectionFromNode,
+    ]
   );
 
   const handleEdgeMouseEnter = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      maybeInsertReroute(event, edge);
+      maybeInsertSocketPropagationNode(event, edge);
     },
-    [maybeInsertReroute]
+    [maybeInsertSocketPropagationNode]
   );
 
   const handleEdgeMouseMove = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      maybeInsertReroute(event, edge);
+      maybeInsertSocketPropagationNode(event, edge);
     },
-    [maybeInsertReroute]
+    [maybeInsertSocketPropagationNode]
   );
 
   const handleEdgeContextMenu = useCallback(
@@ -686,11 +692,11 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       if (!event.shiftKey) return;
       event.preventDefault();
       event.stopPropagation();
-      if (rerouteDragActiveRef.current) return;
+      if (socketPropagationDragActiveRef.current) return;
       const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      insertRerouteOnEdge(edge.id, flowPos);
+      insertSocketPropagationNodeOnEdge(edge.id, flowPos);
     },
-    [insertRerouteOnEdge, screenToFlowPosition]
+    [insertSocketPropagationNodeOnEdge, screenToFlowPosition]
   );
 
   useEffect(() => {
@@ -748,7 +754,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [picker.active, picker.cancelPick]);
+  }, [picker]);
 
   const onContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -839,6 +845,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         onSelect={handleAddNode}
         connectionFilter={connectionFilter ?? undefined}
         onSelectWithSocket={handleAddNodeWithSocket}
+        definitionsVersion={dynamicNodeVersion}
       />
       <FlowRunPrompt />
       {picker.active && (

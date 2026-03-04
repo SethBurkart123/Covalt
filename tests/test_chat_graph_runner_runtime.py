@@ -9,7 +9,7 @@ from agno.models.message import Message as AgnoMessage
 import backend.services.chat_graph_runner as chat_graph_runner
 from backend import db
 from backend.commands import chats as chats_commands
-from backend.models.chat import ChatMessage, ContentBlock
+from backend.models.chat import Attachment, ChatMessage, ContentBlock
 from backend.services import run_control
 from backend.services.chat_graph_runner import (
     handle_flow_stream,
@@ -667,3 +667,301 @@ async def test_handle_flow_stream_splits_text_blocks_between_nodes() -> None:
     final_blocks = json.loads(saved_payloads[-1])
     text_blocks = [block.get("content") for block in final_blocks if block.get("type") == "text"]
     assert text_blocks == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_applies_chat_start_runtime_config_and_records_chat_start_output() -> (
+    None
+):
+    graph = make_graph(
+        nodes=[
+            {
+                "id": "chat-entry",
+                "type": "chat-start",
+                "data": {
+                    "primaryAgentId": "agent-primary",
+                    "includeUserTools": True,
+                },
+            },
+            {
+                "id": "agent-primary",
+                "type": "agent",
+                "data": {},
+            },
+        ],
+        edges=[make_edge("chat-entry", "agent-primary", "output", "input")],
+    )
+
+    channel = CapturingChannel()
+    captured: dict[str, Any] = {}
+
+    async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
+        chat_output = context.services.chat_output
+        captured["primary_agent_id"] = getattr(chat_output, "primary_agent_id", None)
+        captured["primary_agent_source"] = getattr(chat_output, "primary_agent_source", None)
+
+        output_payload = {
+            "message": context.services.chat_input.last_user_message,
+            "last_user_message": context.services.chat_input.last_user_message,
+            "history": context.services.chat_input.history,
+            "messages": context.services.chat_input.messages,
+            "agno_messages": context.services.chat_input.agno_messages,
+            "attachments": context.services.chat_input.last_user_attachments,
+            "include_user_tools": True,
+        }
+        output_value = DataValue(type="data", value=output_payload)
+
+        yield NodeEvent(
+            node_id="chat-entry",
+            node_type="chat-start",
+            event_type="started",
+            run_id="run-chat-start",
+        )
+        yield NodeEvent(
+            node_id="chat-entry",
+            node_type="chat-start",
+            event_type="result",
+            run_id="run-chat-start",
+            data={
+                "outputs": {
+                    "output": {
+                        "type": output_value.type,
+                        "value": output_value.value,
+                    }
+                }
+            },
+        )
+        yield NodeEvent(
+            node_id="chat-entry",
+            node_type="chat-start",
+            event_type="completed",
+            run_id="run-chat-start",
+        )
+        yield ExecutionResult(outputs={"output": output_value})
+
+    user_message = ChatMessage(
+        id="user-1",
+        role="user",
+        content="hello graph",
+        attachments=[
+            Attachment(
+                id="att-1",
+                type="file",
+                name="notes.txt",
+                mimeType="text/plain",
+                size=3,
+            )
+        ],
+    )
+
+    await handle_flow_stream(
+        graph,
+        None,
+        [user_message],
+        "assistant-chat-start",
+        channel,
+        chat_id="chat-start-runtime",
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=lambda _message_id, _content: None,
+        load_initial_content_impl=lambda _message_id: [],
+    )
+
+    assert captured["primary_agent_id"] == "agent-primary"
+    assert captured["primary_agent_source"] == "chat-entry"
+
+    run_completed_events = [
+        event for event in channel.events if event.get("event") == "RunCompleted"
+    ]
+    assert run_completed_events, "expected RunCompleted event to be emitted"
+
+    with db.db_session() as sess:
+        run = db.get_latest_execution_run_for_message(
+            sess, message_id="assistant-chat-start"
+        )
+        assert run is not None
+        events = db.get_execution_events(sess, execution_id=run.id)
+
+    runtime_result = next(
+        event for event in events if event["eventType"] == "runtime.execution_result"
+    )
+    output_value = runtime_result["payload"]["outputs"]["output"]["value"]
+
+    assert output_value["message"] == "hello graph"
+    assert output_value["last_user_message"] == "hello graph"
+    assert output_value["history"][0]["content"] == "hello graph"
+    assert output_value["messages"][0]["role"] == "user"
+    assert output_value["messages"][0]["content"] == "hello graph"
+    assert output_value["agno_messages"][0]["role"] == "user"
+    assert output_value["attachments"][0]["id"] == "att-1"
+    assert output_value["attachments"][0]["mimeType"] == "text/plain"
+    assert output_value["include_user_tools"] is True
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_executes_chat_start_through_plugin_registry() -> None:
+    graph = make_graph(
+        nodes=[
+            {
+                "id": "chat-entry",
+                "type": "chat-start",
+                "data": {"includeUserTools": True},
+            }
+        ],
+        edges=[],
+    )
+
+    channel = CapturingChannel()
+    user_message = ChatMessage(
+        id="user-integration-1",
+        role="user",
+        content="integration hello",
+        attachments=[
+            Attachment(
+                id="att-integration-1",
+                type="file",
+                name="integration.txt",
+                mimeType="text/plain",
+                size=11,
+            )
+        ],
+    )
+
+    await handle_flow_stream(
+        graph,
+        None,
+        [user_message],
+        "assistant-chat-start-integration",
+        channel,
+        chat_id="chat-start-integration",
+        ephemeral=False,
+        save_content_impl=lambda _message_id, _content: None,
+        load_initial_content_impl=lambda _message_id: [],
+    )
+
+    flow_result_events = [
+        event for event in channel.events if event.get("event") == "FlowNodeResult"
+    ]
+    assert flow_result_events, "expected FlowNodeResult from chat-start execution"
+
+    with db.db_session() as sess:
+        run = db.get_latest_execution_run_for_message(
+            sess, message_id="assistant-chat-start-integration"
+        )
+        assert run is not None
+        events = db.get_execution_events(sess, execution_id=run.id)
+
+    runtime_result = next(
+        event for event in events if event["eventType"] == "runtime.execution_result"
+    )
+    output_value = runtime_result["payload"]["outputs"]["output"]["value"]
+
+    assert output_value["message"] == "integration hello"
+    assert output_value["last_user_message"] == "integration hello"
+    assert output_value["history"][0]["content"] == "integration hello"
+    assert output_value["messages"][0]["role"] == "user"
+    assert output_value["messages"][0]["content"] == "integration hello"
+    assert output_value["agno_messages"][0]["role"] == "user"
+    assert output_value["attachments"][0]["id"] == "att-integration-1"
+    assert output_value["attachments"][0]["mimeType"] == "text/plain"
+    assert output_value["include_user_tools"] is True
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_preserves_trailing_error_block_from_initial_content() -> None:
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ok"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [
+            {"type": "text", "content": "kept"},
+            {"type": "error", "content": "stale"},
+        ],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    assert final_blocks == [
+        {"type": "text", "content": "kept"},
+        {"type": "error", "content": "stale"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_keeps_existing_tool_call_and_updates_completion_payload() -> (
+    None
+):
+    saved_payloads: list[str] = []
+
+    def fake_save_content(_message_id: str, content: str) -> None:
+        saved_payloads.append(content)
+
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="agent_event",
+            run_id="run-1",
+            data={
+                "event": "ToolCallCompleted",
+                "tool": {
+                    "id": "tool-1",
+                    "toolName": "search_docs",
+                    "toolArgs": {"query": "cats"},
+                    "toolResult": "done",
+                    "providerData": {"provider": "openai"},
+                },
+            },
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "ignored"})}
+        )
+
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        CapturingChannel(),
+        ephemeral=False,
+        run_flow_impl=fake_run_flow,
+        save_content_impl=fake_save_content,
+        load_initial_content_impl=lambda _message_id: [
+            {
+                "type": "tool_call",
+                "id": "tool-1",
+                "toolName": "search_docs",
+                "toolArgs": {"query": "cats"},
+                "isCompleted": False,
+            }
+        ],
+    )
+
+    assert saved_payloads
+    final_blocks = json.loads(saved_payloads[-1])
+    assert len(final_blocks) == 2
+
+    tool_block = final_blocks[0]
+    assert tool_block["type"] == "tool_call"
+    assert tool_block["id"] == "tool-1"
+    assert tool_block["toolName"] == "search_docs"
+    assert tool_block["toolArgs"] == {"query": "cats"}
+    assert tool_block["toolResult"] == "done"
+    assert tool_block["isCompleted"] is True
+    assert tool_block["providerData"] == {"provider": "openai"}
+
+    assert final_blocks[1] == {"type": "text", "content": "ignored"}

@@ -18,8 +18,17 @@ from .node_provider_runtime import (
     list_provider_definitions,
     materialize_provider_node,
 )
+from .plugin_registry import (
+    get_plugin_metadata,
+    list_registered_plugins,
+    plugin_for_node_type,
+    register_plugin,
+    unregister_plugin,
+)
 
 logger = logging.getLogger(__name__)
+
+_PROVIDER_PLUGIN_SOURCE = 'provider'
 
 
 @dataclass(frozen=True)
@@ -153,24 +162,64 @@ def clear_node_provider_registry() -> None:
 
 
 def list_node_provider_definitions() -> list[NodeProviderNodeDefinition]:
-    results: list[NodeProviderNodeDefinition] = []
+    results = _list_provider_definitions_from_plugin_registry()
+    if results:
+        return sorted(results, key=lambda item: (item.providerId, item.type))
+
+    fallback: list[NodeProviderNodeDefinition] = []
     for registration in _REGISTERED_PROVIDER_NODES.values():
         try:
-            results.append(NodeProviderNodeDefinition.model_validate(registration.definition))
+            fallback.append(NodeProviderNodeDefinition.model_validate(registration.definition))
         except Exception:
             continue
-    return sorted(results, key=lambda item: (item.providerId, item.type))
+    return sorted(fallback, key=lambda item: (item.providerId, item.type))
+
+
+def _list_provider_definitions_from_plugin_registry() -> list[NodeProviderNodeDefinition]:
+    definitions: list[NodeProviderNodeDefinition] = []
+
+    for plugin_id in list_registered_plugins():
+        metadata = get_plugin_metadata(plugin_id) or {}
+        if metadata.get('source') != _PROVIDER_PLUGIN_SOURCE:
+            continue
+
+        raw_definitions = metadata.get('definitions')
+        if not isinstance(raw_definitions, list):
+            continue
+
+        for item in raw_definitions:
+            if not isinstance(item, dict):
+                continue
+            try:
+                definitions.append(NodeProviderNodeDefinition.model_validate(item))
+            except Exception:
+                continue
+
+    return definitions
 
 
 def get_provider_node_registration(node_type: str) -> RegisteredProviderNode | None:
+    registration = _REGISTERED_PROVIDER_NODES.get(node_type)
+    if registration is not None:
+        return registration
+
+    owner = plugin_for_node_type(node_type)
+    if owner is None:
+        return None
+
+    metadata = get_plugin_metadata(owner) or {}
+    if metadata.get('source') != _PROVIDER_PLUGIN_SOURCE:
+        return None
+
     return _REGISTERED_PROVIDER_NODES.get(node_type)
 
 
 def reload_node_provider_registry() -> None:
-    from nodes import clear_provider_executors, register_provider_executor
-
+    previously_registered = {item.plugin_id for item in _REGISTERED_PROVIDER_NODES.values()}
     clear_node_provider_registry()
-    clear_provider_executors()
+
+    for plugin_id in previously_registered:
+        unregister_plugin(plugin_id)
 
     manager = get_node_provider_plugin_manager()
     manifests = manager.get_enabled_manifests()
@@ -197,34 +246,43 @@ def reload_node_provider_registry() -> None:
             )
             continue
 
+        registrations: list[RegisteredProviderNode] = []
         for raw_definition in definitions:
             registration = _normalize_registration(
                 manifest_id=manifest.id,
                 raw_definition=raw_definition,
                 runtime_spec=runtime_spec,
             )
-            if registration is None:
-                continue
+            if registration is not None:
+                registrations.append(registration)
 
-            _REGISTERED_PROVIDER_NODES[registration.node_type] = registration
+        if not registrations:
+            continue
 
-            executor = ProviderNodeExecutor(registration)
-            definition = registration.definition
-            caps = definition.get('capabilities') or {}
+        executors = {
+            registration.node_type: ProviderNodeExecutor(registration)
+            for registration in registrations
+        }
+        metadata = {
+            'source': _PROVIDER_PLUGIN_SOURCE,
+            'provider_id': manifest.id,
+            'definitions': [registration.definition for registration in registrations],
+            'node_types': [registration.node_type for registration in registrations],
+        }
 
-            register_provider_executor(
-                node_type=registration.node_type,
-                executor=executor,
-                metadata={
-                    'plugin_id': registration.plugin_id,
-                    'provider_id': registration.provider_id,
-                    'source': 'provider',
-                    'has_execute': bool(caps.get('execute', True)),
-                    'has_materialize': bool(caps.get('materialize')),
-                    'has_configure_runtime': bool(caps.get('configureRuntime')),
-                    'has_init_routes': False,
-                },
+        unregister_plugin(manifest.id)
+        try:
+            register_plugin(
+                manifest.id,
+                executors=executors,
+                metadata=metadata,
             )
+        except Exception as exc:
+            logger.error('node-provider:%s failed plugin registration: %s', manifest.id, exc)
+            continue
+
+        for registration in registrations:
+            _REGISTERED_PROVIDER_NODES[registration.node_type] = registration
 
 
 def _load_definitions_from_file(manifest: Any) -> list[dict[str, Any]]:
@@ -258,20 +316,23 @@ def _normalize_registration(
         return None
 
     normalized_type = node_key
-    if not normalized_type.startswith('np:'):
-        normalized_type = f'np:{manifest_id}:{node_key}'
+    if ':' not in normalized_type:
+        normalized_type = f'{manifest_id}:{node_key}'
 
     definition = copy.deepcopy(raw_definition)
     definition['type'] = normalized_type
     definition['source'] = 'provider'
     definition['providerId'] = manifest_id
     definition['pluginId'] = manifest_id
-    definition.setdefault('capabilities', {
-        'execute': True,
-        'materialize': False,
-        'configureRuntime': False,
-        'routes': False,
-    })
+    definition.setdefault(
+        'capabilities',
+        {
+            'execute': True,
+            'materialize': False,
+            'configureRuntime': False,
+            'routes': False,
+        },
+    )
 
     try:
         parsed = NodeProviderNodeDefinition.model_validate(definition)

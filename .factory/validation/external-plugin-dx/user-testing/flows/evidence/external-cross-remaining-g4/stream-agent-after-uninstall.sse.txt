@@ -1,0 +1,12 @@
+event: RunStarted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
+
+event: AssistantMessageId
+data: {"content": "f1032603-0ece-4bba-8026-067512dca47a", "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
+
+event: RunError
+data: {"content": "Flow contains unknown node type(s) with no registered executor: utv_ext_g4_echo:echo. Reinstall/enable the corresponding plugin(s) or remove those nodes.", "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
+
+event: close
+data: {"channelId": "4bbf0141-db97-4676-a2b3-fafa1f9d3c9d"}
+

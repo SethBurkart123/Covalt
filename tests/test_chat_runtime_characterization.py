@@ -321,6 +321,9 @@ async def test_member_run_delegation_event_sequence() -> None:
         "RunCompleted",
     ]
 
+    assert run_control.get_approval_waiter(team_run_id) is None
+    assert run_control.get_approval_response(team_run_id) == {}
+
     events = extract_channel_events(channel)
     member_events = [evt for evt in events if evt.get("memberRunId") == member_run_id]
     assert len(member_events) >= 3

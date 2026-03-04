@@ -1,0 +1,179 @@
+{
+  "groupId": "external-install-security-g1",
+  "surface": "backend-api",
+  "assignedAssertions": [
+    "VAL-EXT-001",
+    "VAL-EXT-002",
+    "VAL-EXT-003",
+    "VAL-EXT-004",
+    "VAL-EXT-008",
+    "VAL-EXT-009"
+  ],
+  "results": [
+    {
+      "id": "VAL-EXT-001",
+      "status": "pass",
+      "reason": "Validated via targeted unit tests for repo install flow: successful GitHub repo install path normalizes metadata and persists sourceType=repo, with plugin registration paths covered by registry tests.",
+      "evidence": [
+        "uv run pytest -vv ... test_install_from_repo_success_with_https_github_and_plugin_path ... -> PASSED",
+        "uv run pytest -vv ... test_normalize_registration_uses_plugin_scoped_id_without_np_prefix ... -> PASSED",
+        "curl POST /command/list_node_provider_plugins -> shows existing repo-sourced plugin records with sourceType=repo"
+      ]
+    },
+    {
+      "id": "VAL-EXT-002",
+      "status": "pass",
+      "reason": "Validated through real upload API and registry listing: namespaced zip plugin installed as sourceType=zip and its node definition became available.",
+      "evidence": [
+        "python3 fixture generation -> /tmp/utv_ext_g1_valid_plugin.zip",
+        "curl POST /upload/import_node_provider_plugin (utv_ext_g1_valid_plugin.zip) -> {\"result\":{\"id\":\"utv-ext-g1-zip-plugin\"}}",
+        "curl POST /command/list_node_provider_plugins -> includes utv-ext-g1-zip-plugin with sourceType=zip",
+        "curl POST /command/list_node_provider_definitions -> includes type utv-ext-g1-zip-plugin:echo",
+        "curl POST /command/uninstall_node_provider_plugin {id:utv-ext-g1-zip-plugin} -> success"
+      ]
+    },
+    {
+      "id": "VAL-EXT-003",
+      "status": "pass",
+      "reason": "Manifest validation paths are enforced with actionable errors for missing/invalid fields, invalid IDs, unsupported versions, and missing runtime entrypoint; confirmed by tests and API error responses.",
+      "evidence": [
+        "uv run pytest -vv ... test_manifest_validation_errors_are_actionable ... -> all parametrized cases PASSED",
+        "uv run pytest -vv ... test_manifest_validation_rejects_missing_runtime_entrypoint_file ... -> PASSED",
+        "uv run pytest -vv ... test_manifest_validation_rejects_invalid_python_dependencies_shape ... -> PASSED",
+        "uv run pytest -vv ... test_manifest_validation_rejects_invalid_python_dependency_entries ... -> PASSED",
+        "curl POST /upload/import_node_provider_plugin (utv_ext_g1_missing_manifest.zip) -> EXECUTION_ERROR: Node provider plugin is missing node-provider.yaml"
+      ]
+    },
+    {
+      "id": "VAL-EXT-004",
+      "status": "fail",
+      "reason": "Security enforcement is incomplete for repo installs: zip upload protections exist, but repo archive extraction uses raw extractall without traversal guard in install_from_repo, leaving an explicit validation gap.",
+      "evidence": [
+        "uv run pytest -vv ... test_import_from_zip_rejects_oversized_archive ... -> PASSED",
+        "uv run pytest -vv ... test_import_from_zip_rejects_path_traversal_entries ... -> PASSED",
+        "uv run pytest -vv ... test_install_from_repo_rejects_invalid_urls ... -> PASSED",
+        "uv run pytest -vv ... test_install_from_repo_rejects_invalid_plugin_path ... -> PASSED",
+        "curl POST /command/install_node_provider_plugin_from_repo (http://github.com/utv_ext_g1/repo) -> EXECUTION_ERROR: repoUrl must use https:// for GitHub installs",
+        "curl POST /command/install_node_provider_plugin_from_repo (pluginPath=../utv_ext_g1_escape) -> EXECUTION_ERROR: pluginPath must be a relative path without traversal",
+        "rg -n \"_safe_extract|extractall\" backend/services/node_provider_plugin_manager.py -> repo path uses zf.extractall(tmp_dir / 'repo') at line 560"
+      ]
+    },
+    {
+      "id": "VAL-EXT-008",
+      "status": "pass",
+      "reason": "No forced np: prefix behavior observed; provider node types are plugin-scoped ({plugin_id}:{node_type}) and unit tests explicitly enforce no np: prefix.",
+      "evidence": [
+        "uv run pytest -vv ... test_normalize_registration_uses_plugin_scoped_id_without_np_prefix ... -> PASSED",
+        "uv run pytest -vv ... test_normalize_registration_preserves_explicit_plugin_scoped_type ... -> PASSED",
+        "curl POST /command/list_node_provider_definitions -> type utv_ext_g2_lifecycle:echo (no np: prefix)",
+        "rg -n \"np:\" backend/services/node_provider_registry.py backend/services/node_route_index.py -> no matches"
+      ]
+    },
+    {
+      "id": "VAL-EXT-009",
+      "status": "pass",
+      "reason": "Dependency installation behavior is covered with success, fallback, and clear failure messaging that includes plugin context; rollback on failure is validated.",
+      "evidence": [
+        "uv run pytest -vv ... test_import_installs_manifest_python_dependencies ... -> PASSED",
+        "uv run pytest -vv ... test_import_installs_manifest_dependencies_python_alias ... -> PASSED",
+        "uv run pytest -vv ... test_install_python_dependencies_tries_uv_then_pip_fallback ... -> PASSED",
+        "uv run pytest -vv ... test_install_python_dependencies_returns_clear_error_on_failure ... -> PASSED",
+        "uv run pytest -vv ... test_import_dependency_install_failure_is_actionable_and_rolls_back ... -> PASSED"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "uv run pytest -vv tests/test_node_provider_plugin_manager.py::test_install_from_repo_success_with_https_github_and_plugin_path tests/test_node_provider_plugin_manager.py::test_import_from_zip_success_with_wrapper_directory tests/test_node_provider_plugin_manager.py::test_manifest_validation_errors_are_actionable tests/test_node_provider_plugin_manager.py::test_manifest_validation_rejects_missing_runtime_entrypoint_file tests/test_node_provider_plugin_manager.py::test_manifest_validation_rejects_invalid_python_dependencies_shape tests/test_node_provider_plugin_manager.py::test_manifest_validation_rejects_invalid_python_dependency_entries tests/test_node_provider_plugin_manager.py::test_import_from_zip_rejects_oversized_archive tests/test_node_provider_plugin_manager.py::test_import_from_zip_rejects_path_traversal_entries tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_invalid_urls tests/test_node_provider_plugin_manager.py::test_install_from_repo_rejects_invalid_plugin_path tests/test_node_provider_plugin_manager.py::test_import_installs_manifest_python_dependencies tests/test_node_provider_plugin_manager.py::test_import_installs_manifest_dependencies_python_alias tests/test_node_provider_plugin_manager.py::test_import_dependency_install_failure_is_actionable_and_rolls_back tests/test_node_provider_plugin_manager.py::test_install_python_dependencies_tries_uv_then_pip_fallback tests/test_node_provider_plugin_manager.py::test_install_python_dependencies_returns_clear_error_on_failure tests/test_backend_core_decoupling_provider_registry.py::test_normalize_registration_uses_plugin_scoped_id_without_np_prefix tests/test_backend_core_decoupling_provider_registry.py::test_normalize_registration_preserves_explicit_plugin_scoped_type",
+      "exitCode": 0,
+      "observation": "25 passed in 0.18s"
+    },
+    {
+      "command": "python3 generate /tmp/utv_ext_g1_valid_plugin.zip fixture",
+      "exitCode": 0,
+      "observation": "Created namespaced valid plugin archive at /tmp/utv_ext_g1_valid_plugin.zip (770 bytes)"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_g1_valid_plugin.zip -F _args={}",
+      "exitCode": 0,
+      "observation": "Installed plugin id utv-ext-g1-zip-plugin"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/command/list_node_provider_plugins -d {}",
+      "exitCode": 0,
+      "observation": "Plugin list included utv-ext-g1-zip-plugin with sourceType=zip"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/command/list_node_provider_definitions -d {}",
+      "exitCode": 0,
+      "observation": "Definitions included utv-ext-g1-zip-plugin:echo"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/command/uninstall_node_provider_plugin -d {body:{id:utv-ext-g1-zip-plugin}}",
+      "exitCode": 0,
+      "observation": "Removed namespaced test plugin successfully"
+    },
+    {
+      "command": "python3 generate malformed archives /tmp/utv_ext_g1_missing_manifest.zip and /tmp/utv_ext_g1_traversal.zip",
+      "exitCode": 0,
+      "observation": "Created malformed fixtures for manifest and traversal validation"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_g1_missing_manifest.zip -F _args={}",
+      "exitCode": 0,
+      "observation": "Returned EXECUTION_ERROR: Node provider plugin is missing node-provider.yaml"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/upload/import_node_provider_plugin -F files=@/tmp/utv_ext_g1_traversal.zip -F _args={}",
+      "exitCode": 0,
+      "observation": "Returned EXECUTION_ERROR: Archive contains invalid path traversal entries"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/command/install_node_provider_plugin_from_repo -d {body:{repoUrl:http://github.com/utv_ext_g1/repo,ref:main,pluginPath:plugins/utv_ext_g1_sample}}",
+      "exitCode": 0,
+      "observation": "Returned EXECUTION_ERROR: repoUrl must use https:// for GitHub installs"
+    },
+    {
+      "command": "curl -X POST http://localhost:8000/command/install_node_provider_plugin_from_repo -d {body:{repoUrl:https://github.com/utv_ext_g1/repo,ref:main,pluginPath:../utv_ext_g1_escape}}",
+      "exitCode": 0,
+      "observation": "Returned EXECUTION_ERROR: pluginPath must be a relative path without traversal"
+    },
+    {
+      "command": "rg -n \"_safe_extract|extractall\" backend/services/node_provider_plugin_manager.py",
+      "exitCode": 0,
+      "observation": "Found guarded zip path plus unguarded repo extraction: zf.extractall(tmp_dir / 'repo')"
+    },
+    {
+      "command": "rg -n \"np:\" backend/services/node_provider_registry.py backend/services/node_route_index.py",
+      "exitCode": 1,
+      "observation": "No matches in targeted backend registry/route index files"
+    }
+  ],
+  "interactiveChecks": [
+    {
+      "action": "Upload namespaced valid plugin zip via backend upload API",
+      "observed": "Install succeeded and plugin appeared with sourceType=zip; definition type surfaced as utv-ext-g1-zip-plugin:echo"
+    },
+    {
+      "action": "Uninstall namespaced test plugin",
+      "observed": "Removal succeeded and plugin no longer appeared in list"
+    },
+    {
+      "action": "Submit invalid repo install payloads (non-https URL and traversal pluginPath)",
+      "observed": "Both rejected with explicit validation errors"
+    }
+  ],
+  "frictions": [
+    "Backend health probe at /health returned 404 while API root/openapi/command routes were healthy; used /openapi.json and command endpoints for validation.",
+    "Live install from arbitrary GitHub sample repo URL returned 404, so VAL-EXT-001 relied on targeted unit tests for successful repo-install path confirmation."
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "curl",
+    "pytest",
+    "python3",
+    "rg"
+  ],
+  "namespaceUsed": "utv_ext_g1",
+  "testedAt": "2026-03-03T18:11:55Z"
+}

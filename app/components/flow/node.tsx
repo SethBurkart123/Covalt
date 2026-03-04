@@ -1,6 +1,14 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type MouseEvent,
+} from 'react';
 import { useStore, type NodeProps } from '@xyflow/react';
 import { ChevronDown, Check, X, Loader2, Play, FastForward, Pin } from 'lucide-react';
 import type { NodeDefinition, FlowEdge, Parameter } from '@/lib/flow';
@@ -22,6 +30,16 @@ interface FlowNodeData {
 interface FlowNodeProps extends NodeProps {
   data: FlowNodeData;
   type: string;
+}
+
+export function resolveNodeRendererComponent(
+  definition: NodeDefinition | null | undefined
+): ComponentType<FlowNodeProps> | null {
+  if (!definition?.component || typeof definition.component !== 'function') {
+    return null;
+  }
+
+  return definition.component as ComponentType<FlowNodeProps>;
 }
 
 interface SocketParamItem {
@@ -105,7 +123,7 @@ const CompactSocketGroup = memo(function CompactSocketGroup({ items }: { items: 
  * Generic flow node component.
  * Renders any node type based on its definition from the registry.
  */
-function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
+function GenericFlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const { updateNodeData } = useFlowActions();
   const picker = useNodePicker();
   const { executionByNode, pinnedByNodeId, togglePinned } = useFlowExecution();
@@ -221,7 +239,7 @@ function FlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
 
   const visibleParams = useMemo(
     () => resolvedParams.filter(param => shouldRenderParam(param, 'node', edgeIndex, data as Record<string, unknown>)),
-    [edgeIndex, resolvedParams]
+    [data, edgeIndex, resolvedParams]
   );
 
   const paramBlocks = useMemo<ParamBlock[]>(() => {
@@ -435,4 +453,14 @@ function getCategoryBorderColor(category: NodeDefinition['category']): string {
   }
 }
 
-export const FlowNode = memo(FlowNodeComponent);
+function FlowNodeRenderer(props: FlowNodeProps) {
+  const definition = getNodeDefinition(props.type);
+  const CustomRenderer = resolveNodeRendererComponent(definition);
+  if (CustomRenderer) {
+    return <CustomRenderer {...props} />;
+  }
+
+  return <GenericFlowNodeComponent {...props} />;
+}
+
+export const FlowNode = memo(FlowNodeRenderer);
