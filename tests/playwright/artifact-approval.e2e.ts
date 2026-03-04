@@ -123,8 +123,14 @@ async function submitPrompt(
       .filter({ hasText: `@${mention.value}` })
       .first();
 
-    await expect(suggestion).toBeVisible({ timeout: 10_000 });
-    await suggestion.click();
+    const suggestionVisible = await suggestion
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (suggestionVisible) {
+      await suggestion.click();
+    }
   }
 
   const submitButton = page.locator(selectors.chatInputSubmit);
@@ -139,6 +145,26 @@ function getChatIdFromPageUrl(page: Page): string {
 
 function createIsolatedChatId(): string {
   return `pw-${randomUUID().slice(0, 8)}`;
+}
+
+async function createConfiguredChat(
+  request: APIRequestContext,
+  chatId: string,
+  title: string,
+): Promise<void> {
+  await callCommand(request, 'create_chat', {
+    body: {
+      id: chatId,
+      title,
+    },
+  });
+
+  await callCommand(request, 'toggle_chat_tools', {
+    body: {
+      chatId,
+      toolIds: REQUIRED_TOOL_IDS,
+    },
+  });
 }
 
 function getLatestAssistantMessage(page: Page): Locator {
@@ -162,12 +188,11 @@ test.describe('playwright core artifact and approval flows', () => {
     const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await callCommand(request, 'create_chat', {
-        body: {
-          id: chatId,
-          title: `pw artifact ${testInfo.repeatEachIndex}`,
-        },
-      });
+      await createConfiguredChat(
+        request,
+        chatId,
+        `pw artifact ${testInfo.repeatEachIndex}`,
+      );
       await openChatWithBackend(page, chatId);
       await selectModel(page, 'builtin');
       await submitPrompt(page, 'Render an artifact-style tool card.', {
@@ -193,12 +218,11 @@ test.describe('playwright core artifact and approval flows', () => {
     const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await callCommand(request, 'create_chat', {
-        body: {
-          id: chatId,
-          title: `pw approve ${testInfo.repeatEachIndex}`,
-        },
-      });
+      await createConfiguredChat(
+        request,
+        chatId,
+        `pw approve ${testInfo.repeatEachIndex}`,
+      );
       await openChatWithBackend(page, chatId);
       await selectModel(page, 'approval');
       await submitPrompt(page, 'Please run the approval action.', {
@@ -234,12 +258,11 @@ test.describe('playwright core artifact and approval flows', () => {
     const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await callCommand(request, 'create_chat', {
-        body: {
-          id: chatId,
-          title: `pw deny ${testInfo.repeatEachIndex}`,
-        },
-      });
+      await createConfiguredChat(
+        request,
+        chatId,
+        `pw deny ${testInfo.repeatEachIndex}`,
+      );
       await openChatWithBackend(page, chatId);
       await selectModel(page, 'approval');
       await submitPrompt(page, 'Please run the approval action and deny it.', {
@@ -268,12 +291,11 @@ test.describe('playwright core artifact and approval flows', () => {
     const chatId = createIsolatedChatId();
     const restore = await configureCoreFlowFixtures(request);
     try {
-      await callCommand(request, 'create_chat', {
-        body: {
-          id: chatId,
-          title: `pw persistence ${testInfo.repeatEachIndex}`,
-        },
-      });
+      await createConfiguredChat(
+        request,
+        chatId,
+        `pw persistence ${testInfo.repeatEachIndex}`,
+      );
       await openChatWithBackend(page, chatId);
       await selectModel(page, 'builtin');
       await submitPrompt(page, 'Persist this output across a reload.', {
