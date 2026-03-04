@@ -65,7 +65,8 @@ export function ArtifactPanel() {
       onAnimationStart={handleAnimationStart}
       onAnimationComplete={handleAnimationComplete}
     >
-      <div 
+      <div
+        data-testid="artifact-panel"
         className="h-full bg-card/80 border-l border-border rounded-l-xl flex flex-col overflow-hidden"
         style={animatingWidth ? { width: animatingWidth } : undefined}
       >

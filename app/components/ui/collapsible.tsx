@@ -37,6 +37,7 @@ interface CollapsibleProps extends HTMLAttributes<HTMLDivElement> {
   shimmer?: boolean
   disableToggle?: boolean
   mode?: CollapsibleMode
+  "data-testid"?: string
 }
 
 function Collapsible({
@@ -51,6 +52,7 @@ function Collapsible({
   disableToggle = false,
   mode = "regular",
   className,
+  "data-testid": testId,
   ...props
 }: CollapsibleProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
@@ -62,7 +64,13 @@ function Collapsible({
   if (mode === "minimal") {
     return (
       <CollapsibleContext.Provider value={value}>
-        <div className={cn("relative py-0.5", className)} {...props}>{children}</div>
+        <div
+          data-testid={testId}
+          className={cn("relative py-0.5", className)}
+          {...props}
+        >
+          {children}
+        </div>
       </CollapsibleContext.Provider>
     )
   }
@@ -70,7 +78,7 @@ function Collapsible({
   if (mode === "compact") {
     return (
       <CollapsibleContext.Provider value={value}>
-        <div className={cn("my-2 not-prose", className)} {...props}>
+        <div data-testid={testId} className={cn("my-2 not-prose", className)} {...props}>
           <div className="border border-border/60 rounded-md overflow-hidden bg-card/80">
             {children}
           </div>
@@ -82,14 +90,14 @@ function Collapsible({
   if (isGrouped) {
     return (
       <CollapsibleContext.Provider value={value}>
-        <div className={cn("relative", className)} {...props}>{children}</div>
+        <div data-testid={testId} className={cn("relative", className)} {...props}>{children}</div>
       </CollapsibleContext.Provider>
     )
   }
 
   return (
     <CollapsibleContext.Provider value={value}>
-      <div className={cn("my-3 not-prose", className)} {...props}>
+      <div data-testid={testId} className={cn("my-3 not-prose", className)} {...props}>
         <div className="border border-border rounded-lg overflow-hidden bg-card">
           {children}
         </div>

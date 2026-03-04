@@ -37,6 +37,7 @@ export function MarkdownArtifact({
       : typeof toolResult === "string"
         ? toolResult
         : "";
+  const toolCallTestId = `tool-call-${toolName}`;
 
   const handleClick = () => {
     if (!isCompleted || (!content && !fileState)) return;
@@ -60,6 +61,7 @@ export function MarkdownArtifact({
       isLast={isLast}
       shimmer={isLoading}
       disableToggle
+      data-testid={toolCallTestId}
       data-toolcall
     >
       <CollapsibleTrigger onClick={handleClick}>

@@ -1,0 +1,28 @@
+{
+  "featureId": "external-plugin-install-validation",
+  "reviewedAt": "2026-03-03T17:40:46.386846+00:00",
+  "commitId": "2545e86e848e3196e1f8da15fe8ce2c88b77e033",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Implementation covers most install-validation requirements (GitHub URL checks, pluginPath normalization, zip size/traversal checks, manifest validation, dependency install + rollback) with strong tests, but one blocking security gap remains in the repo install extraction path.",
+    "issues": [
+      {
+        "file": "backend/services/node_provider_plugin_manager.py",
+        "line": 560,
+        "severity": "blocking",
+        "description": "install_from_repo() extracts downloaded archives via zf.extractall(tmp_dir / 'repo') instead of using the guarded _safe_extract() traversal checks used for zip uploads. This leaves repository installs without explicit traversal validation and keeps security behavior inconsistent with VAL-EXT-004 expectations."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Baseline-validation guidance appears misaligned with mission-known frontend failures, leading to procedural deviation despite acceptable feature verification.",
+      "evidence": "Handoff skillFeedback marks followedProcedure=false because baseline command `uv run pytest -x -q --tb=short && bun run test --run` hit known pre-existing covalt-n8n Vitest failures; mission AGENTS.md documents these failures as pre-existing, and .factory/services.yaml provides `test_frontend_filtered` for this exact case."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit diff for feature external-plugin-install-validation (worker session 98197b09-d51d-4f89-a8a0-339e7cd1d57c, commit 2545e86e848e3196e1f8da15fe8ce2c88b77e033). The feature is close to complete, but it is not production-ready due to a blocking repo-archive extraction security gap."
+}

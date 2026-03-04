@@ -1,0 +1,50 @@
+{
+  "milestone": "plugin-api",
+  "round": 3,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "uv run pytest -x -q --tb=short && bunx vitest --run --exclude \"db/node_provider_plugins/covalt-n8n-nodes/tests/**\"",
+      "exitCode": 0,
+      "notes": "Pytest and filtered Vitest passed; known pre-existing failing suites under db/node_provider_plugins/covalt-n8n-nodes/tests remain excluded per mission guidance."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "bunx tsc --noEmit --pretty false (non-db/node_provider_plugins errors only via filter)",
+      "exitCode": 0,
+      "notes": "Raw tsc output contained only known pre-existing errors under db/node_provider_plugins/covalt-n8n-nodes/tests; filtering confirmed zero non-ignored TypeScript errors."
+    },
+    "lint": {
+      "passed": true,
+      "command": "bun run lint",
+      "exitCode": 0,
+      "notes": "Lint completed with warnings only and no errors."
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented node_route_index route-id ownership invariant (single active owner per route_id with last-write-wins transfer semantics) and linked regression tests.",
+      "sourceFeature": "fix-route-index-ownership",
+      "path": ".factory/library/architecture.md"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/mission-worker-base",
+      "suggestion": "Clarify baseline validation handling when mission artifacts declare known pre-existing failures and provide filtered validation commands.",
+      "evidence": "fix-route-index-ownership review observed worker deviation noise around baseline checks despite mission AGENTS.md documenting pre-existing covalt-n8n-nodes failures and services.yaml providing test_frontend_filtered.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/plugin-api/scrutiny/synthesis-round-2.json"
+}

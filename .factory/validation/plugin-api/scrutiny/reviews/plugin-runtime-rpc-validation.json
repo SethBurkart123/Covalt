@@ -1,0 +1,34 @@
+{
+  "featureId": "plugin-runtime-rpc-validation",
+  "reviewedAt": "2026-03-03T06:47:03Z",
+  "commitId": "2a35f4fa1c4b4a580a149bfb7fc46ebcda3b3a7b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit substantially improves RPC runtime diagnostics and correctly adds focused coverage for the five specified failure modes (empty stdout, invalid JSON, non-object result, error envelope, non-zero exit). However, the implementation does not fully satisfy the explicit requirement that all runtime errors include method context: two remaining NodeProviderRuntimeError paths still omit the RPC method.",
+    "issues": [
+      {
+        "file": "backend/services/node_provider_runtime.py",
+        "line": 106,
+        "severity": "blocking",
+        "description": "Missing-entrypoint error omits RPC method context. Requirement states all errors must include the called method (e.g., list_definitions/execute/materialize). Current message includes plugin_id and path only."
+      },
+      {
+        "file": "backend/services/node_provider_runtime.py",
+        "line": 189,
+        "severity": "blocking",
+        "description": "Invalid definitions-shape error omits method context ('list_definitions'). This violates the feature requirement that all runtime errors include method context."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "Shared baseline command in services.yaml still combines Python + frontend tests despite mission-documented pre-existing Vitest failures in db/node_provider_plugins, causing repeated procedural deviations in backend-only features.",
+      "evidence": ".factory/services.yaml -> commands.test uses 'uv run pytest -x -q --tb=short && bun run test --run'; mission AGENTS.md 'Known Pre-Existing Issues' documents 7 expected Vitest failures in db/node_provider_plugins/covalt-n8n-nodes; handoff for this feature records deviation from baseline for this reason."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — core RPC error handling improvements are strong, but two in-scope runtime error paths still do not include method context, which is an explicit feature requirement."
+}

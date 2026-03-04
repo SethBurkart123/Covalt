@@ -10,15 +10,19 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from nodes._types import NodeEvent
+from nodes._types import HookType, NodeEvent
 
 from .agent_manager import get_agent_manager
-from .node_route_index import rebuild_node_route_index, resolve_node_route
+from .flow_executor import run_flow
+from .node_provider_registry import get_provider_node_registration
+from .node_provider_runtime import handle_provider_route
+from .node_route_index import rebuild_node_route_index, resolve_node_route, resolve_node_route_by_id
 from .node_route_registry import (
     NodeRouteContext,
     NodeRouteResponse,
     get_node_route_registry,
 )
+from .plugin_registry import dispatch_hook
 from .runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
@@ -30,8 +34,6 @@ from .runtime_events import (
     EVENT_RUN_STARTED,
 )
 from .tool_registry import get_tool_registry
-from .node_provider_registry import get_provider_node_registration
-from .node_provider_runtime import handle_provider_route
 
 try:
     import jsonschema
@@ -49,7 +51,7 @@ def register_http_routes(app: Any) -> None:
 def register_webhook_routes(app: Any) -> None:
     @app.post("/webhooks/{hook_id}")
     async def webhook_handler(hook_id: str, request: Request):
-        target = resolve_node_route("webhook-trigger", hook_id)
+        target = resolve_node_route_by_id(hook_id)
         if target is None:
             raise HTTPException(status_code=404, detail="Webhook not found")
 
@@ -126,7 +128,7 @@ def register_webhook_routes(app: Any) -> None:
                                 continue
 
                             if item.event_type == "result":
-                                response_payload = _extract_webhook_response(item)
+                                response_payload = _extract_node_response(item)
                                 if response_payload is not None:
                                     services.execution.stop_run = True
 
@@ -167,7 +169,7 @@ def register_webhook_routes(app: Any) -> None:
             async for item in run_flow(graph_data, context):
                 if isinstance(item, NodeEvent):
                     if item.event_type == "result":
-                        response_payload = _extract_webhook_response(item)
+                        response_payload = _extract_node_response(item)
                         if response_payload is not None:
                             services.execution.stop_run = True
                     if item.event_type == "error":
@@ -311,14 +313,23 @@ def _node_event_payload(item: NodeEvent) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
-def _extract_webhook_response(item: NodeEvent) -> dict[str, Any] | None:
-    if item.node_type != "webhook-end" or item.event_type != "result":
+def _extract_node_response(item: NodeEvent) -> dict[str, Any] | None:
+    if item.event_type != "result":
         return None
+
+    hook_results = dispatch_hook(
+        HookType.ON_RESPONSE_EXTRACT,
+        {"event": item, "node_type": item.node_type, "node_id": item.node_id, "data": item.data or {}},
+    )
+    for result in hook_results:
+        if isinstance(result, dict):
+            return result
+
     outputs = (item.data or {}).get("outputs", {})
     response = outputs.get("response")
     if not isinstance(response, dict):
         return None
-    value = response.get("value") if isinstance(response, dict) else None
+    value = response.get("value")
     return value if isinstance(value, dict) else None
 
 
@@ -493,7 +504,7 @@ async def _run_triggered_node_flow(
 
     async for item in run_flow(graph_data, context):
         if isinstance(item, NodeEvent) and item.event_type == "result":
-            payload = _extract_webhook_response(item)
+            payload = _extract_node_response(item)
             if payload is not None:
                 response_payload = payload
                 services.execution.stop_run = True

@@ -1,182 +1,20 @@
 import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from './_types';
 import { canConnect, canCoerce } from '@/lib/flow/sockets';
+import {
+  clearDynamicNodeDefinitions as clearDynamicDefinitions,
+  getNodeDefinition as getRegisteredNodeDefinition,
+  getNodeDefinitionMetadata as getRegisteredNodeDefinitionMetadata,
+  listAllNodeDefinitions as listRegisteredNodeDefinitions,
+  listNodeDefinitionMetadata as listRegisteredNodeDefinitionMetadata,
+  listNodeTypes as listRegisteredNodeTypes,
+  registerPlugin,
+  setDynamicNodeDefinitions as setDynamicDefinitions,
+  type NodeDefinitionMetadata,
+} from '@/lib/flow/plugin-registry';
 
-import { chatStart } from './core/chat_start/definition';
-import { webhookTrigger } from './core/webhook_trigger/definition';
-import { webhookEnd } from './core/webhook_end/definition';
-import { agent } from './core/agent/definition';
-import { mcpServer } from './tools/mcp_server/definition';
-import { toolset } from './tools/toolset/definition';
-import { llmCompletion } from './ai/llm_completion/definition';
-import { conditional } from './flow/conditional/definition';
-import { merge } from './flow/merge/definition';
-import { reroute } from './flow/reroute/definition';
-import { code } from './data/code/definition';
-import { modelSelector } from './utility/model_selector/definition';
+import { builtinPluginManifest } from './manifest';
 
-const NODE_LIST = [
-  chatStart,
-  webhookTrigger,
-  webhookEnd,
-  agent,
-  mcpServer,
-  toolset,
-  llmCompletion,
-  conditional,
-  merge,
-  reroute,
-  code,
-  modelSelector,
-] as const;
-
-export interface NodeDefinitionMetadata {
-  nodeType: string;
-  definitionModule: string;
-  runtimeModule: string;
-}
-
-const NODE_DEFINITION_METADATA: Record<string, NodeDefinitionMetadata> = {
-  'chat-start': {
-    nodeType: 'chat-start',
-    definitionModule: 'nodes/core/chat_start/definition.ts',
-    runtimeModule: 'nodes/core/chat_start/executor.py',
-  },
-  'webhook-trigger': {
-    nodeType: 'webhook-trigger',
-    definitionModule: 'nodes/core/webhook_trigger/definition.ts',
-    runtimeModule: 'nodes/core/webhook_trigger/executor.py',
-  },
-  'webhook-end': {
-    nodeType: 'webhook-end',
-    definitionModule: 'nodes/core/webhook_end/definition.ts',
-    runtimeModule: 'nodes/core/webhook_end/executor.py',
-  },
-  'agent': {
-    nodeType: 'agent',
-    definitionModule: 'nodes/core/agent/definition.ts',
-    runtimeModule: 'nodes/core/agent/executor.py',
-  },
-  'mcp-server': {
-    nodeType: 'mcp-server',
-    definitionModule: 'nodes/tools/mcp_server/definition.ts',
-    runtimeModule: 'nodes/tools/mcp_server/executor.py',
-  },
-  'toolset': {
-    nodeType: 'toolset',
-    definitionModule: 'nodes/tools/toolset/definition.ts',
-    runtimeModule: 'nodes/tools/toolset/executor.py',
-  },
-  'llm-completion': {
-    nodeType: 'llm-completion',
-    definitionModule: 'nodes/ai/llm_completion/definition.ts',
-    runtimeModule: 'nodes/ai/llm_completion/executor.py',
-  },
-  'conditional': {
-    nodeType: 'conditional',
-    definitionModule: 'nodes/flow/conditional/definition.ts',
-    runtimeModule: 'nodes/flow/conditional/executor.py',
-  },
-  'merge': {
-    nodeType: 'merge',
-    definitionModule: 'nodes/flow/merge/definition.ts',
-    runtimeModule: 'nodes/flow/merge/executor.py',
-  },
-  'reroute': {
-    nodeType: 'reroute',
-    definitionModule: 'nodes/flow/reroute/definition.ts',
-    runtimeModule: 'nodes/flow/reroute/executor.py',
-  },
-  'code': {
-    nodeType: 'code',
-    definitionModule: 'nodes/data/code/definition.ts',
-    runtimeModule: 'nodes/data/code/executor.py',
-  },
-  'model-selector': {
-    nodeType: 'model-selector',
-    definitionModule: 'nodes/utility/model_selector/definition.ts',
-    runtimeModule: 'nodes/utility/model_selector/executor.py',
-  },
-};
-
-export const NODE_DEFINITIONS: Record<string, NodeDefinition> = Object.fromEntries(
-  NODE_LIST.map(node => [node.id, node])
-);
-
-export function getNodeDefinition(id: string): NodeDefinition | undefined {
-  return mergedDefinitions()[id];
-}
-
-
-let DYNAMIC_NODE_DEFINITIONS: Record<string, NodeDefinition> = {};
-
-function mergedDefinitions(): Record<string, NodeDefinition> {
-  return {
-    ...NODE_DEFINITIONS,
-    ...DYNAMIC_NODE_DEFINITIONS,
-  };
-}
-
-export function setDynamicNodeDefinitions(definitions: readonly NodeDefinition[]): void {
-  DYNAMIC_NODE_DEFINITIONS = Object.fromEntries(
-    definitions.map((definition) => [definition.id, definition])
-  );
-}
-
-export function clearDynamicNodeDefinitions(): void {
-  DYNAMIC_NODE_DEFINITIONS = {};
-}
-
-export function listAllNodeDefinitions(): NodeDefinition[] {
-  return Object.values(mergedDefinitions());
-}
-
-export function getNodeDefinitionMetadata(id: string): NodeDefinitionMetadata | undefined {
-  return NODE_DEFINITION_METADATA[id];
-}
-
-export function listNodeTypes(): string[] {
-  return Object.keys(mergedDefinitions());
-}
-
-export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
-  return Object.values(NODE_DEFINITION_METADATA);
-}
-
-export function getNodesByCategory(category: NodeDefinition['category']): NodeDefinition[] {
-  return Object.values(mergedDefinitions()).filter(node => node.category === category);
-}
-
-export function createFlowNode(
-  type: string,
-  position: { x: number; y: number },
-  id?: string
-): FlowNode {
-  const definition = mergedDefinitions()[type];
-  if (!definition) {
-    throw new Error(`Unknown node type: ${type}`);
-  }
-  
-  const data: Record<string, unknown> = {};
-  for (const param of definition.parameters) {
-    if ('default' in param && param.default !== undefined) {
-      data[param.id] = param.default;
-    }
-  }
-
-  if (type === 'webhook-trigger') {
-    const hookId = typeof data.hookId === 'string' ? data.hookId.trim() : '';
-    if (!hookId) {
-      data.hookId = `hook_${Math.random().toString(36).slice(2, 10)}`;
-    }
-  }
-  
-  return {
-    id: id ?? `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type,
-    position,
-    data,
-  };
-}
+export { builtinPluginManifest };
 
 export interface CompatibleNodeSocket {
   nodeId: string;
@@ -188,28 +26,122 @@ export interface CompatibleNodeSocket {
   socketType: SocketTypeId;
 }
 
+function ensureBuiltinPluginRegistered(): void {
+  try {
+    registerPlugin(builtinPluginManifest);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('already registered')) {
+      throw error;
+    }
+  }
+}
+
+ensureBuiltinPluginRegistered();
+
+export function getNodeDefinition(id: string): NodeDefinition | undefined {
+  return getRegisteredNodeDefinition(id);
+}
+
+export const NODE_DEFINITIONS: Record<string, NodeDefinition> = new Proxy(
+  {} as Record<string, NodeDefinition>,
+  {
+    get: (_target, property) =>
+      typeof property === 'string' ? getNodeDefinition(property) : undefined,
+    has: (_target, property) =>
+      typeof property === 'string' ? getNodeDefinition(property) !== undefined : false,
+    ownKeys: () => listNodeTypes(),
+    getOwnPropertyDescriptor: (_target, property) => {
+      if (typeof property !== 'string') {
+        return undefined;
+      }
+
+      const definition = getNodeDefinition(property);
+      if (!definition) {
+        return undefined;
+      }
+
+      return {
+        enumerable: true,
+        configurable: true,
+        value: definition,
+        writable: false,
+      };
+    },
+  }
+);
+
+function generateNodeId(type: string): string {
+  return `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function buildDefaultData(definition: NodeDefinition): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const param of definition.parameters) {
+    if ('default' in param && param.default !== undefined) {
+      data[param.id] = param.default;
+    }
+  }
+  return data;
+}
+
+export function createFlowNode(
+  type: string,
+  position: { x: number; y: number },
+  id?: string
+): FlowNode {
+  const definition = getNodeDefinition(type);
+  if (!definition) {
+    throw new Error(`Unknown node type: ${type}`);
+  }
+
+  return {
+    id: id ?? generateNodeId(type),
+    type,
+    position,
+    data: buildDefaultData(definition),
+  };
+}
+
+export function listAllNodeDefinitions(): NodeDefinition[] {
+  return listRegisteredNodeDefinitions();
+}
+
+export function getNodeDefinitionMetadata(id: string): NodeDefinitionMetadata | undefined {
+  return getRegisteredNodeDefinitionMetadata(id);
+}
+
+export function listNodeTypes(): string[] {
+  return listRegisteredNodeTypes();
+}
+
+export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
+  return listRegisteredNodeDefinitionMetadata();
+}
+
+export function getNodesByCategory(category: NodeDefinition['category']): NodeDefinition[] {
+  return listAllNodeDefinitions().filter((node) => node.category === category);
+}
+
 export function getCompatibleNodeSockets(
   sourceType: SocketTypeId,
   needsInput: boolean
 ): CompatibleNodeSocket[] {
   const results: CompatibleNodeSocket[] = [];
 
-  for (const node of Object.values(mergedDefinitions())) {
+  for (const node of listAllNodeDefinitions()) {
     for (const param of node.parameters) {
-      const p = param as Parameter;
-      if (!p.socket) continue;
+      const candidate = param as Parameter;
+      if (!candidate.socket) continue;
 
-      const isInput = p.mode === 'input' || p.mode === 'hybrid';
-      const isOutput = p.mode === 'output';
+      const isInput = candidate.mode === 'input' || candidate.mode === 'hybrid';
+      const isOutput = candidate.mode === 'output';
       if (needsInput && !isInput) continue;
       if (!needsInput && !isOutput) continue;
 
       if (needsInput) {
-        if (!canConnect(sourceType, p)) continue;
-      } else {
-        // Reverse: we're dragging FROM an input, looking for compatible outputs.
-        // The output's type must be connectable to the input's type.
-        if (!canCoerce(p.socket.type, sourceType)) continue;
+        if (!canConnect(sourceType, candidate)) continue;
+      } else if (!canCoerce(candidate.socket.type, sourceType)) {
+        continue;
       }
 
       results.push({
@@ -217,9 +149,9 @@ export function getCompatibleNodeSockets(
         nodeName: node.name,
         nodeIcon: node.icon,
         nodeCategory: node.category,
-        socketId: p.id,
-        socketLabel: p.label,
-        socketType: p.socket.type,
+        socketId: candidate.id,
+        socketLabel: candidate.label,
+        socketType: candidate.socket.type,
       });
     }
   }
@@ -227,4 +159,10 @@ export function getCompatibleNodeSockets(
   return results;
 }
 
-export { chatStart, webhookTrigger, webhookEnd, agent, mcpServer, toolset };
+export function setDynamicNodeDefinitions(definitions: readonly NodeDefinition[]): void {
+  setDynamicDefinitions(definitions);
+}
+
+export function clearDynamicNodeDefinitions(): void {
+  clearDynamicDefinitions();
+}

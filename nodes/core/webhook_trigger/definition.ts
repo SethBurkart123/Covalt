@@ -13,6 +13,16 @@ export const webhookTrigger = {
   icon: 'Webhook',
   executionMode: 'hybrid',
 
+  metadata: {
+    route: {
+      idField: 'hookId',
+      path: '/webhooks/{id}',
+      label: 'Webhook URL',
+      idPrefix: 'hook_',
+      emptyValuePlaceholder: 'Generate a hook id first',
+    },
+  },
+
   parameters: [
     {
       id: 'output',

@@ -1,0 +1,27 @@
+event: RunStarted
+data: {"content": null, "reasoningContent": null, "sessionId": "d936aaad-48e0-44e5-b1b9-d6b483fc1d81", "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
+
+event: FlowNodeStarted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_start", "nodeType": "chat-start", "outputs": null}
+
+event: FlowNodeResult
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_start", "nodeType": "chat-start", "outputs": {"output": {"type": "data", "value": {"message": "utv_ext_g3_mixed_run", "last_user_message": "utv_ext_g3_mixed_run", "history": [], "messages": [], "agno_messages": [], "attachments": [], "include_user_tools": false}}}}
+
+event: FlowNodeCompleted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_start", "nodeType": "chat-start", "outputs": null}
+
+event: FlowNodeStarted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_echo", "nodeType": "utv_ext_g3_echo:echo", "outputs": null}
+
+event: FlowNodeResult
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_echo", "nodeType": "utv_ext_g3_echo:echo", "outputs": {"output": {"type": "data", "value": {"namespace": "utv_ext_g3", "marker": "utv_ext_g3_echo_output", "resolved": "utv_ext_g3_mixed_run", "input": {"message": "utv_ext_g3_mixed_run", "last_user_message": "utv_ext_g3_mixed_run", "history": [], "messages": [], "agno_messages": [], "attachments": [], "include_user_tools": false}, "nodeType": "utv_ext_g3_echo:echo"}}}}
+
+event: FlowNodeCompleted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": "utv_ext_g3_echo", "nodeType": "utv_ext_g3_echo:echo", "outputs": null}
+
+event: RunCompleted
+data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
+
+event: close
+data: {"channelId": "94b2f4dc-f0f4-4f11-9736-8f684aeee075"}
+

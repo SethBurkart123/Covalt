@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 
 from agno.agent import Agent, Message
@@ -38,6 +39,10 @@ REASONING_PREFIXES = (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_e2e_test_mode_enabled() -> bool:
+    return os.getenv("COVALT_E2E_TESTS") == "1"
 
 
 def _get_event_name(chunk: object) -> str | None:
@@ -240,6 +245,13 @@ def generate_title_for_chat(chat_id: str) -> str | None:
                     candidates.append(fallback)
 
             title = None
+
+            if _is_e2e_test_mode_enabled():
+                candidates = [
+                    (provider, model_id)
+                    for provider, model_id in candidates
+                    if provider != "e2e"
+                ]
 
             for provider, model_id in candidates:
                 try:

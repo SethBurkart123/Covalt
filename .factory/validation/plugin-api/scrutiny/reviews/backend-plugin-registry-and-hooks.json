@@ -1,0 +1,39 @@
+{
+  "featureId": "backend-plugin-registry-and-hooks",
+  "reviewedAt": "2026-03-03T06:47:31.225767+00:00",
+  "commitId": "cff3132ccca1d4d7b8f097faf1404b4f816f7de1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature substantially implements the backend plugin registry, lifecycle hook dispatch, typed contracts, and comprehensive tests, but it has a blocking type-safety/runtime correctness gap in hook registration and dispatch.",
+    "issues": [
+      {
+        "file": "backend/services/plugin_registry.py",
+        "line": 143,
+        "severity": "blocking",
+        "description": "_validate_hooks only validates handler callability and never validates that hook keys are HookType values. Non-HookType keys can be accepted and stored, violating the typed hook API contract and enabling invalid runtime state."
+      },
+      {
+        "file": "backend/services/plugin_hooks.py",
+        "line": 45,
+        "severity": "blocking",
+        "description": "dispatch_hook logs failures using hook_type.value, assuming hook_type is a HookType enum. With invalid hook keys admitted via plugin_registry, a failing handler can trigger AttributeError during logging, aborting dispatch and breaking failure isolation behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Worker reported a procedure deviation for baseline validation even though mission guidance explicitly documents known pre-existing frontend test failures. This indicates procedure/guidance misalignment that causes noisy deviation reporting.",
+      "evidence": "Handoff skillFeedback.deviations references step '1.3 Baseline Validation'; mission AGENTS.md lines 57-60 document known pre-existing bun/vitest failures in db/node_provider_plugins."
+    },
+    {
+      "area": "services",
+      "observation": "Shared test command includes frontend tests that are known to fail in this mission context, creating predictable false negatives for backend-only feature work.",
+      "evidence": ".factory/services.yaml line 6 defines `test: uv run pytest -x -q --tb=short && bun run test --run`; mission AGENTS.md lines 59-60 note these frontend failures are pre-existing and unrelated."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: core functionality is mostly present, but missing hook-type key validation allows invalid hook registrations that can crash hook dispatch and violate lifecycle failure-isolation guarantees."
+}

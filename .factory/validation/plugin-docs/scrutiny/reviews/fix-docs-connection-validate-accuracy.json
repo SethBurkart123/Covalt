@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-docs-connection-validate-accuracy",
+  "reviewedAt": "2026-03-03T20:28:00.897836+00:00",
+  "commitId": "d6c4ab683ab76357b949236b91a5eb6188dd203f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly addresses the prior blocking documentation accuracy issue. The updated lifecycle section now explicitly states that onConnectionValidate is frontend/editor-only and that backend runtime paths do not dispatch HookType.ON_CONNECTION_VALIDATE as an enforcement gate. The example was also corrected to UI filtering semantics (return false to prevent edge creation in the editor), and no remaining docs references claim runtime enforcement.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "worker-base baseline-validation guidance appears too rigid for missions with explicitly documented pre-existing failing suites; the worker had to deviate and then run compensating validation commands.",
+      "evidence": "Handoff skillFeedback for session dc201d0f-1366-4cb6-a2e0-f6bfcf5e4d1a marks followedProcedure=false at step '1.3 Baseline Validation' due to known pre-existing db/node_provider_plugins/covalt-n8n-nodes test failures, while mission AGENTS.md already documents these failures as pre-existing."
+    },
+    {
+      "area": "services",
+      "observation": "Mission shared state has inconsistent backend port declarations between mission AGENTS and .factory/services.yaml.",
+      "evidence": "Mission AGENTS.md states backend should be on port 8899 and healthcheck /health, while .factory/services.yaml defines backend port 8000 with healthcheck /openapi.json."
+    }
+  ],
+  "addressesFailureFrom": "/Users/sethburkart/Documents/Coding/agno-app-electron/.factory/validation/plugin-docs/scrutiny/reviews/plugin-authoring-docs.json",
+  "summary": "Pass. After reviewing the fix feature transcript skeleton and both the original and fix diffs, the prior blocking issue is resolved: docs now accurately describe onConnectionValidate as UI-side/frontend filtering and avoid runtime-enforcement claims."
+}

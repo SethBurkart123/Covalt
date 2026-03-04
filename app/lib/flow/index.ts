@@ -40,6 +40,12 @@ export type {
 export { SOCKET_TYPES, canConnect, canCoerce, getSocketStyle } from './sockets';
 export type { SocketType } from './sockets';
 
+export {
+  applyNodeCreateHooks,
+  getSocketTypePropagationConfig,
+  resolveSocketTypePropagation,
+} from './hook-dispatch';
+
 export { resolveNodeParameters, resolveParameterForHandle } from './node-parameters';
 
 export {
@@ -54,11 +60,20 @@ export {
   listAllNodeDefinitions,
   setDynamicNodeDefinitions,
   clearDynamicNodeDefinitions,
-  chatStart,
-  agent,
-  mcpServer,
-  toolset,
 } from '@nodes/_registry';
 export type { CompatibleNodeSocket } from '@nodes/_registry';
+
+export {
+  registerPlugin,
+  unregisterPlugin,
+  resetPluginRegistryForTests,
+} from './plugin-registry';
+
+export {
+  registerHook,
+  dispatchHook,
+  deregisterHooks,
+  resetHooksForTests,
+} from './plugin-hooks';
 
 export { FlowProvider, useFlow, useFlowState, useFlowActions, useSelection, useNodePicker } from './context';

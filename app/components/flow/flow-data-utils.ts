@@ -136,6 +136,12 @@ export function buildTriggerExpression(path: string): string {
   return `{{ $trigger.${path} }}`;
 }
 
+export function isTriggerNode(nodeType?: string): boolean {
+  if (!nodeType) return false;
+  const definition = getNodeDefinition(nodeType);
+  return definition?.category === 'trigger';
+}
+
 export function getNodeName(node: { type?: string; data?: Record<string, unknown> }): string {
   const label = node.data?._label;
   if (typeof label === 'string' && label.trim()) return label;

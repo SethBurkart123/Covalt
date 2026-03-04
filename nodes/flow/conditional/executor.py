@@ -20,6 +20,9 @@ def _evaluate(
             return field_val.lower() == compare_val.lower()
         return field_val == compare_val
 
+    if operator == "notEquals":
+        return not _evaluate(field_val, "equals", compare_val, case_sensitive)
+
     if operator == "contains":
         if (
             not case_sensitive
@@ -28,6 +31,9 @@ def _evaluate(
         ):
             return compare_val.lower() in field_val.lower()
         return compare_val in field_val
+
+    if operator == "notContains":
+        return not _evaluate(field_val, "contains", compare_val, case_sensitive)
 
     if operator == "greaterThan":
         return field_val > compare_val
@@ -56,6 +62,9 @@ def _evaluate(
     if operator == "exists":
         return field_val is not None
 
+    if operator == "notExists":
+        return field_val is None
+
     if operator == "isEmpty":
         return not field_val
 
@@ -83,8 +92,8 @@ class ConditionalExecutor:
         elif hasattr(value, field):
             field_val = getattr(value, field)
 
-        # Missing field → false
-        if field_val is None and field and operator != "exists":
+        # Missing field → false (except exists/notExists semantics)
+        if field_val is None and field and operator not in {"exists", "notExists"}:
             return ExecutionResult(outputs={"false": input_data})
 
         condition_met = _evaluate(field_val, operator, compare_val, case_sensitive)

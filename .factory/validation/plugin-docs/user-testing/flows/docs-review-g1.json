@@ -1,0 +1,174 @@
+{
+  "groupId": "docs-review-g1",
+  "surface": "docs-review",
+  "assignedAssertions": [
+    "VAL-DOCS-001",
+    "VAL-DOCS-002",
+    "VAL-DOCS-003",
+    "VAL-DOCS-004",
+    "VAL-DOCS-005",
+    "VAL-DOCS-006",
+    "VAL-DOCS-007",
+    "VAL-DOCS-008"
+  ],
+  "results": [
+    {
+      "id": "VAL-DOCS-001",
+      "status": "pass",
+      "reason": "The plugin authoring documentation file exists at the expected repository location and is readable.",
+      "evidence": [
+        "Execute: test -f /Users/sethburkart/Documents/Coding/agno-app-electron/docs/creating-plugins.md -> exists",
+        "Read: docs/creating-plugins.md loaded successfully (746 lines)."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-002",
+      "status": "pass",
+      "reason": "The document is prose-first: sections are paragraph-led and list syntax is not the primary structure.",
+      "evidence": [
+        "Line 3: long introductory prose paragraph describing goals and lifecycle coverage.",
+        "Grep '^[-*] ' on docs/creating-plugins.md -> No matches found (no unordered bullet list items).",
+        "Section headings are followed by explanatory paragraphs (e.g., lines around sections 1, 2, 5, 8)."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-003",
+      "status": "pass",
+      "reason": "Fenced code extracts are present for manifest format, node definition files, node executor files, and lifecycle hook registration.",
+      "evidence": [
+        "Section '## 2) Plugin manifest format' (line 37) includes TypeScript and YAML manifest code blocks.",
+        "Section '## 3) Node definition files' (line 107) includes NodeDefinition interface and a complete definition.ts example.",
+        "Section '## 4) Node executor files (Python)' (line 189) includes executor.py examples.",
+        "Section '## 5) Lifecycle hooks' (line 292) includes frontend and backend hook registration snippets (onNodeCreate/onConnectionValidate/ON_ROUTE_EXTRACT)."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-004",
+      "status": "pass",
+      "reason": "A complete end-to-end simple plugin example is included with manifest + definition + executor files.",
+      "evidence": [
+        "Section '## 9) Complete example A: simple text transform node (manifest + definition + executor)' at line 522.",
+        "Within section 9, three file-level blocks are provided: nodes/example/manifest.ts, definition.ts, and executor.py."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-005",
+      "status": "pass",
+      "reason": "Lifecycle hooks are documented with complete usage examples for extending behavior.",
+      "evidence": [
+        "Section '## 5) Lifecycle hooks' (line 292) explains hook model and includes onNodeCreate and onConnectionValidate examples (lines ~320-329).",
+        "Backend lifecycle registration example includes HookType.ON_ROUTE_EXTRACT and other hook handlers.",
+        "Section '## 10) Complete example B: trigger node with lifecycle hooks' (line 588) provides an end-to-end hook-based plugin example."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-006",
+      "status": "pass",
+      "reason": "A custom React component example is included, including component implementation, definition wiring, and manifest registration.",
+      "evidence": [
+        "Section '## 11) Complete example C: node with a custom React component' (line 672).",
+        "Code block includes React component file nodes/example/ui/highlight-node.tsx.",
+        "Manifest fragment wires components map key 'example.highlight' to HighlightNode (lines ~719+)."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-007",
+      "status": "pass",
+      "reason": "All required topics are covered in dedicated sections with explanatory content and practical examples.",
+      "evidence": [
+        "Manifest format: section 2 (line 37).",
+        "Definition files: section 3 (line 107).",
+        "Executor files: section 4 (line 189).",
+        "Lifecycle hooks: section 5 (line 292).",
+        "Testing plugins: section 6 (line 366).",
+        "Installation and distribution: section 7 (line 450), including GitHub/zip install context and install command names (lines ~497-500).",
+        "Distribution via GitHub/zip explicitly stated in prose (lines 3, 24, and section 7 text)."
+      ]
+    },
+    {
+      "id": "VAL-DOCS-008",
+      "status": "pass",
+      "reason": "The document has a dedicated troubleshooting section with common errors and a debugging workflow.",
+      "evidence": [
+        "Section '## 8) Error handling and debugging' (line 507).",
+        "Section includes representative runtime failure messages and step-by-step debugging order (installation -> definitions -> execute -> hooks)."
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "tool": "Execute",
+      "command": "test -f /Users/sethburkart/Documents/Coding/agno-app-electron/docs/creating-plugins.md && echo exists",
+      "result": "exists"
+    },
+    {
+      "tool": "Execute",
+      "command": "wc -l /Users/sethburkart/Documents/Coding/agno-app-electron/docs/creating-plugins.md",
+      "result": "746 /Users/sethburkart/Documents/Coding/agno-app-electron/docs/creating-plugins.md"
+    },
+    {
+      "tool": "Execute",
+      "command": "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "result": "2026-03-03T20:38:53Z"
+    },
+    {
+      "tool": "Grep",
+      "command": "^##  in docs/creating-plugins.md",
+      "result": "Found required topical sections at lines 37, 107, 189, 292, 366, 450, 507, 522, 588, 672"
+    },
+    {
+      "tool": "Grep",
+      "command": "onConnectionValidate|onNodeCreate|onRouteExtract|Custom React component|Error handling and debugging|manifest",
+      "result": "Found lifecycle hooks and custom component evidence in relevant sections"
+    },
+    {
+      "tool": "Grep",
+      "command": "^[-*]  in docs/creating-plugins.md",
+      "result": "No matches found"
+    }
+  ],
+  "interactiveChecks": [
+    {
+      "check": "Read full candidate evidence document",
+      "observed": "docs/creating-plugins.md is present and readable end-to-end"
+    },
+    {
+      "check": "Verify dedicated sections exist for each required topic",
+      "observed": "Headings confirm sections for manifest, definitions, executors, hooks, testing, installation/distribution, debugging"
+    },
+    {
+      "check": "Verify complete examples coverage",
+      "observed": "Complete examples A/B/C cover simple node, lifecycle hooks, and custom React component"
+    },
+    {
+      "check": "Verify prose-first style",
+      "observed": "Paragraph-heavy structure and no unordered bullet list items detected"
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Guidance file was not present at /Users/sethburkart/.factory/library/user-testing.md.",
+      "resolved": true,
+      "resolution": "Used repository-local guidance at /Users/sethburkart/Documents/Coding/agno-app-electron/.factory/library/user-testing.md and followed Flow Validator Guidance: docs-review.",
+      "affectedAssertions": [
+        "VAL-DOCS-001",
+        "VAL-DOCS-002",
+        "VAL-DOCS-003",
+        "VAL-DOCS-004",
+        "VAL-DOCS-005",
+        "VAL-DOCS-006",
+        "VAL-DOCS-007",
+        "VAL-DOCS-008"
+      ]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "Read",
+    "Grep",
+    "Execute",
+    "LS"
+  ],
+  "namespaceUsed": "utv_plugindocs_docs_g1",
+  "testedAt": "2026-03-03T20:38:53Z"
+}

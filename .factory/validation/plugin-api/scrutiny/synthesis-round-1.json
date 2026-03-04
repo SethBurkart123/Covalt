@@ -1,0 +1,146 @@
+{
+  "milestone": "plugin-api",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "uv run pytest -x -q --tb=short && bunx vitest --run --exclude \"db/node_provider_plugins/covalt-n8n-nodes/tests/**\"",
+      "exitCode": 0,
+      "notes": "Full `bun run test --run` includes 7 known pre-existing failing suites under db/node_provider_plugins/covalt-n8n-nodes; excluded for milestone signal."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "bunx tsc --noEmit --pretty false (non-db/node_provider_plugins errors only)",
+      "exitCode": 0,
+      "notes": "Only known pre-existing type errors under db/node_provider_plugins were reported."
+    },
+    "lint": {
+      "passed": true,
+      "command": "bun run lint",
+      "exitCode": 0,
+      "notes": "Warnings only (no lint errors)."
+    }
+  },
+  "reviewsSummary": {
+    "total": 6,
+    "passed": 1,
+    "failed": 5,
+    "failedFeatures": [
+      "backend-plugin-registry-and-hooks",
+      "backend-core-decoupling",
+      "frontend-plugin-registry-and-hooks",
+      "frontend-core-decoupling",
+      "plugin-runtime-rpc-validation"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "backend-plugin-registry-and-hooks",
+      "severity": "blocking",
+      "description": "plugin_registry accepts non-HookType keys; invalid hook keys can be registered and violate typed hook contract."
+    },
+    {
+      "featureId": "backend-plugin-registry-and-hooks",
+      "severity": "blocking",
+      "description": "plugin_hooks dispatch logging assumes hook_type.value; invalid hook key can raise AttributeError during error handling and break failure isolation."
+    },
+    {
+      "featureId": "backend-core-decoupling",
+      "severity": "blocking",
+      "description": "chat_graph_runner fallback behavior regresses: when no hook candidates exist it falls back to all roots instead of preserving prior chat-start preference."
+    },
+    {
+      "featureId": "backend-core-decoupling",
+      "severity": "blocking",
+      "description": "node_route_index route-id resolution is ambiguous on collisions and may choose unintended node types by lexical ordering."
+    },
+    {
+      "featureId": "frontend-plugin-registry-and-hooks",
+      "severity": "blocking",
+      "description": "node-scoped onConnectionValidate filtering checks only context.nodeType, but connection context uses sourceNodeType/targetNodeType, so hooks can be skipped."
+    },
+    {
+      "featureId": "frontend-plugin-registry-and-hooks",
+      "severity": "blocking",
+      "description": "registerPlugin is non-atomic; partial node/hook registrations can persist if later entries fail before plugin commit."
+    },
+    {
+      "featureId": "frontend-core-decoupling",
+      "severity": "blocking",
+      "description": "canvas.tsx used memo without importing it, causing TS2304 and failing typecheck."
+    },
+    {
+      "featureId": "frontend-core-decoupling",
+      "severity": "blocking",
+      "description": "node.tsx passed NodeDefinition | undefined where helper expected NodeDefinition | null, causing TS nullability errors."
+    },
+    {
+      "featureId": "frontend-core-decoupling",
+      "severity": "blocking",
+      "description": "properties-panel.tsx passed possibly undefined definition to helper expecting nullable shape, causing TS nullability errors."
+    },
+    {
+      "featureId": "plugin-runtime-rpc-validation",
+      "severity": "blocking",
+      "description": "Missing runtime entrypoint error path omits RPC method context, violating requirement that all runtime errors include method."
+    },
+    {
+      "featureId": "plugin-runtime-rpc-validation",
+      "severity": "blocking",
+      "description": "Invalid list_definitions shape error path omits method context, violating requirement that all runtime errors include method."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added frontend hook context contract note documenting that connection validation should use sourceNodeType/targetNodeType for node-scoped filtering.",
+      "sourceFeature": "frontend-plugin-registry-and-hooks",
+      "path": ".factory/library/architecture.md"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Added an additive `test_frontend_filtered` command to run Vitest while excluding known pre-existing failing suites under db/node_provider_plugins.",
+      "sourceFeature": "plugin-runtime-rpc-validation",
+      "path": ".factory/services.yaml"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/frontend-worker",
+      "suggestion": "Require `bunx tsc --noEmit` in verification before handoff for frontend features.",
+      "evidence": "frontend-core-decoupling introduced TypeScript compile failures that were not caught before handoff; a dedicated follow-up fix feature was required.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills/frontend-worker",
+      "suggestion": "Expand hook-related test guidance to require node-scoped coverage for each hook context shape (including sourceNodeType/targetNodeType for connection validation).",
+      "evidence": "frontend-plugin-registry-and-hooks missed node-scoped onConnectionValidate filtering defect due context-field mismatch.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills/mission-worker-base",
+      "suggestion": "Clarify baseline validation behavior when mission docs declare known pre-existing failures, including how to report filtered validation evidence without false deviation noise.",
+      "evidence": "Multiple plugin-api feature handoffs reported baseline validation deviations due the same known pre-existing db/node_provider_plugins failures.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "No backend runtime hook registration path exists outside tests.",
+      "reason": "ambiguous",
+      "details": "This may reflect milestone scoping (plugin-api foundation before builtin migration) rather than shared-state documentation drift."
+    },
+    {
+      "observation": "services.yaml test command should be overwritten to exclude db/node_provider_plugins failures.",
+      "reason": "normative",
+      "details": "Changing default global validation command is a policy decision; instead of overwriting, an additive filtered command was added and default behavior left unchanged."
+    },
+    {
+      "observation": "frontend-worker test-first should be removed for compile-only fixes.",
+      "reason": "ambiguous",
+      "details": "Potentially useful but policy tradeoff depends on orchestrator preference; recommendation deferred."
+    }
+  ],
+  "previousRound": null
+}

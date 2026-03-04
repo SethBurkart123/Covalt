@@ -117,6 +117,41 @@ def _flow_edges(edges: list[dict]) -> list[dict]:
     return flow_edges
 
 
+def _is_unknown_node_type(node_type: str, executors: dict[str, Any] | None) -> bool:
+    return _get_executor(node_type, executors) is None
+
+
+def _collect_unresolved_node_types(
+    nodes: list[dict],
+    flow_edges: list[dict],
+    executors: dict[str, Any] | None,
+) -> list[str]:
+    connected_node_ids: set[str] = set()
+    for edge in flow_edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if isinstance(source, str) and source:
+            connected_node_ids.add(source)
+        if isinstance(target, str) and target:
+            connected_node_ids.add(target)
+
+    unresolved: set[str] = set()
+    for node in nodes:
+        node_id = node.get("id")
+        node_type = node.get("type")
+        if not isinstance(node_type, str) or not node_type.strip():
+            continue
+        if not _is_unknown_node_type(node_type, executors):
+            continue
+
+        in_flow_path = isinstance(node_id, str) and node_id in connected_node_ids
+        is_orphan = isinstance(node_id, str) and not connected_node_ids
+        if in_flow_path or is_orphan:
+            unresolved.add(node_type)
+
+    return sorted(unresolved)
+
+
 def _normalize_cached_value(value: Any) -> DataValue:
     if isinstance(value, DataValue):
         return value
@@ -452,6 +487,19 @@ async def run_flow(
             cached_raw = getattr(execution_ctx, "cachedOutputs", None)
     cached_outputs = _normalize_cached_outputs(cached_raw)
 
+    if executors is None:
+        unresolved_types = _collect_unresolved_node_types(
+            nodes_list,
+            flow_edge_list,
+            executors,
+        )
+        if unresolved_types:
+            resolved = ", ".join(unresolved_types)
+            raise ValueError(
+                "Flow contains unknown node type(s) with no registered executor: "
+                f"{resolved}. Reinstall/enable the corresponding plugin(s) or remove those nodes."
+            )
+
     order = topological_sort(flow_nodes, flow_edge_list)
 
     runtime = GraphRuntime(
@@ -758,9 +806,21 @@ async def run_flow(
 
 def _get_executor(node_type: str, executors: dict[str, Any] | None) -> Any | None:
     """Look up executor from test map or auto-discovery registry."""
+    from backend.services.flow_migration import migrate_node_type
+
+    normalized_type = migrate_node_type(node_type)
+
     if executors:
+        executor = executors.get(normalized_type)
+        if executor is not None:
+            return executor
         return executors.get(node_type)
+
     from nodes import get_executor
+
+    executor = get_executor(normalized_type)
+    if executor is not None:
+        return executor
 
     return get_executor(node_type)
 
