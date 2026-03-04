@@ -93,6 +93,7 @@ export function DefaultToolCall({
   };
 
   const toolDisplay = parseToolDisplayParts(toolName);
+  const toolCallTestId = `tool-call-${toolName}`;
 
   return (
     <Collapsible
@@ -104,6 +105,7 @@ export function DefaultToolCall({
       shimmer={!isCompleted && approvalStatus !== "pending"}
       disableToggle={!(!requiresApproval || approvalStatus !== "pending")}
       mode={mode}
+      data-testid={toolCallTestId}
       data-toolcall
     >
       <CollapsibleTrigger>
@@ -150,6 +152,7 @@ export function DefaultToolCall({
         {requiresApproval && approvalStatus === "pending" && (
           <div className="flex gap-2 pt-2">
             <button
+              data-testid={`${toolCallTestId}-approve`}
               onClick={handleApprove}
               disabled={isProcessing}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground rounded-md transition-colors"
@@ -158,6 +161,7 @@ export function DefaultToolCall({
               Approve
             </button>
             <button
+              data-testid={`${toolCallTestId}-deny`}
               onClick={handleDeny}
               disabled={isProcessing}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:bg-destructive/50 text-destructive-foreground rounded-md transition-colors"

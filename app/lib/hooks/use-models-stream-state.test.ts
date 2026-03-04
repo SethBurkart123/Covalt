@@ -36,6 +36,22 @@ describe("use-models-stream-state", () => {
     expect(synced[1]?.isDefault).toBe(false);
   });
 
+  it("keeps first unique expected provider order when stream reports duplicate providers", () => {
+    const state = buildProviderState([]);
+    reorderProviderState(state, ["beta", "alpha", "beta", "alpha"]);
+
+    upsertProvider(state, "alpha", [model("alpha", "alpha-1")]);
+    upsertProvider(state, "beta", [model("beta", "beta-1")]);
+
+    const synced = syncModelsFromProviderState(state);
+    expect(synced.map((item) => `${item.provider}:${item.modelId}`)).toEqual([
+      "beta:beta-1",
+      "alpha:alpha-1",
+    ]);
+    expect(synced[0]?.isDefault).toBe(true);
+    expect(synced[1]?.isDefault).toBe(false);
+  });
+
   it("removes provider models immediately when provider fails", () => {
     const state = buildProviderState([
       model("alpha", "alpha-1"),
