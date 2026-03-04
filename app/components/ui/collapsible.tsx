@@ -37,6 +37,7 @@ interface CollapsibleProps extends HTMLAttributes<HTMLDivElement> {
   shimmer?: boolean
   disableToggle?: boolean
   mode?: CollapsibleMode
+  "data-testid"?: string
 }
 
 function Collapsible({
