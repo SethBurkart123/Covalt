@@ -106,10 +106,21 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
     with (
         patch.object(branches, "db", db_mock),
         patch.object(option_validation_service, "db", db_mock),
+        patch.object(branches, "materialize_to_branch") as materialize_branch,
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.continue_message(channel, body)
+
+    assert db_mock.create_branch_message.call_count == 1
+    call = db_mock.create_branch_message.call_args
+    assert call is not None
+    assert call.kwargs["parent_id"] == "user-1"
+    assert call.kwargs["role"] == "assistant"
+    assert call.kwargs["chat_id"] == chat_id
+    assert call.kwargs["is_complete"] is False
+    assert call.kwargs["content"] == '[{"type": "text", "content": "partial"}]'
+    materialize_branch.assert_called_once_with(chat_id, "assistant-old")
 
     assert extract_event_names(channel)[:2] == ["RunStarted", "AssistantMessageId"]
 
@@ -163,10 +174,21 @@ async def test_retry_message_current_event_and_delegation_shape() -> None:
     with (
         patch.object(branches, "db", db_mock),
         patch.object(option_validation_service, "db", db_mock),
+        patch.object(branches, "materialize_to_branch") as materialize_branch,
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.retry_message(channel, body)
+
+    assert db_mock.create_branch_message.call_count == 1
+    call = db_mock.create_branch_message.call_args
+    assert call is not None
+    assert call.kwargs["parent_id"] == "user-2"
+    assert call.kwargs["role"] == "assistant"
+    assert call.kwargs["chat_id"] == chat_id
+    assert call.kwargs["is_complete"] is False
+    assert call.kwargs["content"] == ""
+    materialize_branch.assert_called_once_with(chat_id, "user-2")
 
     assert extract_event_names(channel)[:2] == ["RunStarted", "AssistantMessageId"]
 
@@ -224,10 +246,25 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
     with (
         patch.object(branches, "db", db_mock),
         patch.object(option_validation_service, "db", db_mock),
+        patch.object(branches, "materialize_to_branch") as materialize_branch,
         patch.object(branches, "get_graph_data_for_chat", return_value=graph_data),
         patch.object(branches, "run_graph_chat_runtime", new=runtime_mock),
     ):
         await branches.edit_user_message(channel, body)
+
+    assert db_mock.create_branch_message.call_count == 2
+    user_call, assistant_call = db_mock.create_branch_message.call_args_list
+    assert user_call.kwargs["parent_id"] == "root-3"
+    assert user_call.kwargs["role"] == "user"
+    assert user_call.kwargs["content"] == "updated prompt"
+    assert user_call.kwargs["is_complete"] is True
+
+    assert assistant_call.kwargs["parent_id"] == "user-new"
+    assert assistant_call.kwargs["role"] == "assistant"
+    assert assistant_call.kwargs["content"] == ""
+    assert assistant_call.kwargs["is_complete"] is False
+
+    materialize_branch.assert_called_once_with(chat_id, "user-new")
 
     assert extract_event_names(channel)[:2] == ["RunStarted", "AssistantMessageId"]
 

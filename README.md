@@ -36,6 +36,20 @@ Key plugin-related paths:
 - `app/lib/flow/plugin-registry.ts` — frontend plugin registration and definition lookup
 - `docs/creating-plugins.md` — plugin authoring and packaging guide
 
+## Validation Commands
+Run required merge-confidence checks locally:
+```bash
+bun run ci:full
+```
+
+Run layers individually:
+```bash
+bun run ci:lint
+bun run ci:vitest
+bun run ci:pytest
+bun run ci:playwright
+```
+
 ## Contributing
 - Run quality checks before PRs.
 - Keep fixes at root cause level (avoid symptom-only workarounds).

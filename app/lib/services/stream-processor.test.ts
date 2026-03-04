@@ -26,13 +26,38 @@ function makeCallbacks() {
   };
 }
 
+interface AnimationFrameController {
+  flushAll: () => void;
+  pendingCount: () => number;
+}
+
+function installAnimationFrameController(): AnimationFrameController {
+  const queue: FrameRequestCallback[] = [];
+  let frameId = 0;
+
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+    queue.push(cb);
+    frameId += 1;
+    return frameId;
+  });
+
+  return {
+    flushAll: () => {
+      while (queue.length > 0) {
+        const callback = queue.shift();
+        callback?.(0);
+      }
+    },
+    pendingCount: () => queue.length,
+  };
+}
+
 describe("stream-processor", () => {
+  let animationFrame: AnimationFrameController;
+
   beforeEach(() => {
     resetStreamProcessorWarningsForTests();
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      cb(0);
-      return 1;
-    });
+    animationFrame = installAnimationFrameController();
   });
 
   afterEach(() => {
@@ -50,6 +75,7 @@ describe("stream-processor", () => {
     processEvent(RUNTIME_EVENT.REASONING_COMPLETED, {}, state, callbacks);
     processEvent(RUNTIME_EVENT.RUN_CONTENT, { content: " world" }, state, callbacks);
 
+    animationFrame.flushAll();
     const lastUpdate = updates.at(-1) || [];
 
     expect(onThinkTagDetected).toHaveBeenCalledTimes(1);
@@ -77,6 +103,7 @@ describe("stream-processor", () => {
       callbacks,
     );
 
+    animationFrame.flushAll();
     const lastUpdate = updates.at(-1) || [];
     expect(lastUpdate).toEqual([
       {
@@ -133,6 +160,7 @@ describe("stream-processor", () => {
     );
     processEvent(RUNTIME_EVENT.MEMBER_RUN_COMPLETED, { memberRunId: "m1" }, state, callbacks);
 
+    animationFrame.flushAll();
     const lastUpdate = updates.at(-1) || [];
     expect(lastUpdate).toEqual([
       {
@@ -165,6 +193,7 @@ describe("stream-processor", () => {
     processEvent(RUNTIME_EVENT.RUN_CONTENT, { content: "beta" }, state, callbacks);
     processEvent(RUNTIME_EVENT.RUN_COMPLETED, {}, state, callbacks);
 
+    animationFrame.flushAll();
     const lastUpdate = updates.at(-1) || [];
     expect(lastUpdate).toEqual([
       { type: "text", content: "alpha" },
@@ -172,18 +201,131 @@ describe("stream-processor", () => {
     ]);
   });
 
-  it("passes unknown events through onEvent and warns once", () => {
+  it("passes unknown events through onEvent and warns once per event type", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const state = createInitialState();
     const { callbacks, updates, onEvent } = makeCallbacks();
 
     processEvent("CustomAgentEvent", { foo: 1 }, state, callbacks);
-    processEvent("CustomAgentEvent", { foo: 2 }, state, callbacks);
+    processEvent("AnotherUnknownEvent", { bar: 2 }, state, callbacks);
+    processEvent("CustomAgentEvent", { foo: 3 }, state, callbacks);
 
-    expect(onEvent).toHaveBeenCalledTimes(2);
+    expect(onEvent).toHaveBeenCalledTimes(3);
     expect(onEvent).toHaveBeenNthCalledWith(1, "CustomAgentEvent", { foo: 1 });
-    expect(onEvent).toHaveBeenNthCalledWith(2, "CustomAgentEvent", { foo: 2 });
+    expect(onEvent).toHaveBeenNthCalledWith(2, "AnotherUnknownEvent", { bar: 2 });
+    expect(onEvent).toHaveBeenNthCalledWith(3, "CustomAgentEvent", { foo: 3 });
     expect(updates).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenNthCalledWith(
+      1,
+      "[StreamProcessor] Unknown runtime event CustomAgentEvent: {\"foo\":1}",
+    );
+    expect(warnSpy).toHaveBeenNthCalledWith(
+      2,
+      "[StreamProcessor] Unknown runtime event AnotherUnknownEvent: {\"bar\":2}",
+    );
+  });
+
+  it("does not schedule UI updates for unknown runtime events", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const state = createInitialState();
+    const { callbacks } = makeCallbacks();
+
+    processEvent("CustomAgentEvent", { foo: 1 }, state, callbacks);
+
+    expect(animationFrame.pendingCount()).toBe(0);
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps member-scoped approval updates top-level ordered and removes resolved member tool blocks", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.MEMBER_RUN_STARTED,
+      { memberRunId: "m1", memberName: "Planner", task: "Plan" },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      {
+        memberRunId: "m1",
+        tool: {
+          runId: "run-1",
+          tools: [{ id: "tool-1", toolName: "search", toolArgs: { q: "a" } }],
+        },
+      },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    const pendingUpdate = updates.at(-1) || [];
+    expect(pendingUpdate).toHaveLength(2);
+
+    const pendingMemberRun = pendingUpdate[0];
+    expect(pendingMemberRun).toMatchObject({
+      type: "member_run",
+      runId: "m1",
+      memberName: "Planner",
+      isCompleted: false,
+    });
+
+    if (!pendingMemberRun || pendingMemberRun.type !== "member_run") {
+      throw new Error("expected first update block to be member_run");
+    }
+
+    expect(pendingMemberRun.content).toHaveLength(1);
+    expect(pendingMemberRun.content[0]).toMatchObject({
+      type: "tool_call",
+      id: "tool-1",
+      toolName: "search",
+      toolArgs: { q: "a" },
+      approvalStatus: "pending",
+      isCompleted: false,
+    });
+
+    expect(pendingUpdate[1]).toMatchObject({
+      type: "tool_call",
+      id: "tool-1",
+      toolName: "search",
+      toolArgs: { q: "a" },
+      approvalStatus: "pending",
+      isCompleted: false,
+    });
+
+    processEvent(
+      RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED,
+      {
+        memberRunId: "m1",
+        tool: {
+          id: "tool-1",
+          toolName: "search",
+          toolArgs: { q: "a" },
+          approvalStatus: "denied",
+        },
+      },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    const resolvedUpdate = updates.at(-1) || [];
+    expect(resolvedUpdate).toHaveLength(1);
+
+    const resolvedMemberRun = resolvedUpdate[0];
+    if (!resolvedMemberRun || resolvedMemberRun.type !== "member_run") {
+      throw new Error("expected resolved update to contain only the member_run block");
+    }
+
+    expect(resolvedMemberRun.content).toHaveLength(1);
+    expect(resolvedMemberRun.content[0]).toMatchObject({
+      type: "tool_call",
+      id: "tool-1",
+      approvalStatus: "denied",
+      isCompleted: true,
+    });
+    expect(animationFrame.pendingCount()).toBe(0);
   });
 });

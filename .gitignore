@@ -17,6 +17,8 @@ backend/dist/
 website/
 *.local
 dogfood-output/
+tests/artifacts/
+.factory/
 
 # Editor directories and files
 .vscode/*
