@@ -20,6 +20,7 @@ export function DefaultToolCall({
   toolArgs,
   toolResult,
   isCompleted,
+  failed = false,
   requiresApproval = false,
   runId,
   toolCallId,
@@ -31,6 +32,10 @@ export function DefaultToolCall({
   mode = "regular",
 }: ToolCallRendererProps) {
   const defaultApprovalStatus = requiresApproval ? "pending" : "approved";
+  const failureFromResult =
+    typeof toolResult === "string"
+    && /^error\s+(executing|calling)\s+tool:/i.test(toolResult.trim());
+  const isFailed = failed || failureFromResult;
   const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus ?? defaultApprovalStatus);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
@@ -133,6 +138,11 @@ export function DefaultToolCall({
               Timed Out
             </span>
           )}
+          {isFailed && (
+            <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
+              Failed
+            </span>
+          )}
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
@@ -177,7 +187,7 @@ export function DefaultToolCall({
             <div className="text-xs font-medium text-muted-foreground mb-2">
               Result
             </div>
-            <ResultRenderer content={toolResult} />
+            <ResultRenderer content={toolResult} tone={isFailed ? "error" : "default"} />
           </div>
         )}
       </CollapsibleContent>

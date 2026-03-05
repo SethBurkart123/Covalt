@@ -12,6 +12,7 @@ from backend.commands import chats as chats_commands
 from backend.models.chat import Attachment, ChatMessage, ContentBlock
 from backend.services import run_control
 from backend.services.chat_graph_runner import (
+    _build_tool_call_completed_payload,
     handle_flow_stream,
     parse_message_blocks,
     run_graph_chat_runtime,
@@ -100,6 +101,20 @@ def test_parse_message_blocks_strips_trailing_errors() -> None:
         strip_trailing_errors=True,
     )
     assert blocks == [{"type": "text", "content": "ok"}]
+
+
+def test_build_tool_call_completed_payload_marks_unresolved_render_refs_as_failed() -> None:
+    payload = _build_tool_call_completed_payload(
+        tool_id="tool-1",
+        tool_name="file-tools:write_file",
+        tool_args={"path": "src/login.html"},
+        tool_result="Error executing tool: write_file() got an unexpected keyword argument 'text'",
+        render_plan={"renderer": "code", "config": {"file": "$args.path"}},
+        failed=False,
+    )
+
+    assert payload.get("failed") is True
+    assert payload.get("renderPlan") is None
 
 
 @pytest.mark.asyncio

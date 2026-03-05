@@ -73,15 +73,18 @@ def _normalize_render_plan_blocks(blocks: list[dict[str, Any]]) -> None:
         if not isinstance(block, dict):
             continue
         if block.get("type") == "tool_call":
-            render_plan = block.get("renderPlan")
-            if isinstance(render_plan, dict):
-                renderer = normalize_renderer_alias(render_plan.get("renderer"))
-                if renderer:
-                    render_plan["renderer"] = renderer
+            if block.get("failed"):
+                block.pop("renderPlan", None)
             else:
-                renderer = normalize_renderer_alias(block.get("renderer"))
-                if renderer:
-                    block["renderPlan"] = {"renderer": renderer, "config": {}}
+                render_plan = block.get("renderPlan")
+                if isinstance(render_plan, dict):
+                    renderer = normalize_renderer_alias(render_plan.get("renderer"))
+                    if renderer:
+                        render_plan["renderer"] = renderer
+                else:
+                    renderer = normalize_renderer_alias(block.get("renderer"))
+                    if renderer:
+                        block["renderPlan"] = {"renderer": renderer, "config": {}}
 
         if block.get("type") == "member_run":
             nested = block.get("content")

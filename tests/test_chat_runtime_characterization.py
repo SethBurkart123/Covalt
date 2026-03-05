@@ -16,6 +16,7 @@ from agno.models.response import ToolExecution
 from agno.run.agent import BaseAgentRunEvent
 from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 
+import backend.services.chat_graph_runner as chat_graph_runner_module
 from backend.models.chat import ChatMessage
 from backend.services import run_control
 from backend.services.chat_graph_runner import (
@@ -179,6 +180,9 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
         "ToolCallCompleted",
         "RunCompleted",
     ]
+    events = extract_channel_events(channel)
+    completed = next(evt for evt in events if evt.get("event") == "ToolCallCompleted")
+    assert completed.get("tool", {}).get("failed") is not True
 
 
 @pytest.mark.asyncio
@@ -327,3 +331,58 @@ async def test_member_run_delegation_event_sequence() -> None:
     events = extract_channel_events(channel)
     member_events = [evt for evt in events if evt.get("memberRunId") == member_run_id]
     assert len(member_events) >= 3
+
+
+@pytest.mark.asyncio
+async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None:
+    run_id = "run-tools-failed"
+    tool_started = ToolExecution(
+        tool_call_id="tool-fail-1",
+        tool_name="toolset_alpha:write_file",
+        tool_args={"path": "x.py"},
+    )
+    tool_completed = ToolExecution(
+        tool_call_id="tool-fail-1",
+        tool_name="toolset_alpha:write_file",
+        tool_args={"path": "x.py"},
+        result="Error executing tool: write_file() missing 2 required positional arguments: 'path' and 'content'",
+    )
+
+    agent = FakeAgent(
+        [
+            _agent_event(
+                RunEvent.tool_call_started,
+                run_id=run_id,
+                tool=tool_started,
+            ),
+            _agent_event(
+                RunEvent.tool_call_completed,
+                run_id=run_id,
+                tool=tool_completed,
+            ),
+            _agent_event(RunEvent.run_completed, run_id=run_id),
+        ]
+    )
+    channel = CapturingChannel()
+
+    original = chat_graph_runner_module._did_tool_call_fail
+    chat_graph_runner_module._did_tool_call_fail = lambda _name, _id: True
+    try:
+        await handle_content_stream(
+            cast(Any, agent),
+            [_user_message("trigger failure")],
+            "assistant-fail-1",
+            channel,
+            chat_id="",
+            ephemeral=True,
+            convert_message=convert_chat_message_to_agno_messages,
+        )
+    finally:
+        chat_graph_runner_module._did_tool_call_fail = original
+
+    events = extract_channel_events(channel)
+    completed = next(evt for evt in events if evt.get("event") == "ToolCallCompleted")
+    tool = completed.get("tool", {})
+
+    assert tool.get("failed") is True
+    assert tool.get("renderPlan") is None

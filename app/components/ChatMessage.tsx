@@ -284,6 +284,7 @@ function ChatMessage({
                                   isFirst={idx === 0}
                                   isLast={idx === visibleGroup.length - 1}
                                   renderPlan={b.renderPlan}
+                                  failed={b.failed}
                                   chatId={chatId}
                                 />
                               );

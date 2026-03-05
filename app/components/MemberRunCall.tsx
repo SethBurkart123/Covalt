@@ -168,6 +168,7 @@ export default function MemberRunCall({
                   isCompleted={block.isCompleted}
                   toolCallId={block.toolCallId || block.id}
                   renderPlan={block.renderPlan}
+                  failed={block.failed}
                   mode="minimal"
                 />
               );

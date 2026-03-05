@@ -190,7 +190,10 @@ export function processMemberEvent(
 
       toolCall.isCompleted = true;
       toolCall.toolResult = tool.toolResult;
-      if (tool.renderPlan) {
+      toolCall.failed = tool.failed;
+      if (tool.failed) {
+        toolCall.renderPlan = undefined;
+      } else if (tool.renderPlan) {
         toolCall.renderPlan = tool.renderPlan;
       }
       break;
