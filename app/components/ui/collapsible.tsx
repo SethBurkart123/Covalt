@@ -342,6 +342,5 @@ export {
   CollapsibleIcon,
   CollapsibleHeader,
   CollapsibleContent,
-  useCollapsible,
 }
 export type { CollapsibleMode }

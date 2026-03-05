@@ -8,7 +8,7 @@ import { useFlowExecution } from '@/contexts/flow-execution-context';
 import type { FlowNodeExecutionSnapshot } from '@/contexts/agent-test-chat-context';
 import { filterFlowEdges, upstreamClosure } from '@/lib/flow/graph-traversal';
 import { getNodeDefinition } from '@/lib/flow';
-import { getNodeName, pickPrimaryOutput } from '../flow-data-utils';
+import { buildTriggerFallback, getNodeName, pickPrimaryOutput } from '../flow-data-utils';
 import { useResolvedTheme } from '@/hooks/use-resolved-theme';
 import { cn } from '@/lib/utils';
 
@@ -61,19 +61,6 @@ function inferTsType(value: unknown, depth = 0): string {
   }
 
   return 'any';
-}
-
-function buildTriggerFallback(): Record<string, unknown> {
-  return {
-    message: '',
-    last_user_message: '',
-    history: [],
-    messages: [],
-    attachments: [],
-    body: {},
-    headers: {},
-    query: {},
-  };
 }
 
 function buildEditorTypes(

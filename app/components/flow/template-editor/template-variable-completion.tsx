@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatPreviewDisplay } from './template-variable-utils';
 import type { TemplateVariableCompletion } from './types';
 
-export interface TemplateVariableCompletionListProps {
+interface TemplateVariableCompletionListProps {
   items: TemplateVariableCompletion[];
   command: (item: TemplateVariableCompletion) => void;
 }

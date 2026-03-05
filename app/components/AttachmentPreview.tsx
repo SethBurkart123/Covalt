@@ -264,4 +264,3 @@ export const AttachmentPreview = memo<AttachmentPreviewProps>(({
 
 AttachmentPreview.displayName = "AttachmentPreview";
 
-export default AttachmentPreview;

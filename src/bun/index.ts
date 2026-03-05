@@ -175,8 +175,7 @@ function startBackendProcess(options: {
   if (!devMode) {
     try {
       userDataDir = Utils.paths.userData;
-    } catch (err) {
-      console.warn("[backend] Could not resolve Utils.paths.userData:", err);
+    } catch {
     }
   }
 
@@ -322,7 +321,6 @@ function startFrontendServer(): { url: string; server: FrontendServer } {
   });
 
   const url = `http://${HOST}:${server.port}`;
-  console.log(`[frontend] Serving static UI from ${rootDir} at ${url}`);
   return { url, server };
 }
 
@@ -392,24 +390,15 @@ function wirePopupHandling(webviewId: number, appUrl: string): void {
 
     if (!shouldOpenExternally(url, appUrl)) return;
 
-    const opened = Utils.openExternal(url);
-    if (!opened) {
-      console.warn(`[webview] Failed to open external URL: ${url}`);
-    }
+    Utils.openExternal(url);
   };
 
   Electrobun.events.on(`new-window-open-${webviewId}`, handler);
 }
 
 function wireBackendLogs(processHandle: ChildProcessWithoutNullStreams): void {
-  processHandle.stdout.on("data", (chunk) => {
-    console.log(`[backend] ${chunk.toString()}`.trim());
-  });
   processHandle.stderr.on("data", (chunk) => {
-    console.error(`[backend] ${chunk.toString()}`.trim());
-  });
-  processHandle.on("exit", (code) => {
-    console.log(`[backend] exited with code ${code ?? "unknown"}`);
+    console.error(`backend: ${chunk.toString()}`.trim());
   });
 }
 
@@ -439,13 +428,11 @@ async function waitForBackend(
     ? READY_TIMEOUT_MS
     : 120000;
   const deadline = Date.now() + timeoutMs;
-  const readyTimeout = `${Math.round(timeoutMs / 1000)}s`;
   const { hostname, port } = new URL(baseUrl);
   const backendPort = Number.parseInt(port, 10);
   if (!Number.isFinite(backendPort)) {
     throw new Error(`Invalid backend URL: ${baseUrl}`);
   }
-  console.log(`[backend] Waiting up to ${readyTimeout} for ${baseUrl}...`);
 
   while (Date.now() < deadline) {
     if (processHandle.exitCode !== null) {

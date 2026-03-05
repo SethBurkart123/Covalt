@@ -1,7 +1,7 @@
 import type { FlowEdge, Parameter, ShowWhen } from '@/lib/flow';
 import type { EdgeChannel } from '@nodes/_types';
 
-export type ParamRenderContext = 'node' | 'inspector';
+type ParamRenderContext = 'node' | 'inspector';
 
 export interface NodeEdgeIndex {
   incoming: FlowEdge[];

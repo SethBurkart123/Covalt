@@ -5,7 +5,7 @@ import ClaudeCodeIcon from "./icons/ClaudeCode";
 import OpenCodeIcon from "./icons/OpenCode";
 import CursorIcon from "./icons/Cursor";
 
-export interface ImportSourceWithIcon extends ImportSource {
+interface ImportSourceWithIcon extends ImportSource {
   icon: ComponentType;
 }
 
