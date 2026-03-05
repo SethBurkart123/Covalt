@@ -17,7 +17,7 @@ export function shouldParseThinkTags(
   return setting?.parseThinkTags === true;
 }
 
-export function parseThinkTags(content: string): ContentBlock[] {
+function parseThinkTags(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let pos = 0;
 

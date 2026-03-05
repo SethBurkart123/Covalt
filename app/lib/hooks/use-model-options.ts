@@ -28,7 +28,7 @@ function getAllDefinitions(schema: OptionSchema): OptionDefinition[] {
   return [...schema.main, ...schema.advanced];
 }
 
-export function getDefaults(schema: OptionSchema): Record<string, unknown> {
+function getDefaults(schema: OptionSchema): Record<string, unknown> {
   const defaults: Record<string, unknown> = {};
   for (const definition of getAllDefinitions(schema)) {
     defaults[definition.key] = definition.default;
@@ -40,7 +40,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-export function isValidValue(value: unknown, definition: OptionDefinition): boolean {
+function isValidValue(value: unknown, definition: OptionDefinition): boolean {
   if (definition.type === "boolean") {
     return typeof value === "boolean";
   }

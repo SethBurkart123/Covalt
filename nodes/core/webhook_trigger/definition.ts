@@ -76,5 +76,3 @@ export const webhookTrigger = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default webhookTrigger;

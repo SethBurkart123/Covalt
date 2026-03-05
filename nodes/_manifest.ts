@@ -1,7 +1,5 @@
 import type {
   FrontendHookHandlers,
-  FrontendHookType,
-  FrontendHookHandler,
   NodeDefinition,
 } from './_types';
 
@@ -25,6 +23,3 @@ export interface PluginManifest {
   definitions?: readonly NodeDefinition[];
 }
 
-export type PluginHookType = FrontendHookType;
-export type PluginHookHandlers = FrontendHookHandlers;
-export type PluginHookHandler<T extends PluginHookType = PluginHookType> = FrontendHookHandler<T>;

@@ -49,5 +49,3 @@ export const webhookEnd = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default webhookEnd;

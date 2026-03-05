@@ -35,7 +35,7 @@ interface StreamingChatEvent {
   [key: string]: unknown;
 }
 
-export interface StreamHandle {
+interface StreamHandle {
   response: Response;
   abort: () => void;
 }

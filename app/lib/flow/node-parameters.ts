@@ -2,16 +2,16 @@ import type { FlowEdge, FlowNode, NodeDefinition, Parameter } from '@nodes/_type
 
 const DEFAULT_MIN = 1;
 
-export function isAutoExpandParam(param: Parameter): boolean {
+function isAutoExpandParam(param: Parameter): boolean {
   return Boolean(param.autoExpand) && Boolean(param.socket) && param.mode !== 'output';
 }
 
-export function getAutoExpandHandleId(baseId: string, index: number): string {
+function getAutoExpandHandleId(baseId: string, index: number): string {
   if (index <= 1) return baseId;
   return `${baseId}_${index}`;
 }
 
-export function getAutoExpandHandleIndex(
+function getAutoExpandHandleIndex(
   baseId: string,
   handleId: string | null | undefined
 ): number | null {

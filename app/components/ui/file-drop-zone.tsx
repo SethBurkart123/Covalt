@@ -15,7 +15,7 @@ const FileDropZoneContext = React.createContext<FileDropZoneContextValue | null>
   null
 );
 
-function useFileDropZone() {
+function useFileDropZoneContext() {
   const context = React.useContext(FileDropZoneContext);
   if (!context) {
     throw new Error("FileDropZone components must be used within FileDropZone");
@@ -170,7 +170,7 @@ const FileDropZoneTrigger = React.forwardRef<
   HTMLButtonElement,
   FileDropZoneTriggerProps
 >(({ asChild = false, onClick, disabled, children, ...props }, ref) => {
-  const { fileInputRef } = useFileDropZone();
+  const { fileInputRef } = useFileDropZoneContext();
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(e);
@@ -203,4 +203,4 @@ const FileDropZoneTrigger = React.forwardRef<
 
 FileDropZoneTrigger.displayName = "FileDropZoneTrigger";
 
-export { FileDropZone, FileDropZoneTrigger, useFileDropZone };
+export { FileDropZone, FileDropZoneTrigger };

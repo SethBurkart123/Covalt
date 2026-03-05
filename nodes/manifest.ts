@@ -32,7 +32,7 @@ function resolveRerouteSocketType(context: {
   return context.currentType;
 }
 
-export const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
+const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
   {
     type: 'chat-start',
     definitionPath: 'nodes/core/chat_start/definition.ts',
@@ -112,7 +112,7 @@ export const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
   },
 ];
 
-export const BUILTIN_DEFINITIONS: readonly NodeDefinition[] = [
+const BUILTIN_DEFINITIONS: readonly NodeDefinition[] = [
   chatStart,
   webhookTrigger,
   webhookEnd,

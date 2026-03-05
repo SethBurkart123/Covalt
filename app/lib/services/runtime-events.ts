@@ -31,7 +31,7 @@ export const RUNTIME_EVENT = {
   STREAM_SUBSCRIBED: "StreamSubscribed",
 } as const;
 
-export type RuntimeEventName = (typeof RUNTIME_EVENT)[keyof typeof RUNTIME_EVENT];
+type RuntimeEventName = (typeof RUNTIME_EVENT)[keyof typeof RUNTIME_EVENT];
 
 export const KNOWN_RUNTIME_EVENTS: readonly RuntimeEventName[] = [
   RUNTIME_EVENT.RUN_STARTED,

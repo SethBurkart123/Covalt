@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { memo, useMemo, useState, useCallback } from "react";
 import { Loader2, Wrench, KeyRound, Settings } from "lucide-react";
 import { useTools, type McpServerStatus } from "@/contexts/tools-context";
 import { Switch } from "@/components/ui/switch";
@@ -17,12 +17,10 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import {
-  startMcpOauth,
-  getMcpOauthStatus,
-  reconnectMcpServer,
-} from "@/python/api";
-import { ServerFormDialog } from "@/components/mcp";
+import { startMcpOauth, getMcpOauthStatus, reconnectMcpServer } from "@/python/api";
+import { openOauthPopup } from "@/lib/hooks/use-oauth-popup";
+import { useOauthPolling } from "@/lib/hooks/use-oauth-polling";
+import { ServerFormDialog } from "@/components/mcp/server-form-dialog";
 
 function McpStatusIndicator({
   status,
@@ -86,41 +84,7 @@ export const ToolSelector = memo(function ToolSelector({
   const [editingServerKey, setEditingServerKey] = useState<string | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [editingServerName, setEditingServerName] = useState<string | null>(null);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  const pollOauthStatus = useCallback(async (serverId: string) => {
-    try {
-      const status = await getMcpOauthStatus({ body: { id: serverId } });
-      if (status.status === "authenticated") {
-        stopPolling();
-        await reconnectMcpServer({ body: { id: serverId } });
-        setAuthenticatingId(null);
-      } else if (status.status === "error") {
-        stopPolling();
-        setAuthenticatingId(null);
-      }
-    } catch (error) {
-      stopPolling();
-      setAuthenticatingId(null);
-      console.error("OAuth status polling failed:", error);
-    }
-  }, [stopPolling]);
+  const { startOauthPolling } = useOauthPolling(openOauthPopup);
 
   const handleAuthenticate = useCallback(async (server: McpServerStatus, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -130,40 +94,25 @@ export const ToolSelector = memo(function ToolSelector({
     if (!serverUrl) return;
 
     setAuthenticatingId(server.id);
-    stopPolling();
 
-    try {
-      const result = await startMcpOauth({
-        body: { serverId: server.id, serverUrl },
-      });
-
-      if (!result.success || !result.authUrl) {
+    await startOauthPolling({
+      key: server.id,
+      start: () => startMcpOauth({ body: { serverId: server.id, serverUrl } }),
+      poll: () => getMcpOauthStatus({ body: { id: server.id } }),
+      isStartSuccess: (result) => result.success,
+      getStartAuthUrl: (result) => result.authUrl || undefined,
+      getPollStatus: (result) => result.status,
+      onAuthenticated: async () => {
+        await reconnectMcpServer({ body: { id: server.id } });
+      },
+      onError: (error) => {
+        console.error("OAuth status polling failed:", error);
+      },
+      onFinish: () => {
         setAuthenticatingId(null);
-        return;
-      }
-
-      const width = 600, height = 800;
-      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-      window.open(
-        result.authUrl,
-        "Authenticate",
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-
-      pollIntervalRef.current = setInterval(() => {
-        void pollOauthStatus(server.id);
-      }, 2000);
-
-      pollTimeoutRef.current = setTimeout(() => {
-        stopPolling();
-        setAuthenticatingId(null);
-      }, 5 * 60 * 1000);
-    } catch (error) {
-      console.error("Failed to start OAuth:", error);
-      setAuthenticatingId(null);
-    }
-  }, [pollOauthStatus, stopPolling]);
+      },
+    });
+  }, [startOauthPolling]);
 
   const openEditServer = useCallback((server: McpServerStatus) => {
     setEditingServerKey(server.id);

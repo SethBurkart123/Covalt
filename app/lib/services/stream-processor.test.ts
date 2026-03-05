@@ -218,11 +218,11 @@ describe("stream-processor", () => {
     expect(warnSpy).toHaveBeenCalledTimes(2);
     expect(warnSpy).toHaveBeenNthCalledWith(
       1,
-      "[StreamProcessor] Unknown runtime event CustomAgentEvent: {\"foo\":1}",
+      "StreamProcessor unknown runtime event CustomAgentEvent: {\"foo\":1}",
     );
     expect(warnSpy).toHaveBeenNthCalledWith(
       2,
-      "[StreamProcessor] Unknown runtime event AnotherUnknownEvent: {\"bar\":2}",
+      "StreamProcessor unknown runtime event AnotherUnknownEvent: {\"bar\":2}",
     );
   });
 

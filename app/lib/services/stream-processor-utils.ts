@@ -5,7 +5,7 @@ import type { ToolApprovalRequiredPayload, ToolCallPayload } from "@/lib/types/c
 const warnedPayloads = new Set<string>();
 const warnedUnknownEvents = new Set<string>();
 
-export function warnInvalidPayload(context: string, payload: unknown): void {
+function warnInvalidPayload(context: string, payload: unknown): void {
   if (warnedPayloads.has(context)) return;
   warnedPayloads.add(context);
   try {

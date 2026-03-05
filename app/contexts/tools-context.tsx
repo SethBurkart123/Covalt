@@ -18,11 +18,11 @@ import type { ToolInfo } from "@/lib/types/chat";
 import type { ToolInfo as ApiToolInfo } from "@/python/api";
 import { getPrefetchedChat } from "@/lib/services/chat-prefetch";
 
-export interface ToolsByToolset {
+interface ToolsByToolset {
   [toolsetId: string]: ToolInfo[];
 }
 
-export interface GroupedTools {
+interface GroupedTools {
   ungrouped: ToolInfo[];
   byToolset: ToolsByToolset;
   toolsetNames: Record<string, string>;

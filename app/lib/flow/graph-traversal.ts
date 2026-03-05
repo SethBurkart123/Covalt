@@ -1,6 +1,6 @@
 import type { FlowEdge } from '@/lib/flow';
 
-export interface GraphTraversalOptions {
+interface GraphTraversalOptions {
   stopAt?: Set<string>;
   includeStopNodes?: boolean;
 }

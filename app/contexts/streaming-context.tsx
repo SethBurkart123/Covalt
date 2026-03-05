@@ -432,16 +432,3 @@ export function useStreaming() {
   return context;
 }
 
-export function useChatStreamState(chatId: string | undefined) {
-  const { getStreamState, markChatAsSeen, subscribeToStream } = useStreaming();
-  
-  useEffect(() => {
-    if (chatId) {
-      markChatAsSeen(chatId);
-      subscribeToStream(chatId);
-    }
-  }, [chatId, markChatAsSeen, subscribeToStream]);
-
-  if (!chatId) return undefined;
-  return getStreamState(chatId);
-}
