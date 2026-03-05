@@ -4,6 +4,7 @@ import { codeRenderer } from "@/components/tool-renderers/code";
 import { markdownRenderer } from "@/components/tool-renderers/markdown";
 import { htmlRenderer } from "@/components/tool-renderers/html";
 import { frameRenderer } from "@/components/tool-renderers/frame";
+import { editorRenderer } from "@/components/tool-renderers/editor";
 
 const DEFAULT_RENDERER_KEY = "default";
 
@@ -13,6 +14,7 @@ export const RENDERERS: RendererDefinition[] = [
   markdownRenderer,
   htmlRenderer,
   frameRenderer,
+  editorRenderer,
 ];
 
 const rendererByAlias = new Map<string, RendererDefinition>();
