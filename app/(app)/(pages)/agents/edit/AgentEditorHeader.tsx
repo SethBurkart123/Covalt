@@ -96,7 +96,7 @@ export function AgentEditorHeaderLeft({ agentName, onUpdateName }: AgentEditorHe
   );
 }
 
-export function SaveStatusIndicator({ status }: { status: SaveStatus }) {
+function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   switch (status) {
     case 'saving':
       return (

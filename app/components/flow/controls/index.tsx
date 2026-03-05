@@ -46,7 +46,7 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
 };
 
 /** Get the control component for a parameter type */
-export function getControlComponent(type: ParameterType): AnyControl | null {
+function getControlComponent(type: ParameterType): AnyControl | null {
   return CONTROL_REGISTRY[type] ?? null;
 }
 
@@ -68,17 +68,3 @@ export const ParameterControl = memo(function ParameterControl({ param, value, o
   return <Control param={param} value={value} onChange={onChange} compact={compact} nodeId={nodeId} />;
 });
 
-// Re-export individual controls
-export { FloatControl } from './float';
-export { StringControl } from './string';
-export { BooleanControl } from './boolean';
-export { EnumControl } from './enum';
-export { TextAreaControl } from './text-area';
-export { CodeControl } from './code';
-export { MessagesControl } from './messages';
-export { ModelPicker } from './model-picker';
-export { McpServerPicker } from './mcp-server-picker';
-export { ToolsetPicker } from './toolset-picker';
-export { NodePicker } from './node-picker';
-export { JsonSchemaControl } from './json-schema';
-export { CollectionControl } from './collection';

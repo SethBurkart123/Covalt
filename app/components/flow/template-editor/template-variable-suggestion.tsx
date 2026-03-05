@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatPreviewDisplay } from './template-variable-utils';
 import type { TemplateVariableOption } from './types';
 
-export interface TemplateVariableSuggestionListProps {
+interface TemplateVariableSuggestionListProps {
   items: TemplateVariableOption[];
   command: (item: TemplateVariableOption) => void;
 }

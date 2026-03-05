@@ -12,7 +12,7 @@ interface ToolListProps {
   onSelectTool: (toolId: string) => void;
 }
 
-export const ToolList = memo(function ToolList({
+const ToolList = memo(function ToolList({
   tools,
   selectedToolId,
   onSelectTool,
@@ -78,3 +78,5 @@ export const ToolList = memo(function ToolList({
     </div>
   );
 });
+
+export { ToolList };

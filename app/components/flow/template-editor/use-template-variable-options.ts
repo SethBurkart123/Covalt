@@ -9,6 +9,7 @@ import {
   buildInputExpression,
   buildNodeExpression,
   buildTriggerExpression,
+  buildTriggerFallback,
   collectObjectRows,
   formatPreview,
   getNodeName,
@@ -108,19 +109,6 @@ function getTriggerSource(
 function isTriggerNode(node: FlowNode): boolean {
   const definition = getNodeDefinition(node.type || '');
   return definition?.category === 'trigger';
-}
-
-function buildTriggerFallback(): Record<string, unknown> {
-  return {
-    message: '',
-    last_user_message: '',
-    history: [],
-    messages: [],
-    attachments: [],
-    body: {},
-    headers: {},
-    query: {},
-  };
 }
 
 function getUpstreamNodeIds(nodeId: string, edges: FlowEdge[]): string[] {

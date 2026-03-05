@@ -7,7 +7,7 @@ import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import { Loader2, Check, AlertCircle, Cloud, CloudOff, Trash2 } from "lucide-react";
 
-export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 interface EditableCodeViewerProps {
   language: string;

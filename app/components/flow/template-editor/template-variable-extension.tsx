@@ -27,7 +27,7 @@ import {
   type TemplateVariableSuggestionListHandle,
 } from './template-variable-suggestion';
 
-export interface TemplateVariableAttrs {
+interface TemplateVariableAttrs {
   expr?: string | null;
   preview?: string | null;
 }

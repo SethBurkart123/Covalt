@@ -9,9 +9,9 @@ export function warnInvalidPayload(context: string, payload: unknown): void {
   if (warnedPayloads.has(context)) return;
   warnedPayloads.add(context);
   try {
-    console.warn(`[StreamProcessor] Invalid ${context} payload: ${JSON.stringify(payload)}`);
+    console.warn(`StreamProcessor invalid ${context} payload: ${JSON.stringify(payload)}`);
   } catch (error) {
-    console.warn(`[StreamProcessor] Invalid ${context} payload`, error);
+    console.warn(`StreamProcessor invalid ${context} payload`, error);
   }
 }
 
@@ -19,9 +19,9 @@ export function warnUnknownRuntimeEvent(eventType: string, payload: unknown): vo
   if (warnedUnknownEvents.has(eventType)) return;
   warnedUnknownEvents.add(eventType);
   try {
-    console.warn(`[StreamProcessor] Unknown runtime event ${eventType}: ${JSON.stringify(payload)}`);
+    console.warn(`StreamProcessor unknown runtime event ${eventType}: ${JSON.stringify(payload)}`);
   } catch (error) {
-    console.warn(`[StreamProcessor] Unknown runtime event ${eventType}`, error);
+    console.warn(`StreamProcessor unknown runtime event ${eventType}`, error);
   }
 }
 

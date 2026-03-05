@@ -34,4 +34,3 @@ export const getProviderMap = async (options?: { force?: boolean }): Promise<Rec
   return createProviderMap(providers);
 };
 
-export type { ProviderDefinition };
