@@ -16,6 +16,7 @@ import { useProviderCatalogData } from '@/lib/hooks/providers/use-provider-catal
 import { useProviderConnectionActions } from '@/lib/hooks/providers/use-provider-connection-actions';
 import { useProviderFiltering } from '@/lib/hooks/providers/use-provider-filtering';
 import { useProviderOauthActions } from '@/lib/hooks/providers/use-provider-oauth-actions';
+import { useOauthPopup } from '@/lib/hooks/use-oauth-popup';
 import type { ProviderConnectionStatus } from '@/lib/hooks/providers/types';
 
 interface ProvidersPanelProps {
@@ -61,14 +62,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     providerMap,
   });
 
-  const openOauthWindow = useCallback((url: string) => {
-    if (typeof window === 'undefined') return;
-    const width = 600;
-    const height = 800;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-    window.open(url, 'Authenticate', `width=${width},height=${height},left=${left},top=${top}`);
-  }, []);
+  const openOauthWindow = useOauthPopup();
 
   const { saveProviderConfig, testConnection } = useProviderConnectionActions({
     providerConfigs,

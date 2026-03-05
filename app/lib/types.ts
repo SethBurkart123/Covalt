@@ -1,5 +1,3 @@
-export type ThemeMode = "light" | "dark";
-
 export interface ThemeStyleProps {
 	background?: string;
 	foreground?: string;
@@ -60,15 +58,3 @@ export interface ThemePreset {
 	};
 }
 
-export interface ThemeState {
-	currentMode: ThemeMode;
-	preset: string;
-	styles: ThemeStyles;
-}
-
-export type ColorFormat = "hsl" | "hex" | "rgb" | "oklch";
-
-export interface ThemeProviderProps {
-	children: React.ReactNode;
-	defaultPreset?: string;
-}

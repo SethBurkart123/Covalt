@@ -1,4 +1,4 @@
-export type PlaywrightServerMode = 'exclusive' | 'reuse';
+type PlaywrightServerMode = 'exclusive' | 'reuse';
 
 interface ResolvePlaywrightServerModeInput {
   ci: boolean;

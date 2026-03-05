@@ -272,8 +272,6 @@ interface FlowActionsValue {
   recordDragEnd: () => void;
 }
 
-type FlowContextValue = FlowStateValue & FlowActionsValue & SelectionValue;
-
 const SelectionContext = createContext<SelectionValue | null>(null);
 const FlowStateContext = createContext<FlowStateValue | null>(null);
 const FlowActionsContext = createContext<FlowActionsValue | null>(null);
@@ -980,9 +978,3 @@ export function useNodePicker(): NodePickerValue {
   return context;
 }
 
-export function useFlow(): FlowContextValue {
-  const selection = useSelection();
-  const state = useFlowState();
-  const actions = useFlowActions();
-  return { ...selection, ...state, ...actions };
-}

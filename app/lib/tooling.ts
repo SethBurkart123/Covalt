@@ -1,13 +1,4 @@
-export const RENDERER_ALIAS_MAP: Record<string, string> = {
-  markdown: "document",
-};
-
-export function normalizeRendererAlias(renderer?: string | null): string | undefined {
-  if (!renderer) return undefined;
-  return RENDERER_ALIAS_MAP[renderer] ?? renderer;
-}
-
-export interface ParsedToolId {
+interface ParsedToolId {
   kind: "blacklist" | "mcp_toolset" | "mcp_tool" | "toolset_all" | "toolset_tool" | "builtin";
   namespace?: string;
   name?: string;
@@ -45,10 +36,6 @@ export function parseToolId(toolId: string): ParsedToolId {
   }
 
   return { kind: "builtin", name: toolId };
-}
-
-export function formatMcpToolId(serverKey: string, toolName: string): string {
-  return `mcp:${serverKey}:${toolName}`;
 }
 
 export function splitMcpToolId(toolId: string): { serverKey: string; toolName: string } | null {

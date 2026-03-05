@@ -31,5 +31,3 @@ export const merge = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default merge;

@@ -40,5 +40,3 @@ export const promptTemplate = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default promptTemplate;

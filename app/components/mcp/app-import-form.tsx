@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IMPORT_SOURCES, IMPORT_SOURCE_MAP } from "./importers";
+import { IMPORT_SOURCES, IMPORT_SOURCE_MAP } from "./importers/registry";
 
 type CheckboxButtonEl = HTMLButtonElement & { indeterminate?: boolean };
 

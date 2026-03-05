@@ -1,5 +1,5 @@
-export type ProviderPluginTrustStatus = "verified" | "unsigned" | "untrusted" | "invalid";
-export type ProviderPluginSourceClass = "official" | "community";
+type ProviderPluginTrustStatus = "verified" | "unsigned" | "untrusted" | "invalid";
+type ProviderPluginSourceClass = "official" | "community";
 
 const TRUST_STATUSES: readonly ProviderPluginTrustStatus[] = [
   "verified",
@@ -13,30 +13,6 @@ const SOURCE_TYPE_LABEL: Record<string, string> = {
   zip: "ZIP upload",
   source: "Store source",
   repo: "GitHub repo",
-};
-
-export const TRUST_BADGE_STYLE: Record<ProviderPluginTrustStatus, string> = {
-  verified: "text-green-600",
-  unsigned: "text-amber-600",
-  untrusted: "text-amber-600",
-  invalid: "text-red-600",
-};
-
-export const TRUST_BADGE_LABEL: Record<ProviderPluginTrustStatus, string> = {
-  verified: "Verified",
-  unsigned: "Unsigned",
-  untrusted: "Untrusted signer",
-  invalid: "Invalid signature",
-};
-
-export const SOURCE_CLASS_BADGE_STYLE: Record<ProviderPluginSourceClass, string> = {
-  official: "text-green-600",
-  community: "text-amber-600",
-};
-
-export const SOURCE_CLASS_BADGE_LABEL: Record<ProviderPluginSourceClass, string> = {
-  official: "Official",
-  community: "Community",
 };
 
 export function normalizeProviderPluginTrustStatus(value: unknown): ProviderPluginTrustStatus {

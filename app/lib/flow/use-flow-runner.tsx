@@ -8,7 +8,7 @@ import { processMessageStream } from "@/lib/services/stream-processor";
 import { useFlowExecution, type FlowRunPromptInput } from "@/contexts/flow-execution-context";
 import { downstreamClosure, upstreamClosure, filterFlowEdges } from "@/lib/flow/graph-traversal";
 
-export type FlowRunMode = "execute" | "runFrom";
+type FlowRunMode = "execute" | "runFrom";
 
 interface PromptState {
   open: boolean;
@@ -193,24 +193,7 @@ export function computeRunPlan(
   };
 }
 
-export function computeExecuteNodes(
-  nodeId: string,
-  nodes: FlowNode[],
-  edges: FlowEdge[],
-  pinnedSet: Set<string>,
-  executionByNode: Record<string, { outputs?: Record<string, unknown> }>
-): Set<string> {
-  return computeRunPlan(
-    "execute",
-    nodeId,
-    nodes,
-    edges,
-    pinnedSet,
-    executionByNode
-  ).nodesToRun;
-}
-
-export function computeRunFromNodes(
+function computeRunFromNodes(
   nodeId: string,
   edges: FlowEdge[],
   pinnedSet: Set<string>

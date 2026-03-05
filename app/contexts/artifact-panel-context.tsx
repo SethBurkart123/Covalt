@@ -14,14 +14,14 @@ import { useOptionalChat } from "@/contexts/chat-context";
 import { useWebSocket } from "@/contexts/websocket-context";
 import { getWorkspaceFile, updateWorkspaceFile } from "@/python/api";
 
-export interface Artifact {
+interface Artifact {
   id: string;
   title: string;
   content: ReactNode;
   filePath?: string;
 }
 
-export interface FileState {
+interface FileState {
   content: string;
   isLoading: boolean;
   isDeleted: boolean;

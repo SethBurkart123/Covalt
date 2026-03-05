@@ -42,5 +42,3 @@ export const code = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default code;

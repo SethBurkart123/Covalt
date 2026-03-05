@@ -67,5 +67,3 @@ export const llmCompletion = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default llmCompletion;

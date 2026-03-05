@@ -32,5 +32,3 @@ export const toolset = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default toolset;
