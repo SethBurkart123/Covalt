@@ -99,6 +99,7 @@ export function DefaultToolCall({
 
   const toolDisplay = parseToolDisplayParts(toolName);
   const toolCallTestId = `tool-call-${toolName}`;
+  const hasArgs = Object.keys(toolArgs || {}).length > 0;
 
   return (
     <Collapsible
@@ -147,17 +148,19 @@ export function DefaultToolCall({
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div>
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            Arguments
+        {hasArgs && (
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Arguments
+            </div>
+            <ArgumentsDisplay
+              args={toolArgs}
+              editableArgs={requiresApproval && approvalStatus === "pending" ? editableArgs : undefined}
+              editedValues={editedValues}
+              onValueChange={handleValueChange}
+            />
           </div>
-          <ArgumentsDisplay
-            args={toolArgs}
-            editableArgs={requiresApproval && approvalStatus === "pending" ? editableArgs : undefined}
-            editedValues={editedValues}
-            onValueChange={handleValueChange}
-          />
-        </div>
+        )}
 
         {requiresApproval && approvalStatus === "pending" && (
           <div className="flex gap-2 pt-2">
@@ -183,10 +186,12 @@ export function DefaultToolCall({
         )}
 
         {isCompleted && toolResult && (
-          <div>
-            <div className="text-xs font-medium text-muted-foreground mb-2">
-              Result
-            </div>
+          <div className={!hasArgs ? "pt-0" : undefined}>
+            {hasArgs && (
+              <div className="text-xs font-medium text-muted-foreground mb-2">
+                Result
+              </div>
+            )}
             <ResultRenderer content={toolResult} tone={isFailed ? "error" : "default"} />
           </div>
         )}
