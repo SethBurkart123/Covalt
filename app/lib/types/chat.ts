@@ -67,7 +67,7 @@ export interface UploadingAttachment extends Omit<Attachment, "data"> {
 }
 
 export interface RenderPlan {
-  renderer: "code" | "document" | "html" | "frame" | string;
+  renderer: "code" | "document" | "html" | "frame" | "editor" | string;
   config: {
     file?: string;
     content?: string;
@@ -77,6 +77,7 @@ export interface RenderPlan {
     data?: unknown;
     url?: string;
     port?: number;
+    path?: string;
   };
 }
 

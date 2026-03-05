@@ -13,6 +13,7 @@ SUPPORTED_RENDERERS: set[str] = {
     "document",
     "html",
     "frame",
+    "editor",
 }
 
 RendererConfigType = Literal["string", "bool", "port", "any"]
@@ -38,6 +39,10 @@ RENDERER_CONFIG_SCHEMAS: dict[str, dict[str, RendererConfigType]] = {
     "frame": {
         "url": "string",
         "port": "port",
+    },
+    "editor": {
+        "path": "string",
+        "editable": "bool",
     },
 }
 
