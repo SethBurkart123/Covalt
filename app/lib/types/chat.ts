@@ -89,6 +89,7 @@ export interface ToolCallPayload {
   isCompleted?: boolean;
   providerData?: Record<string, unknown>;
   renderPlan?: RenderPlan;
+  failed?: boolean;
   requiresApproval?: boolean;
   runId?: string;
   toolCallId?: string;

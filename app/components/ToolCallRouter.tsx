@@ -11,7 +11,7 @@ import type { ToolCallRenderer, ToolCallRendererProps } from "@/lib/tool-rendere
 
 export function ToolCallRouter(props: ToolCallRendererProps) {
   const [renderer, setRenderer] = useState<ToolCallRenderer | null>(null);
-  const rendererKey = props.renderPlan?.renderer;
+  const rendererKey = props.failed ? undefined : props.renderPlan?.renderer;
 
   useEffect(() => {
     let cancelled = false;

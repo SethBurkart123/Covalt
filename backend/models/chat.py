@@ -44,6 +44,7 @@ class ToolCallPayload(BaseModel):
     isCompleted: bool | None = None
     providerData: dict[str, Any] | None = None
     renderPlan: RenderPlan | None = None
+    failed: bool | None = None
     requiresApproval: bool | None = None
     runId: str | None = None
     toolCallId: str | None = None

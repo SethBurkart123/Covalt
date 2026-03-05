@@ -65,10 +65,13 @@ export function handleToolCallCompleted(state: StreamState, tool: unknown): void
 
   toolBlock.toolResult = payload.toolResult;
   toolBlock.isCompleted = true;
+  toolBlock.failed = payload.failed;
   if (toolBlock.requiresApproval && toolBlock.approvalStatus === "pending") {
     toolBlock.approvalStatus = "approved";
   }
-  if (payload.renderPlan) {
+  if (payload.failed) {
+    toolBlock.renderPlan = undefined;
+  } else if (payload.renderPlan) {
     toolBlock.renderPlan = payload.renderPlan;
   }
 }

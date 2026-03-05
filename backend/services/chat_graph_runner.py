@@ -715,13 +715,20 @@ def load_attachments_as_agno_media(
     for attachment in attachments:
         if attachment.size > MAX_ATTACHMENT_BYTES:
             logger.warning(
-                f"[attachments] Skipping {attachment.id} ({attachment.name}): {attachment.size} bytes exceeds {MAX_ATTACHMENT_BYTES}"
+                "[attachments] Skipping %s (%s): %s bytes exceeds %s",
+                attachment.id,
+                attachment.name,
+                attachment.size,
+                MAX_ATTACHMENT_BYTES,
             )
             continue
 
         if not is_allowed_attachment_mime(attachment.mimeType):
             logger.warning(
-                f"[attachments] Skipping {attachment.id} ({attachment.name}): MIME '{attachment.mimeType}' not allowed for Covalt"
+                "[attachments] Skipping %s (%s): MIME '%s' not allowed for Covalt",
+                attachment.id,
+                attachment.name,
+                attachment.mimeType,
             )
             continue
 
@@ -932,6 +939,23 @@ def _load_tool_call_render_plan(tool_call_id: str | None) -> dict[str, Any] | No
     return None
 
 
+def _did_tool_call_fail(tool_name: str, tool_call_id: str | None) -> bool:
+    if not tool_call_id or not tool_name or not is_toolset_tool(tool_name):
+        return False
+
+    try:
+        with db.db_session() as sess:
+            tool_call = (
+                sess.query(DbToolCall).filter(DbToolCall.id == tool_call_id).first()
+            )
+            if not tool_call:
+                return False
+            return tool_call.status == "error"
+    except Exception as exc:
+        logger.warning(f"Failed to load status for tool call {tool_call_id}: {exc}")
+        return False
+
+
 def _parse_tool_result(tool_result: Any) -> Any:
     if tool_result is None:
         return None
@@ -943,6 +967,33 @@ def _parse_tool_result(tool_result: Any) -> Any:
     return tool_result
 
 
+def _has_unresolved_render_ref(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().startswith("$")
+    if isinstance(value, dict):
+        return any(_has_unresolved_render_ref(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_unresolved_render_ref(v) for v in value)
+    return False
+
+
+def _is_invalid_render_plan(render_plan: dict[str, Any] | None) -> bool:
+    if render_plan is None:
+        return False
+    if not isinstance(render_plan, dict):
+        return True
+
+    config = render_plan.get("config")
+    if not isinstance(config, dict):
+        return False
+
+    for key in ("file", "path", "url", "artifact"):
+        if key in config and _has_unresolved_render_ref(config.get(key)):
+            return True
+
+    return False
+
+
 def _resolve_tool_render_plan(
     *,
     tool_name: str,
@@ -951,7 +1002,11 @@ def _resolve_tool_render_plan(
     tool_call_id: str | None,
     chat_id: str | None,
     provided_plan: dict[str, Any] | None = None,
+    failed: bool = False,
 ) -> dict[str, Any] | None:
+    if failed:
+        return None
+
     if provided_plan is not None:
         return provided_plan
 
@@ -986,6 +1041,7 @@ def _build_tool_call_completed_payload(
     provider_data: dict[str, Any] | None = None,
     render_plan: dict[str, Any] | None = None,
     chat_id: str | None = None,
+    failed: bool = False,
 ) -> dict[str, Any]:
     safe_args = tool_args if isinstance(tool_args, dict) else {}
     tool_result_text = str(tool_result) if tool_result is not None else None
@@ -996,7 +1052,12 @@ def _build_tool_call_completed_payload(
         tool_call_id=tool_id or None,
         chat_id=chat_id,
         provided_plan=render_plan,
+        failed=failed,
     )
+
+    if failed or _is_invalid_render_plan(resolved_plan):
+        resolved_plan = None
+        failed = True
     tool_block: dict[str, Any] = {
         "id": tool_id,
         "toolName": tool_name,
@@ -1004,6 +1065,8 @@ def _build_tool_call_completed_payload(
         "toolResult": tool_result_text,
         "isCompleted": True,
     }
+    if failed:
+        tool_block["failed"] = True
     if provider_data:
         tool_block["providerData"] = provider_data
     if resolved_plan is not None:
@@ -1046,6 +1109,7 @@ def _ensure_tool_call_completed_payload(
         if isinstance(tool.get("renderPlan"), dict)
         else None,
         chat_id=chat_id,
+        failed=bool(tool.get("failed")) or _did_tool_call_fail(tool_name, tool_id),
     )
 
 
@@ -1644,7 +1708,10 @@ async def handle_flow_stream(
                     return False
                 tool_block["isCompleted"] = True
                 tool_block["toolResult"] = tool.get("toolResult")
-                if "renderPlan" in tool:
+                if bool(tool.get("failed")):
+                    tool_block["failed"] = True
+                    tool_block.pop("renderPlan", None)
+                elif "renderPlan" in tool:
                     tool_block["renderPlan"] = tool.get("renderPlan")
                 return True
 
@@ -2299,6 +2366,10 @@ async def handle_content_stream(
                 tool_result=chunk.tool.result,
                 provider_data=provider_data,
                 chat_id=chat_id,
+                failed=_did_tool_call_fail(
+                    get_original_tool_name(chunk.tool.tool_name),
+                    chunk.tool.tool_call_id,
+                ),
             )
             for block in member_content:
                 if (
@@ -2601,6 +2672,8 @@ async def handle_content_stream(
                             ):
                                 block["isCompleted"] = True
                                 block["toolResult"] = tool_result
+                                if _did_tool_call_fail(tool_name, active_delegation_tool_id):
+                                    block["failed"] = True
                                 break
                         active_delegation_tool_id = None
                         delegation_task = ""
@@ -2619,6 +2692,7 @@ async def handle_content_stream(
                         tool_result=chunk.tool.result,
                         provider_data=provider_data,
                         chat_id=chat_id,
+                        failed=_did_tool_call_fail(tool_name, chunk.tool.tool_call_id),
                     )
                     tool_block = {
                         "type": "tool_call",
