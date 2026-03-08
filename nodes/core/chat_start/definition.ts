@@ -38,5 +38,3 @@ export const chatStart = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default chatStart;

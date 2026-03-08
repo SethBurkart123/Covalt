@@ -4,7 +4,7 @@ import { api } from "@/lib/services/api";
 import type { Message, MessageSibling } from "@/lib/types/chat";
 import { getChatAgentConfig, type ChatAgentConfigResponse } from "@/python/api";
 
-export interface PrefetchedChatData {
+interface PrefetchedChatData {
   messages?: Message[];
   siblings?: Record<string, MessageSibling[]>;
   agentConfig?: ChatAgentConfigResponse;
@@ -35,12 +35,6 @@ export function clearPrefetchedChat(chatId: string): void {
 
 export function setPrefetchedChat(chatId: string, data: PrefetchedChatData): void {
   setCache(chatId, data);
-}
-
-export function getPrefetchPromise(
-  chatId: string,
-): Promise<PrefetchedChatData> | undefined {
-  return inflight.get(chatId);
 }
 
 export async function prefetchChat(chatId: string): Promise<PrefetchedChatData | null> {

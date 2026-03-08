@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmojiPickerPopover } from '@/components/ui/emoji-picker-popover';
 import { useAgentEditor } from '@/contexts/agent-editor-context';
+import { nextAgentIconValue, parseAgentIcon } from '../icon-contract';
 
 interface AgentSettingsDialogProps {
   open: boolean;
@@ -31,6 +32,7 @@ export function AgentSettingsDialog({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('');
+  const [originalIcon, setOriginalIcon] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,10 +40,9 @@ export function AgentSettingsDialog({
     if (open && agent) {
       setName(agent.name);
       setDescription(agent.description || '');
-      const iconValue = agent.icon?.startsWith('emoji:') 
-        ? agent.icon.slice(6) 
-        : '';
-      setIcon(iconValue);
+      const parsedIcon = parseAgentIcon(agent.icon);
+      setIcon(parsedIcon.type === 'emoji' ? parsedIcon.value : '');
+      setOriginalIcon(agent.icon ?? null);
     }
   }, [open, agent]);
 
@@ -58,7 +59,7 @@ export function AgentSettingsDialog({
       await updateMetadata({
         name: name.trim(),
         description: description.trim() || undefined,
-        icon: icon.trim() ? `emoji:${icon.trim()}` : undefined,
+        icon: nextAgentIconValue({ existingIcon: originalIcon, emoji: icon }),
       });
       onOpenChange(false);
     } catch (err) {
@@ -67,7 +68,7 @@ export function AgentSettingsDialog({
     } finally {
       setIsSaving(false);
     }
-  }, [name, description, icon, updateMetadata, onOpenChange]);
+  }, [name, description, icon, originalIcon, updateMetadata, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

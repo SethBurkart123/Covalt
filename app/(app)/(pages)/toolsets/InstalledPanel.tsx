@@ -44,7 +44,8 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { McpServerCard, McpServerInspectorDialog } from "@/components/mcp";
+import { McpServerCard } from "@/components/mcp/server-card";
+import { McpServerInspectorDialog } from "@/components/mcp/server-inspector-dialog";
 import type { ToolInfo as ChatToolInfo } from "@/lib/types/chat";
 import { buildMcpServerLabelMap, getMcpServerLabel } from "@/lib/mcp";
 import { getToolDisplayLabel, parseToolId } from "@/lib/tooling";

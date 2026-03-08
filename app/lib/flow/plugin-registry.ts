@@ -339,38 +339,6 @@ export function getNodeDefinitionMetadata(type: string): NodeDefinitionMetadata 
   };
 }
 
-export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
-  return listNodeTypes()
-    .map((type) => getNodeDefinitionMetadata(type))
-    .filter((metadata): metadata is NodeDefinitionMetadata => Boolean(metadata));
-}
-
-export function setDynamicNodeDefinitions(definitions: readonly NodeDefinition[]): void {
-  unregisterPlugin('dynamic');
-  if (definitions.length === 0) {
-    return;
-  }
-
-  const dynamicManifest: PluginManifest = {
-    id: 'dynamic',
-    name: 'Dynamic Node Definitions',
-    version: '1',
-    nodes: definitions.map((definition) => ({
-      type: definition.id,
-      definitionPath: '[dynamic]',
-      executorPath: '[dynamic]',
-      definition,
-    })),
-    definitions,
-  };
-
-  registerPlugin(dynamicManifest);
-}
-
-export function clearDynamicNodeDefinitions(): void {
-  unregisterPlugin('dynamic');
-}
-
 export function resetPluginRegistryForTests(): void {
   nodesByType.clear();
   plugins.clear();

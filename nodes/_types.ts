@@ -41,7 +41,7 @@ export type ParameterMode =
   | 'output';   // Pure output socket (right side)
 
 /** Where this parameter is rendered */
-export type ParameterRenderScope = 'node' | 'inspector' | 'both';
+type ParameterRenderScope = 'node' | 'inspector' | 'both';
 
 /** Socket visual configuration */
 export interface SocketConfig {
@@ -53,7 +53,7 @@ export interface SocketConfig {
   shape?: SocketShape;  // Override default shape
 }
 
-export interface AutoExpandConfig {
+interface AutoExpandConfig {
   min?: number;
   max?: number;
 }
@@ -94,7 +94,7 @@ export interface ShowWhen {
 }
 
 /** Base parameter definition */
-export interface ParameterBase {
+interface ParameterBase {
   id: string;
   type: ParameterType;
   label: string;
@@ -339,7 +339,7 @@ export type FrontendHookHandlers = Partial<{
   [K in FrontendHookType]: FrontendHookHandler<K>;
 }>;
 
-export interface RouteMetadata {
+interface RouteMetadata {
   idField: string;
   path: string;
   label?: string;
@@ -347,7 +347,7 @@ export interface RouteMetadata {
   emptyValuePlaceholder?: string;
 }
 
-export interface SocketTypePropagationMetadata {
+interface SocketTypePropagationMetadata {
   stateField?: string;
   inputHandle?: string;
   outputHandle?: string;
@@ -397,8 +397,3 @@ export interface FlowEdge {
   };
 }
 
-/** Complete graph state */
-export interface FlowGraph {
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-}

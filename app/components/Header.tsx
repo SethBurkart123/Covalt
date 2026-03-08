@@ -1,33 +1,20 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { SIDEBAR_TRANSITION, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { TEST_CHAT_PANEL_TRANSITION } from "@/(app)/(pages)/agents/edit/AgentTestChatPanel";
+import { useIsElectrobunMac } from "@/lib/hooks/use-electrobun-platform";
 
 const TITLEBAR_OFFSET_PX = 74;
 const DEFAULT_PADDING_PX = 16;
 
-function isElectrobunMac(): boolean {
-  if (typeof window === "undefined") return false;
-  const platform = (window as unknown as { __COVALT_ELECTROBUN_PLATFORM?: string })
-    .__COVALT_ELECTROBUN_PLATFORM;
-  if (platform) return platform === "darwin";
-  return document.documentElement.classList.contains("electrobun-macos");
-}
-
 function HeaderInner() {
   const { title, leftContent, rightContent, floating, rightOffset } = usePageTitle();
   const { open: sidebarOpen } = useSidebar();
-  const [isMacElectrobun, setIsMacElectrobun] = useState(false);
-  useEffect(() => {
-    const sync = () => setIsMacElectrobun(isElectrobunMac());
-    sync();
-    const retry = window.setTimeout(sync, 250);
-    return () => window.clearTimeout(retry);
-  }, []);
+  const isMacElectrobun = useIsElectrobunMac();
   const leftPadding = isMacElectrobun && !sidebarOpen ? TITLEBAR_OFFSET_PX : DEFAULT_PADDING_PX;
   const hasRightContent = rightContent != null;
   const left = leftContent != null ? (

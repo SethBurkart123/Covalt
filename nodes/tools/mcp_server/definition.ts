@@ -32,5 +32,3 @@ export const mcpServer = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default mcpServer;

@@ -57,7 +57,7 @@ export function getBackendBaseUrl(): string {
   return cachedBaseUrl;
 }
 
-export function setBackendBaseUrl(value: string): void {
+function setBackendBaseUrl(value: string): void {
   cachedBaseUrl = normalizeBaseUrl(value);
 
   if (typeof window === "undefined") return;

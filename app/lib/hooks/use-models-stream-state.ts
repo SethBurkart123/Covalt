@@ -1,6 +1,6 @@
 import type { ModelInfo } from "@/lib/types/chat";
 
-export interface ProviderState {
+interface ProviderState {
   providerOrder: string[];
   providerModels: Map<string, ModelInfo[]>;
 }

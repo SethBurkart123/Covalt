@@ -8,7 +8,7 @@ export interface OAuthState {
   error?: string;
 }
 
-export interface ProviderOAuthOverview {
+interface ProviderOAuthOverview {
   status: OAuthStatus;
   hasTokens?: boolean;
   authUrl?: string;

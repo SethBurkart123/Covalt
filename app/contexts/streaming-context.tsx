@@ -60,18 +60,18 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     const api = apiModule as Record<string, unknown>;
     
     if (typeof api.subscribeToStream !== "function") {
-      console.warn("[StreamingContext] api.subscribeToStream not available yet");
+      console.warn("StreamingContext: api.subscribeToStream not available yet");
       return;
     }
 
     const channel = (api.subscribeToStream as (args: { body: { chatId: string } }) => BridgeChannel<unknown>)({ body: { chatId } });
     
     if (!channel) {
-      console.error(`[StreamingContext] Failed to create subscription channel for ${chatId}`);
+      console.error(`StreamingContext: Failed to create subscription channel for ${chatId}`);
       return;
     }
 
-    console.log(`[StreamingContext] Created subscription for ${chatId}`);
+    console.log(`StreamingContext: Created subscription for ${chatId}`);
     subscriptionsRef.current.set(chatId, {
       channel,
       unsubscribe: () => channel.close?.(),
@@ -86,10 +86,10 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
         if (eventType === RUNTIME_EVENT.TOOL_CALL_COMPLETED) {
           try {
             console.log(
-              `[StreamingContext] ToolCallCompleted payload for ${chatId}: ${JSON.stringify(eventData)}`
+              `StreamingContext: ToolCallCompleted payload for ${chatId}: ${JSON.stringify(eventData)}`
             );
           } catch (err) {
-            console.warn("[StreamingContext] Failed to serialize ToolCallCompleted payload", err);
+            console.warn("StreamingContext: Failed to serialize ToolCallCompleted payload", err);
           }
         }
 
@@ -115,10 +115,10 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             });
           },
           onSessionId: (sessionId) => {
-            console.log(`[StreamingContext] Session ID for ${chatId}:`, sessionId);
+            console.log(`StreamingContext: Session ID for ${chatId}:`, sessionId);
           },
           onMessageId: (messageId) => {
-            console.log(`[StreamingContext] Message ID for ${chatId}:`, messageId);
+            console.log(`StreamingContext: Message ID for ${chatId}:`, messageId);
             setStreamStates((prev) => {
               const current = prev.get(chatId);
               if (!current) return prev;
@@ -135,7 +135,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
 
         switch (eventType) {
           case RUNTIME_EVENT.STREAM_NOT_ACTIVE:
-            console.log(`[StreamingContext] Stream not active for ${chatId}`);
+            console.log(`StreamingContext: Stream not active for ${chatId}`);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
             streamStateRefs.current.delete(chatId);
@@ -147,7 +147,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             break;
 
           case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
-            console.log(`[StreamingContext] Tool approval required for ${chatId}`);
+            console.log(`StreamingContext: Tool approval required for ${chatId}`);
             setStreamStates((prev) => {
               const current = prev.get(chatId);
               if (!current) return prev;
@@ -185,13 +185,13 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
             // (handleSubmit/handleContinue/etc.) handle cleanup via unregisterStream().
             // This prevents a race condition where the WebSocket event arrives before
             // the stream processor finishes, causing the message to briefly disappear.
-            console.log(`[StreamingContext] Stream completed for ${chatId} (cleanup handled by sender)`);
+            console.log(`StreamingContext: Stream completed for ${chatId} (cleanup handled by sender)`);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
             break;
 
           case RUNTIME_EVENT.RUN_ERROR:
-            console.log(`[StreamingContext] Stream error for ${chatId}:`, eventData.content);
+            console.log(`StreamingContext: Stream error for ${chatId}:`, eventData.content);
             subscriptionsRef.current.get(chatId)?.unsubscribe();
             subscriptionsRef.current.delete(chatId);
             streamStateRefs.current.delete(chatId);
@@ -208,13 +208,13 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       channel.subscribe(handleEvent);
       
       channel.onError?.((error: unknown) => {
-        console.error(`[StreamingContext] Stream subscription error for ${chatId}:`, error);
+        console.error(`StreamingContext: Stream subscription error for ${chatId}:`, error);
         subscriptionsRef.current.delete(chatId);
         streamStateRefs.current.delete(chatId);
       });
 
       channel.onClose?.(() => {
-        console.log(`[StreamingContext] Stream subscription closed for ${chatId}`);
+        console.log(`StreamingContext: Stream subscription closed for ${chatId}`);
         subscriptionsRef.current.delete(chatId);
         streamStateRefs.current.delete(chatId);
       });
@@ -229,14 +229,14 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       const api = apiModule as Record<string, unknown>;
       
       if (typeof api.getActiveStreams !== "function") {
-        console.warn("[StreamingContext] api.getActiveStreams not available yet");
+        console.warn("StreamingContext: api.getActiveStreams not available yet");
         return;
       }
 
       const response = await (api.getActiveStreams as () => Promise<{ streams: Array<{ chatId: string; messageId: string; status: string; errorMessage?: string }> }>)();
       const newStates = new Map<string, ChatStreamState>();
 
-      console.log("[StreamingContext] Loaded active streams:", response.streams);
+      console.log("StreamingContext: Loaded active streams:", response.streams);
 
       for (const stream of response.streams) {
         const isActive = stream.status === "streaming" || stream.status === "paused_hitl";
@@ -252,7 +252,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
         });
 
         if (isActive) {
-          console.log(`[StreamingContext] Subscribing to active stream: ${stream.chatId}`);
+          console.log(`StreamingContext: Subscribing to active stream: ${stream.chatId}`);
           subscribeToStreamInternal(stream.chatId);
         }
       }
@@ -320,7 +320,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   }, [subscribeToStreamInternal]);
 
   const registerStream = useCallback((chatId: string, messageId: string) => {
-    console.log(`[StreamingContext] Registering stream for ${chatId}, message ${messageId}`);
+    console.log(`StreamingContext: Registering stream for ${chatId}, message ${messageId}`);
     cleanedUpChatsRef.current.delete(chatId);
     streamStateRefs.current.set(chatId, createInitialState());
     
@@ -344,7 +344,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unregisterStream = useCallback((chatId: string) => {
-    console.log(`[StreamingContext] Unregistering stream for ${chatId}`);
+    console.log(`StreamingContext: Unregistering stream for ${chatId}`);
     cleanedUpChatsRef.current.add(chatId);
     streamStateRefs.current.delete(chatId);
     
@@ -432,16 +432,3 @@ export function useStreaming() {
   return context;
 }
 
-export function useChatStreamState(chatId: string | undefined) {
-  const { getStreamState, markChatAsSeen, subscribeToStream } = useStreaming();
-  
-  useEffect(() => {
-    if (chatId) {
-      markChatAsSeen(chatId);
-      subscribeToStream(chatId);
-    }
-  }, [chatId, markChatAsSeen, subscribeToStream]);
-
-  if (!chatId) return undefined;
-  return getStreamState(chatId);
-}

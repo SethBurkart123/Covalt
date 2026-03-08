@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import {
   getProviderOauthStatus,
   revokeProviderOauth,
@@ -7,231 +7,164 @@ import {
 } from '@/python/api';
 import type { OAuthState } from './types';
 import { normalizeOAuthStatus } from './types';
+import { useOauthPolling } from '@/lib/hooks/use-oauth-polling';
+
+interface OauthUiPatch {
+  authenticating?: boolean;
+  submitting?: boolean;
+  revoking?: boolean;
+}
 
 interface UseProviderOauthActionsParams {
   setOauthStatus: Dispatch<SetStateAction<Record<string, OAuthState>>>;
-  setOauthAuthenticating: Dispatch<SetStateAction<Record<string, boolean>>>;
-  setOauthSubmitting: Dispatch<SetStateAction<Record<string, boolean>>>;
-  setOauthRevoking: Dispatch<SetStateAction<Record<string, boolean>>>;
+  patchOauthUi: (providerId: string, patch: OauthUiPatch) => void;
   refreshModels?: () => Promise<void> | void;
   openOauthWindow: (url: string) => void;
 }
 
 export function useProviderOauthActions({
   setOauthStatus,
-  setOauthAuthenticating,
-  setOauthSubmitting,
-  setOauthRevoking,
+  patchOauthUi,
   refreshModels,
   openOauthWindow,
 }: UseProviderOauthActionsParams) {
-  const pollIntervalRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
-  const pollTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const { startOauthPolling, stopOauthPolling } = useOauthPolling(openOauthWindow);
 
-  const stopPolling = useCallback((providerKey?: string) => {
-    const stopKey = (key: string) => {
-      const interval = pollIntervalRef.current[key];
-      if (interval) {
-        clearInterval(interval);
-        delete pollIntervalRef.current[key];
-      }
-      const timeout = pollTimeoutRef.current[key];
-      if (timeout) {
-        clearTimeout(timeout);
-        delete pollTimeoutRef.current[key];
-      }
-    };
-
-    if (providerKey) {
-      stopKey(providerKey);
-      return;
-    }
-
-    Object.keys(pollIntervalRef.current).forEach(stopKey);
-    Object.keys(pollTimeoutRef.current).forEach(stopKey);
-  }, []);
-
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  const pollOauthStatus = useCallback(
-    async (providerId: string) => {
-      try {
-        const status = await getProviderOauthStatus({ body: { provider: providerId } });
-        const normalized = normalizeOAuthStatus(status.status);
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: normalized,
-            hasTokens: status.hasTokens,
-            authUrl: status.authUrl,
-            instructions: status.instructions,
-            error: status.error,
-          },
-        }));
-
-        if (normalized === 'authenticated') {
-          stopPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-          refreshModels?.();
-        } else if (normalized === 'error') {
-          stopPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-        }
-      } catch (error) {
-        stopPolling(providerId);
-        setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Failed to load OAuth status',
-          },
-        }));
-      }
+  const applyProviderOauthStatus = useCallback(
+    (
+      providerId: string,
+      status: {
+        status?: unknown;
+        hasTokens?: boolean;
+        authUrl?: string;
+        instructions?: string;
+        error?: string;
+      },
+    ): OAuthState["status"] => {
+      const normalized = normalizeOAuthStatus(status.status);
+      setOauthStatus((prev) => ({
+        ...prev,
+        [providerId]: {
+          status: normalized,
+          hasTokens: status.hasTokens,
+          authUrl: status.authUrl,
+          instructions: status.instructions,
+          error: status.error,
+        },
+      }));
+      return normalized;
     },
-    [refreshModels, setOauthAuthenticating, setOauthStatus, stopPolling],
+    [setOauthStatus],
+  );
+
+  const setOauthError = useCallback(
+    (providerId: string, fallbackMessage: string, error?: unknown) => {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : fallbackMessage;
+      setOauthStatus((prev) => ({
+        ...prev,
+        [providerId]: {
+          status: 'error',
+          error: message,
+        },
+      }));
+    },
+    [setOauthStatus],
   );
 
   const startOauth = useCallback(
     async (providerId: string, enterpriseDomain?: string) => {
-      setOauthAuthenticating((prev) => ({ ...prev, [providerId]: true }));
-      stopPolling(providerId);
+      patchOauthUi(providerId, { authenticating: true });
 
-      try {
-        const result = await startProviderOauth({
-          body: {
-            provider: providerId,
-            enterpriseDomain: enterpriseDomain || undefined,
-          },
-        });
-
-        if (!result.success) {
-          setOauthStatus((prev) => ({
-            ...prev,
-            [providerId]: {
-              status: 'error',
-              error: result.error || 'Failed to start OAuth',
+      await startOauthPolling({
+        key: providerId,
+        start: () =>
+          startProviderOauth({
+            body: {
+              provider: providerId,
+              enterpriseDomain: enterpriseDomain || undefined,
             },
-          }));
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-          return;
-        }
-
-        const normalizedStatus = normalizeOAuthStatus(result.status);
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: normalizedStatus,
+          }),
+        poll: () => getProviderOauthStatus({ body: { provider: providerId } }),
+        isStartSuccess: (result) => result.success,
+        getStartAuthUrl: (result) => result.authUrl || undefined,
+        getStartStatus: (result) => normalizeOAuthStatus(result.status),
+        getStartError: (result) => result.error || 'Failed to start OAuth',
+        getPollStatus: (result) => normalizeOAuthStatus(result.status),
+        onStartResult: (result) => {
+          applyProviderOauthStatus(providerId, {
+            status: result.status,
             authUrl: result.authUrl,
             instructions: result.instructions,
             error: result.error,
-          },
-        }));
-
-        if (result.authUrl) {
-          openOauthWindow(result.authUrl);
-        }
-
-        if (normalizedStatus === 'authenticated') {
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          });
+        },
+        onPollResult: (result) => {
+          applyProviderOauthStatus(providerId, result);
+        },
+        onAuthenticated: async () => {
           refreshModels?.();
-          return;
-        }
-
-        if (normalizedStatus === 'error') {
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-          return;
-        }
-
-        pollIntervalRef.current[providerId] = setInterval(() => {
-          void pollOauthStatus(providerId);
-        }, 2000);
-
-        pollTimeoutRef.current[providerId] = setTimeout(() => {
-          stopPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-        }, 5 * 60 * 1000);
-      } catch (error) {
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Failed to start OAuth',
-          },
-        }));
-        setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
-      }
+        },
+        onStartFailed: (reason) => {
+          setOauthError(providerId, 'Failed to start OAuth', reason);
+        },
+        onError: (error) => {
+          setOauthError(providerId, 'Failed to load OAuth status', error);
+        },
+        onFinish: () => {
+          patchOauthUi(providerId, { authenticating: false });
+        },
+      });
     },
-    [
-      openOauthWindow,
-      pollOauthStatus,
-      refreshModels,
-      setOauthAuthenticating,
-      setOauthStatus,
-      stopPolling,
-    ],
+    [applyProviderOauthStatus, patchOauthUi, refreshModels, setOauthError, startOauthPolling],
   );
 
   const submitOauthCode = useCallback(
     async (providerId: string, code: string) => {
       if (!code) return;
 
-      setOauthSubmitting((prev) => ({ ...prev, [providerId]: true }));
+      patchOauthUi(providerId, { submitting: true });
       try {
         const result = await submitProviderOauthCode({ body: { provider: providerId, code } });
         if (!result.success) {
-          setOauthStatus((prev) => ({
-            ...prev,
-            [providerId]: {
-              status: 'error',
-              error: result.error || 'Failed to submit code',
-            },
-          }));
+          setOauthError(providerId, 'Failed to submit code', result.error);
           return;
         }
 
         const status = await getProviderOauthStatus({ body: { provider: providerId } });
-        const normalized = normalizeOAuthStatus(status.status);
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: normalized,
-            hasTokens: status.hasTokens,
-            authUrl: status.authUrl,
-            instructions: status.instructions,
-            error: status.error,
-          },
-        }));
+        const normalized = applyProviderOauthStatus(providerId, status);
 
         if (normalized === 'authenticated') {
-          stopPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          stopOauthPolling(providerId);
+          patchOauthUi(providerId, { authenticating: false });
           refreshModels?.();
         } else if (normalized === 'error') {
-          stopPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          stopOauthPolling(providerId);
+          patchOauthUi(providerId, { authenticating: false });
         }
       } catch (error) {
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Failed to submit code',
-          },
-        }));
+        setOauthError(providerId, 'Failed to submit code', error);
       } finally {
-        setOauthSubmitting((prev) => ({ ...prev, [providerId]: false }));
+        patchOauthUi(providerId, { submitting: false });
       }
     },
-    [refreshModels, setOauthAuthenticating, setOauthStatus, setOauthSubmitting, stopPolling],
+    [
+      applyProviderOauthStatus,
+      patchOauthUi,
+      refreshModels,
+      setOauthError,
+      stopOauthPolling,
+    ],
   );
 
   const revokeOauth = useCallback(
     async (providerId: string) => {
-      stopPolling(providerId);
-      setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+      stopOauthPolling(providerId);
+      patchOauthUi(providerId, { authenticating: false });
       setOauthStatus((prev) => ({
         ...prev,
         [providerId]: {
@@ -242,28 +175,22 @@ export function useProviderOauthActions({
           error: undefined,
         },
       }));
-      setOauthRevoking((prev) => ({ ...prev, [providerId]: true }));
+      patchOauthUi(providerId, { revoking: true });
 
       try {
         await revokeProviderOauth({ body: { provider: providerId } });
         refreshModels?.();
       } catch (error) {
-        setOauthStatus((prev) => ({
-          ...prev,
-          [providerId]: {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Failed to revoke OAuth',
-          },
-        }));
+        setOauthError(providerId, 'Failed to revoke OAuth', error);
       } finally {
-        setOauthRevoking((prev) => ({ ...prev, [providerId]: false }));
+        patchOauthUi(providerId, { revoking: false });
       }
     },
-    [refreshModels, setOauthAuthenticating, setOauthRevoking, setOauthStatus, stopPolling],
+    [patchOauthUi, refreshModels, setOauthError, setOauthStatus, stopOauthPolling],
   );
 
   return {
-    stopPolling,
+    stopPolling: stopOauthPolling,
     startOauth,
     submitOauthCode,
     revokeOauth,

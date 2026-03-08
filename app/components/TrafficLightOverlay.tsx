@@ -1,16 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useIsElectrobunMac } from "@/lib/hooks/use-electrobun-platform";
 import { motion } from "framer-motion";
 import { SIDEBAR_TRANSITION, useSidebar } from "@/components/ui/sidebar";
-
-function isElectrobunMac(): boolean {
-  if (typeof window === "undefined") return false;
-  const platform = (window as unknown as { __COVALT_ELECTROBUN_PLATFORM?: string })
-    .__COVALT_ELECTROBUN_PLATFORM;
-  if (platform) return platform === "darwin";
-  return document.documentElement.classList.contains("electrobun-macos");
-}
 
 /**
  * Creates a beautifully curved cutout overlay for macOS traffic lights.
@@ -19,14 +11,7 @@ function isElectrobunMac(): boolean {
  */
 export function TrafficLightOverlay() {
   const { open: sidebarOpen } = useSidebar();
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    const sync = () => setEnabled(isElectrobunMac());
-    sync();
-    const retry = window.setTimeout(sync, 250);
-    return () => window.clearTimeout(retry);
-  }, []);
+  const enabled = useIsElectrobunMac();
 
   if (!enabled) return null;
 

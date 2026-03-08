@@ -1,9 +1,22 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import type { ThemeMode, ThemeState, ThemeProviderProps } from "./types";
+import type { ThemeStyles } from "./types";
 import { defaultThemeState, getPresetThemeStyles } from "./theme-presets";
 import { applyTheme } from "./fix-global-css";
+
+type ThemeMode = "light" | "dark";
+
+interface ThemeState {
+	currentMode: ThemeMode;
+	preset: string;
+	styles: ThemeStyles;
+}
+
+interface ThemeProviderProps {
+	children: React.ReactNode;
+	defaultPreset?: string;
+}
 
 type ThemeContextType = {
 	themeState: ThemeState;

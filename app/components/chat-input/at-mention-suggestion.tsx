@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { MentionItem } from "./at-mention-extension";
 
-export interface MentionSuggestionListProps {
+interface MentionSuggestionListProps {
   items: MentionItem[];
   command: (item: MentionItem) => void;
   query?: string;

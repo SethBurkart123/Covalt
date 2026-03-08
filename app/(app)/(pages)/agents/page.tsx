@@ -20,6 +20,7 @@ export default function AgentsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<AgentInfo | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setTitle('Agents');
@@ -59,6 +60,7 @@ export default function AgentsPage() {
   const handleDeleteClick = useCallback((agentId: string) => {
     const agent = agents.find(a => a.id === agentId);
     if (agent) {
+      setDeleteError(null);
       setAgentToDelete(agent);
       setDeleteDialogOpen(true);
     }
@@ -66,14 +68,18 @@ export default function AgentsPage() {
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!agentToDelete) return;
-    
+
+    setDeleteError(null);
+
     try {
       await deleteAgent({ body: { id: agentToDelete.id } });
       setAgents(prev => prev.filter(a => a.id !== agentToDelete.id));
       setDeleteDialogOpen(false);
       setAgentToDelete(null);
+      setDeleteError(null);
     } catch (err) {
       console.error('Failed to delete agent:', err);
+      setDeleteError('Failed to delete agent. Please try again.');
     }
   }, [agentToDelete]);
 
@@ -122,9 +128,15 @@ export default function AgentsPage() {
       
       <DeleteAgentDialog
         open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setDeleteDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setDeleteError(null);
+          }
+        }}
         agent={agentToDelete}
         onConfirm={handleDeleteConfirm}
+        error={deleteError}
       />
     </div>
   );

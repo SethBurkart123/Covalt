@@ -13,7 +13,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import { AttachmentPreview } from "./AttachmentPreview";
 import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
 
-export interface ChatMessageProps {
+interface ChatMessageProps {
   role: "user" | "assistant";
   content: string | ContentBlock[];
   isStreaming?: boolean;
