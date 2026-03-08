@@ -7,65 +7,35 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { ChevronDown, Loader2, CheckCircle, XCircle } from 'lucide-react';
-import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 import { useProviderItemState } from '@/lib/hooks/providers/use-provider-item-state';
+import type { ProviderItemRowActions, ProviderItemRowViewModel } from './provider-item.types';
 
 interface ProviderItemProps {
-  def: ProviderDefinition;
-  config: ProviderConfig;
-  isConnected: boolean;
-  isPluginProvider?: boolean;
-  saving: boolean;
-  saved: boolean;
-  connectionStatus: 'idle' | 'testing' | 'success' | 'error';
-  connectionError?: string;
-  oauthStatus?: {
-    status: 'none' | 'pending' | 'authenticated' | 'error';
-    authUrl?: string;
-    instructions?: string;
-    error?: string;
-  };
-  oauthCode?: string;
-  oauthEnterpriseDomain?: string;
-  oauthIsAuthenticating?: boolean;
-  oauthIsRevoking?: boolean;
-  oauthIsSubmitting?: boolean;
-  onOauthCodeChange?: (value: string) => void;
-  onOauthEnterpriseDomainChange?: (value: string) => void;
-  onOauthStart?: () => void;
-  onOauthSubmitCode?: () => void;
-  onOauthRevoke?: () => void;
-  onOauthOpenLink?: (url: string) => void;
-  onChange: (field: keyof ProviderConfig, value: string | boolean) => void;
-  onSave: () => Promise<void> | void;
-  onTestConnection: () => void;
+  row: ProviderItemRowViewModel;
+  actions: ProviderItemRowActions;
 }
 
-export default function ProviderItem({ 
-  def, 
-  config, 
-  isConnected,
-  isPluginProvider,
-  saving, 
-  saved, 
-  connectionStatus,
-  connectionError,
-  oauthStatus,
-  oauthCode,
-  oauthEnterpriseDomain,
-  oauthIsAuthenticating,
-  oauthIsRevoking,
-  oauthIsSubmitting,
-  onOauthCodeChange,
-  onOauthEnterpriseDomainChange,
-  onOauthStart,
-  onOauthSubmitCode,
-  onOauthRevoke,
-  onOauthOpenLink,
-  onChange, 
-  onSave,
-  onTestConnection
-}: ProviderItemProps) {
+export default function ProviderItem({ row, actions }: ProviderItemProps) {
+  const { def, config, isConnected, isPluginProvider, connection, oauthStatus, oauthUi } = row;
+  const { saving, saved, status: connectionStatus, error: connectionError } = connection;
+  const {
+    code: oauthCode,
+    enterpriseDomain: oauthEnterpriseDomain,
+    authenticating: oauthIsAuthenticating,
+    revoking: oauthIsRevoking,
+    submitting: oauthIsSubmitting,
+  } = oauthUi;
+  const {
+    onChange,
+    onSave,
+    onTestConnection,
+    onOauthCodeChange,
+    onOauthEnterpriseDomainChange,
+    onOauthStart,
+    onOauthSubmitCode,
+    onOauthRevoke,
+    onOauthOpenLink,
+  } = actions;
   const {
     isOpen,
     setIsOpen,
@@ -286,7 +256,7 @@ export default function ProviderItem({
                 type="text"
                 placeholder="Paste authorization code"
                 value={oauthCode || ''}
-                onChange={(e) => onOauthCodeChange?.(e.target.value)}
+                onChange={(e) => onOauthCodeChange(e.target.value)}
               />
               <Button
                 variant="outline"
@@ -429,7 +399,7 @@ export default function ProviderItem({
                     type="text"
                     placeholder="company.ghe.com"
                     value={oauthEnterpriseDomain || ''}
-                    onChange={(e) => onOauthEnterpriseDomainChange?.(e.target.value)}
+                    onChange={(e) => onOauthEnterpriseDomainChange(e.target.value)}
                   />
                 </div>
               )}
@@ -487,7 +457,7 @@ export default function ProviderItem({
                     type="text"
                     placeholder="Paste the authorization code or redirect URL"
                     value={oauthCode || ''}
-                    onChange={(e) => onOauthCodeChange?.(e.target.value)}
+                    onChange={(e) => onOauthCodeChange(e.target.value)}
                   />
                 </div>
               )}

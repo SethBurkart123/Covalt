@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { Boxes, Settings, Palette, Store, ShieldCheck, Users, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 

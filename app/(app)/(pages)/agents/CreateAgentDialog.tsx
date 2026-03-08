@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmojiPickerPopover } from '@/components/ui/emoji-picker-popover';
 import { createAgent } from '@/python/api';
+import { toEmojiIconValue } from './icon-contract';
 
 interface CreateAgentDialogProps {
   open: boolean;
@@ -48,7 +49,7 @@ export function CreateAgentDialog({
         body: {
           name: name.trim(),
           description: description.trim() || undefined,
-          icon: icon.trim() ? `emoji:${icon.trim()}` : undefined,
+          icon: toEmojiIconValue(icon),
         },
       });
       setName('');

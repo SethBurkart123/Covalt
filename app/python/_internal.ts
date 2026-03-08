@@ -28,6 +28,7 @@ export interface BridgeChannel<T> {
 
 export function initBridge(baseUrl: string): void {
     _baseUrl = baseUrl.replace(/\/$/, "");
+    console.log(`[Zynk] Initialized with base URL: ${_baseUrl}`);
 }
 
 export function getBaseUrl(): string {

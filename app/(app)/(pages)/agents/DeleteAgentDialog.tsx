@@ -18,6 +18,7 @@ interface DeleteAgentDialogProps {
   onOpenChange: (open: boolean) => void;
   agent: AgentInfo | null;
   onConfirm: () => Promise<void>;
+  error?: string | null;
 }
 
 export function DeleteAgentDialog({
@@ -25,6 +26,7 @@ export function DeleteAgentDialog({
   onOpenChange,
   agent,
   onConfirm,
+  error,
 }: DeleteAgentDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -56,13 +58,14 @@ export function DeleteAgentDialog({
           </div>
         </DialogHeader>
         
-        <div className="py-4">
+        <div className="py-4 space-y-3">
           <p className="text-sm text-muted-foreground">
             Are you sure you want to delete <span className="font-medium text-foreground">{agent.name}</span>?
             The agent and all its configuration will be permanently removed.
           </p>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
-        
+
         <DialogFooter>
           <Button
             variant="outline"

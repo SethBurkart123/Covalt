@@ -40,6 +40,11 @@ function normalizeControlKey(filePath: string): string | null {
 }
 
 describe('flow controls registry', () => {
+  it('imports controls index module', async () => {
+    const controlsIndex = await import('../controls/index');
+    expect(typeof controlsIndex.ParameterControl).toBe('object');
+  });
+
   it('keeps parameter-control registry mappings in sync with control modules', () => {
     const registryKeys = new Set<ParameterType>([
       'float',

@@ -1,19 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ProviderDefinition } from '@/lib/types/provider-catalog';
-
-type OAuthStatus = 'none' | 'pending' | 'authenticated' | 'error';
-
-interface ProviderItemOauthState {
-  status: OAuthStatus;
-  authUrl?: string;
-  instructions?: string;
-  error?: string;
-}
+import type { OAuthState } from './types';
 
 interface UseProviderItemStateParams {
   def: ProviderDefinition;
   isConnected: boolean;
-  oauthStatus?: ProviderItemOauthState;
+  oauthStatus?: OAuthState;
   oauthIsAuthenticating?: boolean;
   oauthIsRevoking?: boolean;
   oauthIsSubmitting?: boolean;

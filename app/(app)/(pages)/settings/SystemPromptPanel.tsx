@@ -17,26 +17,58 @@ export default function SystemPromptPanel() {
     loadSettings();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      if (pendingSaveRef.current !== null) {
-        saveSystemPromptSettings({ body: { prompt: pendingSaveRef.current } });
-      }
-    };
-  }, []);
+  const performSave = useCallback(async (
+    newPrompt: string,
+    options?: { trackSaving?: boolean },
+  ) => {
+    const trackSaving = options?.trackSaving ?? true;
+    if (trackSaving) {
+      setIsSaving(true);
+    }
 
-  const performSave = async (newPrompt: string) => {
-    setIsSaving(true);
     try {
       await saveSystemPromptSettings({ body: { prompt: newPrompt } });
     } catch (e) {
       console.error("Failed to save system prompt settings", e);
     } finally {
-      setIsSaving(false);
+      if (trackSaving) {
+        setIsSaving(false);
+      }
       pendingSaveRef.current = null;
     }
-  };
+  }, []);
+
+  const flushPendingSave = useCallback((options?: { trackSaving?: boolean }) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    if (pendingSaveRef.current === null) {
+      return;
+    }
+
+    void performSave(pendingSaveRef.current, options);
+  }, [performSave]);
+
+  useEffect(() => {
+    return () => {
+      flushPendingSave({ trackSaving: false });
+    };
+  }, [flushPendingSave]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSave({ trackSaving: false });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushPendingSave]);
 
   const debouncedSave = useCallback((newPrompt: string) => {
     pendingSaveRef.current = newPrompt;
@@ -46,9 +78,10 @@ export default function SystemPromptPanel() {
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      performSave(newPrompt);
+      saveTimeoutRef.current = null;
+      void performSave(newPrompt);
     }, 500);
-  }, []);
+  }, [performSave]);
 
   const loadSettings = async () => {
     setIsLoading(true);
@@ -93,6 +126,7 @@ export default function SystemPromptPanel() {
           id="system-prompt"
           value={prompt}
           onChange={(e) => handleChange(e.target.value)}
+          onBlur={() => flushPendingSave()}
           className="w-full min-h-[120px] p-2 text-sm rounded-md border border-input bg-background resize-y"
           placeholder="Enter custom instructions for the AI assistant..."
         />

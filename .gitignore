@@ -49,3 +49,7 @@ target/
 
 zynk
 tsconfig.tsbuildinfo
+
+# Local refactor/review artifacts
+.desloppify/
+scorecard.png
