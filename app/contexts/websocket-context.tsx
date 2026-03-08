@@ -117,7 +117,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           break;
         }
         default:
-          console.log("[WebSocket] Unknown event:", message.event);
+          console.log("WebSocket: Unknown event:", message.event);
       }
     },
     []
@@ -138,7 +138,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
       ws.onopen = () => {
         if (!mountedRef.current) return;
-        console.log("[WebSocket] Connected to events");
+        console.log("WebSocket: Connected to events");
         setStatus("connected");
 
         pingIntervalRef.current = setInterval(() => {
@@ -154,13 +154,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           const message = JSON.parse(event.data);
           handleMessage(message);
         } catch (e) {
-          console.error("[WebSocket] Failed to parse message:", e);
+          console.error("WebSocket: Failed to parse message:", e);
         }
       };
 
       ws.onclose = (event) => {
         if (!mountedRef.current) return;
-        console.log("[WebSocket] Disconnected:", event.code, event.reason);
+        console.log("WebSocket: Disconnected:", event.code, event.reason);
         setStatus("disconnected");
         cleanup();
         scheduleReconnectRef.current();
@@ -168,11 +168,11 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
       ws.onerror = (error) => {
         if (!mountedRef.current) return;
-        console.error("[WebSocket] Error:", error);
+        console.error("WebSocket: Error:", error);
         setStatus("error");
       };
     } catch (e) {
-      console.error("[WebSocket] Failed to connect:", e);
+      console.error("WebSocket: Failed to connect:", e);
       setStatus("error");
       scheduleReconnectRef.current();
     }
@@ -184,7 +184,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
     reconnectTimeoutRef.current = setTimeout(() => {
       if (mountedRef.current) {
-        console.log("[WebSocket] Attempting reconnect...");
+        console.log("WebSocket: Attempting reconnect...");
         connect();
       }
     }, RECONNECT_DELAY);

@@ -1,4 +1,10 @@
-import type { ThemeState } from "./types";
+interface ThemeState {
+  currentMode: "light" | "dark";
+  styles: {
+    light: Record<string, unknown>;
+    dark: Record<string, unknown>;
+  };
+}
 
 export function applyTheme(theme: ThemeState): void {
   if (typeof document === "undefined") return;

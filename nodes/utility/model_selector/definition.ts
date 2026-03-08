@@ -30,5 +30,3 @@ export const modelSelector = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default modelSelector;

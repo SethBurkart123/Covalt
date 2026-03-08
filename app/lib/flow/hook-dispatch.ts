@@ -40,7 +40,7 @@ export function resolveSocketTypePropagation(
   return undefined;
 }
 
-export interface SocketTypePropagationConfig {
+interface SocketTypePropagationConfig {
   stateField: string;
   inputHandle: string;
   outputHandle: string;

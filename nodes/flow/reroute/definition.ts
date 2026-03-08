@@ -62,5 +62,3 @@ export const reroute = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default reroute;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "katex/dist/katex.min.css";
@@ -32,11 +33,16 @@ const themeScript = `
     const raw = localStorage.getItem("theme-active-styles");
     if (!raw) return;
 
-    const styles = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+
+    const styles = parsed as Record<string, unknown>;
     const root = document.documentElement;
     for (const key in styles) {
       const value = styles[key];
-      if (value) root.style.setProperty(\`--\${key}\`, value);
+      if (typeof value === "string" && value) {
+        root.style.setProperty(\`--\${key}\`, value);
+      }
     }
   } catch {}
 })();
@@ -50,7 +56,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>

@@ -73,5 +73,3 @@ export const conditional = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default conditional;

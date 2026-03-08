@@ -108,5 +108,3 @@ export const agent = {
     },
   ],
 } as const satisfies NodeDefinition;
-
-export default agent;

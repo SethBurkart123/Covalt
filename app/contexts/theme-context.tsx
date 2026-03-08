@@ -14,14 +14,14 @@ import { presets, defaultThemeState, defaultPreviewStyles, getPresetThemeStyles 
 
 export type ThemeMode = "light" | "dark" | "system";
 
-export interface CustomTheme {
+interface CustomTheme {
   id: string;
   name: string;
   createdAt: string;
   styles: ThemeStyles;
 }
 
-export interface ThemeState {
+interface ThemeState {
   mode: ThemeMode;
   resolvedMode: "light" | "dark";
   preset: string;

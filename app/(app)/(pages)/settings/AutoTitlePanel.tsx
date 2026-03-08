@@ -37,23 +37,15 @@ export default function AutoTitlePanel() {
     loadSettings();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      if (pendingSaveRef.current) saveAutoTitleSettings({
-        body: {
-          enabled: pendingSaveRef.current.enabled,
-          prompt: pendingSaveRef.current.prompt,
-          modelMode: pendingSaveRef.current.modelMode,
-          provider: pendingSaveRef.current.provider,
-          modelId: pendingSaveRef.current.modelId,
-        },
-      });
-    };
-  }, []);
+  const performSave = useCallback(async (
+    settingsToSave: AutoTitleSettings,
+    options?: { trackSaving?: boolean },
+  ) => {
+    const trackSaving = options?.trackSaving ?? true;
+    if (trackSaving) {
+      setIsSaving(true);
+    }
 
-  const performSave = async (settingsToSave: AutoTitleSettings) => {
-    setIsSaving(true);
     try {
       await saveAutoTitleSettings({
         body: {
@@ -67,22 +59,57 @@ export default function AutoTitlePanel() {
     } catch (e) {
       console.error("Failed to save auto-title settings", e);
     } finally {
-      setIsSaving(false);
+      if (trackSaving) {
+        setIsSaving(false);
+      }
       pendingSaveRef.current = null;
     }
-  };
+  }, []);
+
+  const flushPendingSave = useCallback((options?: { trackSaving?: boolean }) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    if (!pendingSaveRef.current) {
+      return;
+    }
+
+    void performSave(pendingSaveRef.current, options);
+  }, [performSave]);
+
+  useEffect(() => {
+    return () => {
+      flushPendingSave({ trackSaving: false });
+    };
+  }, [flushPendingSave]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSave({ trackSaving: false });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushPendingSave]);
 
   const debouncedSave = useCallback((newSettings: AutoTitleSettings) => {
     pendingSaveRef.current = newSettings;
-    
+
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
+
     saveTimeoutRef.current = setTimeout(() => {
-      performSave(newSettings);
+      saveTimeoutRef.current = null;
+      void performSave(newSettings);
     }, 500);
-  }, []);
+  }, [performSave]);
 
   const loadSettings = async () => {
     setIsLoading(true);
@@ -158,6 +185,7 @@ export default function AutoTitlePanel() {
                 onChange={(e) =>
                   updateSettings({ prompt: e.target.value })
                 }
+                onBlur={() => flushPendingSave()}
                 className="w-full min-h-[100px] p-2 text-sm rounded-md border border-input bg-background"
                 placeholder="Enter the prompt for generating titles..."
               />

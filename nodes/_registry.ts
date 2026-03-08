@@ -1,22 +1,18 @@
 import type { NodeDefinition, FlowNode, SocketTypeId, Parameter } from './_types';
 import { canConnect, canCoerce } from '@/lib/flow/sockets';
 import {
-  clearDynamicNodeDefinitions as clearDynamicDefinitions,
   getNodeDefinition as getRegisteredNodeDefinition,
   getNodeDefinitionMetadata as getRegisteredNodeDefinitionMetadata,
   listAllNodeDefinitions as listRegisteredNodeDefinitions,
-  listNodeDefinitionMetadata as listRegisteredNodeDefinitionMetadata,
   listNodeTypes as listRegisteredNodeTypes,
   registerPlugin,
-  setDynamicNodeDefinitions as setDynamicDefinitions,
   type NodeDefinitionMetadata,
 } from '@/lib/flow/plugin-registry';
 
 import { builtinPluginManifest } from './manifest';
 
-export { builtinPluginManifest };
 
-export interface CompatibleNodeSocket {
+interface CompatibleNodeSocket {
   nodeId: string;
   nodeName: string;
   nodeIcon: string;
@@ -114,10 +110,6 @@ export function listNodeTypes(): string[] {
   return listRegisteredNodeTypes();
 }
 
-export function listNodeDefinitionMetadata(): NodeDefinitionMetadata[] {
-  return listRegisteredNodeDefinitionMetadata();
-}
-
 export function getNodesByCategory(category: NodeDefinition['category']): NodeDefinition[] {
   return listAllNodeDefinitions().filter((node) => node.category === category);
 }
@@ -159,10 +151,3 @@ export function getCompatibleNodeSockets(
   return results;
 }
 
-export function setDynamicNodeDefinitions(definitions: readonly NodeDefinition[]): void {
-  setDynamicDefinitions(definitions);
-}
-
-export function clearDynamicNodeDefinitions(): void {
-  clearDynamicDefinitions();
-}

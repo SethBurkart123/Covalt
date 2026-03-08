@@ -12,9 +12,17 @@ interface RuntimeEventContract {
   groups?: Record<string, string[]>;
 }
 
+function parseJsonObject(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Failed to parse runtime event contract JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 function readContract(filePath: string): RuntimeEventContract {
   const raw = readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<RuntimeEventContract>;
+  const parsed = parseJsonObject(raw) as Partial<RuntimeEventContract>;
 
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Runtime event contract must be a JSON object");

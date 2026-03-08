@@ -2,7 +2,7 @@
 
 import type { OptionSchema } from "@/lib/types/chat";
 import { isOptionVisible } from "@/lib/hooks/use-model-options";
-import { ModelOptionControl } from "@/components/model-options";
+import { ModelOptionControl } from "@/components/model-options/ModelOptionControl";
 
 interface MainModelOptionsProps {
   schema: OptionSchema;

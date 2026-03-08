@@ -4,7 +4,7 @@ import type {
 } from '@/contexts/agent-test-chat-context';
 import { getNodeDefinition } from '@/lib/flow';
 
-export interface PathRow {
+interface PathRow {
   path: string;
   value: unknown;
   type: string;
@@ -116,7 +116,7 @@ export function formatSchemaPreview(value: unknown): string {
   return String(value);
 }
 
-export function escapeLabel(label: string): string {
+function escapeLabel(label: string): string {
   return label.replace(/'/g, "\\'");
 }
 
@@ -134,6 +134,19 @@ export function buildInputExpression(path: string): string {
 export function buildTriggerExpression(path: string): string {
   if (!path) return '{{ $trigger }}';
   return `{{ $trigger.${path} }}`;
+}
+
+export function buildTriggerFallback(): Record<string, unknown> {
+  return {
+    message: '',
+    last_user_message: '',
+    history: [],
+    messages: [],
+    attachments: [],
+    body: {},
+    headers: {},
+    query: {},
+  };
 }
 
 export function isTriggerNode(nodeType?: string): boolean {

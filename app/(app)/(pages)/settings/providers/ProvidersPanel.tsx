@@ -16,7 +16,13 @@ import { useProviderCatalogData } from '@/lib/hooks/providers/use-provider-catal
 import { useProviderConnectionActions } from '@/lib/hooks/providers/use-provider-connection-actions';
 import { useProviderFiltering } from '@/lib/hooks/providers/use-provider-filtering';
 import { useProviderOauthActions } from '@/lib/hooks/providers/use-provider-oauth-actions';
-import type { ProviderConnectionStatus } from '@/lib/hooks/providers/types';
+import { useOauthPopup } from '@/lib/hooks/use-oauth-popup';
+import type {
+  ProviderConnectionUiState,
+  ProviderItemRowActions,
+  ProviderItemRowViewModel,
+  ProviderOauthUiState,
+} from './provider-item.types';
 
 interface ProvidersPanelProps {
   onOpenStore?: () => void;
@@ -24,15 +30,8 @@ interface ProvidersPanelProps {
 
 export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
   const [search, setSearch] = useState('');
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [saved, setSaved] = useState<Record<string, boolean>>({});
-  const [connectionStatus, setConnectionStatus] = useState<Record<string, ProviderConnectionStatus>>({});
-  const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
-  const [oauthCodes, setOauthCodes] = useState<Record<string, string>>({});
-  const [oauthEnterpriseDomains, setOauthEnterpriseDomains] = useState<Record<string, string>>({});
-  const [oauthAuthenticating, setOauthAuthenticating] = useState<Record<string, boolean>>({});
-  const [oauthRevoking, setOauthRevoking] = useState<Record<string, boolean>>({});
-  const [oauthSubmitting, setOauthSubmitting] = useState<Record<string, boolean>>({});
+  const [connectionUiByProvider, setConnectionUiByProvider] = useState<Record<string, ProviderConnectionUiState>>({});
+  const [oauthUiByProvider, setOauthUiByProvider] = useState<Record<string, ProviderOauthUiState>>({});
 
   const chatContext = useOptionalChat();
   const refreshModels = chatContext?.refreshModels;
@@ -61,32 +60,47 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     providerMap,
   });
 
-  const openOauthWindow = useCallback((url: string) => {
-    if (typeof window === 'undefined') return;
-    const width = 600;
-    const height = 800;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-    window.open(url, 'Authenticate', `width=${width},height=${height},left=${left},top=${top}`);
+  const patchConnectionUi = useCallback((providerId: string, patch: Partial<ProviderConnectionUiState>) => {
+    setConnectionUiByProvider((prev) => ({
+      ...prev,
+      [providerId]: {
+        saving: prev[providerId]?.saving ?? false,
+        saved: prev[providerId]?.saved ?? false,
+        status: prev[providerId]?.status ?? 'idle',
+        error: prev[providerId]?.error,
+        ...patch,
+      },
+    }));
   }, []);
+
+  const patchOauthUi = useCallback((providerId: string, patch: Partial<ProviderOauthUiState>) => {
+    setOauthUiByProvider((prev) => ({
+      ...prev,
+      [providerId]: {
+        code: prev[providerId]?.code ?? '',
+        enterpriseDomain: prev[providerId]?.enterpriseDomain ?? '',
+        authenticating: prev[providerId]?.authenticating ?? false,
+        revoking: prev[providerId]?.revoking ?? false,
+        submitting: prev[providerId]?.submitting ?? false,
+        ...patch,
+      },
+    }));
+  }, []);
+
+  const openOauthWindow = useOauthPopup();
 
   const { saveProviderConfig, testConnection } = useProviderConnectionActions({
     providerConfigs,
     providerMap,
     refreshProviderStatus,
     refreshModels,
-    setSaving,
-    setSaved,
-    setConnectionStatus,
-    setConnectionErrors,
+    patchConnectionUi,
     setProviderConnections,
   });
 
   const { startOauth, submitOauthCode, revokeOauth } = useProviderOauthActions({
     setOauthStatus,
-    setOauthAuthenticating,
-    setOauthSubmitting,
-    setOauthRevoking,
+    patchOauthUi,
     refreshModels,
     openOauthWindow,
   });
@@ -187,38 +201,48 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
                   enabled: def.defaults?.enabled ?? true,
                 } satisfies ProviderConfig);
 
-              return (
-                <ProviderItem
-                  key={providerId}
-                  def={def}
-                  config={config}
-                  isConnected={isConnected(providerId)}
-                  isPluginProvider={Boolean(pluginProviders[providerId])}
-                  saving={Boolean(saving[providerId])}
-                  saved={Boolean(saved[providerId])}
-                  connectionStatus={connectionStatus[providerId] || 'idle'}
-                  connectionError={connectionErrors[providerId]}
-                  oauthStatus={oauthStatus[providerId]}
-                  oauthCode={oauthCodes[providerId]}
-                  oauthEnterpriseDomain={oauthEnterpriseDomains[providerId]}
-                  oauthIsAuthenticating={oauthAuthenticating[providerId]}
-                  oauthIsRevoking={oauthRevoking[providerId]}
-                  oauthIsSubmitting={oauthSubmitting[providerId]}
-                  onOauthCodeChange={(value) =>
-                    setOauthCodes((prev) => ({ ...prev, [providerId]: value }))
-                  }
-                  onOauthEnterpriseDomainChange={(value) =>
-                    setOauthEnterpriseDomains((prev) => ({ ...prev, [providerId]: value }))
-                  }
-                  onOauthStart={() => startOauth(providerId, oauthEnterpriseDomains[providerId])}
-                  onOauthSubmitCode={() => submitOauthCode(providerId, oauthCodes[providerId] || '')}
-                  onOauthRevoke={() => revokeOauth(providerId)}
-                  onOauthOpenLink={openOauthWindow}
-                  onChange={(field, value) => setProviderConfigField(providerId, field, value)}
-                  onSave={() => handleSave(providerId)}
-                  onTestConnection={() => handleTestConnection(providerId)}
-                />
-              );
+              const connection =
+                connectionUiByProvider[providerId] ||
+                ({
+                  saving: false,
+                  saved: false,
+                  status: 'idle',
+                  error: undefined,
+                } satisfies ProviderConnectionUiState);
+
+              const oauthUi =
+                oauthUiByProvider[providerId] ||
+                ({
+                  code: '',
+                  enterpriseDomain: '',
+                  authenticating: false,
+                  revoking: false,
+                  submitting: false,
+                } satisfies ProviderOauthUiState);
+
+              const row: ProviderItemRowViewModel = {
+                def,
+                config,
+                isConnected: isConnected(providerId),
+                isPluginProvider: Boolean(pluginProviders[providerId]),
+                oauthStatus: oauthStatus[providerId],
+                connection,
+                oauthUi,
+              };
+
+              const actions: ProviderItemRowActions = {
+                onOauthCodeChange: (value) => patchOauthUi(providerId, { code: value }),
+                onOauthEnterpriseDomainChange: (value) => patchOauthUi(providerId, { enterpriseDomain: value }),
+                onOauthStart: () => startOauth(providerId, oauthUi.enterpriseDomain),
+                onOauthSubmitCode: () => submitOauthCode(providerId, oauthUi.code || ''),
+                onOauthRevoke: () => revokeOauth(providerId),
+                onOauthOpenLink: openOauthWindow,
+                onChange: (field, value) => setProviderConfigField(providerId, field, value),
+                onSave: () => handleSave(providerId),
+                onTestConnection: () => handleTestConnection(providerId),
+              };
+
+              return <ProviderItem key={providerId} row={row} actions={actions} />;
             })}
       </div>
 

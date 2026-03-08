@@ -8,7 +8,7 @@ import { editorRenderer } from "@/components/tool-renderers/editor";
 
 const DEFAULT_RENDERER_KEY = "default";
 
-export const RENDERERS: RendererDefinition[] = [
+const RENDERERS: RendererDefinition[] = [
   defaultRenderer,
   codeRenderer,
   markdownRenderer,
@@ -69,10 +69,3 @@ export function preloadToolCallRenderer(name?: string): Promise<void> {
   return getToolCallRenderer(name).then(() => undefined);
 }
 
-export function listToolCallRenderers(): readonly RendererDefinition[] {
-  return RENDERERS;
-}
-
-export const RENDERER_MAP = Object.fromEntries(
-  RENDERERS.map((renderer) => [renderer.key, renderer]),
-);

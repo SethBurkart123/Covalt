@@ -7,7 +7,7 @@ import { isOptionVisible } from "@/lib/hooks/use-model-options";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ModelOptionControl } from "@/components/model-options";
+import { ModelOptionControl } from "@/components/model-options/ModelOptionControl";
 
 interface AdvancedOptionsPopoverProps {
   schema: OptionSchema;

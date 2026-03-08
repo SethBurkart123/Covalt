@@ -1,6 +1,6 @@
 import type { ChatData } from "@/lib/types/chat";
 
-export type ChatGroup = {
+type ChatGroup = {
   label: string;
   chatIds: string[];
 };

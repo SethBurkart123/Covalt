@@ -1,4 +1,4 @@
-import type { ColorFormat } from "./types";
+type ColorFormat = "hsl" | "hex" | "rgb" | "oklch";
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 	const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;

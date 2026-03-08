@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { getBackendBaseUrl } from '@/lib/services/backend-url';
 import { getFlowIcon } from './flow-icon';
 
-export interface RouteDisplayState {
+interface RouteDisplayState {
   label: string;
   idField: string;
   value: string;

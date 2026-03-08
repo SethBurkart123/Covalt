@@ -36,7 +36,7 @@ import {
 } from "@/lib/services/tool-event-handler";
 
 export { createInitialState };
-export type { StreamCallbacks, StreamState };
+export type { StreamState };
 
 function emitEvent(
   callbacks: StreamCallbacks,

@@ -1,25 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { ProviderDefinition } from '@/lib/types/provider-catalog';
-
-type OAuthStatus = 'none' | 'pending' | 'authenticated' | 'error';
-
-interface ProviderItemOauthState {
-  status: OAuthStatus;
-  authUrl?: string;
-  instructions?: string;
-  error?: string;
-}
+import type { OAuthState } from './types';
 
 interface UseProviderItemStateParams {
   def: ProviderDefinition;
   isConnected: boolean;
-  oauthStatus?: ProviderItemOauthState;
+  oauthStatus?: OAuthState;
   oauthIsAuthenticating?: boolean;
   oauthIsRevoking?: boolean;
   oauthIsSubmitting?: boolean;
 }
 
-export const extractDeviceCode = (instructions?: string): string | null => {
+const extractDeviceCode = (instructions?: string): string | null => {
   if (!instructions) return null;
   const labeledMatch = instructions.match(/code:\s*([A-Za-z0-9-]+)/i);
   if (labeledMatch?.[1]) return labeledMatch[1];
@@ -29,7 +21,7 @@ export const extractDeviceCode = (instructions?: string): string | null => {
   return plainMatch ? plainMatch[0] : null;
 };
 
-export const formatDeviceCode = (code: string): string => {
+const formatDeviceCode = (code: string): string => {
   const normalized = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   if (!normalized) return code.toUpperCase();
   if (normalized.length % 2 === 0 && normalized.length >= 6) {

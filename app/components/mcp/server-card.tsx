@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type MouseEvent } from "react";
+import { useState, useCallback, type MouseEvent } from "react";
 import {
   RefreshCw,
   Plug,
@@ -22,6 +22,8 @@ import {
   revokeMcpOauth,
 } from "@/python/api";
 import { cn } from "@/lib/utils";
+import { openOauthPopup } from "@/lib/hooks/use-oauth-popup";
+import { useOauthPolling } from "@/lib/hooks/use-oauth-polling";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusConfig } from "@/components/ui/status-badge";
 import { McpErrorHover } from "./mcp-error-display";
@@ -74,41 +76,7 @@ export function McpServerCard({
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  const pollOauthStatus = useCallback(async () => {
-    try {
-      const status = await getMcpOauthStatus({ body: { id: server.id } });
-      if (status.status === "authenticated") {
-        stopPolling();
-        await reconnectMcpServer({ body: { id: server.id } });
-        setIsAuthenticating(false);
-      } else if (status.status === "error") {
-        stopPolling();
-        setIsAuthenticating(false);
-      }
-    } catch (error) {
-      stopPolling();
-      setIsAuthenticating(false);
-      console.error("OAuth status polling failed:", error);
-    }
-  }, [server.id, stopPolling]);
+  const { startOauthPolling } = useOauthPolling(openOauthPopup);
 
   const handleReconnect = useCallback(
     async (e: MouseEvent<HTMLButtonElement>) => {
@@ -132,42 +100,26 @@ export function McpServerCard({
       if (!serverUrl) return;
 
       setIsAuthenticating(true);
-      stopPolling();
 
-      try {
-        const result = await startMcpOauth({
-          body: { serverId: server.id, serverUrl },
-        });
-
-        if (!result.success || !result.authUrl) {
+      await startOauthPolling({
+        key: server.id,
+        start: () => startMcpOauth({ body: { serverId: server.id, serverUrl } }),
+        poll: () => getMcpOauthStatus({ body: { id: server.id } }),
+        isStartSuccess: (result) => result.success,
+        getStartAuthUrl: (result) => result.authUrl || undefined,
+        getPollStatus: (result) => result.status,
+        onAuthenticated: async () => {
+          await reconnectMcpServer({ body: { id: server.id } });
+        },
+        onError: (error) => {
+          console.error("OAuth status polling failed:", error);
+        },
+        onFinish: () => {
           setIsAuthenticating(false);
-          return;
-        }
-
-
-        const width = 600, height = 800;
-        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-        window.open(
-          result.authUrl,
-          "Authenticate",
-          `width=${width},height=${height},left=${left},top=${top}`
-        );
-
-        pollIntervalRef.current = setInterval(() => {
-          void pollOauthStatus();
-        }, 2000);
-
-        pollTimeoutRef.current = setTimeout(() => {
-          stopPolling();
-          setIsAuthenticating(false);
-        }, 5 * 60 * 1000);
-      } catch (error) {
-        console.error("Failed to start OAuth:", error);
-        setIsAuthenticating(false);
-      }
+        },
+      });
     },
-    [server.id, server.config?.url, pollOauthStatus, stopPolling]
+    [server.id, server.config?.url, startOauthPolling]
   );
 
   const handleRevoke = useCallback(

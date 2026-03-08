@@ -2,7 +2,7 @@
 
 import type { SocketTypeId, SocketShape, Parameter } from '@nodes/_types';
 
-export interface SocketType {
+interface SocketType {
   id: SocketTypeId;
   color: string;
   shape: SocketShape;

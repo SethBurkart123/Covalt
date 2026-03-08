@@ -1,6 +1,6 @@
 import type { ThemeStyleProps } from "@/lib/types";
 
-export interface ThemeFile {
+interface ThemeFile {
   id: string;
   name: string;
   createdAt?: string;
@@ -36,6 +36,3 @@ export const themes: Record<string, ThemeFile> = {
   vercel,
 } satisfies Record<string, ThemeFile>;
 
-export function getAvailableThemes() {
-  return Object.entries(themes).map(([id, theme]) => ({ id, name: theme.name }));
-}
