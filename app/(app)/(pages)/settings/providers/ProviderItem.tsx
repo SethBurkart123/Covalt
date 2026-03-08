@@ -1,13 +1,16 @@
 "use client";
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { ChevronDown, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useProviderItemState } from '@/lib/hooks/providers/use-provider-item-state';
+import { ProviderItemHeader } from './provider-item-header';
+import { ProviderOauthActionButton } from './provider-oauth-action-button';
+import { ProviderItemStatus } from './provider-item-status';
 import type { ProviderItemRowActions, ProviderItemRowViewModel } from './provider-item.types';
 
 interface ProviderItemProps {
@@ -62,94 +65,51 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
     oauthIsSubmitting,
   });
 
+  const openAuthLink = (url: string) => {
+    onOauthOpenLink(url);
+  };
+
+  const oauthStatusNode = showOauthConnected ? (
+    <ProviderItemStatus tone="success" label="Connected" />
+  ) : oauthStatus?.status === 'pending' ? (
+    <ProviderItemStatus tone="pending" label="Pending" />
+  ) : oauthStatus?.status === 'error' ? (
+    <ProviderItemStatus tone="error" label="Failed" />
+  ) : null;
+
+  const connectionStatusNode = connectionStatus === 'testing' ? (
+    <ProviderItemStatus tone="pending" label="Testing" iconOnly />
+  ) : connectionStatus === 'success' ? (
+    <ProviderItemStatus tone="success" label="Connected" />
+  ) : connectionStatus === 'error' ? (
+    <ProviderItemStatus tone="error" label="Failed" />
+  ) : connectionStatus === 'idle' && isConnected ? (
+    <ProviderItemStatus tone="success" label="Connected" />
+  ) : null;
+
   if (isCompactOauth) {
     const authUrl = oauthStatus?.authUrl;
     return (
       <Card className="overflow-hidden border-border/70 py-2 gap-0">
-        <div className="w-full px-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-            <div className="rounded-md flex items-center justify-center">
-              <def.icon />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium leading-none flex items-center gap-2">
-                {def.name}
-                {isOauth && showOauthConnected && (
-                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
-                    <CheckCircle size={14} />
-                    Connected
-                  </span>
-                )}
-                {isOauth && oauthStatus?.status === 'pending' && (
-                  <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Pending
-                  </span>
-                )}
-                {isOauth && oauthStatus?.status === 'error' && (
-                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
-                    <XCircle size={14} />
-                    Failed
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1 truncate">{def.description}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isOauthRevoking ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled
-              >
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                Signing out...
-              </Button>
-            ) : oauthConnected ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onOauthRevoke}
-              >
-                Sign out
-              </Button>
-            ) : authUrl ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  if (onOauthOpenLink) {
-                    onOauthOpenLink(authUrl);
-                    return;
-                  }
-                  window.open(authUrl, '_blank');
-                }}
-              >
-                Open link
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onOauthStart}
-                disabled={isOauthAuthenticating}
-              >
-                {isOauthAuthenticating ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Waiting...
-                  </>
-                ) : (
-                  <>
-                    Sign in
-                    <span className="sr-only"> to {def.name}</span>
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
+        <ProviderItemHeader
+          icon={def.icon}
+          name={def.name}
+          description={def.description}
+          status={oauthStatusNode}
+          truncateDescription
+          action={
+            <ProviderOauthActionButton
+              authUrl={authUrl}
+              oauthConnected={oauthConnected}
+              isAuthenticating={isOauthAuthenticating}
+              isRevoking={isOauthRevoking}
+              providerName={def.name}
+              onStart={onOauthStart}
+              onRevoke={onOauthRevoke}
+              onOpenLink={openAuthLink}
+            />
+          }
+        />
         {oauthError && (
           <div className="px-4 pb-3 text-xs text-red-600 dark:text-red-500">
             {oauthError}
@@ -164,90 +124,25 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
     const showCodeInput = Boolean(authUrl) && !oauthConnected;
     return (
       <Card className="overflow-hidden border-border/70 py-2 gap-0">
-        <div className="w-full px-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-            <div className="rounded-md flex items-center justify-center">
-              <def.icon />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium leading-none flex items-center gap-2">
-                {def.name}
-                {showOauthConnected && (
-                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
-                    <CheckCircle size={14} />
-                    Connected
-                  </span>
-                )}
-                {oauthStatus?.status === 'pending' && (
-                  <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Pending
-                  </span>
-                )}
-                {oauthStatus?.status === 'error' && (
-                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
-                    <XCircle size={14} />
-                    Failed
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1 truncate">{def.description}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isOauthRevoking ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled
-              >
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                Signing out...
-              </Button>
-            ) : oauthConnected ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onOauthRevoke}
-              >
-                Sign out
-              </Button>
-            ) : authUrl ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  if (onOauthOpenLink) {
-                    onOauthOpenLink(authUrl);
-                    return;
-                  }
-                  window.open(authUrl, '_blank');
-                }}
-              >
-                Open link
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onOauthStart}
-                disabled={isOauthAuthenticating}
-              >
-                {isOauthAuthenticating ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Waiting...
-                  </>
-                ) : (
-                  <>
-                    Sign in
-                    <span className="sr-only"> to {def.name}</span>
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
+        <ProviderItemHeader
+          icon={def.icon}
+          name={def.name}
+          description={def.description}
+          status={oauthStatusNode}
+          truncateDescription
+          action={
+            <ProviderOauthActionButton
+              authUrl={authUrl}
+              oauthConnected={oauthConnected}
+              isAuthenticating={isOauthAuthenticating}
+              isRevoking={isOauthRevoking}
+              providerName={def.name}
+              onStart={onOauthStart}
+              onRevoke={onOauthRevoke}
+              onOpenLink={openAuthLink}
+            />
+          }
+        />
         {showCodeInput && (
           <div className="px-4 pt-2 pb-3 mt-2 border-t border-border/60">
             <div className="flex items-center gap-2">
@@ -287,64 +182,15 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
 
   return (
     <Card className="overflow-hidden border-border/70 py-2 gap-0">
-      <button
-        className="w-full px-4 flex items-center justify-between transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-          <div className="rounded-md flex items-center justify-center">
-            <def.icon />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium leading-none flex items-center gap-2">
-              {def.name}
-              {!isOauth && connectionStatus === 'testing' && (
-                <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-              )}
-              {!isOauth && connectionStatus === 'success' && (
-                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
-                  <CheckCircle size={14} />
-                  Connected
-                </span>
-              )}
-              {!isOauth && connectionStatus === 'error' && (
-                <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
-                  <XCircle size={14} />
-                  Failed
-                </span>
-              )}
-              {!isOauth && connectionStatus === 'idle' && isConnected && (
-                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
-                  <CheckCircle size={14} />
-                  Connected
-                </span>
-              )}
-              {isOauth && showOauthConnected && (
-                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
-                  <CheckCircle size={14} />
-                  Connected
-                </span>
-              )}
-              {isOauth && oauthStatus?.status === 'pending' && (
-                <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Pending
-                </span>
-              )}
-              {isOauth && oauthStatus?.status === 'error' && (
-                <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-500">
-                  <XCircle size={14} />
-                  Failed
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">{def.description}</div>
-          </div>
-        </div>
-        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
-          <ChevronDown size={16} className="text-muted-foreground" />
-        </motion.div>
-      </button>
+      <ProviderItemHeader
+        icon={def.icon}
+        name={def.name}
+        description={def.description}
+        status={isOauth ? oauthStatusNode : connectionStatusNode}
+        collapsible
+        isOpen={isOpen}
+        onToggle={() => setIsOpen(!isOpen)}
+      />
 
       <AnimatePresence initial={false}>
         {isOpen && (
@@ -433,14 +279,7 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (!oauthStatus.authUrl) return;
-                          if (onOauthOpenLink) {
-                            onOauthOpenLink(oauthStatus.authUrl);
-                            return;
-                          }
-                          window.open(oauthStatus.authUrl, '_blank');
-                        }}
+                        onClick={() => oauthStatus.authUrl && openAuthLink(oauthStatus.authUrl)}
                       >
                         Open link
                       </Button>
@@ -521,84 +360,19 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
                           )}
                         </Button>
                       )}
-                      {isOauthRevoking ? (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          disabled
-                        >
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          {isDeviceOauth ? 'Signing out...' : 'Revoking...'}
-                        </Button>
-                      ) : isDeviceOauth ? (
-                        oauthConnected ? (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={onOauthRevoke}
-                          >
-                            Sign out
-                          </Button>
-                        ) : oauthStatus?.authUrl ? (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              if (!oauthStatus.authUrl) return;
-                              if (onOauthOpenLink) {
-                                onOauthOpenLink(oauthStatus.authUrl);
-                                return;
-                              }
-                              window.open(oauthStatus.authUrl, '_blank');
-                            }}
-                          >
-                            Open link
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={onOauthStart}
-                            disabled={isOauthAuthenticating}
-                          >
-                            {isOauthAuthenticating ? (
-                              <>
-                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                Waiting...
-                              </>
-                            ) : (
-                              <>
-                                Sign in
-                                <span className="sr-only"> to {def.name}</span>
-                              </>
-                            )}
-                          </Button>
-                        )
-                      ) : (!oauthConnected ? (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={onOauthStart}
-                          disabled={isOauthAuthenticating}
-                        >
-                          {isOauthAuthenticating ? (
-                            <>
-                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              Waiting...
-                            </>
-                          ) : (
-                            'Start Sign-in'
-                          )}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={onOauthRevoke}
-                        >
-                          Revoke
-                        </Button>
-                      ))}
+                      <ProviderOauthActionButton
+                        authUrl={oauthStatus?.authUrl}
+                        oauthConnected={oauthConnected}
+                        isAuthenticating={isOauthAuthenticating}
+                        isRevoking={isOauthRevoking}
+                        providerName={def.name}
+                        onStart={onOauthStart}
+                        onRevoke={onOauthRevoke}
+                        onOpenLink={openAuthLink}
+                        idleLabel={isDeviceOauth ? 'Sign in' : 'Start Sign-in'}
+                        connectedLabel={isDeviceOauth ? 'Sign out' : 'Revoke'}
+                        revokingLabel={isDeviceOauth ? 'Signing out...' : 'Revoking...'}
+                      />
                     </>
                   )}
                 </div>
