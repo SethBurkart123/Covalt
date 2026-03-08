@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getProviderIcon, OpenAIIcon } from './provider-icons';
 import GitHubIcon from './icons/GitHub';
-import ClaudeIcon from './icons/Claude';
 
 describe('provider-icons', () => {
   it('returns OpenAI icon when key is missing or unknown', () => {
@@ -13,6 +12,13 @@ describe('provider-icons', () => {
   it('normalizes provider keys before lookup', () => {
     expect(getProviderIcon('GitHub Models')).toBe(GitHubIcon);
     expect(getProviderIcon('github_models')).toBe(GitHubIcon);
-    expect(getProviderIcon('Anthropic')).toBe(ClaudeIcon);
+  });
+
+  it('returns stable image-backed icon components for mapped providers', () => {
+    const anthropicIcon = getProviderIcon('Anthropic');
+    const anthropicIconAgain = getProviderIcon('anthropic');
+
+    expect(anthropicIcon).toBe(anthropicIconAgain);
+    expect(anthropicIcon).not.toBe(OpenAIIcon);
   });
 });

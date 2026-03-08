@@ -9,20 +9,22 @@ import type { OAuthState } from './types';
 import { normalizeOAuthStatus } from './types';
 import { useOauthPolling } from '@/lib/hooks/use-oauth-polling';
 
+interface OauthUiPatch {
+  authenticating?: boolean;
+  submitting?: boolean;
+  revoking?: boolean;
+}
+
 interface UseProviderOauthActionsParams {
   setOauthStatus: Dispatch<SetStateAction<Record<string, OAuthState>>>;
-  setOauthAuthenticating: Dispatch<SetStateAction<Record<string, boolean>>>;
-  setOauthSubmitting: Dispatch<SetStateAction<Record<string, boolean>>>;
-  setOauthRevoking: Dispatch<SetStateAction<Record<string, boolean>>>;
+  patchOauthUi: (providerId: string, patch: OauthUiPatch) => void;
   refreshModels?: () => Promise<void> | void;
   openOauthWindow: (url: string) => void;
 }
 
 export function useProviderOauthActions({
   setOauthStatus,
-  setOauthAuthenticating,
-  setOauthSubmitting,
-  setOauthRevoking,
+  patchOauthUi,
   refreshModels,
   openOauthWindow,
 }: UseProviderOauthActionsParams) {
@@ -76,7 +78,7 @@ export function useProviderOauthActions({
 
   const startOauth = useCallback(
     async (providerId: string, enterpriseDomain?: string) => {
-      setOauthAuthenticating((prev) => ({ ...prev, [providerId]: true }));
+      patchOauthUi(providerId, { authenticating: true });
 
       await startOauthPolling({
         key: providerId,
@@ -114,24 +116,18 @@ export function useProviderOauthActions({
           setOauthError(providerId, 'Failed to load OAuth status', error);
         },
         onFinish: () => {
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          patchOauthUi(providerId, { authenticating: false });
         },
       });
     },
-    [
-      applyProviderOauthStatus,
-      refreshModels,
-      setOauthAuthenticating,
-      setOauthError,
-      startOauthPolling,
-    ],
+    [applyProviderOauthStatus, patchOauthUi, refreshModels, setOauthError, startOauthPolling],
   );
 
   const submitOauthCode = useCallback(
     async (providerId: string, code: string) => {
       if (!code) return;
 
-      setOauthSubmitting((prev) => ({ ...prev, [providerId]: true }));
+      patchOauthUi(providerId, { submitting: true });
       try {
         const result = await submitProviderOauthCode({ body: { provider: providerId, code } });
         if (!result.success) {
@@ -144,24 +140,23 @@ export function useProviderOauthActions({
 
         if (normalized === 'authenticated') {
           stopOauthPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          patchOauthUi(providerId, { authenticating: false });
           refreshModels?.();
         } else if (normalized === 'error') {
           stopOauthPolling(providerId);
-          setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+          patchOauthUi(providerId, { authenticating: false });
         }
       } catch (error) {
         setOauthError(providerId, 'Failed to submit code', error);
       } finally {
-        setOauthSubmitting((prev) => ({ ...prev, [providerId]: false }));
+        patchOauthUi(providerId, { submitting: false });
       }
     },
     [
       applyProviderOauthStatus,
+      patchOauthUi,
       refreshModels,
-      setOauthAuthenticating,
       setOauthError,
-      setOauthSubmitting,
       stopOauthPolling,
     ],
   );
@@ -169,7 +164,7 @@ export function useProviderOauthActions({
   const revokeOauth = useCallback(
     async (providerId: string) => {
       stopOauthPolling(providerId);
-      setOauthAuthenticating((prev) => ({ ...prev, [providerId]: false }));
+      patchOauthUi(providerId, { authenticating: false });
       setOauthStatus((prev) => ({
         ...prev,
         [providerId]: {
@@ -180,7 +175,7 @@ export function useProviderOauthActions({
           error: undefined,
         },
       }));
-      setOauthRevoking((prev) => ({ ...prev, [providerId]: true }));
+      patchOauthUi(providerId, { revoking: true });
 
       try {
         await revokeProviderOauth({ body: { provider: providerId } });
@@ -188,17 +183,10 @@ export function useProviderOauthActions({
       } catch (error) {
         setOauthError(providerId, 'Failed to revoke OAuth', error);
       } finally {
-        setOauthRevoking((prev) => ({ ...prev, [providerId]: false }));
+        patchOauthUi(providerId, { revoking: false });
       }
     },
-    [
-      refreshModels,
-      setOauthAuthenticating,
-      setOauthError,
-      setOauthRevoking,
-      setOauthStatus,
-      stopOauthPolling,
-    ],
+    [patchOauthUi, refreshModels, setOauthError, setOauthStatus, stopOauthPolling],
   );
 
   return {

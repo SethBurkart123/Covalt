@@ -5,17 +5,22 @@ from __future__ import annotations
 import contextvars
 import importlib
 import inspect
+import json
 import pkgutil
 import sys
 import types
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
+
+import litellm
 
 from .. import db
 from ..services.provider_plugin_manager import get_provider_plugin_manager
 from ._manifest import MANIFEST_PROVIDERS
 from .adapters import ADAPTER_REGISTRY
 from .options import resolve_common_options
+
+litellm.drop_params = True
 
 PROVIDERS: dict[str, dict[str, Any]] = {}
 ALIASES: dict[str, str] = {}
@@ -100,8 +105,6 @@ def get_base_url(provider_name: str | None = None) -> str | None:
 
 
 def get_extra_config(provider_name: str | None = None) -> dict:
-    import json
-
     provider = provider_name or _get_caller_provider()
 
     with db.db_session() as sess:

@@ -23,6 +23,7 @@ dependencies = [
     "cryptography>=46.0.3",
     "quickjs>=1.19.4",
     "jsonschema>=4.23.0",
+    "orjson>=3.11.7",
 ]
 
 [dependency-groups]

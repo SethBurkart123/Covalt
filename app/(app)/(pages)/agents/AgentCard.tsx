@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
+import { parseAgentIcon } from './icon-contract';
 
 interface AgentCardProps {
   agent: AgentInfo;
@@ -24,24 +25,6 @@ function withCacheKey(url: string, cacheKey?: string): string {
   if (!cacheKey) return url;
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}v=${encodeURIComponent(cacheKey)}`;
-}
-
-function parseIcon(icon: string | null | undefined): {
-  type: 'emoji' | 'lucide' | 'image' | null;
-  value: string;
-} {
-  if (!icon) return { type: null, value: '' };
-  
-  if (icon.startsWith('emoji:')) {
-    return { type: 'emoji', value: icon.slice(6) };
-  }
-  if (icon.startsWith('lucide:')) {
-    return { type: 'lucide', value: icon.slice(7) };
-  }
-  if (icon.startsWith('image:')) {
-    return { type: 'image', value: icon.slice(6) };
-  }
-  return { type: 'emoji', value: icon };
 }
 
 function AgentIconImage({ agentId, cacheKey }: { agentId: string; cacheKey?: string }) {
@@ -62,7 +45,7 @@ function AgentIconImage({ agentId, cacheKey }: { agentId: string; cacheKey?: str
 }
 
 function AgentIcon({ icon, agentId, cacheKey }: { icon: string | null | undefined; agentId: string; cacheKey?: string }) {
-  const { type, value } = parseIcon(icon);
+  const { type, value } = parseAgentIcon(icon);
   
   if (type === 'emoji') {
     return <span className="text-3xl">{value}</span>;
