@@ -14,9 +14,6 @@ principles, contracts, and boundaries that keep the system generic, extensible,
 and correct as it grows.
 
 This doc focuses on the conceptual system and how we approach implementation.
-For the concrete execution plan and milestones, see:
-
-- `docs/graph-runtime-unification-plan.md`
 
 ---
 
