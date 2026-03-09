@@ -16,7 +16,7 @@ class StaticToolModel(Model):
         if self._scenario == "toolset":
             tool_name = "artifact-tools:write_artifact"
             args = {
-                "title": "E2E Markdown Table",
+                "path": "artifacts/e2e-markdown-table.md",
                 "content": "| Item | Qty |\n| --- | --- |\n| Apples | 5 |",
             }
         elif self._scenario == "approval":

@@ -11,7 +11,7 @@ tools:
     requires_confirmation: true
     renderer:
       type: document
-      content: "$return"
+      file: "$return.path"
       editable: true
 
   - id: write_html_artifact
