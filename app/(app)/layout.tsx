@@ -9,11 +9,13 @@ import { WebSocketProvider } from "@/contexts/websocket-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { TrafficLightOverlay } from "@/components/TrafficLightOverlay";
+import { SplashScreen } from "@/components/splash-screen";
 import type { CSSProperties, ReactNode } from "react";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <WebSocketProvider>
+      <SplashScreen />
       <Suspense fallback={null}>
         <ChatProvider>
           <ToolsProvider>
