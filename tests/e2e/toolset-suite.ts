@@ -215,12 +215,20 @@ async function run(): Promise<void> {
       });
 
       const renderPlan = assertRenderPlan(toolCallCompleted);
-      const content = (renderPlan as any)?.config?.content;
-      if (typeof content !== "string") {
-        throw new Error("renderPlan content should be string");
+      const filePath = (renderPlan as any)?.config?.file;
+      if (typeof filePath !== "string") {
+        throw new Error("renderPlan file should be string");
       }
+      if (!filePath.endsWith(".md")) {
+        throw new Error(`renderPlan file should be markdown, got ${filePath}`);
+      }
+
+      const workspaceFile = await apiRequest("get_workspace_file", {
+        body: { chatId, path: filePath },
+      });
+      const content = Buffer.from(String(workspaceFile?.content ?? ""), "base64").toString("utf8");
       if (!content.includes("|") || !content.includes("---")) {
-        throw new Error("renderPlan content does not look like a markdown table");
+        throw new Error("workspace markdown does not look like a markdown table");
       }
     });
 

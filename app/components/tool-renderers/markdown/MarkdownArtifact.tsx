@@ -7,7 +7,7 @@ import {
   CollapsibleIcon,
   CollapsibleHeader,
 } from "@/components/ui/collapsible";
-import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { EditableMarkdownViewer } from "@/components/EditableMarkdownViewer";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 
@@ -30,6 +30,7 @@ export function MarkdownArtifact({
   const fileState = filePath ? getFileState(filePath) : undefined;
   const titleFromArgs = typeof toolArgs.title === "string" ? toolArgs.title : "";
   const title = titleFromArgs || filePath || toolName;
+  const isEditable = renderPlan?.config?.editable !== false && hasFile;
   const content = filePath && fileState?.content
     ? fileState.content
     : renderPlan?.config?.content
@@ -42,12 +43,13 @@ export function MarkdownArtifact({
   const handleClick = () => {
     if (!isCompleted || (!content && !fileState)) return;
     if (hasFile && filePath) openFile(filePath);
+
     open(
       toolCallId || `${toolName}-${title}`,
       title,
-      <div className="flex-1 overflow-auto p-4 px-8">
-        <MarkdownRenderer content={content} />
-      </div>,
+      filePath
+        ? <EditableMarkdownViewer filePath={filePath} readOnly={!isEditable} />
+        : <EditableMarkdownViewer content={content} readOnly />,
       filePath
     );
   };

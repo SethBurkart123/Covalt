@@ -511,6 +511,179 @@ button {
   font-style: italic;
 }
 
+.artifact-markdown-editor-content {
+  min-height: 100%;
+}
+
+.artifact-markdown-editor-content img {
+  width: 100%;
+  height: auto;
+  max-height: 500px;
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+
+.artifact-markdown-editor-content pre {
+  margin: 1rem 0;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: hsl(var(--muted));
+}
+
+.artifact-markdown-editor-content table {
+  display: block;
+  width: 100%;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.artifact-markdown-editor-content th,
+.artifact-markdown-editor-content td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  text-align: left;
+}
+
+.artifact-markdown-editor-content th {
+  font-weight: 700;
+}
+
+.artifact-markdown-editor-content ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.artifact-markdown-editor-content ul[data-type="taskList"] > li {
+  display: flex;
+  gap: 0.625rem;
+}
+
+.artifact-markdown-editor-content ul[data-type="taskList"] > li > label {
+  display: flex;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.artifact-markdown-editor-content ul[data-type="taskList"] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Math rendering */
+.artifact-markdown-editor-content .tiptap-mathematics-render[data-type="block-math"] {
+  margin: 1.5rem 0;
+  overflow-x: auto;
+}
+
+.artifact-markdown-editor-content .tiptap-mathematics-render[data-type="inline-math"] {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Editable math: click to toggle latex source */
+.artifact-markdown-editor-content .artifact-math-editable {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background 0.15s;
+}
+
+.artifact-markdown-editor-content .artifact-math-editable:hover {
+  background: var(--muted);
+}
+
+.artifact-markdown-editor-content .artifact-math-input {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  outline: none;
+  padding: 0.125rem 0.375rem;
+}
+
+.artifact-markdown-editor-content .artifact-math-input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+
+.artifact-markdown-editor-content .artifact-math-input--inline {
+  display: inline-block;
+  min-width: 4ch;
+  max-width: 40ch;
+  vertical-align: middle;
+}
+
+.artifact-markdown-editor-content .artifact-math-input--block {
+  display: block;
+  width: 100%;
+  resize: none;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.artifact-markdown-editor-content .artifact-math-error {
+  color: var(--destructive);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+}
+
+/* Selectable nodes */
+.artifact-markdown-editor-content .ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Horizontal rule wrapper for click-to-select */
+.artifact-markdown-editor-content .artifact-hr-wrapper {
+  margin: 1.5rem 0;
+  padding: 0.5rem 0;
+  cursor: pointer;
+}
+
+.artifact-markdown-editor-content .artifact-hr-wrapper hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  pointer-events: none;
+}
+
+.artifact-markdown-editor-content .artifact-hr-wrapper.ProseMirror-selectednode {
+  outline: none;
+}
+
+.artifact-markdown-editor-content .artifact-hr-wrapper.ProseMirror-selectednode hr {
+  border-top-color: var(--primary);
+}
+
+/* Notion-style block handle */
+.artifact-block-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: grab;
+  user-select: none;
+  z-index: 10;
+  transform: translateX(-100%);
+}
+
+.artifact-block-handle:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.artifact-block-handle:active {
+  cursor: grabbing;
+}
+
 .at-mention-pill {
   @apply inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-sm font-medium text-primary;
   white-space: nowrap;
