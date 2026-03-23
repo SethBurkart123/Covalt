@@ -15,6 +15,7 @@ import {
   Package,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   normalizeProviderPluginSourceClass,
   normalizeProviderPluginTrustStatus,
@@ -38,10 +39,6 @@ import {
 } from "@/python/api";
 
 type StoreTab = "official" | "community" | "installed";
-
-interface ProviderStorePanelProps {
-  storeTab: StoreTab;
-}
 
 const normalize = (value: string): string => value.toLowerCase().trim();
 
@@ -241,7 +238,14 @@ const TAB_TITLES: Record<StoreTab, { heading: string; description: string }> = {
   },
 };
 
-export default function ProviderStorePanel({ storeTab }: ProviderStorePanelProps) {
+const STORE_TABS: { key: StoreTab; label: string }[] = [
+  { key: "official", label: "Official" },
+  { key: "community", label: "Community" },
+  { key: "installed", label: "Installed" },
+];
+
+export default function ProviderStorePanel() {
+  const [storeTab, setStoreTab] = useState<StoreTab>("official");
   const [search, setSearch] = useState("");
   const [policy, setPolicy] = useState<ProviderPluginPolicy>({
     mode: "safe",
@@ -388,126 +392,138 @@ export default function ProviderStorePanel({ storeTab }: ProviderStorePanelProps
     }
   };
 
-  const { heading, description } = TAB_TITLES[storeTab];
+  const { description } = TAB_TITLES[storeTab];
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">{heading}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
-        </div>
+  const tabSwitcher = (
+    <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1">
+      {STORE_TABS.map((tab) => (
+        <button
+          key={tab.key}
+          type="button"
+          onClick={() => setStoreTab(tab.key)}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors select-none",
+            storeTab === tab.key
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Community gate: show interstitial if unsafe mode is not enabled
-  if (storeTab === "community" && policy.mode !== "unsafe") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">{heading}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
-        </div>
-        <CommunityGate
-          isSaving={isSavingPolicy}
-          onEnableUnsafe={() =>
-            void handleSavePolicy({ ...policy, mode: "unsafe" })
-          }
-        />
-        {errorByKey.policy && (
-          <p className="text-sm text-red-600 text-center">{errorByKey.policy}</p>
-        )}
-      </div>
-    );
-  }
+    if (storeTab === "community" && policy.mode !== "unsafe") {
+      return (
+        <>
+          <CommunityGate
+            isSaving={isSavingPolicy}
+            onEnableUnsafe={() =>
+              void handleSavePolicy({ ...policy, mode: "unsafe" })
+            }
+          />
+          {errorByKey.policy && (
+            <p className="text-sm text-red-600 text-center">{errorByKey.policy}</p>
+          )}
+        </>
+      );
+    }
 
-  // Source browsing tabs (official / community)
-  if (storeTab === "official" || storeTab === "community") {
+    if (storeTab === "official" || storeTab === "community") {
+      return (
+        <>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${storeTab} plugins...`}
+              className="pl-8"
+            />
+          </div>
+          {errorByKey.global && <p className="text-sm text-red-600">{errorByKey.global}</p>}
+          {filteredSources.length === 0 ? (
+            <div className="text-center py-12 text-sm text-muted-foreground">
+              {storeTab === "community"
+                ? "No community plugins available. Add a community index in Plugin Settings to discover plugins."
+                : "No official plugins available."}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredSources.map((source) => (
+                <SourceCard
+                  key={source.id}
+                  source={source}
+                  isInstalled={Boolean(installedById.get(source.pluginId))}
+                  isInstalling={installingSourceId === source.id}
+                  onInstall={() => void handleInstallSource(source)}
+                  error={errorByKey[source.id]}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      );
+    }
+
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">{heading}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
-        </div>
+      <>
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${storeTab} plugins...`}
+            placeholder="Search installed plugins..."
             className="pl-8"
           />
         </div>
-        {errorByKey.global && <p className="text-sm text-red-600">{errorByKey.global}</p>}
-        {filteredSources.length === 0 ? (
-          <div className="text-center py-12 text-sm text-muted-foreground">
-            {storeTab === "community"
-              ? "No community plugins available. Add a community index on the Providers page to discover plugins."
-              : "No official plugins available."}
+        {filteredInstalled.length === 0 ? (
+          <div className="border border-dashed border-border rounded-xl p-12 text-center">
+            <Package className="size-8 mx-auto mb-3 text-muted-foreground/50" />
+            <h3 className="text-sm font-medium mb-1">No plugins installed</h3>
+            <p className="text-xs text-muted-foreground">
+              Browse official or community plugins to get started.
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredSources.map((source) => (
-              <SourceCard
-                key={source.id}
-                source={source}
-                isInstalled={Boolean(installedById.get(source.pluginId))}
-                isInstalling={installingSourceId === source.id}
-                onInstall={() => void handleInstallSource(source)}
-                error={errorByKey[source.id]}
+            {filteredInstalled.map((plugin) => (
+              <InstalledPluginCard
+                key={plugin.id}
+                plugin={plugin}
+                isRemoving={removingPluginId === plugin.id}
+                onUninstall={() => void handleUninstallPlugin(plugin)}
+                onAutoUpdateChange={(override) =>
+                  void handlePluginAutoUpdateOverride(plugin.id, override)
+                }
+                error={errorByKey[plugin.id]}
+                autoUpdateError={errorByKey[`autoupdate:${plugin.id}`]}
               />
             ))}
           </div>
         )}
-      </div>
+      </>
     );
-  }
+  };
 
-  // Installed tab
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 py-6">
       <div>
-        <h1 className="text-2xl font-semibold">{heading}</h1>
+        <h1 className="text-2xl font-semibold">Provider Store</h1>
         <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
-      <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search installed plugins..."
-          className="pl-8"
-        />
-      </div>
-      {filteredInstalled.length === 0 ? (
-        <div className="border border-dashed border-border rounded-xl p-12 text-center">
-          <Package className="size-8 mx-auto mb-3 text-muted-foreground/50" />
-          <h3 className="text-sm font-medium mb-1">No plugins installed</h3>
-          <p className="text-xs text-muted-foreground">
-            Browse official or community plugins to get started.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredInstalled.map((plugin) => (
-            <InstalledPluginCard
-              key={plugin.id}
-              plugin={plugin}
-              isRemoving={removingPluginId === plugin.id}
-              onUninstall={() => void handleUninstallPlugin(plugin)}
-              onAutoUpdateChange={(override) =>
-                void handlePluginAutoUpdateOverride(plugin.id, override)
-              }
-              error={errorByKey[plugin.id]}
-              autoUpdateError={errorByKey[`autoupdate:${plugin.id}`]}
-            />
-          ))}
-        </div>
-      )}
+      {tabSwitcher}
+      {renderContent()}
     </div>
   );
 }
