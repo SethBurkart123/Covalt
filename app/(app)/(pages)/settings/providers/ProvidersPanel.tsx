@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 import type { ProviderConfig } from '@/lib/types/provider-catalog';
 import { getProviders } from './provider-registry';
+import { uninstallProviderPlugin } from '@/python/api';
 import { useOptionalChat } from '@/contexts/chat-context';
 import { useProviderCatalogData } from '@/lib/hooks/providers/use-provider-catalog-data';
 import { useProviderConnectionActions } from '@/lib/hooks/providers/use-provider-connection-actions';
@@ -123,6 +124,16 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     [testConnection],
   );
 
+  const handleUninstall = useCallback(
+    async (providerId: string) => {
+      const plugin = pluginProviders[providerId];
+      if (!plugin) return;
+      await uninstallProviderPlugin({ body: { id: plugin.id } });
+      await loadSettings({ silent: true });
+    },
+    [pluginProviders, loadSettings],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -198,7 +209,6 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
                   provider: providerId,
                   apiKey: '',
                   baseUrl: def.defaults?.baseUrl,
-                  enabled: def.defaults?.enabled ?? true,
                 } satisfies ProviderConfig);
 
               const connection =
@@ -240,6 +250,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
                 onChange: (field, value) => setProviderConfigField(providerId, field, value),
                 onSave: () => handleSave(providerId),
                 onTestConnection: () => handleTestConnection(providerId),
+                ...(row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
               };
 
               return <ProviderItem key={providerId} row={row} actions={actions} />;

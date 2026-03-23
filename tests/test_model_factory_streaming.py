@@ -26,9 +26,9 @@ async def test_stream_available_model_batches_yields_completion_order(
         model_factory,
         "_get_configured_providers",
         lambda: {
-            "slow_fail": {"enabled": True},
-            "fast": {"enabled": True},
-            "mid": {"enabled": True},
+            "slow_fail": {},
+            "fast": {},
+            "mid": {},
         },
     )
     monkeypatch.setattr(
@@ -58,7 +58,7 @@ async def test_stream_available_model_batches_marks_timeout_as_failure(
     monkeypatch.setattr(
         model_factory,
         "_get_configured_providers",
-        lambda: {"timeout_provider": {"enabled": True}},
+        lambda: {"timeout_provider": {}},
     )
     monkeypatch.setattr(
         model_factory,
@@ -97,7 +97,7 @@ async def test_stream_available_model_batches_cancels_pending_tasks_on_close(
     monkeypatch.setattr(
         model_factory,
         "_get_configured_providers",
-        lambda: {"slow": {"enabled": True}, "fast": {"enabled": True}},
+        lambda: {"slow": {}, "fast": {}},
     )
     monkeypatch.setattr(
         model_factory,

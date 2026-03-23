@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from backend.services import provider_catalog
 
 
-def test_list_provider_catalog_includes_disabled_plugin_provider(monkeypatch) -> None:
+def test_list_provider_catalog_includes_plugin_provider(monkeypatch) -> None:
     monkeypatch.setattr(
         provider_catalog,
         "PROVIDERS",
@@ -22,7 +22,6 @@ def test_list_provider_catalog_includes_disabled_plugin_provider(monkeypatch) ->
                 name="Sample Code Provider",
                 version="0.1.0",
                 provider="sample_code_provider",
-                enabled=False,
                 installed_at="now",
                 source_type="local",
                 source_ref="examples",
@@ -30,7 +29,6 @@ def test_list_provider_catalog_includes_disabled_plugin_provider(monkeypatch) ->
                 icon="openai",
                 auth_type="apiKey",
                 default_base_url=None,
-                default_enabled=False,
                 oauth_variant=None,
                 oauth_enterprise_domain=False,
                 aliases=["sample-code"],
@@ -44,7 +42,6 @@ def test_list_provider_catalog_includes_disabled_plugin_provider(monkeypatch) ->
     by_provider = {entry.provider: entry for entry in entries}
 
     assert "sample_code_provider" in by_provider
-    assert by_provider["sample_code_provider"].default_enabled is False
 
 
 def test_list_provider_catalog_exposes_field_mode_from_manifest(monkeypatch) -> None:

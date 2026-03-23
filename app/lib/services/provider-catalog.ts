@@ -57,7 +57,6 @@ const toProviderDefinition = (provider: ProviderCatalogItem): ProviderDefinition
     icon: getProviderIcon(provider.icon),
     fields: getFields(provider),
     defaults: {
-      enabled: provider.defaultEnabled,
       baseUrl: provider.defaultBaseUrl || undefined,
     },
     authType: provider.authType,
@@ -106,7 +105,7 @@ export const fetchProviderCatalog = async (options?: { force?: boolean }): Promi
 
 export const toProviderConfigMap = (
   providers: ProviderDefinition[],
-  source: Array<{ provider: string; apiKey?: string | null; baseUrl?: string | null; enabled?: boolean }> = []
+  source: Array<{ provider: string; apiKey?: string | null; baseUrl?: string | null }> = []
 ): Record<string, ProviderConfig> => {
   const byAlias = new Map<string, string>();
   for (const provider of providers) {
@@ -125,7 +124,6 @@ export const toProviderConfigMap = (
       provider: providerId,
       apiKey: '',
       baseUrl: provider.defaults?.baseUrl,
-      enabled: provider.defaults?.enabled ?? true,
     };
   }
 
@@ -133,14 +131,13 @@ export const toProviderConfigMap = (
     const sourceKey = toProviderId(row.provider || '');
     const providerId = byAlias.get(sourceKey) || sourceKey;
     if (!configMap[providerId]) {
-      configMap[providerId] = { provider: providerId, enabled: true };
+      configMap[providerId] = { provider: providerId };
     }
     configMap[providerId] = {
       ...configMap[providerId],
       provider: providerId,
       apiKey: row.apiKey ?? configMap[providerId].apiKey ?? '',
       baseUrl: row.baseUrl ?? configMap[providerId].baseUrl,
-      enabled: row.enabled ?? configMap[providerId].enabled,
     };
   }
 

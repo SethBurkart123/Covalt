@@ -107,10 +107,9 @@ async def test_install_provider_plugin_source_uses_manager_install(monkeypatch) 
     monkeypatch.setattr(provider_plugins, "get_provider_plugin_manager", lambda: _FakeManager())
     monkeypatch.setattr(provider_plugins, "reload_provider_registry", lambda: None)
 
-    def _capture_settings(provider: str, *, enabled: bool, base_url: str | None) -> None:
+    def _capture_settings(provider: str, *, base_url: str | None) -> None:
         captured["settings"] = {
             "provider": provider,
-            "enabled": enabled,
             "base_url": base_url,
         }
 
@@ -127,7 +126,6 @@ async def test_install_provider_plugin_source_uses_manager_install(monkeypatch) 
     assert captured["plugin_enabled"] == {"id": "tmp_plugin", "enabled": True}
     assert captured["settings"] == {
         "provider": "tmp_provider",
-        "enabled": False,
         "base_url": "https://api.example.com/v1",
     }
 
@@ -169,7 +167,7 @@ async def test_install_provider_plugin_from_repo_calls_manager(monkeypatch) -> N
     monkeypatch.setattr(
         provider_plugins,
         "_ensure_provider_settings_initialized",
-        lambda provider, *, enabled, base_url: None,
+        lambda provider, *, base_url: None,
     )
 
     response = await provider_plugins.install_provider_plugin_from_repo(

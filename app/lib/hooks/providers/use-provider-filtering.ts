@@ -40,9 +40,13 @@ export function useProviderFiltering({
       filteredProviders
         .slice()
         .sort((a, b) => {
-          const aConnected = isConnected(a.provider) ? 0 : 1;
-          const bConnected = isConnected(b.provider) ? 0 : 1;
-          if (aConnected !== bConnected) return aConnected - bConnected;
+          const rank = (def: ProviderDefinition) => {
+            if (isConnected(def.provider)) return 0;
+            if (def.authType === 'oauth') return 1;
+            return 2;
+          };
+          const rankDiff = rank(a) - rank(b);
+          if (rankDiff !== 0) return rankDiff;
           return a.name.localeCompare(b.name);
         }),
     [filteredProviders, isConnected],

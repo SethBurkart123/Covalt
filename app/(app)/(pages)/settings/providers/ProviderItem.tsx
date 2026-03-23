@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2 } from 'lucide-react';
 import { useProviderItemState } from '@/lib/hooks/providers/use-provider-item-state';
 import { ProviderItemHeader } from './provider-item-header';
@@ -32,6 +33,7 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
     onChange,
     onSave,
     onTestConnection,
+    onUninstall,
     onOauthCodeChange,
     onOauthEnterpriseDomainChange,
     onOauthStart,
@@ -39,6 +41,20 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
     onOauthRevoke,
     onOauthOpenLink,
   } = actions;
+
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+
+  const handleUninstallConfirm = async () => {
+    if (!onUninstall) return;
+    setUninstalling(true);
+    try {
+      await onUninstall();
+    } finally {
+      setUninstalling(false);
+      setShowUninstallDialog(false);
+    }
+  };
   const {
     isOpen,
     setIsOpen,
@@ -202,27 +218,9 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
             className="overflow-hidden"
           >
             <div className="px-2 border-t border-border/60 pt-2 space-y-2 mt-2">
-              {!isOauth && (
-                <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-                  <div>
-                    <div className="text-sm font-medium">Enabled</div>
-                    <div className="text-xs text-muted-foreground">
-                      {config.enabled ? 'Provider is available in model picker' : 'Provider is hidden until enabled'}
-                    </div>
-                  </div>
-                  <Switch
-                    checked={Boolean(config.enabled)}
-                    onCheckedChange={(checked) => onChange('enabled', checked)}
-                    aria-label={`Toggle ${def.name} provider`}
-                  />
-                </div>
-              )}
 
-              {isPluginProvider && (
-                <div className="rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                  This provider was installed from Provider Store. Uninstall is available in the store dialog.
-                </div>
-              )}
+
+
 
               {!isOauth && def.fields.map((field) => (
                 <div className="space-y-2" key={`${def.key}-${field.id}`}>
@@ -315,6 +313,16 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
                 <div className="flex items-center justify-end gap-2">
                   {!isOauth && (
                     <>
+                      {isPluginProvider && onUninstall && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowUninstallDialog(true)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          Uninstall
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -381,6 +389,32 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Uninstall {def.name}?</DialogTitle>
+            <DialogDescription>
+              This will remove the provider and all associated configuration. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setShowUninstallDialog(false)} disabled={uninstalling}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleUninstallConfirm} disabled={uninstalling}>
+              {uninstalling ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Uninstalling...
+                </>
+              ) : (
+                'Uninstall'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

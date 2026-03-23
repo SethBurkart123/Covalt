@@ -33,8 +33,8 @@ export function useProviderCatalogData({ getProviders }: UseProviderCatalogDataP
     });
   }, []);
 
-  const loadSettings = useCallback(async () => {
-    setIsLoading(true);
+  const loadSettings = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setIsLoading(true);
     try {
       const catalog = await getProviders({ force: true });
       setProviders(catalog);

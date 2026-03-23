@@ -10,7 +10,7 @@ import pkgutil
 import sys
 import types
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional
 
 import litellm
 
@@ -167,9 +167,8 @@ def _load_python_module_providers() -> None:
                 },
                 aliases=list(getattr(module, "ALIASES", []) or []),
             )
-            print(f"✓ {name}")
-        except Exception as e:
-            print(f"✗ {name}: {e}")
+        except Exception:
+            continue
 
 
 def _load_manifest_providers() -> None:

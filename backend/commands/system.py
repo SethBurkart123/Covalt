@@ -149,7 +149,6 @@ async def get_provider_settings() -> AllProvidersResponse:
                 apiKey=config.get("api_key"),
                 baseUrl=config.get("base_url"),
                 extra=_safe_parse_json(config.get("extra")),
-                enabled=config.get("enabled", True),
             )
             for provider, config in db_settings.items()
         ]
@@ -167,7 +166,6 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
             icon=entry.icon,
             authType=entry.auth_type,
             defaultBaseUrl=entry.default_base_url,
-            defaultEnabled=entry.default_enabled,
             oauthVariant=entry.oauth_variant,
             oauthEnterpriseDomain=entry.oauth_enterprise_domain,
             fieldMode=entry.field_mode,
@@ -204,9 +202,8 @@ async def get_provider_overview(
             instructions=oauth_status.get("instructions"),
             error=oauth_status.get("error"),
         )
-        enabled = config.get("enabled", True)
         has_api_key = bool(config.get("api_key"))
-        connected = bool(enabled and (oauth.status == "authenticated" or has_api_key))
+        connected = bool(oauth.status == "authenticated" or has_api_key)
 
         providers.append(
             ProviderOverview(
@@ -214,7 +211,6 @@ async def get_provider_overview(
                 apiKey=config.get("api_key"),
                 baseUrl=config.get("base_url"),
                 extra=_safe_parse_json(config.get("extra")),
-                enabled=enabled,
                 connected=connected,
                 oauth=oauth,
             )
@@ -232,7 +228,6 @@ async def save_provider_settings(body: SaveProviderConfigInput) -> None:
             api_key=body.apiKey,
             base_url=body.baseUrl,
             extra=body.extra,
-            enabled=body.enabled,
         )
 
 

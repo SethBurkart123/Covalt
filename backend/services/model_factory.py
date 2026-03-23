@@ -27,15 +27,13 @@ def list_supported_providers() -> list[str]:
 
 
 def get_enabled_providers() -> list[str]:
-    configured = _get_configured_providers()
-    return [provider for provider, config in configured.items() if config.get("enabled", True)]
+    return list(_get_configured_providers().keys())
 
 
 async def stream_available_model_batches() -> AsyncIterator[tuple[str, list[dict[str, Any]], bool]]:
     configured = _get_configured_providers()
-    enabled = [(p, c) for p, c in configured.items() if c.get("enabled", True)]
 
-    if not enabled:
+    if not configured:
         return
 
     async def fetch_one(provider: str) -> tuple[str, list[dict[str, Any]], bool]:
@@ -94,7 +92,7 @@ async def stream_available_model_batches() -> AsyncIterator[tuple[str, list[dict
             print(f"[{provider}] Error fetching models: {e}")
             return provider, [], True
 
-    tasks = [asyncio.create_task(fetch_one(provider)) for provider, _ in enabled]
+    tasks = [asyncio.create_task(fetch_one(provider)) for provider in configured]
     try:
         for task in asyncio.as_completed(tasks):
             provider, models, has_error = await task
@@ -122,17 +120,12 @@ def _get_configured_providers() -> dict[str, dict[str, Any]]:
     oauth_manager = get_provider_oauth_manager()
     for provider in sorted(oauth_providers):
         has_tokens = oauth_manager.has_valid_tokens(provider)
-        if provider not in configured:
+        if provider not in configured and has_tokens:
             configured[provider] = {
                 "provider": provider,
                 "api_key": None,
                 "base_url": None,
                 "extra": None,
-                "enabled": has_tokens,
             }
-            continue
-
-        if has_tokens and not configured[provider].get("enabled", True):
-            configured[provider]["enabled"] = True
 
     return configured
