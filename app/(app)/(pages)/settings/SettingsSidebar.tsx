@@ -1,19 +1,18 @@
 "use client";
 
 import React, { type ReactNode } from "react";
-import { Boxes, Settings, Palette, Store, ShieldCheck, Users, Package } from "lucide-react";
+import { Boxes, Settings, Palette, Store, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type TabKey =
   | "general"
   | "providers"
-  | "store:official"
-  | "store:community"
-  | "store:installed"
+  | "providers:store"
+  | "providers:plugins"
   | "appearance";
 
-export function isStoreTab(tab: TabKey): boolean {
-  return tab.startsWith("store:");
+export function isProvidersSection(tab: TabKey): boolean {
+  return tab === "providers" || tab.startsWith("providers:");
 }
 
 interface SettingsSidebarProps {
@@ -25,7 +24,6 @@ interface SidebarItemConfig {
   icon: ReactNode;
   label: string;
   tabKey: TabKey;
-  hiddenUnlessActive?: boolean;
   subItems?: { icon: ReactNode; label: string; tabKey: TabKey }[];
 }
 
@@ -39,16 +37,9 @@ const SIDEBAR_ITEMS: SidebarItemConfig[] = [
     icon: <Boxes size={16} />,
     label: "Providers",
     tabKey: "providers",
-  },
-  {
-    icon: <Store size={16} />,
-    label: "Provider Store",
-    tabKey: "store:official",
-    hiddenUnlessActive: true,
     subItems: [
-      { icon: <ShieldCheck size={14} />, label: "Official", tabKey: "store:official" },
-      { icon: <Users size={14} />, label: "Community", tabKey: "store:community" },
-      { icon: <Package size={14} />, label: "Installed", tabKey: "store:installed" },
+      { icon: <Store size={14} />, label: "Store", tabKey: "providers:store" },
+      { icon: <Plug size={14} />, label: "Plugin Settings", tabKey: "providers:plugins" },
     ],
   },
   {
@@ -62,16 +53,14 @@ export default function SettingsSidebar({
   activeTab,
   onChangeTab,
 }: SettingsSidebarProps) {
-  const isStoreActive = isStoreTab(activeTab);
+  const isProvidersActive = isProvidersSection(activeTab);
 
   return (
     <aside className="w-60">
       <nav className="px-2 space-y-1">
-        {SIDEBAR_ITEMS.filter(
-          (item) => !item.hiddenUnlessActive || (isStoreActive && item.subItems),
-        ).map((item) => {
+        {SIDEBAR_ITEMS.map((item) => {
           const isParentActive = item.subItems
-            ? isStoreActive
+            ? isProvidersActive
             : activeTab === item.tabKey;
 
           return (
@@ -90,7 +79,7 @@ export default function SettingsSidebar({
                 <span>{item.label}</span>
               </div>
 
-              {item.subItems && isStoreActive && (
+              {item.subItems && isProvidersActive && (
                 <div className="ml-4 mt-0.5 space-y-0.5">
                   {item.subItems.map((sub) => (
                     <div

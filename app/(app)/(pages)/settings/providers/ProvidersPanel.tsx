@@ -4,10 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, Settings } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import ProviderItem from './ProviderItem';
-import { ProviderPluginSettingsSection } from './ProviderPluginSettingsSection';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import type { ProviderConfig } from '@/lib/types/provider-catalog';
 import { getProviders } from './provider-registry';
@@ -143,21 +141,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
             Manage API keys and OAuth connections for each provider.
           </p>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center size-8 rounded-md text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Plugin settings"
-              title="Plugin settings"
-            >
-              <Settings size={16} />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-96 max-h-[70vh] overflow-y-auto shadow-xl">
-            <ProviderPluginSettingsSection />
-          </PopoverContent>
-        </Popover>
+
       </div>
 
       <div className="flex items-center gap-2">
