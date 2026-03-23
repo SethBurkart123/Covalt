@@ -30,6 +30,7 @@ export interface ProviderItemRowActions {
   onChange: (field: keyof ProviderConfig, value: string | boolean) => void;
   onSave: () => Promise<void> | void;
   onTestConnection: () => Promise<void> | void;
+  onUninstall?: () => Promise<void> | void;
   onOauthCodeChange: (value: string) => void;
   onOauthEnterpriseDomainChange: (value: string) => void;
   onOauthStart: () => Promise<void> | void;

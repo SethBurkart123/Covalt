@@ -315,7 +315,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-full min-w-[var(--radix-popper-anchor-width)] max-w-[min(var(--radix-popper-available-width),40rem)] overflow-hidden border border-border bg-secondary shadow-lg rounded-2xl p-0"
+        className="w-full min-w-[min(var(--radix-popper-available-width),40rem)] max-w-[min(var(--radix-popper-available-width),40rem)] overflow-hidden border border-border bg-secondary shadow-lg rounded-2xl p-0"
         align="start"
       >
         <Command className="rounded-2xl" shouldFilter={false} disablePointerSelection>
@@ -337,7 +337,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
             items={flatRows}
             estimateSize={(i) => (flatRows[i].type === "heading" ? HEADING_HEIGHT : ITEM_HEIGHT)}
             emptyMessage="No model found."
-            className="pb-2"
+            className="pb-2 min-h-80"
           >
             {(row) => {
               if (row.type === "heading") {

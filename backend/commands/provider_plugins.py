@@ -9,7 +9,6 @@ from zynk import UploadFile, command, upload
 from .. import db
 from ..models.chat import (
     AddProviderPluginIndexInput,
-    EnableProviderPluginInput,
     ImportProviderPluginResponse,
     InstallProviderPluginFromRepoInput,
     InstallProviderPluginSourceInput,
@@ -41,37 +40,12 @@ class InstallProviderPluginFromDirectoryInput(BaseModel):
     path: str
 
 
-def _ensure_provider_settings_initialized(
-    provider: str,
-    *,
-    enabled: bool,
-    base_url: str | None,
-) -> None:
+def _ensure_provider_settings_initialized(provider: str, *, base_url: str | None) -> None:
     with db.db_session() as sess:
         existing = db.get_provider_settings(sess, provider)
         if existing:
-            db.save_provider_settings(
-                sess,
-                provider=provider,
-                enabled=enabled,
-            )
             return
-
-        db.save_provider_settings(
-            sess,
-            provider=provider,
-            base_url=base_url,
-            enabled=enabled,
-        )
-
-
-def _set_provider_enabled(provider: str, *, enabled: bool) -> None:
-    with db.db_session() as sess:
-        db.save_provider_settings(
-            sess,
-            provider=provider,
-            enabled=enabled,
-        )
+        db.save_provider_settings(sess, provider=provider, base_url=base_url)
 
 
 def _ensure_community_installs_allowed(source_class: str) -> None:
@@ -94,7 +68,6 @@ def _to_import_response(plugin_id: str) -> ImportProviderPluginResponse:
     manager.enable_plugin(plugin_id, True)
     _ensure_provider_settings_initialized(
         manifest.provider,
-        enabled=False,
         base_url=manifest.default_base_url,
     )
 
@@ -309,7 +282,6 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
             name=item.name,
             version=item.version,
             provider=item.provider,
-            enabled=item.enabled,
             blockedByPolicy=item.blocked_by_policy,
             installedAt=item.installed_at,
             sourceType=item.source_type,
@@ -325,7 +297,6 @@ async def list_provider_plugins() -> ProviderPluginsResponse:
             icon=item.icon,
             authType=item.auth_type,
             defaultBaseUrl=item.default_base_url,
-            defaultEnabled=item.default_enabled,
             oauthVariant=item.oauth_variant,
             oauthEnterpriseDomain=item.oauth_enterprise_domain,
             aliases=item.aliases,
@@ -373,38 +344,8 @@ async def import_provider_plugin_from_directory(
 
 
 @command
-async def enable_provider_plugin(body: EnableProviderPluginInput) -> dict[str, bool]:
-    manager = get_provider_plugin_manager()
-    manifest = manager.get_manifest(body.id)
-    if manifest is None:
-        raise ValueError(f"Provider plugin '{body.id}' not found")
-
-    plugin_info = manager.get_plugin_info(body.id)
-    if body.enabled and plugin_info and plugin_info.blocked_by_policy:
-        raise ValueError(f"Provider plugin '{body.id}' is blocked by Safe mode policy")
-
-    if not manager.enable_plugin(body.id, body.enabled):
-        raise ValueError(f"Provider plugin '{body.id}' not found")
-
-    _set_provider_enabled(manifest.provider, enabled=body.enabled)
-    reload_provider_registry()
-    return {"success": True, "enabled": body.enabled}
-
-
-@command
 async def uninstall_provider_plugin(body: ProviderPluginIdInput) -> dict[str, bool]:
     manager = get_provider_plugin_manager()
-    manifest = manager.get_manifest(body.id)
-    if manifest is None:
-        raise ValueError(f"Provider plugin '{body.id}' not found")
-
-    with db.db_session() as sess:
-        provider_settings = db.get_provider_settings(sess, manifest.provider)
-    if provider_settings and provider_settings.get("enabled", True):
-        raise ValueError(
-            f"Disable provider '{manifest.provider}' before uninstalling plugin '{body.id}'"
-        )
-
     if not manager.uninstall(body.id):
         raise ValueError(f"Provider plugin '{body.id}' not found")
 

@@ -20,7 +20,6 @@ export interface ProviderOverview {
   provider: string;
   apiKey?: string | null;
   baseUrl?: string | null;
-  enabled?: boolean;
   connected?: boolean;
   oauth?: ProviderOAuthOverview | null;
 }
@@ -32,7 +31,6 @@ export interface ProviderOverviewResponse {
 export interface ProviderPluginMeta {
   id: string;
   provider: string;
-  enabled?: boolean;
   blockedByPolicy?: boolean;
   sourceClass?: 'official' | 'community';
   sourceType?: string | null;

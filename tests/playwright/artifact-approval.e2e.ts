@@ -10,15 +10,6 @@ function buildAppUrl(chatId?: string): string {
   return `/?${params.toString()}`;
 }
 
-type ProviderConfig = {
-  provider: string;
-  enabled: boolean;
-};
-
-type ProviderSettingsResponse = {
-  providers: ProviderConfig[];
-};
-
 type DefaultToolsResponse = {
   toolIds: string[];
 };
@@ -41,13 +32,9 @@ async function configureCoreFlowFixtures(
   request: APIRequestContext,
 ): Promise<() => Promise<void>> {
   const defaultTools = await callCommand<DefaultToolsResponse>(request, 'get_default_tools');
-  const providerSettings = await callCommand<ProviderSettingsResponse>(request, 'get_provider_settings');
-  const priorE2eEnabled = providerSettings.providers.find((item) => item.provider === 'e2e')?.enabled;
-
   await callCommand(request, 'save_provider_settings', {
     body: {
       provider: 'e2e',
-      enabled: true,
     },
   });
 
@@ -65,12 +52,7 @@ async function configureCoreFlowFixtures(
       },
     });
 
-    await callCommand(request, 'save_provider_settings', {
-      body: {
-        provider: 'e2e',
-        enabled: priorE2eEnabled ?? false,
-      },
-    });
+
   };
 }
 

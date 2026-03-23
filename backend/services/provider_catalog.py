@@ -21,7 +21,6 @@ class ProviderCatalogEntry:
     icon: str
     auth_type: AuthType = "apiKey"
     default_base_url: str | None = None
-    default_enabled: bool = True
     oauth_variant: OAuthVariant | None = None
     oauth_enterprise_domain: bool = False
     field_mode: ProviderFieldMode | None = None
@@ -280,7 +279,6 @@ def _build_plugin_entries() -> list[ProviderCatalogEntry]:
                 icon=plugin.icon,
                 auth_type=plugin.auth_type,
                 default_base_url=plugin.default_base_url,
-                default_enabled=plugin.enabled,
                 oauth_variant=plugin.oauth_variant,
                 oauth_enterprise_domain=plugin.oauth_enterprise_domain,
                 field_mode=_to_field_mode(plugin.provider),

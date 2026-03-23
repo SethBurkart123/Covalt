@@ -2,7 +2,6 @@ export interface ProviderConfig {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
-  enabled: boolean;
 }
 
 export type FieldId = "apiKey" | "baseUrl";
@@ -23,7 +22,7 @@ export interface ProviderDefinition {
   description: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   fields: ProviderFieldDef[];
-  defaults?: Partial<ProviderConfig>;
+  defaults?: { baseUrl?: string };
   authType?: "apiKey" | "oauth";
   oauth?: {
     enterpriseDomain?: boolean;
@@ -40,7 +39,6 @@ export interface ProviderCatalogItem {
   icon: string;
   authType: "apiKey" | "oauth";
   defaultBaseUrl?: string | null;
-  defaultEnabled: boolean;
   oauthVariant?: "panel" | "compact" | "inline-code" | "device" | null;
   oauthEnterpriseDomain: boolean;
   fieldMode?: "standard_api_key" | "openai_compatible" | "local_ollama" | "local_vllm" | null;

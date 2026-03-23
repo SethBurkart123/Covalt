@@ -258,7 +258,6 @@ class ProviderConfig(BaseModel):
     apiKey: str | None = None
     baseUrl: str | None = None
     extra: Any | None = None
-    enabled: bool = True
 
 
 class SaveProviderConfigInput(BaseModel):
@@ -266,7 +265,6 @@ class SaveProviderConfigInput(BaseModel):
     apiKey: str | None = None
     baseUrl: str | None = None
     extra: Any | None = None
-    enabled: bool = True
 
 
 class AllProvidersResponse(BaseModel):
@@ -289,7 +287,6 @@ class ProviderCatalogItem(BaseModel):
     icon: str
     authType: Literal["apiKey", "oauth"] = "apiKey"
     defaultBaseUrl: str | None = None
-    defaultEnabled: bool = True
     oauthVariant: Literal["panel", "compact", "inline-code", "device"] | None = None
     oauthEnterpriseDomain: bool = False
     fieldMode: Literal["standard_api_key", "openai_compatible", "local_ollama", "local_vllm"] | None = None
@@ -305,7 +302,6 @@ class ProviderOverview(BaseModel):
     apiKey: str | None = None
     baseUrl: str | None = None
     extra: Any | None = None
-    enabled: bool = True
     connected: bool = False
     oauth: ProviderOAuthInfo | None = None
 
@@ -319,7 +315,6 @@ class ProviderPluginInfo(BaseModel):
     name: str
     version: str
     provider: str
-    enabled: bool = True
     blockedByPolicy: bool = False
     installedAt: str | None = None
     sourceType: str | None = None
@@ -335,7 +330,6 @@ class ProviderPluginInfo(BaseModel):
     icon: str
     authType: Literal["apiKey", "oauth"] = "apiKey"
     defaultBaseUrl: str | None = None
-    defaultEnabled: bool = True
     oauthVariant: Literal["panel", "compact", "inline-code", "device"] | None = None
     oauthEnterpriseDomain: bool = False
     aliases: list[str] = Field(default_factory=list)
@@ -436,11 +430,6 @@ class ProviderPluginUpdateCheckResponse(BaseModel):
     updated: int = 0
     skipped: int = 0
     failed: int = 0
-
-
-class EnableProviderPluginInput(BaseModel):
-    id: str
-    enabled: bool
 
 
 class ProviderPluginIdInput(BaseModel):

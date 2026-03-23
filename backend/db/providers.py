@@ -23,7 +23,6 @@ def _to_record(settings: ProviderSettings, provider_key: str) -> dict[str, Any]:
         "api_key": settings.api_key,
         "base_url": settings.base_url,
         "extra": settings.extra,
-        "enabled": settings.enabled,
     }
 
 
@@ -60,7 +59,6 @@ def save_provider_settings(
     api_key: str | None = None,
     base_url: str | None = None,
     extra: dict[str, Any] | str | None = None,
-    enabled: bool = True,
 ) -> None:
     canonical = normalize_provider(provider)
     settings: ProviderSettings | None = sess.get(ProviderSettings, canonical)
@@ -83,14 +81,12 @@ def save_provider_settings(
             settings.base_url = base_url
         if extra is not None:
             settings.extra = json_extra
-        settings.enabled = enabled
     else:
         settings = ProviderSettings(
             provider=canonical,
             api_key=api_key,
             base_url=base_url,
             extra=json_extra,
-            enabled=enabled,
         )
         sess.add(settings)
 
