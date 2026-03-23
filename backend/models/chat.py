@@ -455,6 +455,14 @@ class SetDefaultToolsInput(BaseModel):
     toolIds: list[str]
 
 
+class StarredModelsResponse(BaseModel):
+    modelKeys: list[str]
+
+
+class SetStarredModelsInput(BaseModel):
+    modelKeys: list[str]
+
+
 class ChatAgentConfigResponse(BaseModel):
     toolIds: list[str]
     provider: str

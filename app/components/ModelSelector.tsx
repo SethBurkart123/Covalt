@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, memo, useRef, useLayoutEffect } from "react";
-import { Bot, CheckIcon, ChevronDownIcon } from "lucide-react";
+import { Bot, CheckIcon, ChevronDownIcon, Star } from "lucide-react";
 import Fuse from "fuse.js";
 
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,11 @@ import type { ModelInfo } from "@/lib/types/chat";
 import type { AgentInfo } from "@/python/api";
 import { agentFileUrl } from "@/python/api";
 import { getProviderMap } from "@/(app)/(pages)/settings/providers/provider-registry";
-import { getRecentModels } from "@/lib/utils";
+import { cn, getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
-import { cn } from "@/lib/utils";
 import { OpenAIIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
 import type { ProviderDefinition } from "@/lib/types/provider-catalog";
+import { getStarredModels, setStarredModels as setStarredModels_backend } from "@/python/api";
 
 const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
 
@@ -86,9 +86,12 @@ interface ModelSelectorProps {
 const getModelKey = (m: ModelInfo) => `${m.provider}:${m.modelId}`;
 const getProviderFromKey = (key: string) => key.split(":")[0];
 const AGENT_FILTER = "__agents__";
+const STARRED_FILTER = "__starred__";
 const ITEM_HEIGHT = 32;
 const HEADING_HEIGHT = 28;
-const MODEL_OPTION_CLASS = "mx-2 hover:bg-accent/50 hover:text-accent-foreground transition-colors duration-100";
+const MODEL_OPTION_CLASS = "group/model-item mx-2 hover:bg-accent/50 hover:text-accent-foreground transition-colors duration-100";
+const STAR_BUTTON_CLASS =
+  "ml-2 flex size-5 shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 type FlatRow =
   | { type: "heading"; label: string }
@@ -108,6 +111,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [providerMap, setProviderMap] = useState<Record<string, ProviderDefinition>>({});
+  const [starredModels, setStarredModels] = useState<string[]>([]);
   const { agents, refreshAgents, refreshModels } = useChat();
 
   useEffect(() => {
@@ -134,6 +138,24 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         .map((a) => agentFileUrl({ agentId: a.id, fileType: "icon" })),
     );
   }, [agents]);
+
+  useEffect(() => {
+    getStarredModels()
+      .then((res) => setStarredModels(res.modelKeys))
+      .catch((err) => console.error("Failed to load starred models", err));
+  }, []);
+
+  const handleToggleStar = useCallback((modelKey: string) => {
+    setStarredModels((prev) => {
+      const updated = prev.includes(modelKey)
+        ? prev.filter((k) => k !== modelKey)
+        : [modelKey, ...prev.filter((k) => k !== modelKey)];
+      setStarredModels_backend({ body: { modelKeys: updated } }).catch((err) =>
+        console.error("Failed to save starred models", err),
+      );
+      return updated;
+    });
+  }, []);
 
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
@@ -175,6 +197,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   }, [models, getProviderDef]);
 
   const showAgents = !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
+  const starredSet = useMemo(() => new Set(starredModels), [starredModels]);
 
   const allEntries = useMemo((): FuzzyEntry[] => {
     const entries: FuzzyEntry[] = [];
@@ -191,22 +214,44 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     }
 
     if (providerFilter !== AGENT_FILTER) {
+      const allAvailable = new Map(models.map((m) => [getModelKey(m), m]));
+
+      if (providerFilter === STARRED_FILTER) {
+        for (const key of starredModels) {
+          const model = allAvailable.get(key);
+          if (!model) continue;
+          const def = getProviderDef(model.provider);
+          entries.push({
+            value: `starred:${model.modelId}`,
+            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
+          });
+        }
+        return entries;
+      }
+
       const filtered = providerFilter ? models.filter((m) => m.provider === providerFilter) : models;
       const available = new Map(filtered.map((m) => [getModelKey(m), m]));
 
       if (!providerFilter) {
+        for (const key of starredModels) {
+          const model = available.get(key);
+          if (!model) continue;
+          const def = getProviderDef(model.provider);
+          entries.push({
+            value: `starred:${model.modelId}`,
+            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
+          });
+        }
+
         for (const model of getRecentModels().map((k) => available.get(k)).filter((m): m is ModelInfo => !!m)) {
+          if (starredSet.has(getModelKey(model))) continue;
           const def = getProviderDef(model.provider);
           entries.push({
             value: `recent:${model.modelId}`,
             searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
-            row: {
-              type: "model",
-              model,
-              key: getModelKey(model),
-              isRecent: true,
-              ProviderIcon: def?.icon || OpenAIIcon,
-            },
+            row: { type: "model", model, key: getModelKey(model), isRecent: true, ProviderIcon: def?.icon || OpenAIIcon },
           });
         }
       }
@@ -228,20 +273,14 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
           entries.push({
             value: model.modelId,
             searchText: `${def?.name || provider} ${model.displayName} ${model.modelId}`,
-            row: {
-              type: "model",
-              model,
-              key: getModelKey(model),
-              isRecent: false,
-              ProviderIcon: def?.icon || OpenAIIcon,
-            },
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
           });
         }
       }
     }
 
     return entries;
-  }, [models, agents, providerFilter, showAgents, getProviderDef]);
+  }, [models, agents, providerFilter, showAgents, getProviderDef, starredModels, starredSet]);
 
   const fuse = useMemo(
     () => new Fuse(allEntries, { keys: ["searchText"], threshold: 0.4, ignoreLocation: true, includeScore: true }),
@@ -257,9 +296,15 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     const rows: FlatRow[] = [];
     let lastGroup = "";
 
-    for (const { row } of filteredEntries) {
+    for (const { value, row } of filteredEntries) {
       const def = row.type === "model" ? getProviderDef(row.model.provider) : null;
-      const group = row.type === "agent" ? "Agents" : row.isRecent ? "Recent" : (def?.name || row.model.provider);
+      const group = row.type === "agent"
+        ? "Agents"
+        : value.startsWith("starred:")
+          ? "Starred"
+          : row.isRecent
+            ? "Recent"
+            : (def?.name || row.model.provider);
 
       if (group !== lastGroup) {
         rows.push({ type: "heading", label: group });
@@ -323,6 +368,9 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
 
           <div className="flex w-full min-w-0 max-w-full flex-nowrap gap-1 px-3 pt-2 pb-1 overflow-x-auto overflow-y-hidden scrollbar-hide">
             <FilterTab active={providerFilter === null} onClick={() => setProviderFilter(null)}>All</FilterTab>
+            {starredModels.length > 0 && (
+              <FilterTab active={providerFilter === STARRED_FILTER} onClick={() => setProviderFilter(STARRED_FILTER)}>Starred</FilterTab>
+            )}
             {!hideAgents && agents.length > 0 && (
               <FilterTab active={providerFilter === AGENT_FILTER} onClick={() => setProviderFilter(AGENT_FILTER)}>Agents</FilterTab>
             )}
@@ -362,6 +410,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
                 );
               }
 
+              const isStarred = starredSet.has(row.key);
+
               return (
                 <CommandItem
                   value={row.isRecent ? `recent:${row.model.modelId}` : row.model.modelId}
@@ -374,7 +424,10 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
                     )}
                     <MiddleTruncate text={row.model.modelId} />
                   </span>
-                  {row.key === selectedModel && <CheckIcon size={16} className="ml-auto shrink-0" />}
+                  <span className="ml-auto flex shrink-0 items-center gap-1">
+                    <ModelStarButton isStarred={isStarred} onToggle={() => handleToggleStar(row.key)} />
+                    {row.key === selectedModel && <CheckIcon size={16} className="shrink-0" />}
+                  </span>
                 </CommandItem>
               );
             }}
@@ -385,12 +438,41 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   );
 }
 
+function ModelStarButton({
+  isStarred,
+  onToggle,
+}: {
+  isStarred: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+      aria-label={isStarred ? "Unstar model" : "Star model"}
+      className={cn(
+        STAR_BUTTON_CLASS,
+        isStarred
+          ? "text-yellow-500 opacity-100"
+          : "text-muted-foreground opacity-0 group-hover/model-item:opacity-100",
+        "hit-area-1.5",
+      )}
+    >
+      <Star className={cn("size-3.5", isStarred && "fill-yellow-500 text-yellow-500")} />
+    </button>
+  );
+}
+
 function FilterTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "shrink-0 px-3 py-1 text-[13px] font-medium rounded-lg transition-colors",
+        "shrink-0 px-3 py-1 text-[13px] font-medium rounded-lg transition-colors hit-area-0.5 hit-area-y-1",
         active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-muted-foreground",
       )}
     >

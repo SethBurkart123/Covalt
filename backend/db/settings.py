@@ -85,3 +85,15 @@ def get_system_prompt_setting(sess: Session) -> str:
 
 def save_system_prompt_setting(sess: Session, prompt: str) -> None:
     update_general_settings(sess, {"system_prompt": prompt})
+
+
+def get_starred_models(sess: Session) -> list[str]:
+    value = get_user_setting(sess, "starred_models")
+    if not value:
+        return []
+    parsed = json.loads(value)
+    return parsed if isinstance(parsed, list) else []
+
+
+def set_starred_models(sess: Session, model_keys: list[str]) -> None:
+    set_user_setting(sess, "starred_models", json.dumps(model_keys))
