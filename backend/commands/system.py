@@ -26,6 +26,8 @@ from ..models.chat import (
     SaveProviderConfigInput,
     SaveSystemPromptSettingsInput,
     SetDefaultToolsInput,
+    SetStarredModelsInput,
+    StarredModelsResponse,
     SystemPromptSettings,
     ThinkingTagPromptInfo,
 )
@@ -252,6 +254,18 @@ async def get_default_tools() -> DefaultToolsResponse:
 async def set_default_tools(body: SetDefaultToolsInput) -> None:
     with db.db_session() as sess:
         db.set_default_tool_ids(sess, body.toolIds)
+
+
+@command
+async def get_starred_models() -> StarredModelsResponse:
+    with db.db_session() as sess:
+        return StarredModelsResponse(modelKeys=db.get_starred_models(sess))
+
+
+@command
+async def set_starred_models(body: SetStarredModelsInput) -> None:
+    with db.db_session() as sess:
+        db.set_starred_models(sess, body.modelKeys)
 
 
 @command
