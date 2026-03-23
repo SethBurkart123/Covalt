@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface ChatItemProps {
-  outsidePadding?: string;
   title: string;
   isActive: boolean;
   isStreaming: boolean;
@@ -41,7 +40,6 @@ interface ChatItemProps {
 }
 
 function ChatItemInner({
-  outsidePadding,
   title,
   isActive,
   isStreaming,
@@ -62,11 +60,7 @@ function ChatItemInner({
 }: ChatItemProps) {
   return (
     <SidebarMenuItem>
-      <div
-        className={clsx("group/chat relative flex w-full items-center cursor-pointer", outsidePadding)}
-        onClick={onSelect}
-        onMouseEnter={onPrefetch}
-      >
+      <div className="group/chat relative flex w-full items-center">
         {isEditing ? (
           <input
             type="text"
@@ -89,10 +83,11 @@ function ChatItemInner({
         ) : (
           <>
             <button
-              onClick={(e) => { e.stopPropagation(); onSelect(); }}
+              onClick={onSelect}
+              onMouseEnter={onPrefetch}
               onFocus={onPrefetch}
               className={clsx(
-                "flex-1 truncate py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
+                "hit-area-y-0.5 mb-1 flex-1 overflow-ellipsis py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
                 isActive
                   ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
                   : "hover:bg-muted/50",
