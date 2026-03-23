@@ -814,6 +814,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
+        minZoom={0.05}
         defaultEdgeOptions={defaultEdgeOptions}
         connectionLineComponent={CustomConnectionLine}
         proOptions={{ hideAttribution: true }}
