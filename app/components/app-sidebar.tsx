@@ -108,7 +108,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   const itemEditTitle = isEditing ? editTitle : "";
                   return (
                     <ChatItem
-                      outsidePadding="py-0.5"
                       key={id}
                       title={chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`}
                       isActive={currentChatId === id}
