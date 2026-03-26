@@ -169,7 +169,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-1 gap-3 pb-4">
         {isLoading
           ? Array.from({ length: 6 }).map((_, index) => (
               <Card key={`provider-skeleton-${index}`} className="overflow-hidden border-border/70 py-2 gap-0">
