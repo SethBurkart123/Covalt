@@ -245,7 +245,11 @@ export function processMemberEvent(
       if (tool.toolArgs) {
         toolCall.toolArgs = tool.toolArgs;
       }
-      if (tool.approvalStatus === "denied" || tool.approvalStatus === "timeout") {
+      if (
+        tool.approvalStatus === "approved"
+        || tool.approvalStatus === "denied"
+        || tool.approvalStatus === "timeout"
+      ) {
         toolCall.isCompleted = true;
       }
       break;

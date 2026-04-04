@@ -16,7 +16,8 @@ import httpx
 import pytest
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
-from agno.team import Team
+
+from nodes.core.agent.executor import LinkedAgentArtifact
 
 from backend.services import run_control
 
@@ -629,7 +630,11 @@ class TestAgentExecutor:
 
         assert isinstance(result, ExecutionResult)
         assert len(recording_agent.calls) == 1
-        assert recording_agent.calls[0]["input"] == "from upstream"
+        run_input = recording_agent.calls[0]["input"]
+        assert isinstance(run_input, list)
+        assert len(run_input) == 1
+        assert run_input[0].role == "user"
+        assert run_input[0].content == "from upstream"
 
     @pytest.mark.asyncio
     async def test_materialize_resolves_runtime_link_dependencies(self) -> None:
@@ -654,11 +659,10 @@ class TestAgentExecutor:
                 ctx,
             )
 
-        assert isinstance(runnable, Team)
+        assert isinstance(runnable, LinkedAgentArtifact)
         runtime.resolve_links.assert_awaited_once_with("test-node", "tools")
-        assert child_agent in runnable.members
-        assert runnable.tools is not None
-        assert len(runnable.tools) == 1
+        assert child_agent in runnable.tools
+        assert len(runnable.tools) == 2
 
     @pytest.mark.asyncio
     async def test_materialize_flattens_nested_link_artifacts_in_agent_executor(
@@ -686,9 +690,8 @@ class TestAgentExecutor:
                 ctx,
             )
 
-        assert isinstance(runnable, Team)
-        assert runnable.tools == ["tool-a"]
-        assert child_agent in runnable.members
+        assert isinstance(runnable, LinkedAgentArtifact)
+        assert runnable.tools == ["tool-a", child_agent]
 
     @pytest.mark.asyncio
     async def test_materialize_rejects_unknown_output_handle(self) -> None:
@@ -766,6 +769,7 @@ class TestAgentExecutor:
             )
 
         tool_registry.resolve_tool_ids.assert_not_called()
+        assert isinstance(runnable, LinkedAgentArtifact)
         assert not runnable.tools
 
     @pytest.mark.asyncio

@@ -95,7 +95,11 @@ export function handleToolApprovalResolved(state: StreamState, tool: unknown): v
   if (payload.toolArgs) {
     toolBlock.toolArgs = payload.toolArgs;
   }
-  if (payload.approvalStatus === "denied" || payload.approvalStatus === "timeout") {
+  if (
+    payload.approvalStatus === "approved"
+    || payload.approvalStatus === "denied"
+    || payload.approvalStatus === "timeout"
+  ) {
     toolBlock.isCompleted = true;
   }
 }
