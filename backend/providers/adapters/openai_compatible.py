@@ -1,9 +1,3 @@
-"""OpenAI-compatible provider adapter.
-
-Generates the provider functions (get_model, fetch_models, test_connection)
-for any provider that speaks the standard OpenAI chat/completions protocol.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -21,12 +15,6 @@ def create_provider(
     base_url: str | None = None,
     **_kwargs: Any,
 ) -> dict[str, Any]:
-    """Build a full provider entry for an OpenAI-compatible endpoint.
-
-    *provider_id* is used for credential lookup (bypasses stack inspection).
-    *base_url* is the default API base; users can override via settings.
-    """
-
     def get_model(model_id: str, provider_options: dict[str, Any]) -> LiteLLM:
         api_key, custom_base_url = get_credentials(provider_name=provider_id)
         resolved = custom_base_url or base_url

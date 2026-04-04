@@ -1,5 +1,3 @@
-"""minimax-cn provider."""
-
 from typing import Any
 
 import httpx

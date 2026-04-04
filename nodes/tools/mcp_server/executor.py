@@ -1,6 +1,7 @@
 """MCP Server node — resolves tools from an MCP server."""
 
 from __future__ import annotations
+
 from typing import Any
 
 from nodes._types import FlowContext

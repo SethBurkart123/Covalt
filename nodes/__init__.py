@@ -66,8 +66,6 @@ def list_node_plugin_metadata() -> list[dict[str, Any]]:
     return _registry_module().list_node_plugin_metadata()
 
 
-# Attempt registration immediately when safe; if plugin registry is still
-# initializing, wrappers above will retry on first access.
 _try_register_builtin_plugin()
 
 __all__ = [

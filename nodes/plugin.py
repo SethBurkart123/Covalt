@@ -6,7 +6,6 @@ from typing import Any
 
 from backend.services.plugin_registry import PluginRegistry
 from nodes._types import HookType, NodeEvent
-
 from nodes.ai.llm_completion.executor import executor as llm_completion_executor
 from nodes.ai.prompt_template.executor import executor as prompt_template_executor
 from nodes.core.agent.executor import executor as agent_executor

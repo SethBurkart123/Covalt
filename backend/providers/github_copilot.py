@@ -1,5 +1,3 @@
-"""GitHub Copilot Provider - OAuth-based Copilot models."""
-
 import json
 import re
 import time

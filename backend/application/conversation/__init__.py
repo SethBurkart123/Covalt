@@ -1,5 +1,3 @@
-"""Conversation application-layer use-cases."""
-
 from .continue_run import (
     ContinueRunDependencies,
     ContinueRunInput,

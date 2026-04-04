@@ -1,5 +1,3 @@
-"""vLLM Provider - Self-hosted models via vLLM (OpenAI-compatible)"""
-
 from typing import Any
 
 import httpx

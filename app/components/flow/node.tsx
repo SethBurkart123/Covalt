@@ -119,10 +119,6 @@ const CompactSocketGroup = memo(function CompactSocketGroup({ items }: { items: 
   );
 });
 
-/**
- * Generic flow node component.
- * Renders any node type based on its definition from the registry.
- */
 function GenericFlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   const { updateNodeData } = useFlowActions();
   const picker = useNodePicker();
@@ -405,7 +401,6 @@ function GenericFlowNodeComponent({ id, type, data, selected }: FlowNodeProps) {
   );
 }
 
-/** Get header color based on node category */
 function getCategoryColor(category: NodeDefinition['category']): string {
   switch (category) {
     case 'trigger':
@@ -429,7 +424,6 @@ function getCategoryColor(category: NodeDefinition['category']): string {
   }
 }
 
-/** Get border color based on node category */
 function getCategoryBorderColor(category: NodeDefinition['category']): string {
   switch (category) {
     case 'trigger':

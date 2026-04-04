@@ -79,7 +79,6 @@ export function EditableMarkdownViewer({
   const isEditable = !effectiveReadOnly && !isDeleted;
   const slashCommands = useMemo(() => createSlashCommands(), []);
 
-  // Block handle menu state
   const [blockMenu, setBlockMenu] = useState<{ pos: number; rect: DOMRect } | null>(null);
   const blockMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -208,8 +207,6 @@ function LoadingState({ label }: { label: string }) {
   );
 }
 
-// -- Block type definitions --
-
 const BLOCK_TYPES = [
   { key: "paragraph", label: "Text", icon: <Pilcrow className="size-4" /> },
   { key: "heading-1", label: "Heading 1", icon: <Heading1 className="size-4" /> },
@@ -252,8 +249,6 @@ function applyBlockType(editor: Editor, key: string) {
     case "codeBlock": chain.toggleCodeBlock().run(); break;
   }
 }
-
-// -- Notion-style block handle menu --
 
 function BlockHandleMenu({
   editor,
@@ -329,8 +324,6 @@ function BlockHandleMenu({
   );
 }
 
-// -- Bubble menu toolbar --
-
 function BubbleMenuToolbar({ editor }: { editor: Editor }) {
   const current = getCurrentBlockType(editor);
   return (
@@ -355,8 +348,6 @@ function BubbleMenuToolbar({ editor }: { editor: Editor }) {
   );
 }
 
-// -- Floating menu toolbar --
-
 function FloatingMenuToolbar({ editor }: { editor: Editor }) {
   return (
     <>
@@ -379,8 +370,6 @@ function FloatingMenuToolbar({ editor }: { editor: Editor }) {
     </>
   );
 }
-
-// -- Turn Into dropdown --
 
 function TurnIntoDropdown({ editor, current }: { editor: Editor; current: (typeof BLOCK_TYPES)[number] }) {
   return (
@@ -408,8 +397,6 @@ function TurnIntoDropdown({ editor, current }: { editor: Editor; current: (typeo
     </DropdownMenu>
   );
 }
-
-// -- Link button --
 
 function LinkMenuBtn({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
@@ -453,8 +440,6 @@ function LinkMenuBtn({ editor }: { editor: Editor }) {
   );
 }
 
-// -- Primitives --
-
 function MenuBtn({ children, onClick, active = false, title }: { children: ReactNode; onClick: () => void; active?: boolean; title: string }) {
   return (
     <Button type="button" variant={active ? "secondary" : "ghost"} size="sm" className="h-7 px-2" onMouseDown={(e) => e.preventDefault()} onClick={onClick} title={title}>
@@ -466,8 +451,6 @@ function MenuBtn({ children, onClick, active = false, title }: { children: React
 function Sep() {
   return <div className="mx-0.5 h-4 w-px bg-border" />;
 }
-
-// -- Slash commands --
 
 function createSlashCommands(): SlashCommandItem[] {
   return [

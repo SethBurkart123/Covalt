@@ -1,5 +1,3 @@
-"""OpenAI Provider - GPT models via OpenAI API"""
-
 from typing import Any
 
 import httpx

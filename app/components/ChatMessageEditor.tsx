@@ -29,7 +29,6 @@ export default function ChatMessageEditor({
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
-    // Focus and select all text
     ta.focus();
     ta.select();
 

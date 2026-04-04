@@ -1,5 +1,3 @@
-"""Google Gemini CLI OAuth Provider - Cloud Code Assist."""
-
 from typing import Any
 
 from ..services.models_dev import fetch_models_dev_provider

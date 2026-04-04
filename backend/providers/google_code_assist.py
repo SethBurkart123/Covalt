@@ -1,5 +1,3 @@
-"""Google Cloud Code Assist shared model implementation."""
-
 from __future__ import annotations
 
 import json

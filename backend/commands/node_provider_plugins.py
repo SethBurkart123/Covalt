@@ -18,6 +18,8 @@ from ..models.node_provider import (
 from ..services.node_provider_plugin_manager import get_node_provider_plugin_manager
 from ..services.node_provider_registry import (
     list_node_provider_definitions as list_provider_definitions_from_registry,
+)
+from ..services.node_provider_registry import (
     reload_node_provider_registry,
 )
 

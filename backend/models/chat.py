@@ -205,8 +205,6 @@ class ToolInfo(BaseModel):
 
 
 class MCPToolsetInfo(BaseModel):
-    """Information about an MCP server (toolset)."""
-
     id: str  # e.g., "mcp:github"
     name: str  # e.g., "github"
     status: Literal["connecting", "connected", "error", "disconnected", "requires_auth"]

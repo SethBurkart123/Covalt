@@ -1,5 +1,3 @@
-"""Provider registry and runtime loader."""
-
 from __future__ import annotations
 
 import contextvars

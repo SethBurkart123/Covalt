@@ -11,7 +11,6 @@ from ..services.agent_manager import get_agent_manager
 logger = logging.getLogger(__name__)
 
 
-# Response models for list view (excludes graph_data)
 class AgentInfo(BaseModel):
     id: str
     name: str
@@ -27,7 +26,6 @@ class AgentsListResponse(BaseModel):
     agents: list[AgentInfo]
 
 
-# Response model for full agent (includes graph_data)
 class GraphNode(BaseModel):
     id: str
     type: str
@@ -68,7 +66,6 @@ class AgentDetailResponse(BaseModel):
     updated_at: str
 
 
-# Request models
 class CreateAgentRequest(BaseModel):
     name: str
     description: str | None = None
@@ -102,7 +99,6 @@ class UploadAgentImageRequest(BaseModel):
 
 @command
 async def list_agents() -> AgentsListResponse:
-    """List all agents (for grid view)."""
     manager = get_agent_manager()
     agents = manager.list_agents()
 
@@ -125,7 +121,6 @@ async def list_agents() -> AgentsListResponse:
 
 @command
 async def get_agent(body: AgentIdRequest) -> AgentDetailResponse:
-    """Get a single agent with full graph data."""
     manager = get_agent_manager()
     agent = manager.get_agent(body.id)
 
@@ -168,7 +163,6 @@ async def get_agent(body: AgentIdRequest) -> AgentDetailResponse:
 
 @command
 async def create_agent(body: CreateAgentRequest) -> CreateAgentResponse:
-    """Create a new agent with default graph."""
     manager = get_agent_manager()
     agent_id = manager.create_agent(
         name=body.name,
@@ -180,7 +174,6 @@ async def create_agent(body: CreateAgentRequest) -> CreateAgentResponse:
 
 @command
 async def update_agent(body: UpdateAgentRequest) -> dict[str, bool]:
-    """Update agent metadata (name, description, icon)."""
     manager = get_agent_manager()
     success = manager.update_agent(
         agent_id=body.id,
@@ -195,10 +188,8 @@ async def update_agent(body: UpdateAgentRequest) -> dict[str, bool]:
 
 @command
 async def save_agent_graph(body: SaveAgentGraphRequest) -> dict[str, bool]:
-    """Save agent graph data (autosave endpoint)."""
     manager = get_agent_manager()
 
-    # Convert pydantic models to dicts
     nodes = [n.model_dump() for n in body.nodes]
     edges = [e.model_dump() for e in body.edges]
 
@@ -214,7 +205,6 @@ async def save_agent_graph(body: SaveAgentGraphRequest) -> dict[str, bool]:
 
 @command
 async def delete_agent(body: AgentIdRequest) -> dict[str, bool]:
-    """Delete an agent."""
     manager = get_agent_manager()
     success = manager.delete_agent(body.id)
     if not success:
@@ -228,7 +218,6 @@ ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 
 @upload(max_size=MAX_IMAGE_SIZE, allowed_types=ALLOWED_IMAGE_TYPES)
 async def upload_agent_icon(file: UploadFile, agent_id: str) -> dict[str, str]:
-    """Upload a custom icon image for an agent."""
     manager = get_agent_manager()
     icon_value = manager.update_icon(
         agent_id=agent_id,
@@ -240,7 +229,6 @@ async def upload_agent_icon(file: UploadFile, agent_id: str) -> dict[str, str]:
 
 @upload(max_size=MAX_IMAGE_SIZE, allowed_types=ALLOWED_IMAGE_TYPES)
 async def upload_agent_preview(file: UploadFile, agent_id: str) -> dict[str, bool]:
-    """Upload a preview screenshot for an agent."""
     manager = get_agent_manager()
     success = manager.update_preview(
         agent_id=agent_id,
@@ -256,7 +244,6 @@ async def upload_agent_preview(file: UploadFile, agent_id: str) -> dict[str, boo
 async def agent_file(
     agent_id: str, file_type: Literal["icon", "preview"]
 ) -> StaticFile:
-    """Serve agent files (icons and previews)."""
     manager = get_agent_manager()
     agent = manager.get_agent(agent_id)
 

@@ -1,12 +1,8 @@
-"""Backend model-layer helpers and schemas."""
-
 from .message_content_codec import (
     decode_message_content,
     parse_message_blocks,
     serialize_message_blocks,
 )
-
-
 from .node_provider import (
     EnableNodeProviderPluginInput,
     InstallNodeProviderPluginFromDirectoryInput,
@@ -17,7 +13,6 @@ from .node_provider import (
     NodeProviderPluginInfo,
     NodeProviderPluginsResponse,
 )
-
 from .tooling import (
     format_mcp_tool_id,
     format_mcp_toolset_id,

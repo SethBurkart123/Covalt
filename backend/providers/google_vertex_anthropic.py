@@ -1,5 +1,3 @@
-"""google-vertex-anthropic provider."""
-
 from typing import Any
 
 import httpx

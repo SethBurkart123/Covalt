@@ -1,5 +1,3 @@
-// Socket type definitions and visual styles
-
 import type { SocketTypeId, SocketShape, Parameter } from '@nodes/_types';
 
 interface SocketType {
@@ -70,7 +68,6 @@ const IMPLICIT_COERCIONS = new Set<`${SocketTypeId}:${SocketTypeId}`>([
 
 ]);
 
-/** Check if sourceType can implicitly coerce to targetType. */
 export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): boolean {
   if (sourceType === targetType) return true;
   return IMPLICIT_COERCIONS.has(`${sourceType}:${targetType}`);

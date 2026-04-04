@@ -8,8 +8,6 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
 
-# ── Plugin manifest + lifecycle hooks ──────────────────────────────
-
 
 class HookType(StrEnum):
     ON_NODE_CREATE = "onNodeCreate"
@@ -71,59 +69,38 @@ class PluginManifestProtocol(Protocol):
     hooks: dict[HookType, list[PluginHookHandler]]
 
 
-# ── Runtime data ────────────────────────────────────────────────────
-
-
 @dataclass
 class DataValue:
-    """What flows through edges at runtime."""
-
     type: str  # matches SocketTypeId
     value: Any
 
 
 @dataclass
 class BinaryRef:
-    """Pointer to large content stored on disk."""
-
     ref: str
     mime_type: str
     size: int
     filename: str | None = None
 
 
-# ── Events ──────────────────────────────────────────────────────────
-
-
 @dataclass
 class NodeEvent:
-    """Emitted by nodes during execution. Powers the chat UI + canvas."""
-
     node_id: str
     node_type: str
-    event_type: str  # started | progress | completed | error | agent_event
+    event_type: str
     run_id: str = ""
     data: dict[str, Any] | None = None
     timestamp: float = field(default_factory=time.time)
 
 
-# ── Execution result ────────────────────────────────────────────────
-
-
 @dataclass
 class ExecutionResult:
-    """What execute() returns. Outputs dict = which output ports have values."""
-
     outputs: dict[str, DataValue]
     events: list[NodeEvent] = field(default_factory=list)
 
 
 class RuntimeApi(Protocol):
-    """Generic runtime surface exposed to node executors.
-
-    The runtime kernel owns graph orchestration; nodes use this protocol for
-    graph lookups and link/materialization dependency resolution.
-    """
+    """Runtime surface exposed to node executors for graph lookups and link resolution."""
 
     def get_node(self, node_id: str) -> dict[str, Any]: ...
 
@@ -152,32 +129,22 @@ class RuntimeApi(Protocol):
     def cache_set(self, namespace: str, key: str, value: Any) -> None: ...
 
 
-# ── Contexts ────────────────────────────────────────────────────────
-
-
 @dataclass
 class FlowContext:
-    """Provided to flow executors during Phase 2."""
-
     node_id: str
     chat_id: str | None
     run_id: str
-    state: Any  # FlowState
+    state: Any
     runtime: RuntimeApi | None = None
     services: Any = None
 
 
 @dataclass
 class RuntimeConfigContext:
-    """Context for runtime configuration hooks."""
-
     mode: str
     graph_data: dict[str, Any]
     node_id: str
     services: Any
-
-
-# ── Executor protocol ───────────────────────────────────────────────
 
 
 class FlowExecutor(Protocol):

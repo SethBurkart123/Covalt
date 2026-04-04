@@ -1,9 +1,3 @@
-"""Declarative provider manifest.
-
-Each entry maps a provider id to an adapter and its configuration.
-Adding a new OpenAI-compatible provider is a single line here.
-"""
-
 from __future__ import annotations
 
 MANIFEST_PROVIDERS = [

@@ -32,7 +32,6 @@ def get_agent_directory(agent_id: str) -> Path:
     return agent_dir
 
 
-# Default graph: Chat Start -> Agent
 DEFAULT_GRAPH = {
     "nodes": [
         {
@@ -259,7 +258,6 @@ class AgentManager:
             sess.delete(agent)
             sess.commit()
 
-        # Remove files
         agent_dir = get_agents_directory() / agent_id
         if agent_dir.exists():
             shutil.rmtree(agent_dir)

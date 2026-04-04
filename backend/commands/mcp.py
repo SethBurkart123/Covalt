@@ -239,7 +239,6 @@ class ScanImportSourcesResponse(BaseModel):
     results: dict[str, SourceScanResult]
 
 
-# Source configurations with paths for each OS
 IMPORT_SOURCE_CONFIGS: dict[str, dict[str, Any]] = {
     "claude-desktop": {
         "paths": {

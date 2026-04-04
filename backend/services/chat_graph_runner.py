@@ -15,6 +15,25 @@ from typing import Any
 
 from zynk import Channel
 
+from backend.runtime import (
+    AgentConfig,
+    AgnoRuntimeAdapter,
+    ApprovalRequired,
+    ApprovalResponse,
+    ContentDelta,
+    ModelUsage,
+    ReasoningCompleted,
+    ReasoningDelta,
+    ReasoningStarted,
+    RunCancelled,
+    RunCompleted,
+    RunError,
+    ToolCallCompleted,
+    ToolCallStarted,
+    ToolDecision,
+    runtime_message_to_dict,
+    runtime_messages_from_chat_messages,
+)
 from nodes import get_executor
 from nodes._types import DataValue, ExecutionResult, HookType, NodeEvent, RuntimeConfigContext
 from nodes.node_type_ids import AGENT_NODE_TYPE, CHAT_START_NODE_TYPE
@@ -25,7 +44,7 @@ from ..models import (
     parse_message_blocks,
     serialize_message_blocks,
 )
-from ..models.chat import Attachment, ChatEvent, ChatMessage, ToolCall, ToolCallPayload
+from ..models.chat import ChatEvent, ChatMessage, ToolCallPayload
 from . import run_control
 from . import stream_broadcaster as broadcaster
 from .agent_manager import get_agent_manager
@@ -59,26 +78,6 @@ from .runtime_events import (
     make_chat_event,
 )
 from .tool_registry import get_original_tool_name, get_tool_registry
-from backend.runtime import (
-    AgentConfig,
-    AgnoRuntimeAdapter,
-    ApprovalRequired,
-    ApprovalResponse,
-    ContentDelta,
-    ModelUsage,
-    ReasoningCompleted,
-    ReasoningDelta,
-    ReasoningStarted,
-    RunCancelled,
-    RunCompleted,
-    RunError,
-    RunStarted,
-    ToolCallCompleted,
-    ToolCallStarted,
-    ToolDecision,
-    runtime_message_to_dict,
-    runtime_messages_from_chat_messages,
-)
 from .toolset_executor import get_toolset_executor
 from .workspace_manager import get_workspace_manager
 
@@ -1047,7 +1046,6 @@ async def handle_flow_stream(
     save_content_impl: Callable[[str, str], None] | None = None,
     load_initial_content_impl: Callable[[str], list[dict[str, Any]]] | None = None,
 ) -> None:
-    """Run flow runtime and forward NodeEvents as chat protocol events."""
     ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
 
     def _noop_save(msg_id: str, content: str) -> None:
