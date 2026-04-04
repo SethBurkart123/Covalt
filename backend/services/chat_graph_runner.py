@@ -64,11 +64,31 @@ from .runtime_events import (
     make_chat_event,
 )
 from .tool_registry import get_original_tool_name, get_tool_registry
+from backend.runtime import (
+    AgentConfig,
+    AgnoRuntimeAdapter,
+    ApprovalRequired,
+    ApprovalResponse,
+    ContentDelta,
+    ModelUsage,
+    ReasoningCompleted,
+    ReasoningDelta,
+    ReasoningStarted,
+    RunCancelled,
+    RunCompleted,
+    RunError,
+    RunStarted,
+    ToolCallCompleted,
+    ToolCallStarted,
+    ToolDecision,
+    runtime_messages_from_chat_messages,
+)
 from .toolset_executor import get_toolset_executor
 from .workspace_manager import get_workspace_manager
 
 FlowStreamHandler = Callable[..., Awaitable[None]]
 ContentMessageConverter = Callable[[ChatMessage, str | None], list[Any]]
+_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
 
 logger = logging.getLogger(__name__)
 registry = get_tool_registry()
@@ -870,9 +890,82 @@ def build_agno_messages_for_chat(
     messages: list[ChatMessage],
     chat_id: str | None,
 ) -> list[Message]:
+    runtime_messages = runtime_messages_from_chat_messages(messages, chat_id)
     agno_messages: list[Message] = []
-    for message in messages:
-        agno_messages.extend(convert_chat_message_to_agno_messages(message, chat_id))
+    for runtime_message in runtime_messages:
+        if runtime_message.role == "user":
+            content = runtime_message.content or ""
+            images_list: list[Image] | None = None
+            files_list: list[File] | None = None
+            audio_list: list[Audio] | None = None
+            videos_list: list[Video] | None = None
+            if runtime_message.attachments:
+                images: list[Image] = []
+                files: list[File] = []
+                audio: list[Audio] = []
+                videos: list[Video] = []
+                for attachment in runtime_message.attachments:
+                    path = Path(attachment.path)
+                    if not path.exists():
+                        continue
+                    if attachment.kind == "image":
+                        images.append(Image(filepath=path))
+                    elif attachment.kind == "audio":
+                        audio.append(Audio(filepath=path))
+                    elif attachment.kind == "video":
+                        videos.append(Video(filepath=path))
+                    else:
+                        files.append(File(filepath=path, name=attachment.name or path.name))
+                images_list = images or None
+                files_list = files or None
+                audio_list = audio or None
+                videos_list = videos or None
+            agno_messages.append(
+                Message(
+                    role="user",
+                    content=content,
+                    images=images_list,
+                    files=files_list,
+                    audio=audio_list,
+                    videos=videos_list,
+                )
+            )
+            continue
+
+        if runtime_message.role == "assistant":
+            payload: dict[str, Any] = {
+                "role": "assistant",
+                "content": runtime_message.content,
+            }
+            if runtime_message.tool_calls:
+                payload["tool_calls"] = [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.name,
+                            "arguments": json.dumps(tool_call.arguments or {}),
+                        },
+                        **(
+                            {"providerData": tool_call.provider_data}
+                            if tool_call.provider_data
+                            else {}
+                        ),
+                    }
+                    for tool_call in runtime_message.tool_calls
+                ]
+            agno_messages.append(Message(**payload))
+            continue
+
+        if runtime_message.role == "tool":
+            agno_messages.append(
+                Message(
+                    role="tool",
+                    tool_call_id=runtime_message.tool_call_id,
+                    content=runtime_message.content or "",
+                )
+            )
+
     return agno_messages
 
 
@@ -2137,7 +2230,759 @@ async def handle_flow_stream(
 
 
 async def handle_content_stream(
-    agent: Agent | Team,
+    agent: Any,
+    messages: list[ChatMessage],
+    assistant_msg_id: str,
+    raw_ch: Any,
+    chat_id: str = "",
+    ephemeral: bool = False,
+    *,
+    convert_message: ContentMessageConverter | None = None,
+    save_content_impl: Callable[[str, str], None] | None = None,
+    load_initial_content_impl: Callable[[str], list[dict[str, Any]]] | None = None,
+) -> None:
+    del convert_message
+
+    ch = BroadcastingChannel(raw_ch, chat_id) if chat_id else raw_ch
+
+    def _noop_save(msg_id: str, content: str) -> None:
+        del msg_id, content
+
+    save_content_fn = save_content_impl or save_msg_content
+    load_initial_fn = load_initial_content_impl or load_initial_content
+    save_content = save_content_fn if not ephemeral else _noop_save
+
+    trace_recorder = ExecutionTraceRecorder(
+        kind="agent",
+        chat_id=chat_id or None,
+        message_id=assistant_msg_id,
+        enabled=not ephemeral,
+    )
+    trace_recorder.start()
+    trace_status = "streaming"
+    trace_error: str | None = None
+
+    runtime_messages = runtime_messages_from_chat_messages(messages, chat_id or None)
+    agent_handle = _RUNTIME_ADAPTER.create_agent(
+        AgentConfig(name=getattr(agent, "name", "Agent") or "Agent", model=None),
+        runnable=agent,
+    )
+
+    if chat_id:
+        await broadcaster.register_stream(chat_id, assistant_msg_id)
+
+    run_control.register_active_run(assistant_msg_id, agent_handle)
+
+    if run_control.consume_early_cancel(assistant_msg_id):
+        run_control.remove_active_run(assistant_msg_id)
+        run_control.clear_early_cancel(assistant_msg_id)
+        trace_recorder.record(
+            event_type="runtime.run.cancelled", payload={"early": True}
+        )
+        trace_status = "cancelled"
+        trace_recorder.finish(status=trace_status)
+        emit_chat_event(ch, EVENT_RUN_CANCELLED)
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+        return
+
+    response_stream = agent_handle.run(runtime_messages, add_history_to_context=True)
+    content_blocks = [] if ephemeral else load_initial_fn(assistant_msg_id)
+    current_text = ""
+    current_reasoning = ""
+    had_error = False
+    run_id: str | None = None
+    logged_usage_events = 0
+
+    active_delegation_tool_id: str | None = None
+    delegation_task = ""
+    member_runs: dict[str, MemberRunState] = {}
+
+    def _find_tool_block(
+        blocks: list[dict[str, Any]], tool_id: str
+    ) -> dict[str, Any] | None:
+        for block in blocks:
+            if block.get("type") == "tool_call" and block.get("id") == tool_id:
+                return block
+        return None
+
+    def _flush_text() -> None:
+        nonlocal current_text
+        if not current_text:
+            return
+        content_blocks.append({"type": "text", "content": current_text})
+        current_text = ""
+
+    def _flush_reasoning() -> None:
+        nonlocal current_reasoning
+        if not current_reasoning:
+            return
+        content_blocks.append(
+            {
+                "type": "reasoning",
+                "content": current_reasoning,
+                "isCompleted": True,
+            }
+        )
+        current_reasoning = ""
+
+    def _get_member_run(event: Any) -> MemberRunState | None:
+        member_run_id = str(getattr(event, "member_run_id", "") or "")
+        if not member_run_id:
+            return None
+
+        member_name = str(getattr(event, "member_name", "") or "Agent")
+        if member_run_id in member_runs:
+            member_state = member_runs[member_run_id]
+            if member_name:
+                member_state.name = member_name
+                content_blocks[member_state.block_index]["memberName"] = member_name
+            return member_state
+
+        block = {
+            "type": "member_run",
+            "runId": member_run_id,
+            "memberName": member_name,
+            "content": [],
+            "isCompleted": False,
+            "task": str(getattr(event, "task", None) or delegation_task),
+        }
+        content_blocks.append(block)
+        member_state = MemberRunState(
+            run_id=member_run_id,
+            name=member_name,
+            block_index=len(content_blocks) - 1,
+        )
+        member_runs[member_run_id] = member_state
+        emit_chat_event(
+            ch,
+            EVENT_MEMBER_RUN_STARTED,
+            memberName=member_name,
+            memberRunId=member_run_id,
+            task=block["task"],
+        )
+        return member_state
+
+    def _flush_member_text(member_state: MemberRunState) -> None:
+        if not member_state.current_text:
+            return
+        member_block = content_blocks[member_state.block_index]
+        member_block["content"].append(
+            {"type": "text", "content": member_state.current_text}
+        )
+        member_state.current_text = ""
+
+    def _flush_member_reasoning(member_state: MemberRunState) -> None:
+        if not member_state.current_reasoning:
+            return
+        member_block = content_blocks[member_state.block_index]
+        member_block["content"].append(
+            {
+                "type": "reasoning",
+                "content": member_state.current_reasoning,
+                "isCompleted": True,
+            }
+        )
+        member_state.current_reasoning = ""
+
+    def _flush_all_member_runs() -> None:
+        for member_state in list(member_runs.values()):
+            _flush_member_text(member_state)
+            _flush_member_reasoning(member_state)
+            content_blocks[member_state.block_index]["isCompleted"] = True
+            emit_chat_event(
+                ch,
+                EVENT_MEMBER_RUN_COMPLETED,
+                memberName=member_state.name,
+                memberRunId=member_state.run_id,
+            )
+        member_runs.clear()
+
+    def _serialize_state() -> str:
+        temp = copy.deepcopy(content_blocks)
+        if current_text:
+            temp.append({"type": "text", "content": current_text})
+        if current_reasoning:
+            temp.append(
+                {
+                    "type": "reasoning",
+                    "content": current_reasoning,
+                    "isCompleted": False,
+                }
+            )
+        for member_state in member_runs.values():
+            if member_state.block_index >= len(temp):
+                continue
+            member_block = temp[member_state.block_index]
+            if member_block.get("type") != "member_run":
+                continue
+            member_content = member_block["content"]
+            if member_state.current_text:
+                member_content.append(
+                    {"type": "text", "content": member_state.current_text}
+                )
+            if member_state.current_reasoning:
+                member_content.append(
+                    {
+                        "type": "reasoning",
+                        "content": member_state.current_reasoning,
+                        "isCompleted": False,
+                    }
+                )
+        return json.dumps(temp)
+
+    def _save_final() -> str:
+        return json.dumps(content_blocks)
+
+    async def _persist_state(final: bool = False) -> None:
+        payload = _save_final() if final else _serialize_state()
+        await asyncio.to_thread(save_content, assistant_msg_id, payload)
+
+    def _trace_payload(event: Any) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if getattr(event, "run_id", None):
+            payload["runId"] = event.run_id
+        if getattr(event, "member_run_id", None):
+            payload["memberRunId"] = event.member_run_id
+        if getattr(event, "member_name", None):
+            payload["memberName"] = event.member_name
+        if isinstance(event, ContentDelta):
+            payload["content"] = event.text
+        elif isinstance(event, ReasoningDelta):
+            payload["reasoningContent"] = event.text
+        elif isinstance(event, ToolCallStarted) and event.tool is not None:
+            payload["tool"] = {
+                "id": event.tool.id,
+                "name": event.tool.name,
+                "args": event.tool.arguments,
+            }
+        elif isinstance(event, ToolCallCompleted) and event.tool is not None:
+            payload["tool"] = {
+                "id": event.tool.id,
+                "name": event.tool.name,
+                "args": None,
+                "result": event.tool.result,
+            }
+        elif isinstance(event, ApprovalRequired):
+            payload["tools"] = [tool.tool_call_id for tool in event.tools]
+        elif isinstance(event, RunError):
+            payload["message"] = event.message
+        return payload
+
+    try:
+        while True:
+            async for event in response_stream:
+                if not run_id and getattr(event, "run_id", None):
+                    run_id = event.run_id
+                    trace_recorder.set_root_run_id(run_id)
+                    run_control.set_active_run_id(assistant_msg_id, run_id)
+                    logger.info("[stream] Captured run_id %s", run_id)
+                    if chat_id:
+                        await broadcaster.update_stream_run_id(chat_id, run_id)
+                    if run_control.consume_early_cancel(assistant_msg_id):
+                        logger.info("[stream] Early cancel detected for %s", run_id)
+                        agent_handle.cancel(run_id)
+
+                trace_recorder.record(
+                    event_type=f"runtime.event.{event.__class__.__name__}",
+                    run_id=getattr(event, "run_id", None),
+                    payload=_trace_payload(event),
+                )
+
+                if isinstance(event, ModelUsage):
+                    _log_token_usage(
+                        run_id=run_id or event.run_id,
+                        model=event.model,
+                        provider=event.provider,
+                        input_tokens=event.input_tokens,
+                        output_tokens=event.output_tokens,
+                        total_tokens=event.total_tokens,
+                        cache_read_tokens=event.cache_read_tokens,
+                        cache_write_tokens=event.cache_write_tokens,
+                        reasoning_tokens=event.reasoning_tokens,
+                        time_to_first_token=event.time_to_first_token,
+                    )
+                    logged_usage_events += 1
+                    continue
+
+                member_state = _get_member_run(event)
+                if member_state is not None and active_delegation_tool_id:
+                    member_content = content_blocks[member_state.block_index]["content"]
+                    member_event_kwargs = {
+                        "memberName": member_state.name,
+                        "memberRunId": member_state.run_id,
+                    }
+
+                    if isinstance(event, ContentDelta):
+                        if member_state.current_reasoning and not member_state.current_text:
+                            _flush_member_reasoning(member_state)
+                        member_state.current_text += event.text
+                        emit_chat_event(
+                            ch,
+                            EVENT_RUN_CONTENT,
+                            content=event.text,
+                            **member_event_kwargs,
+                        )
+                        await _persist_state()
+                        continue
+
+                    if isinstance(event, ReasoningStarted):
+                        _flush_member_text(member_state)
+                        emit_chat_event(ch, EVENT_REASONING_STARTED, **member_event_kwargs)
+                        continue
+
+                    if isinstance(event, ReasoningDelta):
+                        if member_state.current_text and not member_state.current_reasoning:
+                            _flush_member_text(member_state)
+                        member_state.current_reasoning += event.text
+                        emit_chat_event(
+                            ch,
+                            EVENT_REASONING_STEP,
+                            reasoningContent=event.text,
+                            **member_event_kwargs,
+                        )
+                        await _persist_state()
+                        continue
+
+                    if isinstance(event, ReasoningCompleted):
+                        _flush_member_reasoning(member_state)
+                        emit_chat_event(ch, EVENT_REASONING_COMPLETED, **member_event_kwargs)
+                        await _persist_state()
+                        continue
+
+                    if isinstance(event, ToolCallStarted) and event.tool is not None:
+                        _flush_member_text(member_state)
+                        _flush_member_reasoning(member_state)
+                        tool_payload = {
+                            "id": event.tool.id,
+                            "toolName": event.tool.name,
+                            "toolArgs": event.tool.arguments,
+                            "isCompleted": False,
+                            **(
+                                {"providerData": event.tool.provider_data}
+                                if event.tool.provider_data
+                                else {}
+                            ),
+                        }
+                        tool_block = _find_tool_block(member_content, event.tool.id)
+                        if tool_block is None:
+                            member_content.append({"type": "tool_call", **tool_payload})
+                        else:
+                            tool_block.update(tool_payload)
+                        emit_chat_event(
+                            ch,
+                            EVENT_TOOL_CALL_STARTED,
+                            tool=tool_payload,
+                            **member_event_kwargs,
+                        )
+                        continue
+
+                    if isinstance(event, ToolCallCompleted) and event.tool is not None:
+                        tool_block = _find_tool_block(member_content, event.tool.id)
+                        tool_args = (
+                            tool_block.get("toolArgs")
+                            if tool_block is not None and isinstance(tool_block.get("toolArgs"), dict)
+                            else None
+                        )
+                        tool_payload = _build_tool_call_completed_payload(
+                            tool_id=event.tool.id,
+                            tool_name=event.tool.name,
+                            tool_args=tool_args,
+                            tool_result=event.tool.result,
+                            provider_data=event.tool.provider_data,
+                            chat_id=chat_id,
+                            failed=bool(event.tool.failed)
+                            or _did_tool_call_fail(event.tool.name, event.tool.id),
+                        )
+                        if tool_block is not None:
+                            tool_block.update(tool_payload)
+                        emit_chat_event(
+                            ch,
+                            EVENT_TOOL_CALL_COMPLETED,
+                            tool=tool_payload,
+                            **member_event_kwargs,
+                        )
+                        await _persist_state()
+                        continue
+
+                    if isinstance(event, RunError):
+                        _flush_member_text(member_state)
+                        _flush_member_reasoning(member_state)
+                        error_msg = extract_error_message(event.message)
+                        member_content.append({"type": "error", "content": error_msg})
+                        content_blocks[member_state.block_index]["isCompleted"] = True
+                        content_blocks[member_state.block_index]["hasError"] = True
+                        emit_chat_event(
+                            ch,
+                            EVENT_MEMBER_RUN_ERROR,
+                            content=error_msg,
+                            **member_event_kwargs,
+                        )
+                        member_runs.pop(member_state.run_id, None)
+                        await _persist_state()
+                        continue
+
+                    if isinstance(event, RunCompleted):
+                        continue
+
+                if isinstance(event, RunCancelled):
+                    trace_status = "cancelled"
+                    _flush_text()
+                    _flush_reasoning()
+                    await _persist_state(final=True)
+                    if not ephemeral:
+                        with db.db_session() as sess:
+                            db.mark_message_complete(sess, assistant_msg_id)
+                    run_control.remove_active_run(assistant_msg_id)
+                    run_control.clear_early_cancel(assistant_msg_id)
+                    emit_chat_event(ch, EVENT_RUN_CANCELLED)
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "completed")
+                        await broadcaster.unregister_stream(chat_id)
+                    trace_recorder.finish(status=trace_status)
+                    return
+
+                if isinstance(event, ContentDelta):
+                    if current_reasoning and not current_text:
+                        _flush_reasoning()
+                    current_text += event.text
+                    emit_chat_event(ch, EVENT_RUN_CONTENT, content=event.text)
+                    await _persist_state()
+                    continue
+
+                if isinstance(event, ToolCallStarted) and event.tool is not None:
+                    if _is_delegation_tool(event.tool.name):
+                        _flush_text()
+                        _flush_reasoning()
+                        active_delegation_tool_id = event.tool.id
+                        delegation_task = str(event.tool.arguments.get("task") or "")
+                        content_blocks.append(
+                            {
+                                "type": "tool_call",
+                                "id": event.tool.id,
+                                "toolName": event.tool.name,
+                                "toolArgs": event.tool.arguments,
+                                "isCompleted": False,
+                                "isDelegation": True,
+                                **(
+                                    {"providerData": event.tool.provider_data}
+                                    if event.tool.provider_data
+                                    else {}
+                                ),
+                            }
+                        )
+                        continue
+
+                    _flush_text()
+                    _flush_reasoning()
+                    tool_payload = {
+                        "id": event.tool.id,
+                        "toolName": event.tool.name,
+                        "toolArgs": event.tool.arguments,
+                        "isCompleted": False,
+                        **(
+                            {"providerData": event.tool.provider_data}
+                            if event.tool.provider_data
+                            else {}
+                        ),
+                    }
+                    tool_block = _find_tool_block(content_blocks, event.tool.id)
+                    if tool_block is None:
+                        content_blocks.append({"type": "tool_call", **tool_payload})
+                    else:
+                        tool_block.update(tool_payload)
+                    emit_chat_event(ch, EVENT_TOOL_CALL_STARTED, tool=tool_payload)
+                    continue
+
+                if isinstance(event, ToolCallCompleted) and event.tool is not None:
+                    if (
+                        active_delegation_tool_id
+                        and event.tool.id == active_delegation_tool_id
+                        and _is_delegation_tool(event.tool.name)
+                    ):
+                        _flush_all_member_runs()
+                        delegation_block = _find_tool_block(content_blocks, active_delegation_tool_id)
+                        if delegation_block is not None:
+                            delegation_block["isCompleted"] = True
+                            delegation_block["toolResult"] = event.tool.result
+                            if bool(event.tool.failed) or _did_tool_call_fail(event.tool.name, event.tool.id):
+                                delegation_block["failed"] = True
+                        active_delegation_tool_id = None
+                        delegation_task = ""
+                        await _persist_state(final=True)
+                        continue
+
+                    _flush_text()
+                    _flush_reasoning()
+                    tool_block = _find_tool_block(content_blocks, event.tool.id)
+                    tool_args = (
+                        tool_block.get("toolArgs")
+                        if tool_block is not None and isinstance(tool_block.get("toolArgs"), dict)
+                        else None
+                    )
+                    tool_payload = _build_tool_call_completed_payload(
+                        tool_id=event.tool.id,
+                        tool_name=event.tool.name,
+                        tool_args=tool_args,
+                        tool_result=event.tool.result,
+                        provider_data=event.tool.provider_data,
+                        chat_id=chat_id,
+                        failed=bool(event.tool.failed)
+                        or _did_tool_call_fail(event.tool.name, event.tool.id),
+                    )
+                    if tool_block is None:
+                        content_blocks.append({"type": "tool_call", **tool_payload})
+                    else:
+                        tool_block.clear()
+                        tool_block.update({"type": "tool_call", **tool_payload})
+                    emit_chat_event(ch, EVENT_TOOL_CALL_COMPLETED, tool=tool_payload)
+                    await _persist_state(final=True)
+                    continue
+
+                if isinstance(event, ReasoningStarted):
+                    _flush_text()
+                    emit_chat_event(ch, EVENT_REASONING_STARTED)
+                    continue
+
+                if isinstance(event, ReasoningDelta):
+                    if current_text and not current_reasoning:
+                        _flush_text()
+                    current_reasoning += event.text
+                    emit_chat_event(
+                        ch,
+                        EVENT_REASONING_STEP,
+                        reasoningContent=event.text,
+                    )
+                    await _persist_state()
+                    continue
+
+                if isinstance(event, ReasoningCompleted):
+                    _flush_reasoning()
+                    emit_chat_event(ch, EVENT_REASONING_COMPLETED)
+                    continue
+
+                if isinstance(event, ApprovalRequired):
+                    _flush_text()
+                    _flush_reasoning()
+
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "paused_hitl")
+
+                    tools_info: list[dict[str, Any]] = []
+                    for pending_tool in event.tools:
+                        editable_args = pending_tool.editable_args
+                        if editable_args is None:
+                            editable_args = registry.get_editable_args(pending_tool.tool_name)
+                        tool_block = {
+                            "type": "tool_call",
+                            "id": pending_tool.tool_call_id,
+                            "toolName": pending_tool.tool_name,
+                            "toolArgs": pending_tool.tool_args,
+                            "isCompleted": False,
+                            "requiresApproval": True,
+                            "approvalStatus": "pending",
+                        }
+                        content_blocks.append(tool_block)
+                        tool_info = {
+                            "id": pending_tool.tool_call_id,
+                            "toolName": pending_tool.tool_name,
+                            "toolArgs": pending_tool.tool_args,
+                        }
+                        if editable_args:
+                            tool_info["editableArgs"] = editable_args
+                        tools_info.append(tool_info)
+
+                    await _persist_state()
+                    emit_chat_event(
+                        ch,
+                        EVENT_TOOL_APPROVAL_REQUIRED,
+                        tool={"runId": event.run_id, "tools": tools_info},
+                    )
+
+                    approval_event = asyncio.Event()
+                    if not event.run_id:
+                        raise ValueError("Approval required event missing run_id")
+                    run_control.register_approval_waiter(event.run_id, approval_event)
+
+                    timed_out = False
+                    try:
+                        await asyncio.wait_for(approval_event.wait(), timeout=300)
+                    except TimeoutError:
+                        timed_out = True
+                        approval_response = ApprovalResponse(
+                            run_id=event.run_id,
+                            default_approved=False,
+                        )
+                    else:
+                        response = run_control.get_approval_response(event.run_id)
+                        tool_decisions = response.get("tool_decisions", {})
+                        edited_args = response.get("edited_args", {})
+                        default_approved = response.get("approved", False)
+                        decisions: dict[str, ToolDecision] = {}
+                        for pending_tool in event.tools:
+                            tool_id = pending_tool.tool_call_id
+                            approved = tool_decisions.get(tool_id, default_approved)
+                            decisions[tool_id] = ToolDecision(
+                                approved=approved,
+                                edited_args=edited_args.get(tool_id),
+                            )
+                        approval_response = ApprovalResponse(
+                            run_id=event.run_id,
+                            decisions=decisions,
+                            default_approved=default_approved,
+                        )
+
+                    run_control.clear_approval(event.run_id)
+
+                    for pending_tool in event.tools:
+                        tool_id = pending_tool.tool_call_id
+                        decision = approval_response.decisions.get(tool_id)
+                        approved = (
+                            decision.approved
+                            if decision is not None
+                            else approval_response.default_approved
+                        )
+                        tool_args = (
+                            decision.edited_args
+                            if decision is not None and decision.edited_args is not None
+                            else pending_tool.tool_args
+                        )
+                        status = "timeout" if timed_out else ("approved" if approved else "denied")
+                        tool_block = _find_tool_block(content_blocks, tool_id)
+                        if tool_block is not None:
+                            tool_block["approvalStatus"] = status
+                            tool_block["toolArgs"] = tool_args
+                            if status in {"denied", "timeout"}:
+                                tool_block["isCompleted"] = True
+                        emit_chat_event(
+                            ch,
+                            EVENT_TOOL_APPROVAL_RESOLVED,
+                            tool={
+                                "id": tool_id,
+                                "approvalStatus": status,
+                                "toolArgs": tool_args,
+                            },
+                        )
+
+                    await _persist_state()
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "streaming")
+                    response_stream = agent_handle.continue_run(approval_response)
+                    break
+
+                if isinstance(event, RunCompleted):
+                    trace_status = "completed"
+                    _flush_text()
+                    _flush_reasoning()
+                    await _persist_state(final=True)
+                    if not ephemeral:
+                        with db.db_session() as sess:
+                            db.mark_message_complete(sess, assistant_msg_id)
+                    emit_chat_event(ch, EVENT_RUN_COMPLETED)
+                    if hasattr(ch, "flush_broadcasts"):
+                        await ch.flush_broadcasts()
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "completed")
+                        await broadcaster.unregister_stream(chat_id)
+                    trace_recorder.finish(status=trace_status)
+                    return
+
+                if isinstance(event, RunError):
+                    _flush_text()
+                    _flush_reasoning()
+                    error_msg = extract_error_message(event.message)
+                    trace_status = "error"
+                    trace_error = error_msg
+                    content_blocks.append(
+                        {
+                            "type": "error",
+                            "content": error_msg,
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                    await _persist_state(final=True)
+                    emit_chat_event(ch, EVENT_RUN_ERROR, content=error_msg)
+                    had_error = True
+                    if hasattr(ch, "flush_broadcasts"):
+                        await ch.flush_broadcasts()
+                    if chat_id:
+                        await broadcaster.update_stream_status(chat_id, "error", error_msg)
+                        await broadcaster.unregister_stream(chat_id)
+                    run_control.remove_active_run(assistant_msg_id)
+                    run_control.clear_early_cancel(assistant_msg_id)
+                    trace_recorder.finish(status=trace_status, error_message=trace_error)
+                    return
+            else:
+                break
+
+        if trace_status == "streaming":
+            _flush_text()
+            _flush_reasoning()
+            error_msg = "Run ended unexpectedly"
+            trace_status = "error"
+            trace_error = error_msg
+            content_blocks.append(
+                {
+                    "type": "error",
+                    "content": error_msg,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
+            had_error = True
+            try:
+                await _persist_state(final=True)
+            except Exception as save_err:
+                logger.error("[stream] Failed to save state on close: %s", save_err)
+            emit_chat_event(ch, EVENT_RUN_ERROR, content=error_msg)
+            if chat_id:
+                await broadcaster.update_stream_status(chat_id, "error", error_msg)
+                await broadcaster.unregister_stream(chat_id)
+
+    except asyncio.CancelledError:
+        if run_id:
+            run_control.clear_approval(run_id)
+        raise
+    except Exception as e:
+        logger.error("[stream] Exception in stream handler: %s", e)
+        _flush_text()
+        _flush_reasoning()
+        error_msg = extract_error_message(str(e))
+        trace_status = "error"
+        trace_error = error_msg
+        content_blocks.append(
+            {
+                "type": "error",
+                "content": error_msg,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
+        had_error = True
+        try:
+            await _persist_state(final=True)
+        except Exception as save_err:
+            logger.error("[stream] Failed to save state on error: %s", save_err)
+        emit_chat_event(ch, EVENT_RUN_ERROR, content=error_msg)
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "error", str(e))
+            await broadcaster.unregister_stream(chat_id)
+
+    trace_recorder.finish(status=trace_status, error_message=trace_error)
+    run_control.remove_active_run(assistant_msg_id)
+    run_control.clear_early_cancel(assistant_msg_id)
+
+    if not had_error and not ephemeral:
+        with db.db_session() as sess:
+            message = sess.get(db.Message, assistant_msg_id)
+            if message and not message.is_complete:
+                db.mark_message_complete(sess, assistant_msg_id)
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+
+
+async def _legacy_handle_content_stream(
+    agent: Any,
     messages: list[ChatMessage],
     assistant_msg_id: str,
     raw_ch: Any,

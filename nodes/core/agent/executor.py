@@ -1,29 +1,91 @@
-"""Agent node — resolves tools and runs an Agno Agent or Team."""
+"""Agent node — resolves tools and runs via runtime adapter."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from agno.agent import Agent, Message
-from agno.db.in_memory import InMemoryDb
-from agno.run.agent import BaseAgentRunEvent
-from agno.team import Team
+from agno.tools.function import Function
 
+from backend.providers import resolve_provider_options
+from backend.runtime import (
+    AgentConfig,
+    AgnoRuntimeAdapter,
+    ApprovalRequired,
+    ApprovalResolved,
+    ApprovalResponse,
+    ContentDelta,
+    ReasoningCompleted,
+    ReasoningDelta,
+    ReasoningStarted,
+    RunCancelled,
+    RunCompleted,
+    RunError,
+    RunStarted,
+    RuntimeEventT,
+    RuntimeMessage,
+    RuntimeToolCall,
+    ToolCallCompleted,
+    ToolCallStarted,
+    ToolDecision,
+)
 from backend.services import run_control
 from backend.services.model_factory import get_model
 from backend.services.model_schema_cache import get_cached_model_metadata
 from backend.services.tool_registry import get_original_tool_name
-from backend.providers import resolve_provider_options
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
-_agent_db = InMemoryDb()
+_runtime_adapter = AgnoRuntimeAdapter()
 AGENT_STREAM_IDLE_TIMEOUT_SECONDS = float(
     os.getenv("AGENT_STREAM_IDLE_TIMEOUT_SECONDS", "900")
 )
+_DELEGATION_TOOL_TASK_ARG = "task"
+
+
+@dataclass(slots=True)
+class LinkedAgentArtifact:
+    config: AgentConfig
+    node_id: str
+    node_type: str
+    name: str
+    tools: list[Any] = field(default_factory=list)
+    linked_agents: list["LinkedAgentArtifact"] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class DelegationContext:
+    queue: asyncio.Queue[Any] = field(default_factory=asyncio.Queue)
+    active_delegations: int = 0
+
+
+@dataclass(slots=True)
+class _StreamDone:
+    kind: str
+
+
+@dataclass(slots=True)
+class _StreamError:
+    error: Exception
+
+
+@dataclass(slots=True)
+class _RunHandleBridge:
+    handle: Any
+
+    def request_cancel(self) -> None:
+        cancel = getattr(self.handle, "cancel", None)
+        if callable(cancel):
+            cancel(None)
+
+    def cancel_run(self, run_id: str) -> None:
+        cancel = getattr(self.handle, "cancel", None)
+        if callable(cancel):
+            cancel(run_id)
 
 
 class AgentExecutor:
@@ -34,7 +96,7 @@ class AgentExecutor:
         data: dict[str, Any],
         output_handle: str,
         context: FlowContext,
-    ) -> Agent | Team:
+    ) -> LinkedAgentArtifact:
         if output_handle not in {"input", "output", "tools"}:
             raise ValueError(
                 f"agent node cannot materialize unknown output handle: {output_handle}"
@@ -56,9 +118,9 @@ class AgentExecutor:
         linked_instructions = await _resolve_flow_input(context, "instructions")
         if linked_instructions is not None:
             instructions_text = _extract_text(linked_instructions)
-        instructions = [instructions_text] if instructions_text else None
+        instructions = [instructions_text] if instructions_text else []
 
-        runnable = await _build_runtime_runnable(
+        return await _build_runtime_runnable(
             data,
             context,
             model_str=model_str,
@@ -66,16 +128,16 @@ class AgentExecutor:
             instructions=instructions,
             input_value=None,
         )
-        _tag_node_artifact(runnable, context.node_id, self.node_type)
-        return runnable
 
     async def execute(
-        self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
+        self,
+        data: dict[str, Any],
+        inputs: dict[str, DataValue],
+        context: FlowContext,
     ):
         input_dv = inputs.get("input", DataValue("data", {}))
         raw = input_dv.value
         input_value = raw if isinstance(raw, dict) else {"message": str(raw)}
-
         message = _resolve_agent_message(input_value)
 
         model_input = inputs.get("model")
@@ -96,478 +158,261 @@ class AgentExecutor:
             if instructions_input is not None and instructions_input.value is not None
             else _extract_text(data.get("instructions", ""))
         )
-        instructions = [instructions_text] if instructions_text else None
+        instructions = [instructions_text] if instructions_text else []
 
-        model_options = _coerce_model_options(data.get("model_options"))
-        node_params = _build_node_model_params(data, temperature)
-        model = _resolve_model(
-            model_str,
-            node_params=node_params,
-            model_options=model_options,
-        )
-        tools, sub_agents = await _resolve_link_dependencies(context, input_value)
-        if _should_disable_tools(model_str, model_options):
-            tools = []
-        tool_node_lookup = _build_tool_node_lookup(tools)
-        agent = _build_agent_or_team(
+        delegation_context = DelegationContext()
+        config, base_tools, linked_agents = await _build_agent_config(
             data,
-            model=model,
-            tools=tools,
-            sub_agents=sub_agents,
+            context,
+            model_str=model_str,
+            temperature=temperature,
             instructions=instructions,
+            input_value=input_value,
+            delegation_context=delegation_context,
         )
-        member_node_lookup = _build_member_node_lookup(sub_agents)
+        tool_node_lookup = _build_tool_node_lookup(base_tools + config.tools)
+
         group_by_node = _should_group_by_node(context)
         force_member_output = _force_member_output(context)
-        emit_member_events = isinstance(agent, Team) or force_member_output
+        root_member_name = _resolve_grouped_member_name(data, config.name)
 
         run_handle = _get_run_handle(context)
+        runnable = _build_agent_or_team(
+            data,
+            model=config.model,
+            tools=config.tools,
+            sub_agents=linked_agents,
+            instructions=config.instructions,
+        )
+        handle = _runtime_adapter.create_agent(config, runnable=runnable)
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
-            run_handle.bind_agent(agent)
+            run_handle.bind_agent(_RunHandleBridge(handle))
 
         yield NodeEvent(
             node_id=context.node_id,
             node_type=self.node_type,
             event_type="started",
             run_id=context.run_id,
-            data={"agent": data.get("name", "Agent")},
+            data={"agent": config.name},
+        )
+
+        active_root_streams = 1
+        root_run_id = ""
+        fallback_final = ""
+        content_parts: list[str] = []
+
+        messages_override = _resolve_messages_override(data)
+        runtime_messages = _coerce_runtime_messages(
+            _resolve_run_input(input_value, message, messages_override)
+        )
+        if not runtime_messages:
+            runtime_messages = [RuntimeMessage(role="user", content=message)]
+
+        root_pump = asyncio.create_task(
+            _pump_runtime_events(
+                handle.run(runtime_messages, add_history_to_context=True),
+                delegation_context.queue,
+                kind="root",
+            )
         )
 
         try:
-            content_parts: list[str] = []
-            fallback_final = ""
-            seen_member_run_ids: set[str] = set()
-            active_run_id = ""
-            forced_member_run_id = ""
-            messages_override = _resolve_messages_override(data)
-            run_input = _resolve_run_input(input_value, message, messages_override)
-
-            stream = agent.arun(
-                input=run_input,
-                add_history_to_context=True,
-                stream=True,
-                stream_events=True,
-            ).__aiter__()
-
             while True:
-                try:
-                    chunk = await asyncio.wait_for(
-                        stream.__anext__(),
-                        timeout=AGENT_STREAM_IDLE_TIMEOUT_SECONDS,
-                    )
-                except StopAsyncIteration:
+                if (
+                    active_root_streams == 0
+                    and delegation_context.active_delegations == 0
+                    and delegation_context.queue.empty()
+                ):
                     break
-                except asyncio.TimeoutError:
-                    raise RuntimeError(
-                        f"Agent stream timed out after {AGENT_STREAM_IDLE_TIMEOUT_SECONDS:.0f}s"
-                    )
 
-                event_name = _event_name(getattr(chunk, "event", None))
-                chunk_run_id = str(getattr(chunk, "run_id", "") or "")
-
-                if chunk_run_id and chunk_run_id != active_run_id:
-                    active_run_id = chunk_run_id
-                    if run_handle is not None and hasattr(run_handle, "set_run_id"):
-                        run_handle.set_run_id(active_run_id)
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_run_id",
-                        run_id=context.run_id,
-                        data={"run_id": active_run_id},
-                    )
-
-                member_fields = (
-                    _member_event_fields(chunk) if emit_member_events else {}
-                )
-                if force_member_output and not member_fields:
-                    if not forced_member_run_id:
-                        forced_member_run_id = (
-                            active_run_id
-                            or chunk_run_id
-                            or f"{context.run_id}:{context.node_id}"
+                item = await delegation_context.queue.get()
+                if isinstance(item, _StreamDone):
+                    if item.kind == "root":
+                        active_root_streams = max(0, active_root_streams - 1)
+                    else:
+                        delegation_context.active_delegations = max(
+                            0, delegation_context.active_delegations - 1
                         )
-                    member_fields = _fallback_member_fields(
-                        data,
-                        context,
-                        forced_member_run_id,
-                        self.node_type,
-                    )
-                if member_fields:
-                    _attach_member_node_metadata(member_fields, member_node_lookup)
-                    if force_member_output:
-                        member_fields.setdefault("nodeId", context.node_id)
-                        member_fields.setdefault("nodeType", self.node_type)
-                        if group_by_node and not isinstance(agent, Team):
-                            member_fields["groupByNode"] = True
-                            member_fields["memberName"] = _resolve_grouped_member_name(
-                                data,
-                                member_fields.get("memberName"),
-                            )
-                member_run_id = str(member_fields.get("memberRunId", "") or "")
-                if member_run_id and member_run_id not in seen_member_run_ids:
-                    seen_member_run_ids.add(member_run_id)
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_event",
-                        run_id=context.run_id,
-                        data={"event": "MemberRunStarted", **member_fields},
-                    )
+                    continue
 
-                if event_name in {"RunContent", "TeamRunContent"}:
-                    reasoning_text = str(getattr(chunk, "reasoning_content", "") or "")
-                    if reasoning_text:
+                if isinstance(item, _StreamError):
+                    raise item.error
+
+                if isinstance(item, NodeEvent):
+                    yield item
+                    continue
+
+                if not isinstance(item, tuple) or len(item) != 2:
+                    continue
+                scope, event = item
+                if not isinstance(event, tuple(_runtime_event_types())):
+                    continue
+
+                if scope == "root":
+                    member_fields = _root_member_fields(
+                        context=context,
+                        data=data,
+                        event=event,
+                        force_member_output=force_member_output,
+                        group_by_node=group_by_node,
+                        member_name=root_member_name,
+                    )
+                    if event.run_id and event.run_id != root_run_id:
+                        root_run_id = event.run_id
+                        if run_handle is not None and hasattr(run_handle, "set_run_id"):
+                            run_handle.set_run_id(root_run_id)
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
-                            event_type="agent_event",
+                            event_type="agent_run_id",
                             run_id=context.run_id,
-                            data={
-                                "event": "ReasoningStep",
-                                "reasoningContent": reasoning_text,
-                                **member_fields,
-                            },
+                            data={"run_id": root_run_id},
                         )
 
-                    token = str(getattr(chunk, "content", "") or "")
-                    if token:
+                    if isinstance(event, ContentDelta):
                         if member_fields:
                             if force_member_output:
-                                content_parts.append(token)
-                            yield NodeEvent(
-                                node_id=context.node_id,
-                                node_type=self.node_type,
-                                event_type="agent_event",
-                                run_id=context.run_id,
-                                data={
-                                    "event": "RunContent",
-                                    "content": token,
-                                    **member_fields,
-                                },
+                                content_parts.append(event.text)
+                            yield _agent_event_node(
+                                context,
+                                "RunContent",
+                                content=event.text,
+                                **member_fields,
                             )
                         else:
-                            content_parts.append(token)
+                            content_parts.append(event.text)
                             yield NodeEvent(
                                 node_id=context.node_id,
                                 node_type=self.node_type,
                                 event_type="progress",
                                 run_id=context.run_id,
-                                data={"token": token},
+                                data={"token": event.text},
                             )
-                    continue
-
-                if event_name in {
-                    "ReasoningStarted",
-                    "TeamReasoningStarted",
-                }:
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_event",
-                        run_id=context.run_id,
-                        data={"event": "ReasoningStarted", **member_fields},
-                    )
-                    continue
-
-                if event_name in {
-                    "ReasoningStep",
-                    "ReasoningContentDelta",
-                    "TeamReasoningStep",
-                    "TeamReasoningContentDelta",
-                }:
-                    reasoning_text = str(getattr(chunk, "reasoning_content", "") or "")
-                    if reasoning_text:
-                        yield NodeEvent(
-                            node_id=context.node_id,
-                            node_type=self.node_type,
-                            event_type="agent_event",
-                            run_id=context.run_id,
-                            data={
-                                "event": "ReasoningStep",
-                                "reasoningContent": reasoning_text,
-                                **member_fields,
-                            },
-                        )
-                    continue
-
-                if event_name in {
-                    "ReasoningCompleted",
-                    "TeamReasoningCompleted",
-                }:
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_event",
-                        run_id=context.run_id,
-                        data={"event": "ReasoningCompleted", **member_fields},
-                    )
-                    continue
-
-                if event_name in {"ToolCallStarted", "TeamToolCallStarted"}:
-                    tool = _tool_started_payload(chunk)
-                    if tool is not None:
-                        _attach_tool_node_metadata(tool, tool_node_lookup)
-                        yield NodeEvent(
-                            node_id=context.node_id,
-                            node_type=self.node_type,
-                            event_type="agent_event",
-                            run_id=context.run_id,
-                            data={
-                                "event": "ToolCallStarted",
-                                "tool": tool,
-                                **member_fields,
-                            },
-                        )
-                    continue
-
-                if event_name in {"ToolCallCompleted", "TeamToolCallCompleted"}:
-                    tool = _tool_completed_payload(chunk)
-                    if tool is not None:
-                        _attach_tool_node_metadata(tool, tool_node_lookup)
-                        yield NodeEvent(
-                            node_id=context.node_id,
-                            node_type=self.node_type,
-                            event_type="agent_event",
-                            run_id=context.run_id,
-                            data={
-                                "event": "ToolCallCompleted",
-                                "tool": tool,
-                                **member_fields,
-                            },
-                        )
-                    continue
-
-                if event_name in {"RunPaused", "TeamRunPaused"}:
-                    if not active_run_id:
-                        active_run_id = chunk_run_id or context.run_id
-
-                    tools = _approval_tools(chunk)
-                    if not tools:
                         continue
 
-                    if isinstance(agent, Team):
-                        for tool in tools:
-                            setattr(tool, "confirmed", True)
-                        for tool in tools:
-                            tool_id = getattr(tool, "tool_call_id", "")
-                            tool_name = get_original_tool_name(
-                                getattr(tool, "tool_name", "")
-                            )
-                            tool_info: dict[str, Any] = {
-                                "id": tool_id,
-                                "toolName": tool_name,
-                                "approvalStatus": "approved",
-                                "toolArgs": getattr(tool, "tool_args", None),
-                            }
-                            _attach_tool_node_metadata(tool_info, tool_node_lookup)
-                            yield NodeEvent(
-                                node_id=context.node_id,
-                                node_type=self.node_type,
-                                event_type="agent_event",
-                                run_id=context.run_id,
-                                data={
-                                    "event": "ToolApprovalResolved",
-                                    "tool": {**tool_info},
-                                },
-                            )
-
-                        stream = agent.acontinue_run(
-                            run_id=active_run_id,
-                            updated_tools=tools,
-                            stream=True,
-                            stream_events=True,
-                        ).__aiter__()
-                        continue
-
-                    approval_member_fields: dict[str, Any] = {}
-                    if force_member_output:
-                        if not forced_member_run_id:
-                            forced_member_run_id = (
-                                active_run_id
-                                or chunk_run_id
-                                or f"{context.run_id}:{context.node_id}"
-                            )
-                        approval_member_fields = _fallback_member_fields(
-                            data,
+                    if isinstance(event, ReasoningStarted):
+                        yield _agent_event_node(
                             context,
-                            forced_member_run_id,
-                            self.node_type,
+                            "ReasoningStarted",
+                            **member_fields,
                         )
+                        continue
 
-                    tools_info: list[dict[str, Any]] = []
-                    for tool in tools:
-                        tool_id = getattr(tool, "tool_call_id", "")
-                        tool_name = get_original_tool_name(
-                            getattr(tool, "tool_name", "")
+                    if isinstance(event, ReasoningDelta):
+                        yield _agent_event_node(
+                            context,
+                            "ReasoningStep",
+                            reasoningContent=event.text,
+                            **member_fields,
                         )
-                        tool_args = getattr(tool, "tool_args", None)
-                        tool_info: dict[str, Any] = {
-                            "id": tool_id,
-                            "toolName": tool_name,
-                            "toolArgs": tool_args,
-                        }
-                        tool_registry = _get_tool_registry(context)
-                        editable_args = (
-                            tool_registry.get_editable_args(tool_name)
-                            if tool_registry is not None
-                            else None
+                        continue
+
+                    if isinstance(event, ReasoningCompleted):
+                        yield _agent_event_node(
+                            context,
+                            "ReasoningCompleted",
+                            **member_fields,
                         )
-                        if editable_args:
-                            tool_info["editableArgs"] = editable_args
-                        _attach_tool_node_metadata(tool_info, tool_node_lookup)
-                        tools_info.append(tool_info)
+                        continue
 
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_event",
-                        run_id=context.run_id,
-                        data={
-                            "event": "ToolApprovalRequired",
-                            "tool": {"runId": active_run_id, "tools": tools_info},
-                            **approval_member_fields,
-                        },
-                    )
-
-                    approval_event = asyncio.Event()
-                    run_control.register_approval_waiter(active_run_id, approval_event)
-                    timed_out = False
-                    try:
-                        await asyncio.wait_for(approval_event.wait(), timeout=300)
-                    except asyncio.TimeoutError:
-                        timed_out = True
-                        for tool in tools:
-                            setattr(tool, "confirmed", False)
-                    else:
-                        response = run_control.get_approval_response(active_run_id)
-                        tool_decisions = response.get("tool_decisions", {})
-                        edited_args = response.get("edited_args", {})
-                        default_approved = response.get("approved", False)
-                        for tool in tools:
-                            tool_id = getattr(tool, "tool_call_id", "")
-                            setattr(
-                                tool,
-                                "confirmed",
-                                tool_decisions.get(tool_id, default_approved),
+                    if isinstance(event, ToolCallStarted):
+                        tool = _tool_payload_from_runtime_call(event.tool)
+                        if tool is not None:
+                            _attach_tool_node_metadata(tool, tool_node_lookup)
+                            yield _agent_event_node(
+                                context,
+                                "ToolCallStarted",
+                                tool=tool,
+                                **member_fields,
                             )
-                            if tool_id and tool_id in edited_args:
-                                setattr(tool, "tool_args", edited_args[tool_id])
-                    finally:
-                        run_control.clear_approval(active_run_id)
+                        continue
 
-                    for tool in tools:
-                        tool_id = getattr(tool, "tool_call_id", "")
-                        tool_name = get_original_tool_name(
-                            getattr(tool, "tool_name", "")
+                    if isinstance(event, ToolCallCompleted):
+                        tool = _tool_payload_from_runtime_result(event.tool)
+                        if tool is not None:
+                            _attach_tool_node_metadata(tool, tool_node_lookup)
+                            yield _agent_event_node(
+                                context,
+                                "ToolCallCompleted",
+                                tool=tool,
+                                **member_fields,
+                            )
+                        continue
+
+                    if isinstance(event, ApprovalRequired):
+                        approval_events, approval = await _handle_root_approval(
+                            context=context,
+                            runtime_event=event,
+                            tool_node_lookup=tool_node_lookup,
+                            member_fields=member_fields,
                         )
-                        status = (
-                            "timeout"
-                            if timed_out
-                            else (
-                                "approved"
-                                if bool(getattr(tool, "confirmed", False))
-                                else "denied"
+                        for approval_event in approval_events:
+                            yield approval_event
+
+                        active_root_streams += 1
+                        asyncio.create_task(
+                            _pump_runtime_events(
+                                handle.continue_run(approval),
+                                delegation_context.queue,
+                                kind="root",
                             )
                         )
-                        tool_info: dict[str, Any] = {
-                            "id": tool_id,
-                            "toolName": tool_name,
-                            "approvalStatus": status,
-                            "toolArgs": getattr(tool, "tool_args", None),
-                        }
-                        _attach_tool_node_metadata(tool_info, tool_node_lookup)
+                        continue
+
+                    if isinstance(event, RunCancelled):
                         yield NodeEvent(
                             node_id=context.node_id,
                             node_type=self.node_type,
-                            event_type="agent_event",
+                            event_type="cancelled",
                             run_id=context.run_id,
-                            data={
-                                "event": "ToolApprovalResolved",
-                                "tool": {
-                                    **tool_info,
-                                },
-                                **approval_member_fields,
-                            },
                         )
+                        yield ExecutionResult(
+                            outputs={
+                                "output": DataValue(type="data", value={"response": ""})
+                            }
+                        )
+                        return
 
-                    stream = agent.acontinue_run(
-                        run_id=active_run_id,
-                        updated_tools=tools,
-                        stream=True,
-                        stream_events=True,
-                    ).__aiter__()
+                    if isinstance(event, RunCompleted):
+                        if member_fields:
+                            if force_member_output and not content_parts and event.content:
+                                fallback_final = event.content
+                            yield _agent_event_node(
+                                context,
+                                "MemberRunCompleted",
+                                **member_fields,
+                            )
+                        elif not content_parts and event.content:
+                            fallback_final = event.content
+                        break
+
+                    if isinstance(event, RunError):
+                        if member_fields:
+                            yield _agent_event_node(
+                                context,
+                                "MemberRunError",
+                                content=event.message or "Agent run failed",
+                                **member_fields,
+                            )
+                            if force_member_output:
+                                raise RuntimeError(event.message or "Agent run failed")
+                            continue
+                        raise RuntimeError(event.message or "Agent run failed")
+
+                    if isinstance(event, RunStarted) and member_fields:
+                        yield _agent_event_node(
+                            context,
+                            "MemberRunStarted",
+                            **member_fields,
+                        )
+                        continue
+
                     continue
 
-                if event_name in {"RunCancelled", "TeamRunCancelled"}:
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="cancelled",
-                        run_id=context.run_id,
-                    )
-                    yield ExecutionResult(
-                        outputs={
-                            "output": DataValue(type="data", value={"response": ""})
-                        }
-                    )
-                    return
-
-                if event_name in {"RunCompleted", "TeamRunCompleted"}:
-                    if member_fields:
-                        if force_member_output and not content_parts:
-                            fallback_final = str(getattr(chunk, "content", "") or "")
-                        yield NodeEvent(
-                            node_id=context.node_id,
-                            node_type=self.node_type,
-                            event_type="agent_event",
-                            run_id=context.run_id,
-                            data={"event": "MemberRunCompleted", **member_fields},
-                        )
-                        continue
-                    if not content_parts:
-                        fallback_final = str(getattr(chunk, "content", "") or "")
-                    break
-
-                if event_name in {"RunError", "TeamRunError"}:
-                    if member_fields:
-                        yield NodeEvent(
-                            node_id=context.node_id,
-                            node_type=self.node_type,
-                            event_type="agent_event",
-                            run_id=context.run_id,
-                            data={
-                                "event": "MemberRunError",
-                                "content": str(
-                                    getattr(chunk, "content", None)
-                                    or "Agent run failed"
-                                ),
-                                **member_fields,
-                            },
-                        )
-                        if force_member_output:
-                            raise RuntimeError(
-                                str(
-                                    getattr(chunk, "content", None)
-                                    or "Agent run failed"
-                                )
-                            )
-                        continue
-                    raise RuntimeError(
-                        str(getattr(chunk, "content", None) or "Agent run failed")
-                    )
-
-                if event_name:
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="agent_event",
-                        run_id=context.run_id,
-                        data={"event": event_name, **member_fields},
-                    )
+                # delegated child events are emitted directly as NodeEvent payloads.
+                continue
 
             content = "".join(content_parts) if content_parts else fallback_final
-
             yield ExecutionResult(
                 outputs={
                     "output": DataValue(type="data", value={"response": content or ""})
@@ -584,12 +429,638 @@ class AgentExecutor:
             yield ExecutionResult(
                 outputs={"output": DataValue(type="data", value={"response": ""})}
             )
+        finally:
+            root_pump.cancel()
+            await asyncio.gather(root_pump, return_exceptions=True)
 
 
-def _event_name(event: Any) -> str:
-    if isinstance(event, Enum):
-        return str(event.value)
-    return str(event) if event is not None else ""
+async def _pump_runtime_events(
+    stream: Any,
+    queue: asyncio.Queue[Any],
+    *,
+    kind: str,
+) -> None:
+    try:
+        async for event in _iterate_with_timeout(stream):
+            await queue.put((kind, event))
+    except Exception as exc:
+        await queue.put(_StreamError(exc))
+    finally:
+        await queue.put(_StreamDone(kind))
+
+
+async def _iterate_with_timeout(stream: Any):
+    iterator = stream.__aiter__()
+    while True:
+        try:
+            item = await asyncio.wait_for(
+                iterator.__anext__(),
+                timeout=AGENT_STREAM_IDLE_TIMEOUT_SECONDS,
+            )
+        except StopAsyncIteration:
+            break
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError(
+                f"Agent stream timed out after {AGENT_STREAM_IDLE_TIMEOUT_SECONDS:.0f}s"
+            ) from exc
+        yield item
+
+
+async def _build_runtime_runnable(
+    data: dict[str, Any],
+    context: FlowContext,
+    *,
+    model_str: str,
+    temperature: float | None,
+    instructions: list[str],
+    input_value: dict[str, Any] | None,
+) -> LinkedAgentArtifact:
+    config, tools, linked_agents = await _build_agent_config(
+        data,
+        context,
+        model_str=model_str,
+        temperature=temperature,
+        instructions=instructions,
+        input_value=input_value,
+        delegation_context=None,
+    )
+    return LinkedAgentArtifact(
+        config=config,
+        node_id=context.node_id,
+        node_type=AgentExecutor.node_type,
+        name=config.name,
+        tools=tools,
+        linked_agents=linked_agents,
+    )
+
+
+async def _build_agent_config(
+    data: dict[str, Any],
+    context: FlowContext,
+    *,
+    model_str: str,
+    temperature: float | None,
+    instructions: list[str],
+    input_value: dict[str, Any] | None,
+    delegation_context: DelegationContext | None,
+) -> tuple[AgentConfig, list[Any], list[LinkedAgentArtifact]]:
+    model_options = _coerce_model_options(data.get("model_options"))
+    node_params = _build_node_model_params(data, temperature)
+    model = _resolve_model(
+        model_str,
+        node_params=node_params,
+        model_options=model_options,
+    )
+    tools, linked_agents = await _resolve_link_dependencies(context)
+    if _should_disable_tools(model_str, model_options):
+        tools = []
+        linked_agents = []
+
+    all_tools = list(tools)
+    if delegation_context is not None:
+        all_tools.extend(
+            _build_delegation_tools(
+                linked_agents,
+                context=context,
+                delegation_context=delegation_context,
+            )
+        )
+
+    extra_tools = _resolve_extra_tools(context, input_value)
+    if extra_tools and not _should_disable_tools(model_str, model_options):
+        all_tools.extend(extra_tools)
+
+    config = AgentConfig(
+        model=model,
+        tools=all_tools,
+        instructions=instructions,
+        name=str(data.get("name") or "Agent"),
+        description=str(data.get("description") or ""),
+    )
+    return config, tools, linked_agents
+
+
+async def _resolve_link_dependencies(
+    context: FlowContext,
+) -> tuple[list[Any], list[LinkedAgentArtifact]]:
+    artifacts: list[Any] = []
+    runtime = context.runtime
+    if runtime is not None:
+        artifacts.extend(await runtime.resolve_links(context.node_id, "tools"))
+
+    tools: list[Any] = []
+    linked_agents: list[LinkedAgentArtifact] = []
+    for artifact in _flatten_link_artifacts(artifacts):
+        if isinstance(artifact, LinkedAgentArtifact):
+            linked_agents.append(artifact)
+            continue
+        if artifact is not None:
+            tools.append(artifact)
+
+    return tools, linked_agents
+
+
+def _build_delegation_tools(
+    linked_agents: list[LinkedAgentArtifact],
+    *,
+    context: FlowContext,
+    delegation_context: DelegationContext,
+) -> list[Any]:
+    tools: list[Any] = []
+    for artifact in linked_agents:
+        tool = _build_delegation_tool(
+            artifact,
+            context=context,
+            delegation_context=delegation_context,
+        )
+        if tool is not None:
+            tools.append(tool)
+    return tools
+
+
+def _build_agent_or_team(
+    data: dict[str, Any],
+    *,
+    model: Any,
+    tools: list[Any],
+    sub_agents: list[LinkedAgentArtifact],
+    instructions: list[str] | None,
+) -> Any:
+    del sub_agents
+    return Agent(
+        name=str(data.get("name") or "Agent"),
+        model=model,
+        tools=tools or None,
+        description=str(data.get("description") or ""),
+        instructions=instructions or None,
+        markdown=True,
+        stream_events=True,
+    )
+
+
+def _build_delegation_tool(
+    artifact: LinkedAgentArtifact,
+    *,
+    context: FlowContext,
+    delegation_context: DelegationContext,
+) -> Function | None:
+    tool_name = _safe_delegation_tool_name(artifact)
+    description = _delegation_tool_description(artifact)
+
+    async def _delegate(fc: Any | None = None, **kwargs: Any) -> str:
+        del fc
+        task = _extract_text(kwargs.get(_DELEGATION_TOOL_TASK_ARG)).strip()
+        if not task:
+            raise ValueError("Delegation task is required")
+
+        delegation_context.active_delegations += 1
+        try:
+            result = await _run_delegated_agent(
+                artifact,
+                context=context,
+                delegation_context=delegation_context,
+                task=task,
+            )
+            return result
+        finally:
+            await delegation_context.queue.put(_StreamDone("delegation"))
+
+    _delegate.__name__ = tool_name
+    _delegate.__doc__ = description
+
+    function = Function(
+        name=tool_name,
+        description=description,
+        parameters={
+            "type": "object",
+            "properties": {
+                _DELEGATION_TOOL_TASK_ARG: {
+                    "type": "string",
+                    "description": "Task to delegate to this linked sub-agent.",
+                }
+            },
+            "required": [_DELEGATION_TOOL_TASK_ARG],
+        },
+        entrypoint=_delegate,
+        skip_entrypoint_processing=True,
+    )
+    _tag_node_artifact(function, artifact.node_id, artifact.node_type)
+    return function
+
+
+async def _run_delegated_agent(
+    artifact: LinkedAgentArtifact,
+    *,
+    context: FlowContext,
+    delegation_context: DelegationContext,
+    task: str,
+) -> str:
+    member_name = artifact.name or "Agent"
+    handle = _runtime_adapter.create_agent(
+        artifact.config,
+        member_name=member_name,
+        task=task,
+    )
+
+    result_parts: list[str] = []
+    member_started = False
+    member_fields: dict[str, Any] = {
+        "memberName": member_name,
+        "nodeId": artifact.node_id,
+        "nodeType": artifact.node_type,
+    }
+    if _should_group_by_node(context):
+        member_fields["groupByNode"] = True
+
+    current_stream = handle.run([RuntimeMessage(role="user", content=task)])
+    while True:
+        async for event in _iterate_with_timeout(current_stream):
+            if isinstance(event, RunStarted):
+                run_id = event.member_run_id or event.run_id or ""
+                if run_id:
+                    member_fields["memberRunId"] = run_id
+                if event.task:
+                    member_fields["task"] = event.task
+                if not member_started:
+                    await delegation_context.queue.put(
+                        _agent_event_node(
+                            context,
+                            "MemberRunStarted",
+                            **member_fields,
+                        )
+                    )
+                    member_started = True
+                continue
+
+            if isinstance(event, ContentDelta):
+                result_parts.append(event.text)
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "RunContent",
+                        content=event.text,
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ReasoningStarted):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ReasoningStarted",
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ReasoningDelta):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ReasoningStep",
+                        reasoningContent=event.text,
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ReasoningCompleted):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ReasoningCompleted",
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ToolCallStarted):
+                tool = _tool_payload_from_runtime_call(event.tool)
+                if tool is None:
+                    continue
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ToolCallStarted",
+                        tool=tool,
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ToolCallCompleted):
+                tool = _tool_payload_from_runtime_result(event.tool)
+                if tool is None:
+                    continue
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ToolCallCompleted",
+                        tool=tool,
+                        **member_fields,
+                    )
+                )
+                continue
+
+            if isinstance(event, ApprovalRequired):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "ToolApprovalRequired",
+                        tool={
+                            "runId": event.run_id,
+                            "tools": [_pending_tool_payload(tool) for tool in event.tools],
+                        },
+                        **member_fields,
+                    )
+                )
+                approval = await _await_approval_response(event.run_id or context.run_id)
+                await _emit_approval_resolved_events(
+                    context=context,
+                    approval=approval,
+                    runtime_event=event,
+                    member_fields=member_fields,
+                    queue=delegation_context.queue,
+                )
+                current_stream = handle.continue_run(approval)
+                break
+
+            if isinstance(event, RunCompleted):
+                if not member_started:
+                    run_id = event.member_run_id or event.run_id or ""
+                    if run_id:
+                        member_fields["memberRunId"] = run_id
+                    await delegation_context.queue.put(
+                        _agent_event_node(
+                            context,
+                            "MemberRunStarted",
+                            **member_fields,
+                        )
+                    )
+                    member_started = True
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "MemberRunCompleted",
+                        **member_fields,
+                    )
+                )
+                if event.content and not result_parts:
+                    result_parts.append(event.content)
+                return "".join(result_parts) if result_parts else (event.content or "")
+
+            if isinstance(event, RunCancelled):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "MemberRunError",
+                        content="Agent run cancelled",
+                        **member_fields,
+                    )
+                )
+                return ""
+
+            if isinstance(event, RunError):
+                await delegation_context.queue.put(
+                    _agent_event_node(
+                        context,
+                        "MemberRunError",
+                        content=event.message or "Agent run failed",
+                        **member_fields,
+                    )
+                )
+                raise RuntimeError(event.message or "Agent run failed")
+        else:
+            return "".join(result_parts)
+
+
+async def _handle_root_approval(
+    *,
+    context: FlowContext,
+    runtime_event: ApprovalRequired,
+    tool_node_lookup: dict[str, dict[str, str]],
+    member_fields: dict[str, Any],
+) -> tuple[list[NodeEvent], ApprovalResponse]:
+    tools_info = [_pending_tool_payload(tool) for tool in runtime_event.tools]
+    tool_registry = _get_tool_registry(context)
+    for tool_info in tools_info:
+        tool_name = str(tool_info.get("toolName") or "")
+        if tool_registry is not None and tool_name:
+            editable_args = tool_registry.get_editable_args(tool_name)
+            if editable_args:
+                tool_info["editableArgs"] = editable_args
+        _attach_tool_node_metadata(tool_info, tool_node_lookup)
+
+    events = [
+        _agent_event_node(
+            context,
+            "ToolApprovalRequired",
+            tool={"runId": runtime_event.run_id, "tools": tools_info},
+            **member_fields,
+        )
+    ]
+
+    approval = await _await_approval_response(runtime_event.run_id or context.run_id)
+    for tool in tools_info:
+        tool_id = str(tool.get("id") or "")
+        decision = approval.decisions.get(tool_id)
+        if decision is None:
+            status = "timeout" if not approval.default_approved else "approved"
+            resolved_args = tool.get("toolArgs")
+        else:
+            status = "approved" if decision.approved else "denied"
+            resolved_args = decision.edited_args or tool.get("toolArgs")
+        resolved_tool = {
+            "id": tool_id,
+            "toolName": tool.get("toolName"),
+            "approvalStatus": status,
+            "toolArgs": resolved_args,
+        }
+        _attach_tool_node_metadata(resolved_tool, tool_node_lookup)
+        events.append(
+            _agent_event_node(
+                context,
+                "ToolApprovalResolved",
+                tool=resolved_tool,
+                **member_fields,
+            )
+        )
+
+    return events, approval
+
+
+async def _await_approval_response(run_id: str) -> ApprovalResponse:
+    approval_event = asyncio.Event()
+    run_control.register_approval_waiter(run_id, approval_event)
+    try:
+        await asyncio.wait_for(approval_event.wait(), timeout=300)
+        response = run_control.get_approval_response(run_id)
+        tool_decisions = response.get("tool_decisions", {}) or {}
+        edited_args = response.get("edited_args", {}) or {}
+        return ApprovalResponse(
+            run_id=run_id,
+            default_approved=bool(response.get("approved", False)),
+            decisions={
+                tool_id: ToolDecision(
+                    approved=bool(tool_decisions.get(tool_id, response.get("approved", False))),
+                    edited_args=(edited_args.get(tool_id) if isinstance(edited_args.get(tool_id), dict) else None),
+                )
+                for tool_id in tool_decisions
+            },
+        )
+    except asyncio.TimeoutError:
+        return ApprovalResponse(run_id=run_id, default_approved=False)
+    finally:
+        run_control.clear_approval(run_id)
+
+
+async def _emit_approval_resolved_events(
+    *,
+    context: FlowContext,
+    approval: ApprovalResponse,
+    runtime_event: ApprovalRequired,
+    member_fields: dict[str, Any],
+    queue: asyncio.Queue[Any],
+) -> None:
+    for tool in runtime_event.tools:
+        decision = approval.decisions.get(tool.tool_call_id)
+        if decision is None:
+            approved = approval.default_approved
+            tool_args = tool.tool_args
+            status = "timeout" if not approved else "approved"
+        else:
+            approved = decision.approved
+            tool_args = decision.edited_args or tool.tool_args
+            status = "approved" if approved else "denied"
+        await queue.put(
+            _agent_event_node(
+                context,
+                "ToolApprovalResolved",
+                tool={
+                    "id": tool.tool_call_id,
+                    "toolName": tool.tool_name,
+                    "approvalStatus": status,
+                    "toolArgs": tool_args,
+                },
+                **member_fields,
+            )
+        )
+
+
+def _root_member_fields(
+    *,
+    context: FlowContext,
+    data: dict[str, Any],
+    event: RuntimeEventT,
+    force_member_output: bool,
+    group_by_node: bool,
+    member_name: str,
+) -> dict[str, Any]:
+    if not force_member_output:
+        return {}
+    run_id = str(event.member_run_id or event.run_id or "")
+    fields = _fallback_member_fields(
+        data,
+        context,
+        run_id,
+        AgentExecutor.node_type,
+    )
+    if not fields:
+        return {}
+    fields["memberName"] = member_name
+    if group_by_node:
+        fields["groupByNode"] = True
+    return fields
+
+
+def _runtime_event_types() -> tuple[type[Any], ...]:
+    return (
+        RunStarted,
+        ContentDelta,
+        ReasoningStarted,
+        ReasoningDelta,
+        ReasoningCompleted,
+        ToolCallStarted,
+        ToolCallCompleted,
+        ApprovalRequired,
+        ApprovalResolved,
+        RunCompleted,
+        RunCancelled,
+        RunError,
+    )
+
+
+def _agent_event_node(
+    context: FlowContext,
+    event_name: str,
+    **data: Any,
+) -> NodeEvent:
+    payload = {"event": event_name, **data}
+    return NodeEvent(
+        node_id=context.node_id,
+        node_type=AgentExecutor.node_type,
+        event_type="agent_event",
+        run_id=context.run_id,
+        data=payload,
+    )
+
+
+def _safe_delegation_tool_name(artifact: LinkedAgentArtifact) -> str:
+    base = artifact.name.strip() or artifact.node_id or "agent"
+    safe = []
+    for char in base.lower().replace(" ", "_"):
+        safe.append(char if char.isalnum() or char == "_" else "_")
+    return f"delegate_{''.join(safe).strip('_') or 'agent'}"
+
+
+def _delegation_tool_description(artifact: LinkedAgentArtifact) -> str:
+    description = artifact.config.description.strip()
+    if description:
+        return f"Delegate a task to sub-agent '{artifact.name}'. {description}"
+    return f"Delegate a task to sub-agent '{artifact.name}'."
+
+
+def _pending_tool_payload(tool: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": tool.tool_call_id,
+        "toolName": tool.tool_name,
+        "toolArgs": dict(tool.tool_args or {}),
+    }
+    if tool.editable_args is not None:
+        payload["editableArgs"] = tool.editable_args
+    if tool.requires_user_input:
+        payload["requiresUserInput"] = True
+    if tool.user_input_schema is not None:
+        payload["userInputSchema"] = tool.user_input_schema
+    return payload
+
+
+def _tool_payload_from_runtime_call(tool: Any) -> dict[str, Any] | None:
+    if tool is None:
+        return None
+    return {
+        "id": tool.id,
+        "toolName": tool.name,
+        "toolArgs": dict(tool.arguments or {}),
+        "isCompleted": False,
+        **({"providerData": tool.provider_data} if tool.provider_data else {}),
+    }
+
+
+def _tool_payload_from_runtime_result(tool: Any) -> dict[str, Any] | None:
+    if tool is None:
+        return None
+    payload = {
+        "id": tool.id,
+        "toolName": tool.name,
+        "toolResult": tool.result,
+        "failed": bool(tool.failed),
+        **({"providerData": tool.provider_data} if tool.provider_data else {}),
+    }
+    if tool.error is not None:
+        payload["error"] = tool.error
+    return payload
 
 
 def _extract_text(value: Any) -> str:
@@ -832,8 +1303,6 @@ def _resolve_run_input(
         if parsed_override:
             return parsed_override
 
-    # Prefer agno-native message objects so multimodal inputs (e.g. images)
-    # are preserved through chat-start -> agent execution.
     for key in ("agno_messages", "messages"):
         parsed_messages = _coerce_messages(input_value.get(key))
         if parsed_messages:
@@ -860,6 +1329,24 @@ def _resolve_messages_override(data: dict[str, Any]) -> Any | None:
             return raw.get("expression")
 
     return raw
+
+
+def _coerce_runtime_messages(value: Any) -> list[RuntimeMessage]:
+    if isinstance(value, list) and all(isinstance(item, RuntimeMessage) for item in value):
+        return list(value)
+
+    messages = _coerce_messages(value)
+    runtime_messages: list[RuntimeMessage] = []
+    for message in messages:
+        runtime_messages.append(
+            RuntimeMessage(
+                role=message.role,
+                content=_content_to_text(getattr(message, "content", None)),
+                tool_call_id=getattr(message, "tool_call_id", None),
+                tool_calls=_runtime_tool_calls_from_message(getattr(message, "tool_calls", None)),
+            )
+        )
+    return runtime_messages
 
 
 def _coerce_messages(value: Any) -> list[Message]:
@@ -915,6 +1402,40 @@ def _coerce_message_item(item: Any) -> list[Message]:
         return [Message(**payload)]
 
     return []
+
+
+def _runtime_tool_calls_from_message(tool_calls: Any) -> list[RuntimeToolCall]:
+    if not isinstance(tool_calls, list):
+        return []
+    runtime_calls: list[RuntimeToolCall] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function") if isinstance(call.get("function"), dict) else {}
+        arguments = function.get("arguments")
+        parsed_args: dict[str, Any] = {}
+        if isinstance(arguments, str):
+            try:
+                loaded = json.loads(arguments)
+                if isinstance(loaded, dict):
+                    parsed_args = loaded
+            except json.JSONDecodeError:
+                parsed_args = {}
+        elif isinstance(arguments, dict):
+            parsed_args = arguments
+        runtime_calls.append(
+            RuntimeToolCall(
+                id=str(call.get("id") or ""),
+                name=str(function.get("name") or ""),
+                arguments=parsed_args,
+                provider_data=(
+                    call.get("providerData")
+                    if isinstance(call.get("providerData"), dict)
+                    else None
+                ),
+            )
+        )
+    return runtime_calls
 
 
 def _normalize_tool_calls(tool_calls: list[Any]) -> list[dict[str, Any]]:
@@ -989,6 +1510,9 @@ def _build_tool_node_lookup(tools: list[Any]) -> dict[str, dict[str, str]]:
         if name and meta:
             if name not in lookup:
                 lookup[name] = meta
+            original_name = get_original_tool_name(name)
+            if original_name not in lookup:
+                lookup[original_name] = meta
             if ":" in name:
                 short_name = name.split(":")[-1]
                 if short_name and short_name not in lookup:
@@ -1010,192 +1534,6 @@ def _attach_tool_node_metadata(
     node_type = meta.get("nodeType")
     if node_type:
         tool_payload.setdefault("nodeType", node_type)
-
-
-def _get_agent_name(agent: Any) -> str | None:
-    name = getattr(agent, "name", None)
-    if isinstance(name, str) and name:
-        return name
-    name = getattr(agent, "agent_name", None)
-    if isinstance(name, str) and name:
-        return name
-    return None
-
-
-def _get_agent_node_meta(agent: Any) -> dict[str, str] | None:
-    node_id = getattr(agent, "__agno_node_id", None)
-    if not node_id:
-        return None
-    meta: dict[str, str] = {"nodeId": str(node_id)}
-    node_type = getattr(agent, "__agno_node_type", None)
-    if isinstance(node_type, str) and node_type:
-        meta["nodeType"] = node_type
-    return meta
-
-
-def _build_member_node_lookup(sub_agents: list[Any]) -> dict[str, dict[str, str]]:
-    lookup: dict[str, dict[str, str]] = {}
-    for agent in sub_agents:
-        name = _get_agent_name(agent)
-        meta = _get_agent_node_meta(agent)
-        if name and meta and name not in lookup:
-            lookup[name] = meta
-    return lookup
-
-
-def _attach_member_node_metadata(
-    member_fields: dict[str, Any],
-    member_node_lookup: dict[str, dict[str, str]],
-) -> None:
-    member_name = member_fields.get("memberName")
-    if not member_name:
-        return
-    meta = member_node_lookup.get(str(member_name))
-    if not meta:
-        return
-    member_fields.setdefault("nodeId", meta.get("nodeId"))
-    node_type = meta.get("nodeType")
-    if node_type:
-        member_fields.setdefault("nodeType", node_type)
-
-
-def _member_event_fields(chunk: Any) -> dict[str, Any]:
-    if not isinstance(chunk, BaseAgentRunEvent):
-        return {}
-
-    member_run_id = str(getattr(chunk, "run_id", "") or "")
-    member_name = str(getattr(chunk, "agent_name", "") or "Agent")
-    if not member_run_id:
-        return {}
-    return {"memberRunId": member_run_id, "memberName": member_name}
-
-
-def _tool_started_payload(chunk: Any) -> dict[str, Any] | None:
-    tool = getattr(chunk, "tool", None)
-    if tool is None:
-        return None
-    raw_name = getattr(tool, "tool_name", None)
-    return {
-        "id": getattr(tool, "tool_call_id", None),
-        "toolName": get_original_tool_name(raw_name) if raw_name else raw_name,
-        "toolArgs": getattr(tool, "tool_args", None),
-        "isCompleted": False,
-    }
-
-
-def _tool_completed_payload(chunk: Any) -> dict[str, Any] | None:
-    tool = getattr(chunk, "tool", None)
-    if tool is None:
-        return None
-    raw_name = getattr(tool, "tool_name", None)
-    result = getattr(tool, "result", None)
-    payload = {
-        "id": getattr(tool, "tool_call_id", None),
-        "toolName": get_original_tool_name(raw_name) if raw_name else raw_name,
-        "toolResult": str(result) if result is not None else None,
-    }
-    error_value = getattr(tool, "error", None)
-    if error_value is not None:
-        payload["error"] = str(error_value)
-    return payload
-
-
-def _approval_tools(chunk: Any) -> list[Any]:
-    requiring_confirmation = getattr(chunk, "tools_requiring_confirmation", None)
-    if requiring_confirmation:
-        return list(requiring_confirmation)
-
-    tools = getattr(chunk, "tools", None)
-    if tools:
-        return list(tools)
-    return []
-
-
-async def _build_runtime_runnable(
-    data: dict[str, Any],
-    context: FlowContext,
-    *,
-    model_str: str,
-    temperature: float | None,
-    instructions: list[str] | None,
-    input_value: dict[str, Any] | None,
-) -> Agent | Team:
-    model_options = _coerce_model_options(data.get("model_options"))
-    node_params = _build_node_model_params(data, temperature)
-    model = _resolve_model(
-        model_str,
-        node_params=node_params,
-        model_options=model_options,
-    )
-    tools, sub_agents = await _resolve_link_dependencies(context, input_value)
-    if _should_disable_tools(model_str, model_options):
-        tools = []
-    return _build_agent_or_team(
-        data,
-        model=model,
-        tools=tools,
-        sub_agents=sub_agents,
-        instructions=instructions,
-    )
-
-
-def _build_agent_or_team(
-    data: dict[str, Any],
-    *,
-    model: Any,
-    tools: list[Any],
-    sub_agents: list[Any],
-    instructions: list[str] | None,
-) -> Agent | Team:
-    if not sub_agents:
-        return Agent(
-            name=data.get("name", "Agent"),
-            model=model,
-            tools=tools or None,
-            description=data.get("description", ""),
-            instructions=instructions,
-            markdown=True,
-            stream_events=True,
-            db=_agent_db,
-        )
-
-    return Team(
-        name=data.get("name", "Agent"),
-        model=model,
-        tools=tools or None,
-        description=data.get("description", ""),
-        instructions=instructions,
-        members=sub_agents,
-        markdown=True,
-        stream_events=True,
-        stream_member_events=True,
-        db=_agent_db,
-    )
-
-
-async def _resolve_link_dependencies(
-    context: FlowContext,
-    input_value: dict[str, Any] | None,
-) -> tuple[list[Any], list[Any]]:
-    artifacts: list[Any] = []
-    runtime = context.runtime
-    if runtime is not None:
-        artifacts.extend(await runtime.resolve_links(context.node_id, "tools"))
-
-    extra_tools = _resolve_extra_tools(context, input_value)
-    if extra_tools:
-        artifacts.extend(extra_tools)
-
-    tools: list[Any] = []
-    sub_agents: list[Any] = []
-    for artifact in _flatten_link_artifacts(artifacts):
-        if isinstance(artifact, (Agent, Team)):
-            sub_agents.append(artifact)
-            continue
-        if artifact is not None:
-            tools.append(artifact)
-
-    return tools, sub_agents
 
 
 def _resolve_extra_tools(
@@ -1237,12 +1575,19 @@ def _should_include_extra_tools(
     context: FlowContext,
     input_value: dict[str, Any] | None,
 ) -> bool:
+    del context
     if isinstance(input_value, dict):
         for key in ("include_user_tools", "includeUserTools"):
             if isinstance(input_value.get(key), bool):
                 return bool(input_value.get(key))
 
     return False
+
+
+def _event_name(event: Any) -> str:
+    if isinstance(event, Enum):
+        return str(event.value)
+    return str(event) if event is not None else ""
 
 
 executor = AgentExecutor()
