@@ -14,11 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
 
 from nodes.core.agent.executor import LinkedAgentArtifact
 
+from backend.runtime import RuntimeMessage, RuntimeToolCall
 from backend.services import run_control
 
 # ── Core types — always available ────────────────────────────────────
@@ -120,9 +119,7 @@ class TestChatStartExecutor:
         executor = ChatStartExecutor()
         chat_input = SimpleNamespace(
             last_user_message="hello from user",
-            history=[{"role": "user", "content": "hello from user"}],
-            messages=[{"role": "user", "content": "hello from user"}],
-            agno_messages=[SimpleNamespace(role="user", content="hello from user")],
+            runtime_messages=[SimpleNamespace(role="user", content="hello from user")],
             last_user_attachments=[{"id": "att-1", "type": "file"}],
         )
         ctx = _flow_ctx(services=SimpleNamespace(chat_input=chat_input))
@@ -136,9 +133,7 @@ class TestChatStartExecutor:
         output = result.outputs["output"].value
         assert output["message"] == "hello from user"
         assert output["last_user_message"] == "hello from user"
-        assert output["history"] == chat_input.history
-        assert output["messages"] == chat_input.messages
-        assert output["agno_messages"] == chat_input.agno_messages
+        assert output["runtime_messages"] == chat_input.runtime_messages
         assert output["attachments"] == chat_input.last_user_attachments
         assert output["include_user_tools"] is True
 
@@ -153,9 +148,7 @@ class TestChatStartExecutor:
         output = result.outputs["output"].value
         assert output["message"] == "state fallback"
         assert output["last_user_message"] == "state fallback"
-        assert output["history"] == []
-        assert output["messages"] == []
-        assert output["agno_messages"] == []
+        assert output["runtime_messages"] == []
         assert output["attachments"] == []
         assert output["include_user_tools"] is False
 
@@ -528,26 +521,23 @@ class TestAgentExecutor:
                             "data",
                             {
                                 "message": "pipeline message",
-                                "messages": [
-                                    {
-                                        "role": "assistant",
-                                        "content": "",
-                                        "tool_calls": [
-                                            {
-                                                "id": "call_1",
-                                                "type": "function",
-                                                "function": {
-                                                    "name": "get_weather",
-                                                    "arguments": "{\"city\":\"LA\"}",
-                                                },
-                                            }
+                                "runtime_messages": [
+                                    RuntimeMessage(
+                                        role="assistant",
+                                        content="",
+                                        tool_calls=[
+                                            RuntimeToolCall(
+                                                id="call_1",
+                                                name="get_weather",
+                                                arguments={"city": "LA"},
+                                            )
                                         ],
-                                    },
-                                    {
-                                        "role": "tool",
-                                        "tool_call_id": "call_1",
-                                        "content": "{\"temp\":72}",
-                                    },
+                                    ),
+                                    RuntimeMessage(
+                                        role="tool",
+                                        tool_call_id="call_1",
+                                        content='{"temp":72}',
+                                    ),
                                 ],
                             },
                         )
@@ -587,9 +577,9 @@ class TestAgentExecutor:
                             "data",
                             {
                                 "message": "from upstream",
-                                "messages": [
-                                    {"role": "user", "content": "first"},
-                                    {"role": "assistant", "content": "second"},
+                                "runtime_messages": [
+                                    RuntimeMessage(role="user", content="first"),
+                                    RuntimeMessage(role="assistant", content="second"),
                                 ],
                             },
                         )
@@ -639,12 +629,11 @@ class TestAgentExecutor:
     @pytest.mark.asyncio
     async def test_materialize_resolves_runtime_link_dependencies(self) -> None:
         executor = AgentExecutor()
-        child_agent = Agent(
+        child_agent = LinkedAgentArtifact(
+            config=SimpleNamespace(),
+            node_id="child-node",
+            node_type="agent",
             name="Child",
-            model="openai:gpt-4o-mini",
-            markdown=True,
-            stream_events=True,
-            db=InMemoryDb(),
         )
         runtime = MagicMock()
         runtime.resolve_links = AsyncMock(return_value=[MagicMock(), child_agent])
@@ -661,20 +650,19 @@ class TestAgentExecutor:
 
         assert isinstance(runnable, LinkedAgentArtifact)
         runtime.resolve_links.assert_awaited_once_with("test-node", "tools")
-        assert child_agent in runnable.tools
-        assert len(runnable.tools) == 2
+        assert child_agent in runnable.linked_agents
+        assert len(runnable.tools) == 1
 
     @pytest.mark.asyncio
     async def test_materialize_flattens_nested_link_artifacts_in_agent_executor(
         self,
     ) -> None:
         executor = AgentExecutor()
-        child_agent = Agent(
+        child_agent = LinkedAgentArtifact(
+            config=SimpleNamespace(),
+            node_id="child-node",
+            node_type="agent",
             name="Child",
-            model="openai:gpt-4o-mini",
-            markdown=True,
-            stream_events=True,
-            db=InMemoryDb(),
         )
         runtime = MagicMock()
         runtime.resolve_links = AsyncMock(return_value=[["tool-a"], child_agent])
@@ -691,7 +679,8 @@ class TestAgentExecutor:
             )
 
         assert isinstance(runnable, LinkedAgentArtifact)
-        assert runnable.tools == ["tool-a", child_agent]
+        assert runnable.tools == ["tool-a"]
+        assert runnable.linked_agents == [child_agent]
 
     @pytest.mark.asyncio
     async def test_materialize_rejects_unknown_output_handle(self) -> None:

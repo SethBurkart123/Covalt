@@ -32,3 +32,16 @@ class RuntimeAdapter(Protocol):
         on_event: Callable[[RuntimeEventT], None] | None = None,
         runnable: Any | None = None,
     ) -> AgentHandle: ...
+
+    def create_tool(
+        self,
+        name: str,
+        entrypoint: Callable[..., Any],
+        *,
+        description: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        requires_confirmation: bool = False,
+        requires_user_input: bool = False,
+        user_input_fields: list[str] | None = None,
+        external_execution: bool = False,
+    ) -> Any: ...

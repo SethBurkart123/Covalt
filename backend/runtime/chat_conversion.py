@@ -20,6 +20,43 @@ def runtime_messages_from_chat_messages(
     return runtime_messages
 
 
+
+def runtime_message_to_dict(message: RuntimeMessage) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "role": message.role,
+        "content": message.content,
+    }
+    if message.attachments:
+        payload["attachments"] = [
+            {
+                "type": attachment.kind,
+                "name": attachment.name,
+                "path": str(attachment.path),
+            }
+            for attachment in message.attachments
+        ]
+    if message.tool_call_id:
+        payload["tool_call_id"] = message.tool_call_id
+    if message.tool_calls:
+        payload["tool_calls"] = [
+            {
+                "id": tool_call.id,
+                "type": "function",
+                "function": {
+                    "name": tool_call.name,
+                    "arguments": json.dumps(tool_call.arguments or {}),
+                },
+                **(
+                    {"providerData": tool_call.provider_data}
+                    if tool_call.provider_data
+                    else {}
+                ),
+            }
+            for tool_call in message.tool_calls
+        ]
+    return payload
+
+
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 _ALLOWED_ATTACHMENT_MIME_TYPES = {
     "image/*",

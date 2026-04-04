@@ -4,7 +4,6 @@ import json
 from typing import Any
 
 import pytest
-from agno.models.message import Message as AgnoMessage
 
 import backend.services.chat_graph_runner as chat_graph_runner
 from backend import db
@@ -253,14 +252,10 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
         captured["extra_tool_ids"] = context.services.extra_tool_ids
         chat_input = context.services.chat_input
-        captured["history_len"] = len(chat_input.history)
+        captured["runtime_messages_len"] = len(chat_input.runtime_messages)
         captured["last_user_message"] = chat_input.last_user_message
         captured["message_roles"] = [
-            str(message.get("role", "")) for message in chat_input.messages
-        ]
-        captured["agno_message_roles"] = [
-            str(getattr(message, "role", ""))
-            for message in getattr(chat_input, "agno_messages", [])
+            str(message.role) for message in chat_input.runtime_messages
         ]
         captured["entry_scope"] = list(context.services.execution.entry_node_ids)
         yield ExecutionResult(
@@ -287,30 +282,19 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
     )
 
     assert captured["extra_tool_ids"] == ["mcp:github"]
-    assert captured["history_len"] == 3
+    assert captured["runtime_messages_len"] == 3
     assert captured["last_user_message"] == "final"
     assert captured["message_roles"] == ["user", "assistant", "user"]
-    assert captured["agno_message_roles"] == ["user", "assistant", "user"]
     assert captured["entry_scope"] == ["cs"]
 
 
 @pytest.mark.asyncio
-async def test_handle_flow_stream_exposes_agno_messages_in_chat_input(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sentinel = [AgnoMessage(role="user", content="hello from covalt")]
+async def test_handle_flow_stream_exposes_runtime_messages_in_chat_input() -> None:
     captured: dict[str, Any] = {}
-
-    monkeypatch.setattr(
-        chat_graph_runner,
-        "build_agno_messages_for_chat",
-        lambda _messages, _chat_id: sentinel,
-    )
 
     async def fake_run_flow(_graph_data: dict[str, Any], context: Any):
         chat_input = context.services.chat_input
-        captured["agno_messages"] = chat_input.agno_messages
-        captured["messages"] = chat_input.messages
+        captured["runtime_messages"] = chat_input.runtime_messages
         yield ExecutionResult(
             outputs={"output": DataValue(type="data", value={"response": "ok"})}
         )
@@ -325,8 +309,9 @@ async def test_handle_flow_stream_exposes_agno_messages_in_chat_input(
         run_flow_impl=fake_run_flow,
     )
 
-    assert captured["agno_messages"] is sentinel
-    assert isinstance(captured["messages"], list)
+    assert isinstance(captured["runtime_messages"], list)
+    assert len(captured["runtime_messages"]) == 1
+    assert captured["runtime_messages"][0].role == "user"
 
 
 @pytest.mark.asyncio
@@ -718,9 +703,7 @@ async def test_handle_flow_stream_applies_chat_start_runtime_config_and_records_
         output_payload = {
             "message": context.services.chat_input.last_user_message,
             "last_user_message": context.services.chat_input.last_user_message,
-            "history": context.services.chat_input.history,
-            "messages": context.services.chat_input.messages,
-            "agno_messages": context.services.chat_input.agno_messages,
+            "runtime_messages": context.services.chat_input.runtime_messages,
             "attachments": context.services.chat_input.last_user_attachments,
             "include_user_tools": True,
         }
@@ -804,10 +787,7 @@ async def test_handle_flow_stream_applies_chat_start_runtime_config_and_records_
 
     assert output_value["message"] == "hello graph"
     assert output_value["last_user_message"] == "hello graph"
-    assert output_value["history"][0]["content"] == "hello graph"
-    assert output_value["messages"][0]["role"] == "user"
-    assert output_value["messages"][0]["content"] == "hello graph"
-    assert output_value["agno_messages"][0]["role"] == "user"
+    assert "RuntimeMessage(role='user', content='hello graph'" in output_value["runtime_messages"][0]
     assert output_value["attachments"][0]["id"] == "att-1"
     assert output_value["attachments"][0]["mimeType"] == "text/plain"
     assert output_value["include_user_tools"] is True
@@ -873,10 +853,7 @@ async def test_handle_flow_stream_executes_chat_start_through_plugin_registry() 
 
     assert output_value["message"] == "integration hello"
     assert output_value["last_user_message"] == "integration hello"
-    assert output_value["history"][0]["content"] == "integration hello"
-    assert output_value["messages"][0]["role"] == "user"
-    assert output_value["messages"][0]["content"] == "integration hello"
-    assert output_value["agno_messages"][0]["role"] == "user"
+    assert "RuntimeMessage(role='user', content='integration hello'" in output_value["runtime_messages"][0]
     assert output_value["attachments"][0]["id"] == "att-integration-1"
     assert output_value["attachments"][0]["mimeType"] == "text/plain"
     assert output_value["include_user_tools"] is True

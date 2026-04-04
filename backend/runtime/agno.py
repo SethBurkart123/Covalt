@@ -10,8 +10,7 @@ from agno.db.in_memory import InMemoryDb
 from agno.models.response import ToolExecution
 from agno.run.agent import BaseAgentRunEvent, RunEvent, RunOutputEvent
 from agno.run.team import BaseTeamRunEvent
-
-from backend.services.tool_registry import get_original_tool_name
+from agno.tools.function import Function
 
 from .protocol import AgentHandle
 from .types import (
@@ -296,6 +295,30 @@ class AgnoRuntimeAdapter:
     def __init__(self) -> None:
         self._db = InMemoryDb()
 
+    def create_tool(
+        self,
+        name: str,
+        entrypoint: Callable[..., Any],
+        *,
+        description: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        requires_confirmation: bool = False,
+        requires_user_input: bool = False,
+        user_input_fields: list[str] | None = None,
+        external_execution: bool = False,
+    ) -> Any:
+        return Function(
+            name=name,
+            description=description,
+            parameters=parameters or {"type": "object", "properties": {}, "required": []},
+            entrypoint=entrypoint,
+            skip_entrypoint_processing=True,
+            requires_confirmation=requires_confirmation or None,
+            requires_user_input=requires_user_input or None,
+            user_input_fields=user_input_fields,
+            external_execution=external_execution or None,
+        )
+
     def create_agent(
         self,
         config: AgentConfig,
@@ -421,7 +444,7 @@ def _runtime_tool_call(tool: Any) -> RuntimeToolCall | None:
         provider_data = None
     return RuntimeToolCall(
         id=tool_id,
-        name=get_original_tool_name(tool_name),
+        name=tool_name,
         arguments=dict(getattr(tool, "tool_args", None) or {}),
         provider_data=provider_data,
     )
