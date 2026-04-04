@@ -15,22 +15,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from nodes.core.agent.executor import LinkedAgentArtifact
-
 from backend.runtime import RuntimeMessage, RuntimeToolCall
 from backend.services import run_control
-
-# ── Core types — always available ────────────────────────────────────
 from nodes._types import (
     DataValue,
     ExecutionResult,
     FlowContext,
     NodeEvent,
 )
-
-# ── Phase 3 executors — available now ────────────────────────────────
 from nodes.ai.llm_completion.executor import LlmCompletionExecutor
-from nodes.core.agent.executor import AgentExecutor
+from nodes.core.agent.executor import AgentExecutor, LinkedAgentArtifact
 from nodes.core.chat_start.executor import ChatStartExecutor
 from nodes.flow.conditional.executor import ConditionalExecutor
 from nodes.flow.merge.executor import MergeExecutor
@@ -38,11 +32,8 @@ from nodes.flow.reroute.executor import RerouteExecutor
 from nodes.tools.mcp_server.executor import McpServerExecutor
 from nodes.tools.toolset.executor import ToolsetExecutor
 from nodes.utility.model_selector.executor import ModelSelectorExecutor
-
-# ── conftest re-exports ─────────────────────────────────────────────
 from tests.conftest import collect_events
 
-# ── Phase 5+ executors — guarded until implemented ──────────────────
 try:
     from nodes.data.filter.executor import FilterExecutor
     from nodes.data.text_split.executor import TextSplitExecutor
@@ -72,8 +63,6 @@ _skip_future = pytest.mark.skipif(
 )
 
 
-# ── Helpers ─────────────────────────────────────────────────────────
-
 
 def _flow_ctx(
     *,
@@ -85,7 +74,6 @@ def _flow_ctx(
     runtime: Any = None,
     services: Any = None,
 ) -> FlowContext:
-    """Construct a FlowContext with sensible defaults."""
     resolved_services = services or SimpleNamespace()
     resolved_registry = tool_registry or getattr(
         resolved_services, "tool_registry", MagicMock()
@@ -104,13 +92,8 @@ def _flow_ctx(
 
 
 def _dv(type_: str, value: Any) -> DataValue:
-    """Shorthand for DataValue construction."""
     return DataValue(type=type_, value=value)
 
-
-# ====================================================================
-# Chat Start executor
-# ====================================================================
 
 
 class TestChatStartExecutor:
@@ -175,20 +158,13 @@ class TestChatStartExecutor:
         assert services.chat_output.primary_agent_source == "chat-start-1"
 
 
-# ====================================================================
-# LLM Completion executor
-# ====================================================================
-
 
 async def _fake_astream(*tokens: str):
-    """Simulate a model's async token stream."""
     for t in tokens:
         yield t
 
 
 class TestLlmCompletionExecutor:
-    """LLM Completion: prompt in, streamed text out."""
-
     @pytest.mark.asyncio
     async def test_returns_concatenated_text(self) -> None:
         executor = LlmCompletionExecutor()
@@ -259,7 +235,7 @@ class TestLlmCompletionExecutor:
 
         async def _exploding_stream(prompt: str):
             raise RuntimeError("API down")
-            yield  # make it an async generator  # noqa: E501
+            yield  # noqa: E501 - makes it an async generator
 
         mock_model = MagicMock()
         mock_model.astream = _exploding_stream
@@ -1034,14 +1010,8 @@ class TestToolMaterializers:
             )
 
 
-# ====================================================================
-# Conditional executor
-# ====================================================================
-
 
 class TestConditionalExecutor:
-    """Conditional: evaluate condition, route data to true/false port."""
-
     @pytest.mark.asyncio
     async def test_true_condition_routes_to_true_port(self) -> None:
         executor = ConditionalExecutor()
@@ -1193,10 +1163,6 @@ class TestConditionalExecutor:
         assert ConditionalExecutor().node_type == "conditional"
 
 
-# ====================================================================
-# Merge executor
-# ====================================================================
-
 
 class TestMergeExecutor:
     @pytest.mark.asyncio
@@ -1236,10 +1202,6 @@ class TestMergeExecutor:
     def test_node_type_attribute(self) -> None:
         assert MergeExecutor().node_type == "merge"
 
-
-# ====================================================================
-# Reroute executor
-# ====================================================================
 
 
 class TestRerouteExecutor:
@@ -1356,15 +1318,9 @@ class TestRerouteExecutor:
         assert RerouteExecutor().node_type == "reroute"
 
 
-# ====================================================================
-# HTTP Request executor
-# ====================================================================
-
 
 @_skip_future
 class TestHttpRequestExecutor:
-    """HTTP Request: async HTTP calls with streaming events."""
-
     @pytest.mark.asyncio
     async def test_get_200_returns_response_and_status(self) -> None:
         executor = HttpRequestExecutor()
@@ -1530,15 +1486,9 @@ class TestHttpRequestExecutor:
         assert HttpRequestExecutor().node_type == "http-request"
 
 
-# ====================================================================
-# Filter executor
-# ====================================================================
-
 
 @_skip_future
 class TestFilterExecutor:
-    """Filter: split array into pass/reject based on condition."""
-
     @pytest.mark.asyncio
     async def test_array_filtering_splits_pass_reject(self) -> None:
         executor = FilterExecutor()
@@ -1615,15 +1565,9 @@ class TestFilterExecutor:
         assert FilterExecutor().node_type == "filter"
 
 
-# ====================================================================
-# Type Converter executor
-# ====================================================================
-
 
 @_skip_future
 class TestTypeConverterExecutor:
-    """Type Converter: explicit type coercion between socket types."""
-
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "from_type, from_val, to_type, expected_val",
@@ -1701,15 +1645,9 @@ class TestTypeConverterExecutor:
         assert TypeConverterExecutor().node_type == "type-converter"
 
 
-# ====================================================================
-# Text Split executor
-# ====================================================================
-
 
 @_skip_future
 class TestTextSplitExecutor:
-    """Text Split: split, chunk, or join text."""
-
     @pytest.mark.asyncio
     async def test_split_by_delimiter(self) -> None:
         executor = TextSplitExecutor()
@@ -1753,10 +1691,8 @@ class TestTextSplitExecutor:
 
     @pytest.mark.asyncio
     async def test_auto_detect_mode(self) -> None:
-        """Auto mode: if input is text, split by newline. If array, join."""
         executor = TextSplitExecutor()
 
-        # Text input → split
         result = await executor.execute(
             {"mode": "auto"},
             {"input": _dv("text", "line1\nline2\nline3")},

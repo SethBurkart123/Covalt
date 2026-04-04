@@ -1027,6 +1027,5 @@ async def ensure_mcp_initialized() -> MCPManager:
 
 
 async def shutdown_mcp() -> None:
-    """Shut down the MCP manager if it was initialized."""
     if _mcp_manager is not None:
         await _mcp_manager.shutdown()

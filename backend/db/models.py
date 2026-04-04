@@ -136,8 +136,6 @@ class ExecutionEvent(Base):
 
 
 class ToolsetMcpServer(Base):
-    """MCP server configuration belonging to a toolset."""
-
     __tablename__ = "toolset_mcp_servers"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -162,8 +160,6 @@ class ToolsetMcpServer(Base):
 
 
 class Toolset(Base):
-    """A toolset aggregates tools from various providers (MCP servers, Python modules, etc.)."""
-
     __tablename__ = "toolsets"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -260,8 +256,6 @@ class ToolCall(Base):
 
 
 class OAuthToken(Base):
-    """Stored OAuth credentials for MCP servers."""
-
     __tablename__ = "oauth_tokens"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -288,8 +282,6 @@ class OAuthToken(Base):
 
 
 class ProviderOAuthCredential(Base):
-    """Stored OAuth credentials for model providers."""
-
     __tablename__ = "provider_oauth_credentials"
 
     provider: Mapped[str] = mapped_column(String, primary_key=True)
@@ -303,8 +295,6 @@ class ProviderOAuthCredential(Base):
 
 
 class ToolOverride(Base):
-    """Override configuration for a tool within a toolset."""
-
     __tablename__ = "tool_overrides"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -330,8 +320,6 @@ class ToolOverride(Base):
 
 
 class Agent(Base):
-    """A visual agent graph that can be used in place of a model."""
-
     __tablename__ = "agents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)

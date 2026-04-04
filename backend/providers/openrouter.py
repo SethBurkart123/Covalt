@@ -1,5 +1,3 @@
-"""OpenRouter Provider - Access to multiple AI models via OpenRouter"""
-
 from typing import Any
 
 import httpx
@@ -55,7 +53,7 @@ async def fetch_models() -> list[dict[str, str]]:
                 "https://openrouter.ai/api/v1/models",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://github.com/sethburkart123/Covalt",  # Optional: for analytics
+                    "HTTP-Referer": "https://github.com/sethburkart123/Covalt",
                 },
             )
 

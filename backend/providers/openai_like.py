@@ -1,5 +1,3 @@
-"""OpenAI-Like Provider - Custom OpenAI-compatible endpoints"""
-
 from typing import Any
 
 import httpx

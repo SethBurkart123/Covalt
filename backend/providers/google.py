@@ -1,5 +1,3 @@
-"""Google Provider - Gemini models via Google AI Studio or Vertex AI"""
-
 from typing import Any
 
 import httpx
@@ -18,7 +16,6 @@ def get_google_model(
     model_id: str,
     provider_options: dict[str, Any],
 ) -> LiteLLM:
-    """Create a Google Gemini model instance."""
     api_key = get_api_key()
     extra = get_extra_config()
     is_vertex_enabled = _is_vertex_enabled(extra)
@@ -74,7 +71,6 @@ def resolve_options(
 
 
 async def fetch_models() -> list[dict[str, Any]]:
-    """Fetch available models from Google AI Studio API."""
     api_key = get_api_key()
     if not api_key:
         return []
@@ -121,7 +117,6 @@ def get_model_options(
     model_id: str,
     model_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return Google Gemini options for a model."""
     metadata = model_metadata or {}
     max_output_tokens = _coerce_positive_int(
         metadata.get("max_output_tokens"),
@@ -169,7 +164,6 @@ def get_model_options(
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    """Test connection to Google AI Studio API."""
     api_key = get_api_key()
     if not api_key:
         return False, "API key not configured"
@@ -188,7 +182,6 @@ async def test_connection() -> tuple[bool, str | None]:
 
 
 def _save_reasoning_metadata(model_id: str):
-    """Save reasoning capability to database for later use."""
     with db.db_session() as sess:
         db.upsert_model_settings(
             sess,

@@ -57,10 +57,6 @@ export function buildRouteDisplayState({
   };
 }
 
-/**
- * Properties panel - shows editable properties for the selected node.
- * Consumes selection and node data from FlowContext.
- */
 interface PropertiesPanelProps {
   nodeId?: string | null;
   variant?: 'card' | 'flat';

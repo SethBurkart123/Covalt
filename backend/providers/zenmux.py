@@ -1,5 +1,3 @@
-"""zenmux provider."""
-
 from typing import Any
 
 import httpx

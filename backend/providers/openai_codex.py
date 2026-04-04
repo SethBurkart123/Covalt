@@ -1,5 +1,3 @@
-"""OpenAI Codex Provider - ChatGPT OAuth Codex models."""
-
 import hashlib
 import json
 import os

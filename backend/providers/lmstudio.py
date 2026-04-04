@@ -1,5 +1,3 @@
-"""LM Studio Provider - Local models via LM Studio (OpenAI-compatible)"""
-
 from typing import Any
 
 import httpx
@@ -12,7 +10,6 @@ def get_lmstudio_model(
     model_id: str,
     provider_options: dict[str, Any],
 ) -> LiteLLM:
-    """Create an LM Studio model instance."""
     api_key, base_url = get_credentials()
 
     if not base_url:
@@ -27,7 +24,6 @@ def get_lmstudio_model(
 
 
 async def fetch_models() -> list[dict[str, str]]:
-    """Fetch available models from LM Studio instance."""
     api_key, base_url = get_credentials()
     if not base_url:
         return []
@@ -38,7 +34,6 @@ async def fetch_models() -> list[dict[str, str]]:
 async def _fetch_from_openai_endpoint(
     base_url: str, api_key: str
 ) -> list[dict[str, str]]:
-    """Fetch models from OpenAI-compatible /v1/models endpoint."""
     base = base_url.rstrip("/")
     url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
 
@@ -55,7 +50,6 @@ async def _fetch_from_openai_endpoint(
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    """Test connection to LM Studio server."""
     base_url = get_base_url()
     if not base_url:
         return False, "Base URL not configured"

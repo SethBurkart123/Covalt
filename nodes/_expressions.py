@@ -39,7 +39,6 @@ def resolve_expressions(
     *,
     expression_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Resolve {{ }} expressions in a node's data dict (supports nested values)."""
     return _resolve_value(data, direct_input, upstream_outputs, expression_context)
 
 

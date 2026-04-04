@@ -1,5 +1,3 @@
-"""Groq Provider - Fast inference with Llama and Mixtral models"""
-
 from typing import Any
 
 import httpx
@@ -12,7 +10,6 @@ def get_groq_model(
     model_id: str,
     provider_options: dict[str, Any],
 ) -> LiteLLM:
-    """Create a Groq model instance."""
     api_key = get_api_key()
 
     if not api_key:
@@ -22,7 +19,6 @@ def get_groq_model(
 
 
 async def fetch_models() -> list[dict[str, str]]:
-    """Fetch available models from Groq API."""
     api_key = get_api_key()
     if not api_key:
         return []
@@ -41,7 +37,6 @@ async def fetch_models() -> list[dict[str, str]]:
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    """Test connection to Groq API."""
     api_key = get_api_key()
     if not api_key:
         return False, "API key not configured"

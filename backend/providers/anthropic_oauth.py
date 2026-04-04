@@ -1,5 +1,3 @@
-"""Anthropic OAuth Provider - Claude models via OAuth token."""
-
 from __future__ import annotations
 
 import base64

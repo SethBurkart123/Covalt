@@ -30,14 +30,8 @@ from backend.services.flow_executor import (
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from tests.conftest import make_edge, make_graph, make_node
 
-# ═══════════════════════════════════════════════════════════════════════
-# Stub executors — deterministic, no I/O, match real node contracts
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class ChatStartStub:
-    """Emits user message from flow state as a data blob."""
-
     node_type = "chat-start"
 
     async def execute(
@@ -48,8 +42,6 @@ class ChatStartStub:
 
 
 class ModelSelectorStub:
-    """Passes model identifier through."""
-
     node_type = "model-selector"
 
     async def execute(
@@ -62,8 +54,6 @@ class ModelSelectorStub:
 
 
 class LLMCompletionStub:
-    """Fake LLM: echoes the prompt with a prefix. Uses model from input wire."""
-
     node_type = "llm-completion"
 
     async def execute(
@@ -103,8 +93,6 @@ class LLMCompletionStub:
 
 
 class ConditionalStub:
-    """Routes input to true/false port based on data["field"] evaluation."""
-
     node_type = "conditional"
 
     async def execute(
@@ -139,8 +127,6 @@ class ConditionalStub:
 
 
 class UpperCaseStub:
-    """Uppercases string input."""
-
     node_type = "uppercase"
 
     async def execute(
@@ -155,8 +141,6 @@ class UpperCaseStub:
 
 
 class PassthroughStub:
-    """Copies input to output."""
-
     node_type = "passthrough"
 
     async def execute(
@@ -168,8 +152,6 @@ class PassthroughStub:
 
 
 class DataEchoStub:
-    """Echoes resolved node data payload."""
-
     node_type = "data-echo"
 
     async def execute(
@@ -196,7 +178,6 @@ STUBS = {
 
 
 def _flow_ctx(user_message: str = "hello") -> Any:
-    """Build a minimal context with user_message on state."""
     state = MagicMock()
     state.user_message = user_message
     ctx = MagicMock()
@@ -206,10 +187,6 @@ def _flow_ctx(user_message: str = "hello") -> Any:
     ctx.tool_registry = MagicMock()
     return ctx
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Full pipeline with model selector, passthrough, LLM, branching
-# ═══════════════════════════════════════════════════════════════════════
 
 
 class TestE2EFullPipeline:
@@ -251,7 +228,6 @@ class TestE2EFullPipeline:
 
     @pytest.mark.asyncio
     async def test_full_pipeline_executes_correct_branch(self):
-        """The LLM output contains 'mock:gpt-test', so conditional routes to true → UpperCase."""
         graph = self._build_graph()
         ctx = _flow_ctx("Hello world")
 
@@ -272,7 +248,6 @@ class TestE2EFullPipeline:
 
     @pytest.mark.asyncio
     async def test_pipeline_data_flows_correctly(self):
-        """Data flows through the pipeline: Chat Start → Passthrough → LLM → Conditional → UpperCase."""
         graph = self._build_graph()
         ctx = _flow_ctx("test input")
 
@@ -292,7 +267,6 @@ class TestE2EFullPipeline:
 
     @pytest.mark.asyncio
     async def test_model_selector_fans_out(self):
-        """Model Selector value reaches LLM Completion via wire."""
         graph = self._build_graph()
         ctx = _flow_ctx("fan out test")
 
@@ -310,9 +284,7 @@ class TestE2EFullPipeline:
 
     @pytest.mark.asyncio
     async def test_false_branch_when_condition_fails(self):
-        """Change the condition so false branch executes instead."""
         graph = self._build_graph()
-        # Change the conditional to look for something NOT in the output
         graph["nodes"][4]["data"]["value"] = "NONEXISTENT_STRING"
         ctx = _flow_ctx("test")
 
@@ -333,17 +305,10 @@ class TestE2EFullPipeline:
         assert len(dead_events) > 0, "Passthrough (false branch) should execute"
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Expression system with general data input
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestE2EExpressions:
-    """Test {{ }} expression resolution in the flow executor."""
-
     @pytest.mark.asyncio
     async def test_expression_resolves_from_general_input(self):
-        """Expressions can reference upstream input data in node params."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -369,7 +334,6 @@ class TestE2EExpressions:
 
     @pytest.mark.asyncio
     async def test_node_id_expression_reference_is_supported(self):
-        """Node expressions can reference upstream output by node id key."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -403,7 +367,6 @@ class TestE2EExpressions:
 
     @pytest.mark.asyncio
     async def test_full_expression_returns_object(self):
-        """Expression-only values return raw objects for structured payloads."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -426,7 +389,6 @@ class TestE2EExpressions:
 
     @pytest.mark.asyncio
     async def test_js_expression_supports_methods(self):
-        """JS expressions can call string methods like split()."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -447,14 +409,8 @@ class TestE2EExpressions:
         assert payload == "hello"
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Edge filtering — structural edges excluded from flow
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestE2EEdgeFiltering:
-    """Link-channel edges are excluded from flow routing."""
-
     def test_structural_edges_filtered(self):
         edges = [
             make_edge("agent1", "agent2", "output", "tools"),
@@ -467,8 +423,6 @@ class TestE2EEdgeFiltering:
         assert all((e.get("data") or {}).get("channel") == "flow" for e in flow)
 
     def test_mixed_graph_partitions_correctly(self):
-        """Graph with structural + flow nodes partitions correctly."""
-
         class StructuralOnly:
             node_type = "structural-only"
 
@@ -490,8 +444,6 @@ class TestE2EEdgeFiltering:
 
 
 class TestE2EDisconnectedComponents:
-    """All flow components execute; kernel is entrypoint-agnostic."""
-
     @pytest.mark.asyncio
     async def test_disconnected_flow_component_executes(self):
         graph = make_graph(
@@ -517,16 +469,9 @@ class TestE2EDisconnectedComponents:
         assert "orphan" in started_nodes
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Topological sort
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestE2ETopologicalSort:
-    """Verify the flow executor properly orders nodes."""
-
     def test_complex_graph_ordering(self):
-        """Model Selector + Chat Start → Passthrough → LLM → Conditional ordering."""
         nodes = [
             make_node("model", "model-selector"),
             make_node("cs", "chat-start"),
@@ -551,17 +496,10 @@ class TestE2ETopologicalSort:
         assert order.index("cond") < order.index("upper")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Event protocol
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestE2EEventProtocol:
-    """Verify events are emitted correctly for streaming and sync executors."""
-
     @pytest.mark.asyncio
     async def test_streaming_executor_emits_custom_events(self):
-        """LLM Completion (streaming stub) emits started + progress events."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -583,7 +521,6 @@ class TestE2EEventProtocol:
 
     @pytest.mark.asyncio
     async def test_sync_executor_gets_auto_events(self):
-        """Sync executors (chat start, passthrough) get auto started/completed."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -605,7 +542,6 @@ class TestE2EEventProtocol:
 
     @pytest.mark.asyncio
     async def test_event_ordering_respects_topology(self):
-        """Events from upstream nodes come before downstream nodes."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -633,14 +569,8 @@ class TestE2EEventProtocol:
         assert first_occurrence.get("pipe", 0) < first_occurrence.get("llm", 999)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Test: Error handling
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class ExplodingStub:
-    """Always raises."""
-
     node_type = "exploding"
 
     async def execute(
@@ -650,11 +580,8 @@ class ExplodingStub:
 
 
 class TestE2EErrorHandling:
-    """Error modes in the flow executor."""
-
     @pytest.mark.asyncio
     async def test_error_stops_pipeline(self):
-        """Node that raises stops execution, downstream doesn't run."""
         stubs = {**STUBS, "exploding": ExplodingStub()}
         graph = make_graph(
             nodes=[
@@ -683,7 +610,6 @@ class TestE2EErrorHandling:
 
     @pytest.mark.asyncio
     async def test_continue_on_fail(self):
-        """on_error=continue → downstream still runs."""
         stubs = {**STUBS, "exploding": ExplodingStub()}
         graph = make_graph(
             nodes=[

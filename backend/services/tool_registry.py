@@ -48,7 +48,6 @@ def _to_toolset_scoped_name(name: str) -> str:
 
 
 def _to_safe_name(name: str) -> str:
-    """Create a provider-safe name using allowed chars only."""
     base = _tool_name_replace_re.sub("_", name)
     if not base:
         base = "tool"

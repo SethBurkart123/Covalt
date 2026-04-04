@@ -28,10 +28,7 @@ from tests.conftest import (
     make_node,
 )
 
-# ── Guarded imports ──────────────────────────────────────────────────
-# These modules don't exist yet. We import them conditionally so pytest
-# can collect (and skip) this file without ImportError.
-
+# Conditional import so pytest can collect (and skip) this file if the engine isn't implemented yet.
 try:
     from backend.services.flow_executor import (
         _flow_edges,
@@ -45,8 +42,6 @@ try:
 except ImportError:
     _FLOW_ENGINE_AVAILABLE = False
 
-    # Lightweight stand-ins so the stub executors below parse without error.
-    # These get replaced by real imports once the modules exist.
     @dataclass
     class DataValue:  # type: ignore[no-redef]
         type: str = ""
@@ -90,21 +85,14 @@ except ImportError:
         raise NotImplementedError
 
 
-# Skip every test in this module if the engine isn't importable yet.
 pytestmark = pytest.mark.skipif(
     not _FLOW_ENGINE_AVAILABLE,
     reason="Flow engine not yet implemented (nodes._types / backend.services.flow_executor missing)",
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Stub executors — deterministic, no I/O
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class PassthroughExecutor:
-    """Copies input to output unchanged."""
-
     node_type = "passthrough"
 
     async def execute(
@@ -116,8 +104,6 @@ class PassthroughExecutor:
 
 
 class UpperCaseExecutor:
-    """Uppercases a text input."""
-
     node_type = "uppercase"
 
     async def execute(
@@ -130,8 +116,6 @@ class UpperCaseExecutor:
 
 
 class ConditionalStubExecutor:
-    """Routes input to true or false port based on data["condition"]."""
-
     node_type = "conditional"
 
     async def execute(
@@ -144,8 +128,6 @@ class ConditionalStubExecutor:
 
 
 class FilterStubExecutor:
-    """Splits a list into pass/reject based on data["threshold"]."""
-
     node_type = "filter"
 
     async def execute(
@@ -172,8 +154,6 @@ class FilterStubExecutor:
 
 
 class StreamingStubExecutor:
-    """Yields started → progress → completed events, then result."""
-
     node_type = "streaming"
 
     async def execute(
@@ -198,8 +178,6 @@ class StreamingStubExecutor:
 
 
 class ExplodingExecutor:
-    """Always raises."""
-
     node_type = "exploding"
 
     async def execute(
@@ -209,8 +187,6 @@ class ExplodingExecutor:
 
 
 class ChatStartStubExecutor:
-    """Emits a canned user message."""
-
     node_type = "chat-start"
 
     async def execute(
@@ -221,8 +197,6 @@ class ChatStartStubExecutor:
 
 
 class LLMCompletionStubExecutor:
-    """Returns a canned LLM response."""
-
     node_type = "llm-completion"
 
     async def execute(
@@ -246,7 +220,6 @@ class LLMCompletionStubExecutor:
         yield ExecutionResult(outputs={"output": DataValue("data", {"text": response})})
 
 
-# Registry of stub executors for tests
 STUB_EXECUTORS: dict[str, Any] = {
     cls.node_type: cls()
     for cls in [
@@ -262,13 +235,9 @@ STUB_EXECUTORS: dict[str, Any] = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 1. Graph partitioning
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class StructuralOnlyExecutor:
-    """Executor with build() but NO execute() — purely structural."""
+    """Executor with build() but no execute() — purely structural, never runs in flow."""
 
     node_type = "structural-only"
 
@@ -277,10 +246,7 @@ class StructuralOnlyExecutor:
 
 
 class TestFindFlowNodes:
-    """find_flow_nodes returns only nodes whose executor has execute()."""
-
     def test_mixed_graph_returns_only_flow_capable(self):
-        """Graph with both structural and flow-capable nodes → only flow-capable returned."""
         nodes = [
             make_node("cs", "chat-start"),
             make_node("ag", "agent"),
@@ -294,15 +260,12 @@ class TestFindFlowNodes:
         flow = find_flow_nodes(nodes, executors)
         flow_ids = {n["id"] for n in flow}
 
-        assert "cs" in flow_ids, "chat-start has execute() → flow-capable"
-        assert "ag" not in flow_ids, "agent not in STUB_EXECUTORS → not flow-capable"
-        assert "mcp" not in flow_ids, (
-            "structural-only has no execute() → not flow-capable"
-        )
-        assert "llm" in flow_ids, "llm-completion has execute() → flow-capable"
+        assert "cs" in flow_ids
+        assert "ag" not in flow_ids
+        assert "mcp" not in flow_ids
+        assert "llm" in flow_ids
 
     def test_pure_structural_returns_empty(self):
-        """All structural executors → empty result."""
         nodes = [
             make_node("a", "structural-only"),
             make_node("b", "structural-only"),
@@ -312,8 +275,6 @@ class TestFindFlowNodes:
         assert flow == []
 
     def test_hybrid_nodes_appear_in_flow(self):
-        """Hybrid executors (both build() and execute()) appear in flow results."""
-
         class HybridExecutor:
             node_type = "hybrid-test"
 
@@ -338,21 +299,14 @@ class TestFindFlowNodes:
         flow = find_flow_nodes(nodes, executors)
         flow_ids = {n["id"] for n in flow}
 
-        assert "h1" in flow_ids, "Hybrid executor has execute() → in flow"
-        assert "s1" not in flow_ids, "Structural-only → not in flow"
-        assert "f1" in flow_ids, "Pure flow executor → in flow"
+        assert "h1" in flow_ids
+        assert "s1" not in flow_ids
+        assert "f1" in flow_ids
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# 2. Topological sort
-# ═══════════════════════════════════════════════════════════════════════
 
 
 class TestTopologicalSort:
-    """topological_sort produces valid execution orderings."""
-
     def test_topo_sort_linear_chain(self):
-        """A → B → C produces [A, B, C]."""
         nodes = [
             make_node("A", "passthrough"),
             make_node("B", "passthrough"),
@@ -366,7 +320,6 @@ class TestTopologicalSort:
         assert order == ["A", "B", "C"]
 
     def test_topo_sort_diamond(self):
-        """A → B, A → C, B → D, C → D → valid ordering (A first, D last)."""
         nodes = [
             make_node("A", "passthrough"),
             make_node("B", "passthrough"),
@@ -386,7 +339,6 @@ class TestTopologicalSort:
         assert_valid_topological_order(order, {"B": ["A"], "C": ["A"], "D": ["B", "C"]})
 
     def test_topo_sort_cycle_raises(self):
-        """Cycle detection raises an error."""
         nodes = [make_node("A", "passthrough"), make_node("B", "passthrough")]
         edges = [
             make_edge("A", "B", "output", "input"),
@@ -396,13 +348,11 @@ class TestTopologicalSort:
             topological_sort(nodes, edges)
 
     def test_topo_sort_single_node(self):
-        """Single node, no edges → [node]."""
         nodes = [make_node("solo", "passthrough")]
         order = topological_sort(nodes, [])
         assert order == ["solo"]
 
     def test_topo_sort_disconnected_components(self):
-        """Disconnected components → all nodes present, constraints respected."""
         nodes = [
             make_node("A", "passthrough"),
             make_node("B", "passthrough"),
@@ -420,17 +370,10 @@ class TestTopologicalSort:
         assert order.index("X") < order.index("Y")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 3. Linear flow execution
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowLinear:
-    """Linear pipeline: each node gets correct inputs from upstream output ports."""
-
     @pytest.fixture
     def linear_graph(self):
-        """Chat Start → Passthrough → LLM Completion."""
         return make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -445,7 +388,6 @@ class TestFlowLinear:
 
     @pytest.mark.asyncio
     async def test_linear_flow_data_flows_through(self, linear_graph, flow_ctx):
-        """Input data flows through edges correctly."""
         flow_ctx.state.user_message = "Hello world"
         events = []
         async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
@@ -456,7 +398,6 @@ class TestFlowLinear:
 
     @pytest.mark.asyncio
     async def test_linear_flow_final_output_accessible(self, linear_graph, flow_ctx):
-        """Final output is accessible from the last node."""
         flow_ctx.state.user_message = "test input"
         final_outputs = {}
         async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
@@ -470,7 +411,6 @@ class TestFlowLinear:
     async def test_linear_flow_each_node_gets_upstream_output(
         self, linear_graph, flow_ctx
     ):
-        """Each node receives the correct inputs from its upstream node's output ports."""
         flow_ctx.state.user_message = "data"
         node_events: list[NodeEvent] = []
         async for event in run_flow(linear_graph, flow_ctx, executors=STUB_EXECUTORS):
@@ -481,21 +421,10 @@ class TestFlowLinear:
         assert len(started) >= 1
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 4. Branching execution
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowBranching:
-    """Conditional routing: data on one port executes that branch, other is skipped."""
-
     @pytest.fixture
     def branching_graph(self):
-        """
-        Input → Conditional
-                 ├─ true  → UpperCase (branch A)
-                 └─ false → Passthrough (branch B)
-        """
         return make_graph(
             nodes=[
                 make_node("input", "chat-start"),
@@ -512,7 +441,6 @@ class TestFlowBranching:
 
     @pytest.mark.asyncio
     async def test_conditional_true_branch_executes(self, branching_graph, flow_ctx):
-        """Conditional with condition=True → branch A executes, branch B skipped."""
         flow_ctx.state.user_message = "hello"
         branching_graph["nodes"][1]["data"]["condition"] = True
 
@@ -530,7 +458,6 @@ class TestFlowBranching:
 
     @pytest.mark.asyncio
     async def test_conditional_false_branch_executes(self, branching_graph, flow_ctx):
-        """Conditional with condition=False → branch B executes, branch A skipped."""
         flow_ctx.state.user_message = "hello"
         branching_graph["nodes"][1]["data"]["condition"] = False
 
@@ -548,7 +475,6 @@ class TestFlowBranching:
 
     @pytest.mark.asyncio
     async def test_filter_both_branches_execute(self, flow_ctx):
-        """Filter with both pass and reject outputs → both downstream paths execute."""
         graph = make_graph(
             nodes=[
                 make_node("src", "chat-start"),
@@ -562,7 +488,7 @@ class TestFlowBranching:
                 make_edge("flt", "low", "reject", "input"),
             ],
         )
-        flow_ctx.state.user_message = [1, 3, 5, 7, 9]  # mixed above/below threshold
+        flow_ctx.state.user_message = [1, 3, 5, 7, 9]
 
         results: dict[str, DataValue] = {}
         async for event in run_flow(graph, flow_ctx, executors=STUB_EXECUTORS):
@@ -572,23 +498,16 @@ class TestFlowBranching:
         assert len(results) > 0
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 5. Dead branch detection
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowDeadBranch:
-    """Nodes with unsatisfied required inputs are skipped entirely."""
-
     @pytest.mark.asyncio
     async def test_dead_branch_node_skipped(self, flow_ctx):
-        """Node whose required input has no data (dead branch) is skipped."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
                 make_node("cond", "conditional"),
                 make_node("live", "uppercase"),
-                make_node("dead", "passthrough"),  # on false branch, but condition=True
+                make_node("dead", "passthrough"),
             ],
             edges=[
                 make_edge("cs", "cond", "output", "input"),
@@ -605,20 +524,19 @@ class TestFlowDeadBranch:
                 all_events.append(event)
 
         dead_events = [e for e in all_events if e.node_id == "dead"]
-        assert dead_events == [], "Dead branch node should emit no events"
+        assert dead_events == []
 
     @pytest.mark.asyncio
     async def test_dead_branch_emits_no_events(self, flow_ctx):
-        """Skipped node emits zero events of any type."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
                 make_node("cond", "conditional"),
-                make_node("skipped", "streaming"),  # streaming node on dead branch
+                make_node("skipped", "streaming"),
             ],
             edges=[
                 make_edge("cs", "cond", "output", "input"),
-                make_edge("cond", "skipped", "false", "input"),  # dead: condition=True
+                make_edge("cond", "skipped", "false", "input"),
             ],
         )
         graph["nodes"][1]["data"]["condition"] = True
@@ -634,17 +552,10 @@ class TestFlowDeadBranch:
         assert skipped_events == []
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 6. Event ordering
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowEvents:
-    """Event protocol: started before completed, ordering matches topo sort."""
-
     @pytest.mark.asyncio
     async def test_started_before_completed_per_node(self, flow_ctx):
-        """Every executed node emits started before completed."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -668,7 +579,6 @@ class TestFlowEvents:
 
     @pytest.mark.asyncio
     async def test_global_order_matches_topo_sort(self, flow_ctx):
-        """Global event ordering respects topological sort: A events before B events."""
         graph = make_graph(
             nodes=[
                 make_node("A", "chat-start"),
@@ -699,7 +609,6 @@ class TestFlowEvents:
     async def test_streaming_node_progress_events_between_started_completed(
         self, flow_ctx
     ):
-        """Streaming node yields progress events between started and completed."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -723,7 +632,6 @@ class TestFlowEvents:
 
     @pytest.mark.asyncio
     async def test_skipped_nodes_emit_no_events(self, flow_ctx):
-        """Skipped nodes (dead branch) emit zero events."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -735,7 +643,7 @@ class TestFlowEvents:
                 make_edge("cond", "ghost", "false", "input"),
             ],
         )
-        graph["nodes"][1]["data"]["condition"] = True  # ghost is on false branch
+        graph["nodes"][1]["data"]["condition"] = True
         flow_ctx.state.user_message = "x"
 
         events: list[NodeEvent] = []
@@ -747,22 +655,15 @@ class TestFlowEvents:
         assert ghost_events == []
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 7. Error handling
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowErrors:
-    """Error modes: stop, continue-on-fail, missing executor, and legacy node aliases."""
-
     @pytest.mark.asyncio
     async def test_node_raises_flow_stops(self, flow_ctx):
-        """Node that raises → flow stops, error event emitted."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
                 make_node("boom", "exploding"),
-                make_node("after", "passthrough"),  # should NOT execute
+                make_node("after", "passthrough"),
             ],
             edges=[
                 make_edge("cs", "boom", "output", "input"),
@@ -788,7 +689,6 @@ class TestFlowErrors:
 
     @pytest.mark.asyncio
     async def test_continue_on_fail_error_becomes_output(self, flow_ctx):
-        """Continue-on-fail mode → error becomes output data, downstream continues."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -810,13 +710,10 @@ class TestFlowErrors:
         after_events = [
             e for e in events if isinstance(e, NodeEvent) and e.node_id == "after"
         ]
-        assert len(after_events) > 0, (
-            "Downstream should execute in continue-on-fail mode"
-        )
+        assert len(after_events) > 0
 
     @pytest.mark.asyncio
     async def test_missing_executor_node_skipped(self, flow_ctx):
-        """Missing executor for node type → warning logged, node skipped."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -841,7 +738,7 @@ class TestFlowErrors:
             and e.node_id == "mystery"
             and e.event_type == "started"
         ]
-        assert mystery_started == [], "Node with no executor should not start"
+        assert mystery_started == []
 
     @pytest.mark.asyncio
     async def test_legacy_node_type_alias_executes_using_current_executor(self, flow_ctx):
@@ -865,20 +762,13 @@ class TestFlowErrors:
             and e.node_id == "cs"
             and e.event_type == "started"
         ]
-        assert cs_started, "legacy alias should resolve to chat-start executor"
+        assert cs_started
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# 8. Integration scenarios
-# ═══════════════════════════════════════════════════════════════════════
 
 
 class TestFlowIntegration:
-    """End-to-end scenarios combining multiple features."""
-
     @pytest.mark.asyncio
     async def test_pure_structural_graph_returns_early(self, flow_ctx):
-        """Pure structural graph (no flow-capable executors) → run_flow yields nothing."""
         structural_executors = {
             "struct-a": StructuralOnlyExecutor(),
             "struct-b": StructuralOnlyExecutor(),
@@ -901,16 +791,10 @@ class TestFlowIntegration:
         async for event in run_flow(graph, flow_ctx, executors=structural_executors):
             events.append(event)
 
-        assert events == [], "No flow-capable executors → no events"
+        assert events == []
 
     @pytest.mark.asyncio
     async def test_full_pipeline_with_branching(self, flow_ctx):
-        """
-        Full pipeline:
-        Chat Start → Passthrough → LLM → Conditional
-                                        ├─ true  → UpperCase (branch A)
-                                        └─ false → Passthrough (branch B)
-        """
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -928,7 +812,7 @@ class TestFlowIntegration:
                 make_edge("cond", "branch_b", "false", "input"),
             ],
         )
-        graph["nodes"][3]["data"]["condition"] = True  # route to branch_a
+        graph["nodes"][3]["data"]["condition"] = True
         flow_ctx.state.user_message = "pipeline test"
 
         all_events: list = []
@@ -951,7 +835,6 @@ class TestFlowIntegration:
 
     @pytest.mark.asyncio
     async def test_full_pipeline_false_branch(self, flow_ctx):
-        """Same pipeline, condition=False → branch B executes instead."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -969,7 +852,7 @@ class TestFlowIntegration:
                 make_edge("cond", "branch_b", "false", "input"),
             ],
         )
-        graph["nodes"][3]["data"]["condition"] = False  # route to branch_b
+        graph["nodes"][3]["data"]["condition"] = False
         flow_ctx.state.user_message = "false path"
 
         all_events: list = []
@@ -984,10 +867,6 @@ class TestFlowIntegration:
 
     @pytest.mark.asyncio
     async def test_diamond_convergence(self, flow_ctx):
-        """
-        Diamond: A → B, A → C, B → D, C → D
-        All nodes execute, D gets inputs from both B and C.
-        """
         graph = make_graph(
             nodes=[
                 make_node("A", "chat-start"),
@@ -1014,14 +893,8 @@ class TestFlowIntegration:
         assert {"A", "B", "C", "D"} <= executed
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 9. Parametrized edge cases
-# ═══════════════════════════════════════════════════════════════════════
-
 
 class TestFlowEdgeCases:
-    """Parametrized tests for boundary conditions."""
-
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "condition,expected_live,expected_dead",
@@ -1034,7 +907,6 @@ class TestFlowEdgeCases:
     async def test_conditional_routing_parametrized(
         self, flow_ctx, condition, expected_live, expected_dead
     ):
-        """Parametrized: conditional routes to correct branch."""
         graph = make_graph(
             nodes=[
                 make_node("cs", "chat-start"),
@@ -1065,17 +937,16 @@ class TestFlowEdgeCases:
     @pytest.mark.parametrize(
         "items,threshold,expect_pass,expect_reject",
         [
-            ([1, 2, 3, 4, 5], 3, True, True),  # mixed
-            ([5, 6, 7], 3, True, False),  # all pass
-            ([1, 2], 3, False, True),  # all reject
-            ([], 3, False, False),  # empty
+            ([1, 2, 3, 4, 5], 3, True, True),
+            ([5, 6, 7], 3, True, False),
+            ([1, 2], 3, False, True),
+            ([], 3, False, False),
         ],
         ids=["mixed", "all-pass", "all-reject", "empty"],
     )
     async def test_filter_output_ports_parametrized(
         self, flow_ctx, items, threshold, expect_pass, expect_reject
     ):
-        """Parametrized: filter populates correct output ports."""
         graph = make_graph(
             nodes=[
                 make_node("src", "chat-start"),

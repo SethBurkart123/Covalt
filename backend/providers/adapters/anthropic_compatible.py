@@ -1,9 +1,3 @@
-"""Anthropic-compatible provider adapter.
-
-Generates provider functions for endpoints that expose Anthropic-style
-model and chat APIs using x-api-key authentication.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -26,8 +20,6 @@ def create_provider(
     anthropic_version: str = "2023-06-01",
     **_kwargs: Any,
 ) -> dict[str, Any]:
-    """Build a provider entry for Anthropic-compatible endpoints."""
-
     def _resolve_credentials() -> tuple[str | None, str | None, str | None]:
         api_key, custom_base_url = get_credentials(provider_name=provider_id)
         resolved = custom_base_url or base_url

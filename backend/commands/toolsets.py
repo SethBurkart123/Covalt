@@ -372,8 +372,6 @@ async def list_node_plugins() -> NodePluginsResponse:
 
 
 class SetToolOverrideRequest(BaseModel):
-    """Request to set/update a tool override."""
-
     toolset_id: str
     tool_id: str  # e.g., "perplexity:search" for MCP or "my-toolset:my-tool" for Python
     renderer: str | None = None
@@ -385,8 +383,6 @@ class SetToolOverrideRequest(BaseModel):
 
 
 class ToolOverrideResponse(BaseModel):
-    """Response after setting a tool override."""
-
     toolset_id: str
     tool_id: str
     renderer: str | None = None

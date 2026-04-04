@@ -1,5 +1,3 @@
-"""kimi-for-coding provider."""
-
 from typing import Any
 
 import httpx

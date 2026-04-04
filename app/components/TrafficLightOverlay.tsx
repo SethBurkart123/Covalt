@@ -41,7 +41,6 @@ export function TrafficLightOverlay() {
   const borderNotch = notchBase;
   const fillNotch   = `${notchBase} L ${S_END_X} -10 L -10 -10 L -10 ${CORNER_R + S_HEIGHT} Z`;
 
-  // STATE 2: Sidebar Open — collapse to a simple rounded corner
   const borderCorner = `M 0 ${CORNER_R} C 0 ${CORNER_R}, 0 ${CORNER_R}, 0 ${CORNER_R} L 0 ${CORNER_R} C 0 ${CORNER_R}, 0 ${CORNER_R}, 0 ${CORNER_R} C 0 ${cornerCp}, ${cornerCp} 0, ${CORNER_R} 0`;
   const fillCorner   = `${borderCorner} L ${CORNER_R} -10 L -10 -10 L -10 ${CORNER_R} Z`;
 

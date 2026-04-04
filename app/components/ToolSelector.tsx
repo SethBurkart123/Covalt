@@ -222,7 +222,6 @@ export const ToolSelector = memo(function ToolSelector({
               const isUnavailable = (isErrorOrLoading || needsAuth) && tools.length === 0;
               const activeCount = tools.filter((t) => activeToolIds.includes(t.id)).length;
 
-              // Server needs authentication - show auth button
               if (needsAuth && primaryServer && tools.length === 0) {
                 const isAuthenticating = authenticatingId === primaryServer.id;
                 const showOauthButton = primaryServer.authHint !== "token";
@@ -274,7 +273,6 @@ export const ToolSelector = memo(function ToolSelector({
                 );
               }
 
-              // Server is connecting/errored with no tools
               if (isErrorOrLoading && tools.length === 0) {
                 return (
                   <DropdownMenuItem

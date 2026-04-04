@@ -10,7 +10,6 @@ from nodes._types import DataValue, ExecutionResult, FlowContext
 def _evaluate(
     field_val: Any, operator: str, compare_val: Any, case_sensitive: bool = True
 ) -> bool:
-    """Evaluate a condition. Returns True if condition is met."""
     if operator == "equals":
         if (
             not case_sensitive
@@ -85,14 +84,12 @@ class ConditionalExecutor:
         input_data = inputs.get("input", DataValue("data", {}))
         value = input_data.value
 
-        # Extract field from input data (dict or object)
         field_val = None
         if isinstance(value, dict):
             field_val = value.get(field)
         elif hasattr(value, field):
             field_val = getattr(value, field)
 
-        # Missing field → false (except exists/notExists semantics)
         if field_val is None and field and operator not in {"exists", "notExists"}:
             return ExecutionResult(outputs={"false": input_data})
 

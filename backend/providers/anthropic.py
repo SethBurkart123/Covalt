@@ -1,5 +1,3 @@
-"""Anthropic Provider - Claude models via Anthropic API"""
-
 from typing import Any
 
 import httpx
@@ -37,7 +35,6 @@ def get_anthropic_model(
     model_id: str,
     provider_options: dict[str, Any],
 ) -> LiteLLM:
-    """Create an Anthropic Claude model instance."""
     api_key = get_api_key()
 
     if not api_key:
@@ -47,7 +44,6 @@ def get_anthropic_model(
 
 
 async def fetch_models() -> list[dict[str, Any]]:
-    """Fetch available models from Anthropic API."""
     api_key = get_api_key()
     if not api_key:
         return []
@@ -79,7 +75,6 @@ def get_model_options(
     model_id: str,
     model_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return Anthropic model option schema."""
     metadata = model_metadata or {}
     max_output_tokens = _coerce_positive_int(
         metadata.get("max_output_tokens"),
@@ -139,7 +134,6 @@ def get_model_options(
 
 
 async def test_connection() -> tuple[bool, str | None]:
-    """Test connection to Anthropic API."""
     api_key = get_api_key()
     if not api_key:
         return False, "API key not configured"

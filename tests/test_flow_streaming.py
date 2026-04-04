@@ -20,8 +20,6 @@ from backend.commands import streaming
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from tests.conftest import make_edge, make_graph, make_node
 
-# ── Stub executors ───────────────────────────────────────────────────
-
 
 class ChatStartStub:
     node_type = "chat-start"
@@ -120,7 +118,6 @@ STUBS = {
 }
 
 
-# ── Helpers ──────────────────────────────────────────────────────────
 
 _STREAM_MODULE = "backend.services.chat_graph_runner"
 
@@ -175,8 +172,6 @@ def _patched_env():
     ):
         yield
 
-
-# ── Tests ────────────────────────────────────────────────────────────
 
 
 class TestFlowStreamingBasic:
@@ -287,7 +282,6 @@ class TestFlowStreamingTokens:
 
         all_events = _collect_events(channel)
         content_events = [e for e in all_events if e.get("event") == "RunContent"]
-        # StreamingStub yields "hello " and "world " as tokens
         assert len(content_events) >= 2
 
         events = _event_names(channel)

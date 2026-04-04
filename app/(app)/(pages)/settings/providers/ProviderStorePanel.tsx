@@ -283,7 +283,6 @@ export default function ProviderStorePanel() {
     void reload();
   }, [reload]);
 
-  // Reset search when switching tabs
   useEffect(() => {
     setSearch("");
   }, [storeTab]);

@@ -16,7 +16,6 @@ from .protocol import AgentHandle
 from .types import (
     AgentConfig,
     ApprovalRequired,
-    ApprovalResolved,
     ApprovalResponse,
     ContentDelta,
     ModelUsage,

@@ -30,7 +30,6 @@ class ModelSelectorExecutor:
     async def execute(
         self, data: dict[str, Any], inputs: dict[str, DataValue], context: FlowContext
     ) -> ExecutionResult:
-        # Wire input wins over inline value
         model = inputs.get("model", DataValue("model", "")).value or data.get(
             "model", ""
         )

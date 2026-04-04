@@ -1,5 +1,3 @@
-"""cohere provider."""
-
 from typing import Any
 
 import httpx

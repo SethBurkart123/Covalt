@@ -45,11 +45,9 @@ export const BlockHandle = Extension.create<BlockHandleCallbacks>({
           e.stopPropagation();
           if (currentBlockPos == null) return;
 
-          // Select the block node
           const { state, dispatch } = editor.view;
           dispatch(state.tr.setSelection(NodeSelection.create(state.doc, currentBlockPos)));
 
-          // Open menu
           const rect = handleEl!.getBoundingClientRect();
           onOpen(currentBlockPos, rect);
         });
@@ -108,7 +106,6 @@ export const BlockHandle = Extension.create<BlockHandleCallbacks>({
               const pos = view.posAtCoords({ left: editorRect.left + 20, top: event.clientY });
               if (!pos) { hideHandle(); return false; }
 
-              // Walk up to find the top-level block node
               const $pos = view.state.doc.resolve(pos.pos);
               const depth = $pos.depth;
               if (depth === 0) { hideHandle(); return false; }
@@ -119,7 +116,6 @@ export const BlockHandle = Extension.create<BlockHandleCallbacks>({
 
               currentBlockPos = blockPos;
 
-              // Get the DOM node for this block
               const domNode = view.nodeDOM(blockPos) as HTMLElement | null;
               if (!domNode) { hideHandle(); return false; }
 

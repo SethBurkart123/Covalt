@@ -14,10 +14,6 @@ from agno.models.response import ModelResponse
 
 from backend.services import run_control
 
-# ---------------------------------------------------------------------------
-# Mock Models — drop-in replacements for real LLM providers
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class MockModel(Model):
@@ -97,10 +93,6 @@ class SequenceMockModel(Model):
         return self._next_response()
 
 
-# ---------------------------------------------------------------------------
-# Context fixtures — minimal stand-ins for the graph executor contexts
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class FlowContext:
@@ -127,10 +119,6 @@ def _reset_run_control_state() -> Iterator[None]:
     run_control.reset_state()
 
 
-# ---------------------------------------------------------------------------
-# Async event helpers
-# ---------------------------------------------------------------------------
-
 
 async def collect_events(async_gen: AsyncIterator[Any]) -> tuple[list[Any], Any | None]:
     """Drain an async generator, separating intermediate events from a final result.
@@ -145,15 +133,10 @@ async def collect_events(async_gen: AsyncIterator[Any]) -> tuple[list[Any], Any 
     if len(items) < 2:
         return items, None
 
-    # If the last item is a different type, treat it as the final result
     if type(items[-1]) is not type(items[0]):
         return items[:-1], items[-1]
     return items, None
 
-
-# ---------------------------------------------------------------------------
-# Graph construction helpers
-# ---------------------------------------------------------------------------
 
 
 def make_node(
@@ -165,7 +148,6 @@ def make_node(
     instructions: str = "",
     **extra_data: Any,
 ) -> dict[str, Any]:
-    """Build a single node dict matching the graph schema."""
     data = {"name": name, "model": model, "instructions": instructions, **extra_data}
     return {"id": node_id, "type": node_type, "data": data}
 
@@ -174,7 +156,6 @@ def make_graph(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a minimal graph JSON structure from nodes and edges."""
     return {"nodes": nodes, "edges": edges or []}
 
 
@@ -184,7 +165,6 @@ def make_edge(
     source_handle: str = "output",
     target_handle: str = "input",
 ) -> dict[str, Any]:
-    """Build an edge dict for the graph schema."""
     channel = "link" if source_handle == "tools" or target_handle == "tools" else "flow"
     return {
         "source": source,
@@ -194,10 +174,6 @@ def make_edge(
         "data": {"channel": channel},
     }
 
-
-# ---------------------------------------------------------------------------
-# Assertion helpers
-# ---------------------------------------------------------------------------
 
 
 def assert_valid_topological_order(
@@ -239,10 +215,6 @@ def assert_event_order(
         )
         idx += 1
 
-
-# ---------------------------------------------------------------------------
-# Channel capture helpers
-# ---------------------------------------------------------------------------
 
 
 class CapturingChannel:

@@ -1,11 +1,3 @@
-"""Provider adapter registry.
-
-Each adapter module knows how to create provider functions for a specific
-protocol family (e.g. OpenAI-compatible, Anthropic-compatible).  Adapters
-register themselves via ``register_adapter`` and the manifest loader calls
-``get_adapter`` to resolve them by name.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable

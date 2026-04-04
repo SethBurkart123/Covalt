@@ -1,5 +1,3 @@
-"""minimax-coding-plan provider."""
-
 from typing import Any
 
 import httpx

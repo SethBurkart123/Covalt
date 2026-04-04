@@ -6,7 +6,6 @@ const ALL_SOCKET_TYPES: SocketTypeId[] = [
   'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'model',
 ]
 
-/** Helper to build a minimal Parameter for canConnect tests */
 function makeParam(socketType: SocketTypeId, acceptsTypes?: readonly SocketTypeId[]): Parameter {
   return {
     id: 'test',

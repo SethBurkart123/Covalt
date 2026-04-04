@@ -1,5 +1,3 @@
-"""Ollama Provider - Local models running on Ollama"""
-
 from typing import Any
 
 import httpx

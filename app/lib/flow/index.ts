@@ -1,9 +1,3 @@
-/**
- * Flow System - Public API
- * Parameter-driven node system for the agent graph editor.
- */
-
-
 export type {
   SocketShape,
   SocketTypeId,

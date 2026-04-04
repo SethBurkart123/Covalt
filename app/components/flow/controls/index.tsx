@@ -16,7 +16,6 @@ import { NodePicker } from './node-picker';
 import { JsonSchemaControl } from './json-schema';
 import { CollectionControl } from './collection';
 
-/** Props that all control components receive */
 export interface ControlProps {
   param: Parameter;
   value: unknown;
@@ -27,7 +26,6 @@ export interface ControlProps {
 
 type AnyControl = ComponentType<ControlProps>;
 
-/** Registry mapping parameter types to control components */
 const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   float: FloatControl as AnyControl,
   int: FloatControl as AnyControl,
@@ -45,15 +43,11 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   collection: CollectionControl as AnyControl,
 };
 
-/** Get the control component for a parameter type */
 function getControlComponent(type: ParameterType): AnyControl | null {
   return CONTROL_REGISTRY[type] ?? null;
 }
 
-/**
- * Generic control renderer - picks the right component based on parameter type.
- * Memoized to prevent re-renders when parent updates but props are unchanged.
- */
+/** Memoized to prevent re-renders when parent updates but props are unchanged. */
 export const ParameterControl = memo(function ParameterControl({ param, value, onChange, compact, nodeId }: ControlProps) {
   const Control = getControlComponent(param.type);
   

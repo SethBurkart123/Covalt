@@ -40,11 +40,8 @@ logger = logging.getLogger(__name__)
 FLOW_EDGE_CHANNEL = "flow"
 
 
-# ── Node partitioning ────────────────────────────────────────────────
-
 
 def _is_flow_capable(node_type: str, executors: dict[str, Any] | None) -> bool:
-    """Check if a node type has an executor with an execute() method."""
     executor = _get_executor(node_type, executors)
     return executor is not None and hasattr(executor, "execute")
 
@@ -52,11 +49,8 @@ def _is_flow_capable(node_type: str, executors: dict[str, Any] | None) -> bool:
 def find_flow_nodes(
     nodes: list[dict], executors: dict[str, Any] | None = None
 ) -> list[dict]:
-    """Return nodes whose executors have an execute() method."""
     return [n for n in nodes if _is_flow_capable(n.get("type", ""), executors)]
 
-
-# ── Topological sort ────────────────────────────────────────────────
 
 
 def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
@@ -88,8 +82,6 @@ def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
 
     return result
 
-
-# ── Edge helpers ─────────────────────────────────────────────────────
 
 
 def _flow_edges(edges: list[dict]) -> list[dict]:
@@ -197,7 +189,6 @@ def _gather_inputs(
         if value is None:
             continue
 
-        # Coerce ONLY for typed side socket edges (not data spine)
         target_type = (edge.get("data") or {}).get("targetType")
         if (
             target_type
@@ -410,11 +401,8 @@ def _apply_explicit_scope(
     return scoped_nodes, scoped_edges
 
 
-# ── Main engine ─────────────────────────────────────────────────────
-
 
 def _get_node_label(node: dict) -> str:
-    """Get display label for expression resolution."""
     return (
         node.get("data", {}).get("_label")
         or node.get("data", {}).get("label")

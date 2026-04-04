@@ -51,7 +51,7 @@ class LinkedAgentArtifact:
     node_type: str
     name: str
     tools: list[Any] = field(default_factory=list)
-    linked_agents: list["LinkedAgentArtifact"] = field(default_factory=list)
+    linked_agents: list[LinkedAgentArtifact] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -406,7 +406,6 @@ class AgentExecutor:
 
                     continue
 
-                # delegated child events are emitted directly as NodeEvent payloads.
                 continue
 
             content = "".join(content_parts) if content_parts else fallback_final
@@ -456,7 +455,7 @@ async def _iterate_with_timeout(stream: Any):
             )
         except StopAsyncIteration:
             break
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise RuntimeError(
                 f"Agent stream timed out after {AGENT_STREAM_IDLE_TIMEOUT_SECONDS:.0f}s"
             ) from exc
@@ -905,7 +904,7 @@ async def _await_approval_response(run_id: str) -> ApprovalResponse:
                 for tool_id in tool_decisions
             },
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return ApprovalResponse(run_id=run_id, default_approved=False)
     finally:
         run_control.clear_approval(run_id)

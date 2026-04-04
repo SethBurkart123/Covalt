@@ -15,12 +15,8 @@ import pytest
 from nodes._coerce import COERCION_TABLE, can_coerce, coerce
 from nodes._types import DataValue
 
-# ── can_coerce ───────────────────────────────────────────────────────
-
 
 class TestCanCoerce:
-    """can_coerce checks the coercion table + identity."""
-
     def test_identity_always_true(self):
         for t in ("int", "float", "string", "json", "boolean", "model"):
             assert can_coerce(t, t) is True
@@ -45,17 +41,12 @@ class TestCanCoerce:
         assert can_coerce("string", "any") is False
 
 
-# ── coerce ───────────────────────────────────────────────────────────
-
 
 class TestCoerce:
-    """coerce performs the actual runtime conversion."""
-
     def test_identity_returns_same(self):
         v = DataValue(type="string", value="hello")
         assert coerce(v, "string") is v
 
-    # -- Numeric widening --
 
     def test_int_to_float(self):
         result = coerce(DataValue(type="int", value=42), "float")
@@ -63,7 +54,6 @@ class TestCoerce:
         assert result.value == 42.0
         assert isinstance(result.value, float)
 
-    # -- Primitives → string --
 
     def test_int_to_string(self):
         result = coerce(DataValue(type="int", value=7), "string")
@@ -81,16 +71,12 @@ class TestCoerce:
         result = coerce(DataValue(type="boolean", value=False), "string")
         assert result == DataValue(type="string", value="false")
 
-    # -- json → string --
 
     def test_json_to_string(self):
         result = coerce(DataValue(type="json", value={"a": 1}), "string")
         assert result.type == "string"
         assert json.loads(result.value) == {"a": 1}
-        # Compact format (no spaces)
-        assert " " not in result.value
-
-    # -- errors --
+        assert " " not in result.value  # compact format (no spaces)
 
     def test_invalid_coercion_raises_type_error(self):
         with pytest.raises(TypeError, match="No implicit coercion"):

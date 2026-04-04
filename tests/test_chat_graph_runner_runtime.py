@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-import backend.services.chat_graph_runner as chat_graph_runner
 from backend import db
 from backend.commands import chats as chats_commands
 from backend.models.chat import Attachment, ChatMessage, ContentBlock
