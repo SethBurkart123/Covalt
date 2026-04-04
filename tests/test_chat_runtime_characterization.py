@@ -19,10 +19,7 @@ from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 import backend.services.chat_graph_runner as chat_graph_runner_module
 from backend.models.chat import ChatMessage
 from backend.services import run_control
-from backend.services.chat_graph_runner import (
-    convert_chat_message_to_agno_messages,
-    handle_content_stream,
-)
+from backend.services.chat_graph_runner import handle_content_stream
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 
@@ -123,7 +120,7 @@ async def test_simple_chat_stream_event_sequence() -> None:
         channel,
         chat_id="",
         ephemeral=True,
-        convert_message=convert_chat_message_to_agno_messages,
+        convert_message=None,
     )
 
     assert extract_event_names(channel) == ["RunContent", "RunContent", "RunCompleted"]
@@ -171,7 +168,7 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
         channel,
         chat_id="",
         ephemeral=True,
-        convert_message=convert_chat_message_to_agno_messages,
+        convert_message=None,
     )
 
     assert extract_event_names(channel) == [
@@ -240,7 +237,7 @@ async def test_approval_pause_resume_event_sequence() -> None:
                 channel,
                 chat_id="",
                 ephemeral=True,
-                convert_message=convert_chat_message_to_agno_messages,
+                convert_message=None,
             ),
             _auto_approve(),
         ),
@@ -305,7 +302,7 @@ async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None
             channel,
             chat_id="",
             ephemeral=True,
-            convert_message=convert_chat_message_to_agno_messages,
+            convert_message=None,
         )
     finally:
         chat_graph_runner_module._did_tool_call_fail = original

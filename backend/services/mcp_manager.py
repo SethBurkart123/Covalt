@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Literal
 
 import httpx
-from agno.tools.function import Function
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -21,9 +20,11 @@ from mcp.types import Tool as MCPTool
 from ..db import db_session
 from ..db.models import ToolOverride, Toolset, ToolsetMcpServer
 from ..models import format_mcp_tool_id, normalize_renderer_alias
+from ..runtime import AgnoRuntimeAdapter
 from .oauth_manager import get_oauth_manager
 
 logger = logging.getLogger(__name__)
+_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
 
 ServerStatus = Literal[
     "connecting", "connected", "error", "disconnected", "requires_auth"
@@ -833,7 +834,7 @@ class MCPManager:
                 return tool
         return None
 
-    def create_tool_function(self, server_id: str, tool_name: str) -> Function | None:
+    def create_tool_function(self, server_id: str, tool_name: str) -> Any | None:
         server_key = self.resolve_server_key(server_id) or server_id
         state = self._servers.get(server_key)
         if not state or state.status != "connected":
@@ -862,15 +863,16 @@ class MCPManager:
             overrides.get("description_override") or mcp_tool.description
         )
 
-        return Function(
+        return _RUNTIME_ADAPTER.create_tool(
             name=f"{server_key}:{tool_name}",
+            entrypoint=mcp_tool_entrypoint,
             description=overrides.get("description_override") or mcp_tool.description,
             parameters=mcp_tool.inputSchema,
-            entrypoint=mcp_tool_entrypoint,
-            skip_entrypoint_processing=True,
-            requires_confirmation=overrides.get("requires_confirmation")
-            if overrides.get("requires_confirmation") is not None
-            else state.requires_confirmation,
+            requires_confirmation=(
+                overrides.get("requires_confirmation")
+                if overrides.get("requires_confirmation") is not None
+                else state.requires_confirmation
+            ),
         )
 
     async def call_tool(

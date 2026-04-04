@@ -5,18 +5,14 @@ import logging
 import os
 import re
 
-from agno.agent import Agent, Message
-
 from .. import db
+from ..runtime import AgentConfig, AgnoRuntimeAdapter, ContentDelta, RunCompleted, RunError, RuntimeMessage
 from .runtime_events import (
     EVENT_RUN_CANCELLED,
     EVENT_RUN_COMPLETED,
     EVENT_RUN_CONTENT,
     EVENT_RUN_ERROR,
 )
-
-ERROR_RUN_EVENTS = {EVENT_RUN_ERROR, EVENT_RUN_CANCELLED}
-TITLE_CONTENT_EVENTS = {EVENT_RUN_CONTENT, EVENT_RUN_COMPLETED}
 
 DEFAULT_PROMPT = (
     "Generate a brief, descriptive title (max 6 words) for this conversation "
@@ -43,23 +39,6 @@ logger = logging.getLogger(__name__)
 
 def _is_e2e_test_mode_enabled() -> bool:
     return os.getenv("COVALT_E2E_TESTS") == "1"
-
-
-def _get_event_name(chunk: object) -> str | None:
-    event = getattr(chunk, "event", None)
-    return event if isinstance(event, str) and event else None
-
-
-def _run_completed_successfully(run_output: object) -> bool:
-    status = getattr(run_output, "status", None)
-    if status is None:
-        return True
-
-    status_value = getattr(status, "value", status)
-    if not isinstance(status_value, str):
-        return False
-
-    return status_value.lower() == "completed"
 
 
 def _build_title_instructions(prompt_template: str, user_content: str) -> str:
@@ -148,53 +127,44 @@ def _run_title_request(
 
     from .model_factory import get_model
 
-    model = get_model(provider, model_id)
-    agent = Agent(model=model, instructions=[instructions], tools=[], stream=True)
-    response_stream = agent.run(
-        input=[Message(role="user", content=user_content)],
-        stream=True,
-        stream_events=False,
-        yield_run_output=True,
-    )
+    async def _run() -> str | None:
+        model = get_model(provider, model_id)
+        adapter = AgnoRuntimeAdapter()
+        handle = adapter.create_agent(
+            AgentConfig(
+                model=model,
+                instructions=[instructions],
+                tools=[],
+                name="Title Generator",
+            )
+        )
 
-    final_response = None
-    streamed_text_parts: list[str] = []
-    had_run_error = False
+        streamed_text_parts: list[str] = []
+        final_content: str | None = None
+        had_run_error = False
 
-    for chunk in response_stream:
-        event_name = _get_event_name(chunk)
+        async for event in handle.run(
+            [RuntimeMessage(role="user", content=user_content)],
+            add_history_to_context=False,
+        ):
+            if isinstance(event, RunError):
+                had_run_error = True
+                continue
+            if isinstance(event, ContentDelta) and event.text:
+                streamed_text_parts.append(event.text)
+                continue
+            if isinstance(event, RunCompleted):
+                final_content = event.content
 
-        if event_name in ERROR_RUN_EVENTS:
-            had_run_error = True
-            continue
-
-        if hasattr(chunk, "messages"):
-            final_response = chunk
-            continue
-
-        if event_name and event_name not in TITLE_CONTENT_EVENTS:
-            continue
-
-        content = getattr(chunk, "content", None)
-        if isinstance(content, str) and content:
-            streamed_text_parts.append(content)
-
-    if had_run_error:
+        if had_run_error:
+            return None
+        if final_content is not None:
+            return final_content
+        if streamed_text_parts:
+            return "".join(streamed_text_parts)
         return None
 
-    if final_response is not None and not _run_completed_successfully(final_response):
-        return None
-
-    title_raw: str | None = None
-    if final_response is not None and getattr(final_response, "messages", None):
-        last_msg = final_response.messages[-1]
-        if last_msg and hasattr(last_msg, "content"):
-            title_raw = str(last_msg.content)
-
-    if title_raw is None and streamed_text_parts:
-        title_raw = "".join(streamed_text_parts)
-
-    return title_raw
+    return asyncio.run(_run())
 
 
 def generate_title_for_chat(chat_id: str) -> str | None:

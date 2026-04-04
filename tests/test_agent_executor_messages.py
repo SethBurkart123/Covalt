@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from agno.media import Image
-
+from backend.runtime import RuntimeAttachment, RuntimeMessage
 from nodes.core.agent.executor import _resolve_run_input
 
 
-def test_resolve_run_input_prefers_agno_messages_for_multimodal() -> None:
-    agno_messages = [
-        {
-            "role": "user",
-            "content": "describe this",
-            "images": [Image(content=b"\x89PNG\r\n\x1a\nfake")],
-        }
+def test_resolve_run_input_prefers_runtime_messages() -> None:
+    runtime_messages = [
+        RuntimeMessage(
+            role="user",
+            content="describe this",
+            attachments=[
+                RuntimeAttachment(
+                    kind="image",
+                    path="/tmp/fake-image.png",  # type: ignore[arg-type]
+                    name="fake-image.png",
+                )
+            ],
+        )
     ]
 
     resolved = _resolve_run_input(
         input_value={
-            "messages": [{"role": "user", "content": "text-only"}],
-            "agno_messages": agno_messages,
+            "runtime_messages": runtime_messages,
         },
         default_message="fallback",
     )
@@ -26,5 +30,5 @@ def test_resolve_run_input_prefers_agno_messages_for_multimodal() -> None:
     assert len(resolved) == 1
     assert resolved[0].role == "user"
     assert resolved[0].content == "describe this"
-    assert resolved[0].images is not None
-    assert len(resolved[0].images) == 1
+    assert resolved[0].attachments
+    assert resolved[0].attachments[0].kind == "image"

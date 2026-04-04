@@ -6,15 +6,15 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from agno.tools import tool as agno_tool
-
 from ..models import normalize_renderer_alias, parse_tool_id, split_mcp_tool_id
+from ..runtime import AgnoRuntimeAdapter
 
 if TYPE_CHECKING:
     from .mcp_manager import MCPManager
     from .toolset_executor import ToolsetExecutor
 
 logger = logging.getLogger(__name__)
+_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
 
 # Global reverse map: sanitized Function.name → original tool id.
 # Populated by resolve_tool_ids so any stream consumer can restore the
@@ -331,38 +331,33 @@ def tool(
     external_execution: bool = False,
 ) -> Callable[[Callable], Any]:
     def decorator(fn: Callable) -> Any:
-        agno_kwargs: dict[str, Any] = {
-            k: v
-            for k, v in {
-                "requires_confirmation": requires_confirmation
-                if requires_confirmation
-                else None,
-                "stop_after_tool_call": stop_after_tool_call
-                if stop_after_tool_call
-                else None,
-                "cache_results": cache_results if cache_results else None,
-                "cache_dir": cache_dir,
-                "cache_ttl": cache_ttl,
-                "tool_hooks": tool_hooks,
-                "pre_hook": pre_hook,
-                "post_hook": post_hook,
-                "requires_user_input": requires_user_input
-                if requires_user_input
-                else None,
-                "user_input_fields": user_input_fields,
-                "external_execution": external_execution
-                if external_execution
-                else None,
-            }.items()
-            if v is not None
-        }
-
-        wrapped = agno_tool(**agno_kwargs)(fn) if agno_kwargs else agno_tool(fn)
-
         tool_description = description or (
             fn.__doc__.strip().split("\n")[0] if fn.__doc__ else ""
         )
         display_name = name or fn.__name__.replace("_", " ").title()
+        wrapped = _RUNTIME_ADAPTER.create_tool(
+            name=fn.__name__,
+            entrypoint=fn,
+            description=tool_description,
+            requires_confirmation=requires_confirmation,
+            requires_user_input=requires_user_input,
+            user_input_fields=user_input_fields,
+            external_execution=external_execution,
+        )
+        if stop_after_tool_call:
+            setattr(wrapped, "stop_after_tool_call", True)
+        if cache_results:
+            setattr(wrapped, "cache_results", True)
+        if cache_dir is not None:
+            setattr(wrapped, "cache_dir", cache_dir)
+        if cache_ttl is not None:
+            setattr(wrapped, "cache_ttl", cache_ttl)
+        if tool_hooks is not None:
+            setattr(wrapped, "tool_hooks", tool_hooks)
+        if pre_hook is not None:
+            setattr(wrapped, "pre_hook", pre_hook)
+        if post_hook is not None:
+            setattr(wrapped, "post_hook", post_hook)
 
         metadata: dict[str, Any] = {
             "name": display_name,

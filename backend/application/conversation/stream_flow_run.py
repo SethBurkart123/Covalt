@@ -71,7 +71,7 @@ class FlowRunCancelHandle:
 @dataclass
 class StreamFlowRunDependencies:
     get_agent_data: Callable[[str], dict[str, Any] | None]
-    build_trigger_payload: Callable[[str, list[dict[str, Any]], list[dict[str, Any]], list[Any]], dict[str, Any]]
+    build_trigger_payload: Callable[[str, list[Any], list[dict[str, Any]]], dict[str, Any]]
     create_run_handle: Callable[[], Any]
     get_tool_registry: Callable[[], Any]
     register_active_run: Callable[[str, Any], None]
@@ -94,15 +94,13 @@ async def execute_stream_flow_run(
 
     prompt = input_data.prompt_input or FlowRunPromptInput()
     message = prompt.message or ""
-    history = prompt.history or []
-    messages = prompt.messages or []
+    runtime_messages = prompt.messages or []
     attachments = prompt.attachments or []
 
     trigger_payload = deps.build_trigger_payload(
         message,
-        history,
+        runtime_messages,
         attachments,
-        messages,
     )
 
     run_id = str(uuid.uuid4())
@@ -128,8 +126,7 @@ async def execute_stream_flow_run(
         tool_registry=deps.get_tool_registry(),
         chat_input=types.SimpleNamespace(
             last_user_message=message,
-            history=history,
-            messages=messages,
+            runtime_messages=runtime_messages,
             last_user_attachments=attachments,
         ),
         expression_context={"trigger": trigger_payload},

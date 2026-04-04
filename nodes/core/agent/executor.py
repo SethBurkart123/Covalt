@@ -9,9 +9,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from agno.agent import Agent, Message
-from agno.tools.function import Function
-
 from backend.providers import resolve_provider_options
 from backend.runtime import (
     AgentConfig,
@@ -587,15 +584,15 @@ def _build_agent_or_team(
     instructions: list[str] | None,
 ) -> Any:
     del sub_agents
-    return Agent(
-        name=str(data.get("name") or "Agent"),
+    config = AgentConfig(
         model=model,
-        tools=tools or None,
+        tools=tools,
+        instructions=list(instructions or []),
+        name=str(data.get("name") or "Agent"),
         description=str(data.get("description") or ""),
-        instructions=instructions or None,
-        markdown=True,
-        stream_events=True,
     )
+    handle = _runtime_adapter.create_agent(config)
+    return getattr(handle, "_agent", handle)
 
 
 def _build_delegation_tool(
@@ -603,7 +600,7 @@ def _build_delegation_tool(
     *,
     context: FlowContext,
     delegation_context: DelegationContext,
-) -> Function | None:
+) -> Any | None:
     tool_name = _safe_delegation_tool_name(artifact)
     description = _delegation_tool_description(artifact)
 
@@ -628,8 +625,9 @@ def _build_delegation_tool(
     _delegate.__name__ = tool_name
     _delegate.__doc__ = description
 
-    function = Function(
+    function = _runtime_adapter.create_tool(
         name=tool_name,
+        entrypoint=_delegate,
         description=description,
         parameters={
             "type": "object",
@@ -641,8 +639,6 @@ def _build_delegation_tool(
             },
             "required": [_DELEGATION_TOOL_TASK_ARG],
         },
-        entrypoint=_delegate,
-        skip_entrypoint_processing=True,
     )
     _tag_node_artifact(function, artifact.node_id, artifact.node_type)
     return function
@@ -1299,14 +1295,13 @@ def _resolve_run_input(
     messages_override: Any | None = None,
 ) -> Any:
     if messages_override is not None:
-        parsed_override = _coerce_messages(messages_override)
+        parsed_override = _coerce_runtime_messages(messages_override)
         if parsed_override:
             return parsed_override
 
-    for key in ("agno_messages", "messages"):
-        parsed_messages = _coerce_messages(input_value.get(key))
-        if parsed_messages:
-            return parsed_messages
+    parsed_messages = _coerce_runtime_messages(input_value.get("runtime_messages"))
+    if parsed_messages:
+        return parsed_messages
 
     return default_message
 
@@ -1332,74 +1327,53 @@ def _resolve_messages_override(data: dict[str, Any]) -> Any | None:
 
 
 def _coerce_runtime_messages(value: Any) -> list[RuntimeMessage]:
-    if isinstance(value, list) and all(isinstance(item, RuntimeMessage) for item in value):
-        return list(value)
-
-    messages = _coerce_messages(value)
-    runtime_messages: list[RuntimeMessage] = []
-    for message in messages:
-        runtime_messages.append(
-            RuntimeMessage(
-                role=message.role,
-                content=_content_to_text(getattr(message, "content", None)),
-                tool_call_id=getattr(message, "tool_call_id", None),
-                tool_calls=_runtime_tool_calls_from_message(getattr(message, "tool_calls", None)),
-            )
-        )
-    return runtime_messages
-
-
-def _coerce_messages(value: Any) -> list[Message]:
     if value is None:
         return []
 
-    if isinstance(value, Message):
+    if isinstance(value, list) and all(isinstance(item, RuntimeMessage) for item in value):
+        return list(value)
+
+    if isinstance(value, RuntimeMessage):
         return [value]
 
     if isinstance(value, str):
         stripped = value.strip()
         if not stripped:
             return []
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            return [Message(role="user", content=stripped)]
-        return _coerce_messages(parsed)
+        return [RuntimeMessage(role="user", content=stripped)]
 
     if isinstance(value, dict):
-        return _coerce_message_item(value)
+        return _coerce_runtime_message_item(value)
 
     if isinstance(value, list):
-        messages: list[Message] = []
+        runtime_messages: list[RuntimeMessage] = []
         for item in value:
-            messages.extend(_coerce_message_item(item))
-        return messages
+            runtime_messages.extend(_coerce_runtime_message_item(item))
+        return runtime_messages
 
     return []
 
 
-def _coerce_message_item(item: Any) -> list[Message]:
-    if isinstance(item, Message):
+def _coerce_runtime_message_item(item: Any) -> list[RuntimeMessage]:
+    if isinstance(item, RuntimeMessage):
         return [item]
 
     if isinstance(item, dict):
         role = str(item.get("role") or "user")
         content = _content_to_text(item.get("content"))
-        payload: dict[str, Any] = {"role": role, "content": content}
-        for field in ("images", "files", "audio", "videos"):
-            value = item.get(field)
-            if isinstance(value, list) and value:
-                payload[field] = value
-
         tool_call_id = item.get("tool_call_id") or item.get("toolCallId")
-        if role == "tool" and tool_call_id:
-            payload["tool_call_id"] = str(tool_call_id)
-
         tool_calls = item.get("tool_calls") or item.get("toolCalls")
-        if role == "assistant" and isinstance(tool_calls, list):
-            payload["tool_calls"] = _normalize_tool_calls(tool_calls)
-
-        return [Message(**payload)]
+        attachments = item.get("attachments")
+        runtime_attachments = _runtime_attachments_from_value(attachments)
+        return [
+            RuntimeMessage(
+                role=role,
+                content=content,
+                tool_call_id=str(tool_call_id) if tool_call_id else None,
+                tool_calls=_runtime_tool_calls_from_message(tool_calls),
+                attachments=runtime_attachments,
+            )
+        ]
 
     return []
 
@@ -1438,27 +1412,25 @@ def _runtime_tool_calls_from_message(tool_calls: Any) -> list[RuntimeToolCall]:
     return runtime_calls
 
 
-def _normalize_tool_calls(tool_calls: list[Any]) -> list[dict[str, Any]]:
-    normalized: list[dict[str, Any]] = []
-    for call in tool_calls:
-        if not isinstance(call, dict):
+def _runtime_attachments_from_value(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    attachments: list[Any] = []
+    for item in value:
+        if not isinstance(item, dict):
             continue
-        payload = dict(call)
-        if "type" not in payload:
-            payload["type"] = "function"
-
-        func = payload.get("function")
-        if isinstance(func, dict):
-            func_payload = dict(func)
-            args = func_payload.get("arguments")
-            if args is not None and not isinstance(args, str):
-                try:
-                    func_payload["arguments"] = json.dumps(args)
-                except TypeError:
-                    func_payload["arguments"] = str(args)
-            payload["function"] = func_payload
-        normalized.append(payload)
-    return normalized
+        kind = str(item.get("type") or item.get("kind") or "file")
+        path_value = item.get("path")
+        if not isinstance(path_value, str) or not path_value:
+            continue
+        attachments.append(
+            RuntimeAttachment(
+                kind=kind if kind in {"image", "file", "audio", "video"} else "file",
+                path=Path(path_value),
+                name=str(item.get("name")) if item.get("name") is not None else None,
+            )
+        )
+    return attachments
 
 
 def _get_tool_registry(context: FlowContext) -> Any | None:

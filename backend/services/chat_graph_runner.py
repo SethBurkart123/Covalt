@@ -13,11 +13,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agno.agent import Agent, Message, RunEvent
-from agno.media import Audio, File, Image, Video
-from agno.run.agent import BaseAgentRunEvent
-from agno.run.team import BaseTeamRunEvent, TeamRunEvent
-from agno.team import Team
 from zynk import Channel
 
 from nodes import get_executor
@@ -81,6 +76,7 @@ from backend.runtime import (
     ToolCallCompleted,
     ToolCallStarted,
     ToolDecision,
+    runtime_message_to_dict,
     runtime_messages_from_chat_messages,
 )
 from .toolset_executor import get_toolset_executor
@@ -92,12 +88,6 @@ _RUNTIME_ADAPTER = AgnoRuntimeAdapter()
 
 logger = logging.getLogger(__name__)
 registry = get_tool_registry()
-
-_TEAM_TO_RUN_EVENT: dict[TeamRunEvent, RunEvent] = {
-    getattr(TeamRunEvent, event.name): event
-    for event in RunEvent
-    if hasattr(TeamRunEvent, event.name)
-}
 
 DELEGATION_TOOL_NAMES = {"delegate_task_to_member", "delegate_task_to_members"}
 
@@ -312,46 +302,27 @@ def _apply_runtime_config(
 
 def _build_trigger_payload(
     user_message: str,
-    chat_history: list[dict[str, Any]],
+    runtime_messages: list[Any],
     attachments: list[dict[str, Any]],
-    messages: list[Any],
 ) -> dict[str, Any]:
+    serialized_messages = [
+        runtime_message_to_dict(message)
+        if hasattr(message, "role")
+        else dict(message)
+        for message in runtime_messages
+        if hasattr(message, "role") or isinstance(message, dict)
+    ]
     return {
         "message": user_message,
         "last_user_message": user_message,
-        "history": chat_history,
-        "messages": messages,
+        "history": serialized_messages,
+        "messages": serialized_messages,
         "attachments": attachments,
     }
 
 
-def _normalize_event(event: RunEvent | TeamRunEvent | str) -> RunEvent | None:
-    if isinstance(event, RunEvent):
-        return event
-    if isinstance(event, TeamRunEvent):
-        return _TEAM_TO_RUN_EVENT.get(event)
-    if isinstance(event, str):
-        try:
-            return RunEvent(event)
-        except ValueError:
-            pass
-        try:
-            return _TEAM_TO_RUN_EVENT.get(TeamRunEvent(event))
-        except ValueError:
-            pass
-    return None
-
-
 def _is_delegation_tool(tool_name: str | None) -> bool:
     return tool_name in DELEGATION_TOOL_NAMES
-
-
-def _is_member_event(chunk: Any) -> bool:
-    return isinstance(chunk, BaseAgentRunEvent)
-
-
-def _is_team_event(chunk: Any) -> bool:
-    return isinstance(chunk, BaseTeamRunEvent)
 
 
 def _get_tool_provider_data(tool: Any) -> dict[str, Any] | None:
@@ -585,128 +556,6 @@ def _require_user_message(messages: list[ChatMessage]) -> None:
         raise ValueError("No user message found in request")
 
 
-def _serialize_content_for_runtime(content: Any) -> Any:
-    if not isinstance(content, list):
-        return content
-
-    serialized: list[Any] = []
-    for block in content:
-        if hasattr(block, "model_dump"):
-            serialized.append(block.model_dump())
-            continue
-        if isinstance(block, dict):
-            serialized.append(dict(block))
-            continue
-        serialized.append({"type": "text", "content": str(block)})
-    return serialized
-
-
-def _serialize_attachments_for_runtime(attachments: Any) -> list[dict[str, Any]]:
-    if not attachments:
-        return []
-
-    serialized: list[dict[str, Any]] = []
-    for attachment in attachments:
-        if hasattr(attachment, "model_dump"):
-            payload = attachment.model_dump()
-            if isinstance(payload, dict):
-                serialized.append(payload)
-            continue
-        if isinstance(attachment, dict):
-            serialized.append(dict(attachment))
-            continue
-
-        serialized.append(
-            {
-                "id": str(getattr(attachment, "id", "")),
-                "type": str(getattr(attachment, "type", "file")),
-                "name": str(getattr(attachment, "name", "")),
-                "mimeType": str(getattr(attachment, "mimeType", "")),
-                "size": int(getattr(attachment, "size", 0) or 0),
-            }
-        )
-    return serialized
-
-
-def build_chat_runtime_history(messages: list[ChatMessage]) -> list[dict[str, Any]]:
-    history: list[dict[str, Any]] = []
-    for message in messages:
-        history.append(
-            {
-                "id": message.id,
-                "role": message.role,
-                "content": _serialize_content_for_runtime(message.content),
-                "createdAt": message.createdAt,
-                "attachments": _serialize_attachments_for_runtime(message.attachments),
-            }
-        )
-    return history
-
-
-def _content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") != "text":
-                continue
-            part = block.get("content")
-            if part is not None:
-                parts.append(str(part))
-        return "".join(parts)
-    return str(content) if content is not None else ""
-
-
-def _tool_call_to_openai(tool_call: ToolCall) -> dict[str, Any]:
-    args = tool_call.toolArgs if tool_call.toolArgs is not None else {}
-    try:
-        arguments = json.dumps(args)
-    except TypeError:
-        arguments = json.dumps({})
-    return {
-        "id": tool_call.id,
-        "type": "function",
-        "function": {
-            "name": tool_call.toolName,
-            "arguments": arguments,
-        },
-    }
-
-
-def build_openai_messages_for_chat(
-    messages: list[ChatMessage],
-) -> list[dict[str, Any]]:
-    formatted: list[dict[str, Any]] = []
-    for message in messages:
-        content = _content_to_text(message.content)
-        payload: dict[str, Any] = {"role": message.role, "content": content}
-
-        tool_calls = message.toolCalls or []
-        if message.role == "assistant" and tool_calls:
-            payload["tool_calls"] = [
-                _tool_call_to_openai(tool_call) for tool_call in tool_calls
-            ]
-
-        formatted.append(payload)
-
-        if message.role == "assistant":
-            for tool_call in tool_calls:
-                if tool_call.toolResult is None:
-                    continue
-                formatted.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": str(tool_call.toolResult),
-                    }
-                )
-
-    return formatted
-
-
 def is_allowed_attachment_mime(mime_type: str) -> bool:
     if not mime_type:
         return False
@@ -720,253 +569,6 @@ def is_allowed_attachment_mime(mime_type: str) -> bool:
             return wildcard in COVALT_ALLOWED_ATTACHMENT_MIME_TYPES
 
     return mime_type in COVALT_ALLOWED_ATTACHMENT_MIME_TYPES
-
-
-def load_attachments_as_agno_media(
-    chat_id: str, attachments: list[Attachment]
-) -> tuple[list[Image], list[File], list[Audio], list[Video]]:
-    images: list[Image] = []
-    files: list[File] = []
-    audio: list[Audio] = []
-    videos: list[Video] = []
-
-    workspace_manager = get_workspace_manager(chat_id)
-
-    for attachment in attachments:
-        if attachment.size > MAX_ATTACHMENT_BYTES:
-            logger.warning(
-                "[attachments] Skipping %s (%s): %s bytes exceeds %s",
-                attachment.id,
-                attachment.name,
-                attachment.size,
-                MAX_ATTACHMENT_BYTES,
-            )
-            continue
-
-        if not is_allowed_attachment_mime(attachment.mimeType):
-            logger.warning(
-                "[attachments] Skipping %s (%s): MIME '%s' not allowed for Covalt",
-                attachment.id,
-                attachment.name,
-                attachment.mimeType,
-            )
-            continue
-
-        filepath = workspace_manager.workspace_dir / attachment.name
-        if not filepath.exists():
-            logger.warning(
-                f"[attachments] Skipping {attachment.id} ({attachment.name}): file not found in workspace"
-            )
-            continue
-
-        if attachment.type == "image":
-            images.append(Image(filepath=filepath))
-        elif attachment.type == "audio":
-            audio.append(Audio(filepath=filepath))
-        elif attachment.type == "video":
-            videos.append(Video(filepath=filepath))
-        else:
-            files.append(File(filepath=filepath, name=attachment.name))
-
-    return images, files, audio, videos
-
-
-def convert_chat_message_to_agno_messages(
-    chat_msg: ChatMessage,
-    chat_id: str | None = None,
-) -> list[Message]:
-    if chat_msg.role == "user":
-        content = chat_msg.content
-        if isinstance(content, list):
-            content = json.dumps(content)
-
-        images_list: list[Image] | None = None
-        files_list: list[File] | None = None
-        audio_list: list[Audio] | None = None
-        videos_list: list[Video] | None = None
-
-        if chat_id and chat_msg.attachments:
-            images, files, audio, videos = load_attachments_as_agno_media(
-                chat_id, chat_msg.attachments
-            )
-            if images:
-                images_list = images
-            if files:
-                files_list = files
-            if audio:
-                audio_list = audio
-            if videos:
-                videos_list = videos
-
-        return [
-            Message(
-                role="user",
-                content=content,
-                images=images_list,
-                files=files_list,
-                audio=audio_list,
-                videos=videos_list,
-            )
-        ]
-
-    if chat_msg.role == "assistant":
-        content = chat_msg.content
-
-        if isinstance(content, str):
-            return [Message(role="assistant", content=content)]
-
-        if not isinstance(content, list):
-            return [Message(role="assistant", content=str(content))]
-
-        normalized_content = _serialize_content_for_runtime(content)
-        if not isinstance(normalized_content, list):
-            return [Message(role="assistant", content=str(normalized_content))]
-
-        messages: list[Message] = []
-        text_parts: list[str] = []
-
-        for block in normalized_content:
-            if not isinstance(block, dict):
-                continue
-
-            block_type = block.get("type")
-
-            if block_type == "text":
-                block_content = block.get("content")
-                text_parts.append(str(block_content or ""))
-                continue
-
-            if block_type == "tool_call":
-                block_id = block.get("id")
-                tool_name = block.get("toolName")
-                tool_args = block.get("toolArgs")
-                tool_result = block.get("toolResult")
-                provider_data = block.get("providerData")
-                if not isinstance(provider_data, dict) or not provider_data:
-                    provider_data = None
-
-                message_content = " ".join(text_parts) if text_parts else None
-                messages.append(
-                    Message(
-                        role="assistant",
-                        content=message_content,
-                        tool_calls=[
-                            {
-                                "id": block_id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": json.dumps(tool_args or {}),
-                                },
-                                **(
-                                    {"providerData": provider_data}
-                                    if provider_data
-                                    else {}
-                                ),
-                            }
-                        ],
-                    )
-                )
-                text_parts = []
-
-                if tool_result:
-                    messages.append(
-                        Message(
-                            role="tool",
-                            tool_call_id=block_id,
-                            content=str(tool_result),
-                        )
-                    )
-
-        if text_parts:
-            messages.append(Message(role="assistant", content=" ".join(text_parts)))
-
-        return messages if messages else [Message(role="assistant", content="")]
-
-    return []
-
-
-def build_agno_messages_for_chat(
-    messages: list[ChatMessage],
-    chat_id: str | None,
-) -> list[Message]:
-    runtime_messages = runtime_messages_from_chat_messages(messages, chat_id)
-    agno_messages: list[Message] = []
-    for runtime_message in runtime_messages:
-        if runtime_message.role == "user":
-            content = runtime_message.content or ""
-            images_list: list[Image] | None = None
-            files_list: list[File] | None = None
-            audio_list: list[Audio] | None = None
-            videos_list: list[Video] | None = None
-            if runtime_message.attachments:
-                images: list[Image] = []
-                files: list[File] = []
-                audio: list[Audio] = []
-                videos: list[Video] = []
-                for attachment in runtime_message.attachments:
-                    path = Path(attachment.path)
-                    if not path.exists():
-                        continue
-                    if attachment.kind == "image":
-                        images.append(Image(filepath=path))
-                    elif attachment.kind == "audio":
-                        audio.append(Audio(filepath=path))
-                    elif attachment.kind == "video":
-                        videos.append(Video(filepath=path))
-                    else:
-                        files.append(File(filepath=path, name=attachment.name or path.name))
-                images_list = images or None
-                files_list = files or None
-                audio_list = audio or None
-                videos_list = videos or None
-            agno_messages.append(
-                Message(
-                    role="user",
-                    content=content,
-                    images=images_list,
-                    files=files_list,
-                    audio=audio_list,
-                    videos=videos_list,
-                )
-            )
-            continue
-
-        if runtime_message.role == "assistant":
-            payload: dict[str, Any] = {
-                "role": "assistant",
-                "content": runtime_message.content,
-            }
-            if runtime_message.tool_calls:
-                payload["tool_calls"] = [
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments or {}),
-                        },
-                        **(
-                            {"providerData": tool_call.provider_data}
-                            if tool_call.provider_data
-                            else {}
-                        ),
-                    }
-                    for tool_call in runtime_message.tool_calls
-                ]
-            agno_messages.append(Message(**payload))
-            continue
-
-        if runtime_message.role == "tool":
-            agno_messages.append(
-                Message(
-                    role="tool",
-                    tool_call_id=runtime_message.tool_call_id,
-                    content=runtime_message.content or "",
-                )
-            )
-
-    return agno_messages
 
 
 def extract_error_message(error_content: str) -> str:
@@ -1491,13 +1093,15 @@ async def handle_flow_stream(
         last_user_message = messages[-1]
         content = last_user_message.content
         user_message = content if isinstance(content, str) else json.dumps(content)
-        last_user_attachments = _serialize_attachments_for_runtime(
-            last_user_message.attachments
-        )
+        for attachment in last_user_message.attachments or []:
+            if isinstance(attachment, dict):
+                last_user_attachments.append(dict(attachment))
+            elif hasattr(attachment, "model_dump"):
+                payload = attachment.model_dump()
+                if isinstance(payload, dict):
+                    last_user_attachments.append(payload)
 
-    chat_history = build_chat_runtime_history(messages)
-    openai_messages = build_openai_messages_for_chat(messages)
-    agno_messages = build_agno_messages_for_chat(messages, chat_id)
+    runtime_messages = runtime_messages_from_chat_messages(messages, chat_id)
     if requires_graph_migration(graph_data):
         normalized_graph_data = migrate_graph_data(graph_data)
     else:
@@ -1505,9 +1109,8 @@ async def handle_flow_stream(
     entry_node_ids = _build_entry_node_ids(normalized_graph_data)
     trigger_payload = _build_trigger_payload(
         user_message,
-        chat_history,
+        runtime_messages,
         last_user_attachments,
-        openai_messages,
     )
 
     state = types.SimpleNamespace(user_message=user_message)
@@ -1519,9 +1122,7 @@ async def handle_flow_stream(
         chat_input=types.SimpleNamespace(
             last_user_message=user_message,
             last_user_attachments=last_user_attachments,
-            history=chat_history,
-            messages=openai_messages,
-            agno_messages=agno_messages,
+            runtime_messages=runtime_messages,
         ),
         expression_context={"trigger": trigger_payload},
         execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),

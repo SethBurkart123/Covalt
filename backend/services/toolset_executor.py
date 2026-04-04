@@ -11,8 +11,6 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from agno.tools.function import Function
-
 # Import covalt_toolset for context management and decorator metadata
 from covalt_toolset import ToolContext, clear_context, get_tool_metadata, set_context
 
@@ -20,6 +18,7 @@ from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolOverride, Toolset
 from ..models import normalize_renderer_alias
+from ..runtime import AgnoRuntimeAdapter
 from .render_plan_builder import get_render_plan_builder
 from .toolset_manager import get_toolset_directory
 from .workspace_event_broadcaster import broadcast_workspace_files_changed
@@ -27,6 +26,7 @@ from .workspace_events import WorkspaceFilesChanged
 from .workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
+_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
 
 
 class ToolsetExecutor:
@@ -149,7 +149,7 @@ class ToolsetExecutor:
 
     def get_tool_function(
         self, tool_id: str, chat_id: str, message_id: str | None = None
-    ) -> Function | None:
+    ) -> Any | None:
         tool_info = self._get_tool_from_db(tool_id)
         if not tool_info:
             return None
@@ -210,12 +210,11 @@ class ToolsetExecutor:
         toolset_tool_entrypoint.__name__ = tool_id
         toolset_tool_entrypoint.__doc__ = description or ""
 
-        return Function(
+        return _RUNTIME_ADAPTER.create_tool(
             name=tool_id,
+            entrypoint=toolset_tool_entrypoint,
             description=description,
             parameters=schema,
-            entrypoint=toolset_tool_entrypoint,
-            skip_entrypoint_processing=True,
             requires_confirmation=requires_confirmation,
         )
 
