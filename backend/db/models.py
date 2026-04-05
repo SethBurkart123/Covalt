@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -53,6 +54,12 @@ class Message(Base):
     manifest_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
+
+    __table_args__ = (
+        Index("ix_messages_chat_id", "chatId"),
+        Index("ix_messages_parent_id_chat_id", "parent_message_id", "chatId"),
+        Index("ix_messages_chat_created", "chatId", "createdAt"),
+    )
 
 
 class ProviderSettings(Base):
@@ -109,6 +116,10 @@ class ExecutionRun(Base):
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
     ended_at: Mapped[str | None] = mapped_column(String, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_execution_runs_message_id", "message_id"),
+    )
 
 
 class ExecutionEvent(Base):
@@ -253,6 +264,10 @@ class ToolCall(Base):
     finished_at: Mapped[str | None] = mapped_column(String, nullable=True)
     pre_manifest_id: Mapped[str | None] = mapped_column(String, nullable=True)
     post_manifest_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        Index("ix_tool_calls_chat_message", "chat_id", "message_id"),
+    )
 
 
 class OAuthToken(Base):

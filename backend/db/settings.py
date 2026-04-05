@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
+import orjson
 from sqlalchemy.orm import Session
 
 from .models import UserSettings
@@ -29,12 +29,12 @@ def get_default_tool_ids(sess: Session) -> list[str]:
     if not value:
         return []
 
-    tool_ids = json.loads(value)
+    tool_ids = orjson.loads(value)
     return tool_ids if isinstance(tool_ids, list) else []
 
 
 def set_default_tool_ids(sess: Session, tool_ids: list[str]) -> None:
-    set_user_setting(sess, "default_tool_ids", json.dumps(tool_ids))
+    set_user_setting(sess, "default_tool_ids", orjson.dumps(tool_ids).decode())
 
 
 def get_general_settings(sess: Session) -> dict[str, Any]:
@@ -42,7 +42,7 @@ def get_general_settings(sess: Session) -> dict[str, Any]:
     if not value:
         return get_default_general_settings()
 
-    settings = json.loads(value)
+    settings = orjson.loads(value)
     defaults = get_default_general_settings()
     for key, default_val in defaults.items():
         if key not in settings:
@@ -53,7 +53,7 @@ def get_general_settings(sess: Session) -> dict[str, Any]:
 def update_general_settings(sess: Session, partial_settings: dict[str, Any]) -> None:
     current = get_general_settings(sess)
     current.update(partial_settings)
-    set_user_setting(sess, "general_settings", json.dumps(current))
+    set_user_setting(sess, "general_settings", orjson.dumps(current).decode())
 
 
 def get_default_general_settings() -> dict[str, Any]:
@@ -91,9 +91,9 @@ def get_starred_models(sess: Session) -> list[str]:
     value = get_user_setting(sess, "starred_models")
     if not value:
         return []
-    parsed = json.loads(value)
+    parsed = orjson.loads(value)
     return parsed if isinstance(parsed, list) else []
 
 
 def set_starred_models(sess: Session, model_keys: list[str]) -> None:
-    set_user_setting(sess, "starred_models", json.dumps(model_keys))
+    set_user_setting(sess, "starred_models", orjson.dumps(model_keys).decode())

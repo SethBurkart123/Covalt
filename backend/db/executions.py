@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Any
+
+import orjson
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -93,7 +94,7 @@ def append_execution_events(
                     str(event["run_id"]) if event.get("run_id") is not None else None
                 ),
                 payload_json=(
-                    json.dumps(payload, separators=(",", ":"))
+                    orjson.dumps(payload).decode()
                     if payload is not None
                     else None
                 ),
@@ -135,7 +136,7 @@ def get_execution_events(
         payload: Any = None
         if row.payload_json:
             try:
-                payload = json.loads(row.payload_json)
+                payload = orjson.loads(row.payload_json)
             except Exception:
                 payload = row.payload_json
 
