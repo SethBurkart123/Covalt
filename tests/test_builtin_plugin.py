@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.services.plugin_registry import PluginRegistry
+from backend.services.plugins.plugin_registry import PluginRegistry
 from nodes import get_executor
 from nodes._types import DataValue, FlowContext, HookType, NodeEvent
 from nodes.plugin import BUILTIN_EXECUTOR_MODULES, BUILTIN_EXECUTORS, register_builtin_plugin

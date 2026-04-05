@@ -18,8 +18,8 @@ from agno.models.message import Message
 from agno.models.metrics import Metrics
 from agno.models.response import ModelResponse
 
-from ..services.models_dev import fetch_models_dev_provider
-from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.models.models_dev import fetch_models_dev_provider
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
 from .options import resolve_common_options
 
 ANTHROPIC_VERSION = "2023-06-01"

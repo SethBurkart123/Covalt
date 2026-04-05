@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from backend.services import model_factory
+from backend.services.models import model_factory
 
 
 @pytest.mark.asyncio

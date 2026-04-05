@@ -5,7 +5,7 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from backend.services import provider_plugin_manager as ppm
+from backend.services.plugins import provider_plugin_manager as ppm
 
 
 def write_provider_code_plugin(

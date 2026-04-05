@@ -10,7 +10,7 @@ from zynk import Channel
 
 from nodes._types import NodeEvent
 
-from ...services.runtime_events import (
+from ...services.streaming.runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
     EVENT_FLOW_NODE_RESULT,

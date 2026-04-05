@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services import node_provider_registry as provider_registry
-from backend.services.node_provider_registry import _normalize_registration
-from backend.services.node_provider_runtime import NodeProviderRuntimeError, NodeProviderRuntimeSpec
-from backend.services.plugin_registry import get_executor, list_registered_plugins, unregister_plugin
+from backend.services.node_providers import node_provider_registry as provider_registry
+from backend.services.node_providers.node_provider_registry import _normalize_registration
+from backend.services.node_providers.node_provider_runtime import NodeProviderRuntimeError, NodeProviderRuntimeSpec
+from backend.services.plugins.plugin_registry import get_executor, list_registered_plugins, unregister_plugin
 
 
 def _cleanup_external_plugin_state(*plugin_ids: str) -> None:

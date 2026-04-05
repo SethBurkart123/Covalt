@@ -30,7 +30,7 @@ from tests.conftest import (
 
 # Conditional import so pytest can collect (and skip) this file if the engine isn't implemented yet.
 try:
-    from backend.services.flow_executor import (
+    from backend.services.flows.flow_executor import (
         _flow_edges,
         find_flow_nodes,
         run_flow,

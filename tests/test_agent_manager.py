@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from backend.services.agent_manager import AgentManager
-from backend.services.graph_normalizer import normalize_graph_edges
+from backend.services.flows.agent_manager import AgentManager
+from backend.services.flows.graph_normalizer import normalize_graph_edges
 
 
 def test_normalize_graph_edges_requires_explicit_channel() -> None:

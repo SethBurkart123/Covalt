@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from backend.services import provider_catalog
+from backend.services.models import provider_catalog
 
 
 def test_list_provider_catalog_includes_plugin_provider(monkeypatch) -> None:

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 from zynk import WebSocket, message
 
-from ..services.mcp_manager import ServerStatus, get_mcp_manager
+from ..services.tools.mcp_manager import ServerStatus, get_mcp_manager
 from ..services.workspace_event_broadcaster import register_client, unregister_client
 from ..services.workspace_events import WorkspaceFilesChanged
 

@@ -7,7 +7,7 @@ from typing import Any, Protocol
 from zynk import Channel
 
 from ...models.chat import Attachment, ChatMessage
-from ...services.chat_attachments import AttachmentMetaLike, StreamAttachmentState
+from ...services.chat.chat_attachments import AttachmentMetaLike, StreamAttachmentState
 
 
 class LoggerLike(Protocol):

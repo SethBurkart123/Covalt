@@ -13,7 +13,7 @@ from typing import Any, List, Optional
 import litellm
 
 from .. import db
-from ..services.provider_plugin_manager import get_provider_plugin_manager
+from ..services.plugins.provider_plugin_manager import get_provider_plugin_manager
 from ._manifest import MANIFEST_PROVIDERS
 from .adapters import ADAPTER_REGISTRY
 from .options import resolve_common_options

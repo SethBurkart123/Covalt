@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from backend.services.http_routes import _build_http_response, _build_node_route_response
-from backend.services.node_route_registry import NodeRouteResponse
+from backend.services.flows.http_routes import _build_http_response, _build_node_route_response
+from backend.services.flows.node_route_registry import NodeRouteResponse
 
 
 def test_build_http_response_defaults_invalid_status_to_200() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.services import chat_config
+from backend.services.chat import chat_config
 
 
 def _db_mock() -> tuple[MagicMock, MagicMock]:

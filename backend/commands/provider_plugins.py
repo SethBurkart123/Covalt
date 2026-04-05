@@ -28,7 +28,7 @@ from ..models.chat import (
     SetProviderPluginAutoUpdateInput,
 )
 from ..providers import reload_provider_registry
-from ..services.provider_plugin_manager import get_provider_plugin_manager
+from ..services.plugins.provider_plugin_manager import get_provider_plugin_manager
 
 logger = logging.getLogger(__name__)
 

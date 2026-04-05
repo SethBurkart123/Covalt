@@ -32,14 +32,14 @@ from ..models.chat import (
     ThinkingTagPromptInfo,
 )
 from ..providers import test_provider_connection
-from ..services.model_factory import (
+from ..services.models.model_factory import (
     get_enabled_providers as get_enabled_providers_from_factory,
 )
-from ..services.model_factory import (
+from ..services.models.model_factory import (
     stream_available_model_batches as stream_model_batches_from_factory,
 )
-from ..services.provider_catalog import list_provider_catalog
-from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.models.provider_catalog import list_provider_catalog
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
 
 
 class Person(BaseModel):

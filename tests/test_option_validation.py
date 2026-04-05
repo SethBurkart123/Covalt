@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.models.chat import OptionSchema
-from backend.services import option_validation as option_validation_service
-from backend.services.option_validation import (
+from backend.services.models import option_validation as option_validation_service
+from backend.services.models.option_validation import (
     MAX_OPTION_KEYS,
     MAX_PAYLOAD_SIZE,
     ModelResolutionError,

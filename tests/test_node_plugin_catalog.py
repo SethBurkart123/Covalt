@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from backend.services import node_plugin_catalog as catalog
-from backend.services.node_plugin_catalog import NodeDefinitionRecord
+from backend.services.flows import node_plugin_catalog as catalog
+from backend.services.flows.node_plugin_catalog import NodeDefinitionRecord
 
 
 def test_list_node_plugins_marks_coherent_when_runtime_and_definition_match(

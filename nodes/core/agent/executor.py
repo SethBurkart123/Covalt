@@ -33,10 +33,10 @@ from backend.runtime import (
     ToolDecision,
     get_adapter,
 )
-from backend.services import run_control
-from backend.services.model_factory import get_model
-from backend.services.model_schema_cache import get_cached_model_metadata
-from backend.services.tool_registry import get_original_tool_name
+from backend.services.streaming import run_control
+from backend.services.models.model_factory import get_model
+from backend.services.models.model_schema_cache import get_cached_model_metadata
+from backend.services.tools.tool_registry import get_original_tool_name
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 _runtime_adapter: RuntimeAdapter = get_adapter()

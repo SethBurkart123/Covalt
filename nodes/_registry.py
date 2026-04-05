@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.services.plugin_registry import (
+from backend.services.plugins.plugin_registry import (
     get_executor as get_plugin_executor,
 )
-from backend.services.plugin_registry import (
+from backend.services.plugins.plugin_registry import (
     get_plugin_metadata,
     plugin_for_node_type,
 )
-from backend.services.plugin_registry import (
+from backend.services.plugins.plugin_registry import (
     list_node_types as list_plugin_node_types,
 )
 from nodes.plugin import BUILTIN_EXECUTOR_MODULES, BUILTIN_EXECUTORS

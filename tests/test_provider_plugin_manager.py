@@ -5,7 +5,7 @@ from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
 
-from backend.services import provider_plugin_manager as ppm
+from backend.services.plugins import provider_plugin_manager as ppm
 from tests.provider_plugin_test_helpers import (
     setup_provider_plugin_manager,
     write_provider_code_plugin,

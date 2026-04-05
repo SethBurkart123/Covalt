@@ -16,7 +16,7 @@ import httpx
 import pytest
 
 from backend.runtime import RuntimeMessage, RuntimeToolCall
-from backend.services import run_control
+from backend.services.streaming import run_control
 from nodes._types import (
     DataValue,
     ExecutionResult,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.services import run_control
+from backend.services.streaming import run_control
 
 
 class _RequestCancelableHandle:

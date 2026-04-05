@@ -5,7 +5,7 @@ import logging
 from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
-from ..services.file_storage import (
+from ..services.chat.file_storage import (
     cleanup_pending_uploads,
     delete_pending_attachment,
     get_extension_from_mime,

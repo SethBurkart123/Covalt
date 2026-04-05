@@ -14,8 +14,8 @@ from backend.application.tooling import (
     execute_cancel_flow_run,
 )
 from backend.commands import streaming
-from backend.services import run_control
-from backend.services.chat_stream import FlowRunHandle
+from backend.services.streaming import run_control
+from backend.services.streaming.chat_stream import FlowRunHandle
 
 
 class _FakeAgent:

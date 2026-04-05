@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.services.model_factory import get_model
+from backend.services.models.model_factory import get_model
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
 

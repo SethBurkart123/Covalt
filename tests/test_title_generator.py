@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from backend.services import title_generator
+from backend.services.streaming import title_generator
 
 
 @contextmanager

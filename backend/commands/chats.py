@@ -26,10 +26,10 @@ from ..models.chat import (
     UpdateChatInput,
     UpdateChatModelInput,
 )
-from ..services.chat_config import update_chat_model_provider, update_chat_tool_ids
-from ..services.mcp_manager import ensure_mcp_initialized
-from ..services.title_generator import generate_title_for_chat
-from ..services.tool_registry import get_tool_registry
+from ..services.chat.chat_config import update_chat_model_provider, update_chat_tool_ids
+from ..services.tools.mcp_manager import ensure_mcp_initialized
+from ..services.streaming.title_generator import generate_title_for_chat
+from ..services.tools.tool_registry import get_tool_registry
 from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 
 

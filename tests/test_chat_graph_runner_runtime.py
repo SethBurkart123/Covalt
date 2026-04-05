@@ -8,10 +8,10 @@ import pytest
 from backend import db
 from backend.commands import chats as chats_commands
 from backend.models.chat import Attachment, ChatMessage, ContentBlock
-from backend.services import run_control
+from backend.services.streaming import run_control
 from backend.models import parse_message_blocks
-from backend.services.chat_stream import handle_flow_stream, run_graph_chat_runtime
-from backend.services.tool_render import _build_tool_call_completed_payload
+from backend.services.streaming.chat_stream import handle_flow_stream, run_graph_chat_runtime
+from backend.services.tools.tool_render import _build_tool_call_completed_payload
 from nodes._types import DataValue, ExecutionResult, NodeEvent
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
 

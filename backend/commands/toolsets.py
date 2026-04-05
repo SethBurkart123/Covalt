@@ -9,10 +9,10 @@ from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from ..models import normalize_override_tool_id, validate_renderer_override
-from ..services.mcp_manager import get_mcp_manager
-from ..services.node_plugin_catalog import list_node_plugins as list_node_plugin_records
-from ..services.toolset_executor import get_toolset_executor
-from ..services.toolset_manager import get_toolset_manager
+from ..services.tools.mcp_manager import get_mcp_manager
+from ..services.flows.node_plugin_catalog import list_node_plugins as list_node_plugin_records
+from ..services.tools.toolset_executor import get_toolset_executor
+from ..services.tools.toolset_manager import get_toolset_manager
 from ..services.workspace_event_broadcaster import broadcast_workspace_files_changed
 from ..services.workspace_events import WorkspaceFilesChanged
 from ..services.workspace_manager import get_workspace_manager
