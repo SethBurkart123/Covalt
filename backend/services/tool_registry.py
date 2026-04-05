@@ -7,14 +7,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ..models import normalize_renderer_alias, parse_tool_id, split_mcp_tool_id
-from ..runtime import AgnoRuntimeAdapter
+from ..runtime import RuntimeAdapter, get_adapter
 
 if TYPE_CHECKING:
     from .mcp_manager import MCPManager
     from .toolset_executor import ToolsetExecutor
 
 logger = logging.getLogger(__name__)
-_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
+_RUNTIME_ADAPTER: RuntimeAdapter = get_adapter()
 
 # Global reverse map: sanitized Function.name → original tool id.
 # Populated by resolve_tool_ids so any stream consumer can restore the

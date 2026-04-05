@@ -24,10 +24,10 @@ def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> Non
     if not run_id:
         return
 
-    cancel_run = getattr(agent, "cancel_run", None)
-    if callable(cancel_run):
+    cancel = getattr(agent, "cancel", None)
+    if callable(cancel):
         try:
-            cancel_run(run_id)
+            cancel(run_id)
         except Exception:
             pass
 

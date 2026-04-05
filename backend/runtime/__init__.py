@@ -31,10 +31,17 @@ from .types import (
     ToolDecision,
 )
 
+_RUNTIME_ADAPTER: RuntimeAdapter = AgnoRuntimeAdapter()
+
+
+def get_adapter() -> RuntimeAdapter:
+    return _RUNTIME_ADAPTER
+
+
 __all__ = [
     "AgentConfig",
     "AgentHandle",
-    "AgnoRuntimeAdapter",
+    "get_adapter",
     "runtime_message_from_chat_message",
     "runtime_message_to_dict",
     "runtime_messages_from_chat_messages",

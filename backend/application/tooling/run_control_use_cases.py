@@ -73,9 +73,9 @@ def _request_cancel(agent: Any) -> None:
 
 
 def _cancel_run(agent: Any, run_id: str) -> None:
-    cancel_run = getattr(agent, "cancel_run", None)
-    if callable(cancel_run):
-        cancel_run(run_id)
+    cancel = getattr(agent, "cancel", None)
+    if callable(cancel):
+        cancel(run_id)
 
 
 def execute_cancel_run(

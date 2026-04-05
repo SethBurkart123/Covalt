@@ -12,7 +12,7 @@ from typing import Any
 from backend.providers import resolve_provider_options
 from backend.runtime import (
     AgentConfig,
-    AgnoRuntimeAdapter,
+    AgentHandle,
     ApprovalRequired,
     ApprovalResolved,
     ApprovalResponse,
@@ -24,12 +24,14 @@ from backend.runtime import (
     RunCompleted,
     RunError,
     RunStarted,
+    RuntimeAdapter,
     RuntimeEventT,
     RuntimeMessage,
     RuntimeToolCall,
     ToolCallCompleted,
     ToolCallStarted,
     ToolDecision,
+    get_adapter,
 )
 from backend.services import run_control
 from backend.services.model_factory import get_model
@@ -37,7 +39,7 @@ from backend.services.model_schema_cache import get_cached_model_metadata
 from backend.services.tool_registry import get_original_tool_name
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
-_runtime_adapter = AgnoRuntimeAdapter()
+_runtime_adapter: RuntimeAdapter = get_adapter()
 AGENT_STREAM_IDLE_TIMEOUT_SECONDS = float(
     os.getenv("AGENT_STREAM_IDLE_TIMEOUT_SECONDS", "900")
 )
@@ -68,21 +70,6 @@ class _StreamDone:
 @dataclass(slots=True)
 class _StreamError:
     error: Exception
-
-
-@dataclass(slots=True)
-class _RunHandleBridge:
-    handle: Any
-
-    def request_cancel(self) -> None:
-        cancel = getattr(self.handle, "cancel", None)
-        if callable(cancel):
-            cancel(None)
-
-    def cancel_run(self, run_id: str) -> None:
-        cancel = getattr(self.handle, "cancel", None)
-        if callable(cancel):
-            cancel(run_id)
 
 
 class AgentExecutor:
@@ -174,16 +161,15 @@ class AgentExecutor:
         root_member_name = _resolve_grouped_member_name(data, config.name)
 
         run_handle = _get_run_handle(context)
-        runnable = _build_agent_or_team(
+        handle = _build_agent_or_team(
             data,
             model=config.model,
             tools=config.tools,
             sub_agents=linked_agents,
             instructions=config.instructions,
         )
-        handle = _runtime_adapter.create_agent(config, runnable=runnable)
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
-            run_handle.bind_agent(_RunHandleBridge(handle))
+            run_handle.bind_agent(handle)
 
         yield NodeEvent(
             node_id=context.node_id,
@@ -581,7 +567,7 @@ def _build_agent_or_team(
     tools: list[Any],
     sub_agents: list[LinkedAgentArtifact],
     instructions: list[str] | None,
-) -> Any:
+) -> AgentHandle:
     del sub_agents
     config = AgentConfig(
         model=model,
@@ -590,8 +576,7 @@ def _build_agent_or_team(
         name=str(data.get("name") or "Agent"),
         description=str(data.get("description") or ""),
     )
-    handle = _runtime_adapter.create_agent(config)
-    return getattr(handle, "_agent", handle)
+    return _runtime_adapter.create_agent(config)
 
 
 def _build_delegation_tool(

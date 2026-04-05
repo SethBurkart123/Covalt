@@ -17,8 +17,9 @@ class _RunIdCancelableHandle:
     def __init__(self) -> None:
         self.cancelled_run_ids: list[str] = []
 
-    def cancel_run(self, run_id: str) -> None:
-        self.cancelled_run_ids.append(run_id)
+    def cancel(self, run_id: str | None = None) -> None:
+        if run_id:
+            self.cancelled_run_ids.append(run_id)
 
 
 def test_active_run_lifecycle() -> None:

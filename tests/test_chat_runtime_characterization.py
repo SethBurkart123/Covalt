@@ -1,23 +1,33 @@
 """Characterization tests for current chat streaming event behavior.
 
 These tests intentionally lock today's `handle_content_stream` event protocol
-before runtime unification refactors. They should fail if event ordering or
-payload wiring changes unexpectedly.
+at the runtime adapter boundary. They should fail if event ordering or payload
+wiring changes unexpectedly.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import pytest
-from agno.agent import RunEvent
-from agno.models.response import ToolExecution
-from agno.run.agent import BaseAgentRunEvent
-from agno.run.team import BaseTeamRunEvent, TeamRunEvent
 
 import backend.services.chat_graph_runner as chat_graph_runner_module
 from backend.models.chat import ChatMessage
+from backend.runtime import (
+    ApprovalRequired,
+    ApprovalResolved,
+    ApprovalResponse,
+    ContentDelta,
+    PendingApproval,
+    RunCompleted,
+    RuntimeEventT,
+    RuntimeToolCall,
+    RuntimeToolResult,
+    ToolCallCompleted,
+    ToolCallStarted,
+)
 from backend.services import run_control
 from backend.services.chat_graph_runner import handle_content_stream
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
@@ -27,101 +37,81 @@ def _user_message(content: str) -> ChatMessage:
     return ChatMessage(id="user-1", role="user", content=content)
 
 
-def _agent_event(
-    event: RunEvent,
-    *,
-    run_id: str,
-    content: Any = None,
-    agent_name: str = "Assistant",
-    reasoning_content: str = "",
-    tool: ToolExecution | None = None,
-) -> BaseAgentRunEvent:
-    chunk = BaseAgentRunEvent(
-        event=event,
-        run_id=run_id,
-        agent_name=agent_name,
-        content=content,
-    )
-    setattr(chunk, "reasoning_content", reasoning_content)
-    if tool is not None:
-        setattr(chunk, "tool", tool)
-    return chunk
-
-
-def _team_event(
-    event: TeamRunEvent,
-    *,
-    run_id: str,
-    content: Any = None,
-    team_name: str = "Team",
-    tool: ToolExecution | None = None,
-) -> BaseTeamRunEvent:
-    chunk = BaseTeamRunEvent(
-        event=event,
-        run_id=run_id,
-        team_name=team_name,
-        content=content,
-    )
-    if tool is not None:
-        setattr(chunk, "tool", tool)
-    return chunk
-
-
-class FakeAgent:
+class FakeAgentHandle:
     def __init__(
         self,
-        initial_chunks: list[Any],
-        continued_chunks: list[Any] | None = None,
+        initial_events: list[RuntimeEventT],
+        continued_events: list[RuntimeEventT] | None = None,
     ) -> None:
-        self._initial_chunks = initial_chunks
-        self._continued_chunks = continued_chunks or []
-        self.arun_calls: list[dict[str, Any]] = []
-        self.continue_calls: list[dict[str, Any]] = []
-        self.cancel_calls: list[str] = []
+        self._initial_events = initial_events
+        self._continued_events = continued_events or []
+        self.run_calls: list[dict[str, Any]] = []
+        self.continue_calls: list[ApprovalResponse] = []
+        self.cancel_calls: list[str | None] = []
 
-    def arun(self, **kwargs: Any):
-        self.arun_calls.append(kwargs)
+    async def run(
+        self,
+        messages: list[Any],
+        *,
+        add_history_to_context: bool = True,
+    ) -> AsyncIterator[RuntimeEventT]:
+        self.run_calls.append(
+            {
+                "messages": messages,
+                "add_history_to_context": add_history_to_context,
+            }
+        )
+        for event in self._initial_events:
+            yield event
 
-        async def _gen():
-            for chunk in self._initial_chunks:
-                yield chunk
+    async def continue_run(
+        self,
+        approval: ApprovalResponse,
+    ) -> AsyncIterator[RuntimeEventT]:
+        self.continue_calls.append(approval)
+        for event in self._continued_events:
+            yield event
 
-        return _gen()
-
-    def acontinue_run(self, **kwargs: Any):
-        self.continue_calls.append(kwargs)
-
-        async def _gen():
-            for chunk in self._continued_chunks:
-                yield chunk
-
-        return _gen()
-
-    def cancel_run(self, run_id: str) -> None:
+    def cancel(self, run_id: str | None = None) -> None:
         self.cancel_calls.append(run_id)
+
+
+class FakeRuntimeAdapter:
+    def __init__(self, handle: FakeAgentHandle) -> None:
+        self.handle = handle
+        self.create_agent_calls: list[dict[str, Any]] = []
+
+    def create_agent(self, config: Any, **kwargs: Any) -> FakeAgentHandle:
+        self.create_agent_calls.append({"config": config, **kwargs})
+        return self.handle
 
 
 @pytest.mark.asyncio
 async def test_simple_chat_stream_event_sequence() -> None:
     run_id = "run-simple"
-    agent = FakeAgent(
+    handle = FakeAgentHandle(
         [
-            _agent_event(RunEvent.run_content, run_id=run_id, content="Hello "),
-            _agent_event(RunEvent.run_content, run_id=run_id, content="world"),
-            _agent_event(RunEvent.run_completed, run_id=run_id),
+            ContentDelta(run_id=run_id, text="Hello "),
+            ContentDelta(run_id=run_id, text="world"),
+            RunCompleted(run_id=run_id),
         ]
     )
     channel = CapturingChannel()
 
-    await handle_content_stream(
-        cast(Any, agent),
-        [_user_message("say hello")],
-        "assistant-1",
-        channel,
-        chat_id="",
-        ephemeral=True,
-        convert_message=None,
-    )
+    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
+    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    try:
+        await handle_content_stream(
+            cast(Any, object()),
+            [_user_message("say hello")],
+            "assistant-1",
+            channel,
+            chat_id="",
+            ephemeral=True,
+            convert_message=None,
+        )
+    finally:
+        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == ["RunContent", "RunContent", "RunCompleted"]
 
@@ -129,47 +119,44 @@ async def test_simple_chat_stream_event_sequence() -> None:
 @pytest.mark.asyncio
 async def test_tool_call_lifecycle_event_sequence() -> None:
     run_id = "run-tools"
-    tool_started = ToolExecution(
-        tool_call_id="tool-1",
-        tool_name="search_docs",
-        tool_args={"query": "covalt"},
-    )
-    tool_completed = ToolExecution(
-        tool_call_id="tool-1",
-        tool_name="search_docs",
-        tool_args={"query": "covalt"},
-        result='{"hits": 3}',
-    )
-
-    agent = FakeAgent(
+    handle = FakeAgentHandle(
         [
-            _agent_event(
-                RunEvent.run_content, run_id=run_id, content="Checking docs..."
-            ),
-            _agent_event(
-                RunEvent.tool_call_started,
+            ContentDelta(run_id=run_id, text="Checking docs..."),
+            ToolCallStarted(
                 run_id=run_id,
-                tool=tool_started,
+                tool=RuntimeToolCall(
+                    id="tool-1",
+                    name="search_docs",
+                    arguments={"query": "covalt"},
+                ),
             ),
-            _agent_event(
-                RunEvent.tool_call_completed,
+            ToolCallCompleted(
                 run_id=run_id,
-                tool=tool_completed,
+                tool=RuntimeToolResult(
+                    id="tool-1",
+                    name="search_docs",
+                    result='{"hits": 3}',
+                ),
             ),
-            _agent_event(RunEvent.run_completed, run_id=run_id),
+            RunCompleted(run_id=run_id),
         ]
     )
     channel = CapturingChannel()
 
-    await handle_content_stream(
-        cast(Any, agent),
-        [_user_message("find docs")],
-        "assistant-2",
-        channel,
-        chat_id="",
-        ephemeral=True,
-        convert_message=None,
-    )
+    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
+    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    try:
+        await handle_content_stream(
+            cast(Any, object()),
+            [_user_message("find docs")],
+            "assistant-2",
+            channel,
+            chat_id="",
+            ephemeral=True,
+            convert_message=None,
+        )
+    finally:
+        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == [
         "RunContent",
@@ -185,64 +172,72 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
 @pytest.mark.asyncio
 async def test_approval_pause_resume_event_sequence() -> None:
     run_id = "run-approval"
-    approval_tool = ToolExecution(
-        tool_call_id="approval-1",
-        tool_name="dangerous_tool",
-        tool_args={"target": "prod"},
-        requires_confirmation=True,
-    )
-
-    paused = _agent_event(RunEvent.run_paused, run_id=run_id)
-    setattr(paused, "tools", [approval_tool])
-
-    continued_tool = ToolExecution(
-        tool_call_id="approval-1",
-        tool_name="dangerous_tool",
-        tool_args={"target": "prod"},
-        result="ok",
-    )
-
-    agent = FakeAgent(
-        [paused],
-        continued_chunks=[
-            _agent_event(
-                RunEvent.tool_call_completed,
+    handle = FakeAgentHandle(
+        [
+            ApprovalRequired(
                 run_id=run_id,
-                tool=continued_tool,
+                tools=[
+                    PendingApproval(
+                        tool_call_id="approval-1",
+                        tool_name="dangerous_tool",
+                        tool_args={"target": "prod"},
+                    )
+                ],
+            )
+        ],
+        continued_events=[
+            ApprovalResolved(
+                run_id=run_id,
+                tool_call_id="approval-1",
+                tool_name="dangerous_tool",
+                approval_status="approved",
+                tool_args={"target": "prod"},
             ),
-            _agent_event(
-                RunEvent.run_content, run_id=run_id, content="Completed safely."
+            ToolCallCompleted(
+                run_id=run_id,
+                tool=RuntimeToolResult(
+                    id="approval-1",
+                    name="dangerous_tool",
+                    result="ok",
+                ),
             ),
-            _agent_event(RunEvent.run_completed, run_id=run_id),
+            ContentDelta(run_id=run_id, text="Completed safely."),
+            RunCompleted(run_id=run_id),
         ],
     )
     channel = CapturingChannel()
 
-    async def _auto_approve() -> None:
-        while run_control.get_approval_waiter(run_id) is None:
-            await asyncio.sleep(0)
-        run_control.set_approval_response(
-            run_id,
-            approved=True,
-            tool_decisions={"approval-1": True},
-            edited_args={},
-        )
+    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
+    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    try:
 
-    await asyncio.wait_for(
-        asyncio.gather(
-            handle_content_stream(
-                cast(Any, agent),
-                [_user_message("run dangerous tool")],
-                "assistant-3",
-                channel,
-                chat_id="",
-                ephemeral=True,
-                convert_message=None,
+        async def _auto_approve() -> None:
+            while run_control.get_approval_waiter(run_id) is None:
+                await asyncio.sleep(0)
+            run_control.set_approval_response(
+                run_id,
+                approved=True,
+                tool_decisions={"approval-1": True},
+                edited_args={},
+            )
+
+        await asyncio.wait_for(
+            asyncio.gather(
+                handle_content_stream(
+                    cast(Any, object()),
+                    [_user_message("run dangerous tool")],
+                    "assistant-3",
+                    channel,
+                    chat_id="",
+                    ephemeral=True,
+                    convert_message=None,
+                ),
+                _auto_approve(),
             ),
-            _auto_approve(),
-        ),
-        timeout=3,
-    )
+            timeout=3,
+        )
+    finally:
+        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == [
         "ToolApprovalRequired",
@@ -251,8 +246,11 @@ async def test_approval_pause_resume_event_sequence() -> None:
         "RunContent",
         "RunCompleted",
     ]
-    assert len(agent.continue_calls) == 1
-    assert agent.continue_calls[0]["run_id"] == run_id
+    assert len(handle.continue_calls) == 1
+    assert handle.continue_calls[0].run_id == run_id
+    assert handle.continue_calls[0].decisions == {
+        "approval-1": chat_graph_runner_module.ToolDecision(approved=True)
+    }
 
 
 @pytest.mark.asyncio
@@ -263,40 +261,37 @@ async def test_member_run_delegation_event_sequence() -> None:
 @pytest.mark.asyncio
 async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None:
     run_id = "run-tools-failed"
-    tool_started = ToolExecution(
-        tool_call_id="tool-fail-1",
-        tool_name="toolset_alpha:write_file",
-        tool_args={"path": "x.py"},
-    )
-    tool_completed = ToolExecution(
-        tool_call_id="tool-fail-1",
-        tool_name="toolset_alpha:write_file",
-        tool_args={"path": "x.py"},
-        result="Error executing tool: write_file() missing 2 required positional arguments: 'path' and 'content'",
-    )
-
-    agent = FakeAgent(
+    handle = FakeAgentHandle(
         [
-            _agent_event(
-                RunEvent.tool_call_started,
+            ToolCallStarted(
                 run_id=run_id,
-                tool=tool_started,
+                tool=RuntimeToolCall(
+                    id="tool-fail-1",
+                    name="toolset_alpha:write_file",
+                    arguments={"path": "x.py"},
+                ),
             ),
-            _agent_event(
-                RunEvent.tool_call_completed,
+            ToolCallCompleted(
                 run_id=run_id,
-                tool=tool_completed,
+                tool=RuntimeToolResult(
+                    id="tool-fail-1",
+                    name="toolset_alpha:write_file",
+                    result="Error executing tool",
+                    failed=True,
+                ),
             ),
-            _agent_event(RunEvent.run_completed, run_id=run_id),
+            RunCompleted(run_id=run_id),
         ]
     )
     channel = CapturingChannel()
 
+    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
     original = chat_graph_runner_module._did_tool_call_fail
+    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
     chat_graph_runner_module._did_tool_call_fail = lambda _name, _id: True
     try:
         await handle_content_stream(
-            cast(Any, agent),
+            cast(Any, object()),
             [_user_message("trigger failure")],
             "assistant-fail-1",
             channel,
@@ -305,6 +300,7 @@ async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None
             convert_message=None,
         )
     finally:
+        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
         chat_graph_runner_module._did_tool_call_fail = original
 
     events = extract_channel_events(channel)
