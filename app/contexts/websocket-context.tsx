@@ -190,9 +190,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }, RECONNECT_DELAY);
   }, [connect]);
 
-  useEffect(() => {
-    scheduleReconnectRef.current = scheduleReconnect;
-  }, [scheduleReconnect]);
+  scheduleReconnectRef.current = scheduleReconnect;
 
   const reconnect = useCallback(() => {
     if (wsRef.current) {

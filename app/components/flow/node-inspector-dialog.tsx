@@ -2,6 +2,7 @@
 
 import {
   useMemo,
+  useRef,
   useState,
   useCallback,
   useEffect,
@@ -549,13 +550,9 @@ export function NodeInspectorDialog({
   const [rightView, setRightView] = useState<InspectorView>('schema');
   const [search, setSearch] = useState('');
   const [collapsedPreviews, setCollapsedPreviews] = useState<Set<string>>(() => new Set());
-  const [mounted, setMounted] = useState(false);
+  const prevNodeIdRef = useRef<string | null>(null);
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -576,9 +573,10 @@ export function NodeInspectorDialog({
     };
   }, [close, open]);
 
-  useEffect(() => {
+  if (nodeId !== prevNodeIdRef.current) {
+    prevNodeIdRef.current = nodeId;
     setCollapsedPreviews(new Set());
-  }, [nodeId]);
+  }
 
   const togglePreview = useCallback((key: string) => {
     setCollapsedPreviews(prev => {
@@ -729,7 +727,7 @@ export function NodeInspectorDialog({
     togglePinned(nodeId);
   }, [nodeId, togglePinned]);
 
-  if (!mounted || !open || !nodeId || !selectedNode) {
+  if (!open || !nodeId || !selectedNode) {
     return null;
   }
 

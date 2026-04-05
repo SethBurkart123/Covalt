@@ -26,6 +26,9 @@ export default function AgentsPage() {
     setTitle('Agents');
   }, [setTitle]);
 
+  // TODO: consider removing this Effect — storing JSX in state via Effect (anti-pattern 9).
+  // The page-title context API currently expects ReactNode to be set imperatively.
+  // Refactoring requires changing the context API to accept component props instead.
   useEffect(() => {
     setRightContent(
       <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">

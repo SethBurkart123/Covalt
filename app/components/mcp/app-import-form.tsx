@@ -65,9 +65,9 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
         if (!firstSourceWithServers) return;
 
         setSelectedSource(firstSourceWithServers.key);
-        setSelectedServerIds(
-          new Set(results.results[firstSourceWithServers.key].servers.map((s) => s.id))
-        );
+        const serverIds = new Set(results.results[firstSourceWithServers.key].servers.map((s) => s.id));
+        setSelectedServerIds(serverIds);
+        onSelectionChange?.(serverIds.size);
       } catch (e) {
         setScanError(e instanceof Error ? e.message : "Failed to scan for apps");
       } finally {
@@ -76,6 +76,7 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
     };
 
     scan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const availableSources = useMemo(() => {
@@ -94,8 +95,10 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
     setSelectedSource(sourceKey);
     if (!scanResults) return;
     const serverIds = scanResults.results[sourceKey]?.servers?.map((s) => s.id) ?? [];
-    setSelectedServerIds(new Set(serverIds));
-  }, [scanResults]);
+    const next = new Set(serverIds);
+    setSelectedServerIds(next);
+    onSelectionChange?.(next.size);
+  }, [scanResults, onSelectionChange]);
 
   const handleServerToggle = useCallback((serverId: string, checked: boolean) => {
     setSelectedServerIds((prev) => {
@@ -105,13 +108,16 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
       } else {
         next.delete(serverId);
       }
+      onSelectionChange?.(next.size);
       return next;
     });
-  }, []);
+  }, [onSelectionChange]);
 
   const handleSelectAllToggle = useCallback((checked: boolean) => {
-    setSelectedServerIds(checked ? new Set(currentServers.map((s) => s.id)) : new Set());
-  }, [currentServers]);
+    const next = checked ? new Set(currentServers.map((s) => s.id)) : new Set<string>();
+    setSelectedServerIds(next);
+    onSelectionChange?.(next.size);
+  }, [currentServers, onSelectionChange]);
 
   const allSelected =
     currentServers.length > 0 && selectedServerIds.size === currentServers.length;
@@ -142,10 +148,6 @@ export const AppImportForm = forwardRef<AppImportFormRef, AppImportFormProps>(
     }),
     [selectedServers, selectedServerIds.size, isScanning, scanError]
   );
-
-  useEffect(() => {
-    onSelectionChange?.(selectedServerIds.size);
-  }, [selectedServerIds.size, onSelectionChange]);
 
   useEffect(() => {
     if (!selectAllRef.current) return;

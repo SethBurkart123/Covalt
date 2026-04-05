@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Plug,
   Pencil,
@@ -89,25 +89,16 @@ export function McpServerInspectorDialog({
   onReconnect,
   onTestTool,
 }: McpServerInspectorDialogProps) {
-  const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
+  const [userSelectedToolId, setUserSelectedToolId] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  useEffect(() => {
-    if (!open) {
-      setSelectedToolId(null);
-      return;
+  const selectedToolId = useMemo(() => {
+    if (!open || tools.length === 0) return null;
+    if (userSelectedToolId && tools.some((t) => t.id === userSelectedToolId)) {
+      return userSelectedToolId;
     }
-    if (tools.length === 0) {
-      setSelectedToolId(null);
-      return;
-    }
-    const hasSelected = selectedToolId
-      ? tools.some((tool) => tool.id === selectedToolId)
-      : false;
-    if (!hasSelected) {
-      setSelectedToolId(tools[0].id);
-    }
-  }, [open, tools, selectedToolId]);
+    return tools[0].id;
+  }, [open, tools, userSelectedToolId]);
 
   const handleReconnect = useCallback(async () => {
     setIsReconnecting(true);
@@ -219,7 +210,7 @@ export function McpServerInspectorDialog({
                 <ToolList
                   tools={tools}
                   selectedToolId={selectedToolId}
-                  onSelectTool={setSelectedToolId}
+                  onSelectTool={setUserSelectedToolId}
                 />
               </div>
             </ResizablePanel>

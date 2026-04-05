@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ThemeStyles } from "./types";
 import { defaultThemeState, getPresetThemeStyles } from "./theme-presets";
 import { applyTheme } from "./fix-global-css";
@@ -26,12 +26,17 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function persistAndApply(state: ThemeState) {
+	localStorage.setItem("theme-mode", state.currentMode);
+	localStorage.setItem("theme-preset", state.preset);
+	applyTheme(state);
+}
+
 export function CustomThemeProvider({
 	children,
 	defaultPreset,
 }: ThemeProviderProps) {
 	const [themeState, setThemeState] = useState<ThemeState>(defaultThemeState);
-	const [isInitialized, setIsInitialized] = useState(false);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -51,32 +56,24 @@ export function CustomThemeProvider({
 		};
 
 		setThemeState(initialState);
-		setIsInitialized(true);
 		applyTheme(initialState);
 	}, [defaultPreset]);
 
-	useEffect(() => {
-		if (typeof window === "undefined" || !isInitialized) return;
+	const setThemeMode = useCallback((mode: ThemeMode) => {
+		setThemeState((prev) => {
+			const next = { ...prev, currentMode: mode };
+			persistAndApply(next);
+			return next;
+		});
+	}, []);
 
-		localStorage.setItem("theme-mode", themeState.currentMode);
-		localStorage.setItem("theme-preset", themeState.preset);
-		applyTheme(themeState);
-	}, [themeState, isInitialized]);
-
-	const setThemeMode = (mode: ThemeMode) => {
-		setThemeState((prev) => ({
-			...prev,
-			currentMode: mode,
-		}));
-	};
-
-	const applyThemePreset = (preset: string) => {
-		setThemeState((prev) => ({
-			...prev,
-			preset,
-			styles: getPresetThemeStyles(preset),
-		}));
-	};
+	const applyThemePreset = useCallback((preset: string) => {
+		setThemeState((prev) => {
+			const next = { ...prev, preset, styles: getPresetThemeStyles(preset) };
+			persistAndApply(next);
+			return next;
+		});
+	}, []);
 
 	return (
 		<ThemeContext.Provider

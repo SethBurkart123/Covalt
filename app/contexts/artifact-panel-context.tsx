@@ -253,6 +253,8 @@ export function ArtifactPanelProvider({ children, chatId: chatIdProp }: Artifact
     [activeId, setSidebarOpen]
   );
 
+  // TODO: Consider using <ArtifactPanelProvider key={chatId}> in the parent
+  // to reset all state on chat switch instead of this Effect (anti-pattern 3).
   useEffect(() => {
     if (prevChatIdRef.current !== "" && prevChatIdRef.current !== chatId) {
       close();

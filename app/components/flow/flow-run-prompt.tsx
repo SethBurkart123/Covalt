@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,18 +45,19 @@ export function FlowRunPrompt() {
   const [message, setMessage] = useState("");
   const [historyJson, setHistoryJson] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
 
   const title = useMemo(() => getPromptTitle(node, promptState.mode), [node, promptState.mode]);
   const showTriggerSelection = promptState.triggerOptions.length > 1;
   const useTriggerDropdown = promptState.triggerOptions.length > 3;
   const description = "Provide the input used for this run. This does not affect production runs.";
 
-  useEffect(() => {
-    if (!promptState.open) return;
+  if (promptState.open && !wasOpenRef.current) {
     setMessage(promptDefaults.message);
     setHistoryJson(promptDefaults.history.length ? formatJson(promptDefaults.history) : "");
     setError(null);
-  }, [promptState.open, promptDefaults]);
+  }
+  wasOpenRef.current = promptState.open;
 
   const handleSubmit = useCallback(async () => {
     const parsed = parseHistoryJson(historyJson);

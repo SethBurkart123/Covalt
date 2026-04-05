@@ -1,7 +1,7 @@
 "use client";
 
 import type { Editor, Range } from "@tiptap/core";
-import { forwardRef, useEffect, useImperativeHandle, useState, type ReactNode } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface SlashCommandItem {
@@ -26,10 +26,11 @@ export const SlashCommandSuggestionList = forwardRef<
   SlashCommandSuggestionListProps
 >(function SlashCommandSuggestionList({ items, command }, ref) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
+  const prevItemsRef = useRef(items);
+  if (items !== prevItemsRef.current) {
+    prevItemsRef.current = items;
     setSelectedIndex(0);
-  }, [items]);
+  }
 
   const selectItem = (index: number) => {
     const item = items[index];

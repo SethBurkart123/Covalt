@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Check, X, Wrench } from "lucide-react";
 import { respondToToolApproval } from "@/python/api";
 import {
@@ -41,14 +41,14 @@ export function DefaultToolCall({
   const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
   const [editedValues, setEditedValues] = useState<Record<string, unknown>>({});
 
-  useEffect(() => {
-    if (initialApprovalStatus && initialApprovalStatus !== approvalStatus) {
-      setApprovalStatus(initialApprovalStatus);
-      if (initialApprovalStatus !== "pending") {
-        setIsOpen(false);
-      }
+  const prevApprovalStatusRef = useRef(initialApprovalStatus);
+  if (initialApprovalStatus && initialApprovalStatus !== prevApprovalStatusRef.current) {
+    prevApprovalStatusRef.current = initialApprovalStatus;
+    setApprovalStatus(initialApprovalStatus);
+    if (initialApprovalStatus !== "pending") {
+      setIsOpen(false);
     }
-  }, [initialApprovalStatus, approvalStatus]);
+  }
 
   const handleValueChange = (key: string, value: unknown) => {
     setEditedValues((prev) => ({ ...prev, [key]: value }));

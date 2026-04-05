@@ -283,10 +283,6 @@ export default function ProviderStorePanel() {
     void reload();
   }, [reload]);
 
-  useEffect(() => {
-    setSearch("");
-  }, [storeTab]);
-
   const installedById = useMemo(() => {
     const map = new Map<string, ProviderPluginInfo>();
     for (const item of installed) {
@@ -399,7 +395,7 @@ export default function ProviderStorePanel() {
         <button
           key={tab.key}
           type="button"
-          onClick={() => setStoreTab(tab.key)}
+          onClick={() => { setStoreTab(tab.key); setSearch(""); }}
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors select-none",
             storeTab === tab.key

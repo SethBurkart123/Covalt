@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -53,8 +53,8 @@ export function TemplateEditor({
   const dragDepthRef = useRef(0);
   const lastDragPosRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    optionsRef.current = options;
+  optionsRef.current = options;
+  const meta = useMemo(() => {
     const exprMap = new Map<string, TemplateVariableOption>();
     const groupHasData = new Map<string, boolean>();
 
@@ -70,8 +70,9 @@ export function TemplateEditor({
       }
     }
 
-    metaRef.current = { exprMap, groupHasData };
+    return { exprMap, groupHasData };
   }, [options]);
+  metaRef.current = meta;
 
   const getSuggestions = useCallback(
     (query: string) => filterTemplateVariables(optionsRef.current, query),
@@ -223,10 +224,9 @@ export function TemplateEditor({
     lastValueRef.current = value;
   }, [editor, multiline, value]);
 
-  useEffect(() => {
-    if (editor) return;
+  if (!editor) {
     lastValueRef.current = value;
-  }, [editor, value]);
+  }
 
   useEffect(() => {
     const handleDragEnd = () => {

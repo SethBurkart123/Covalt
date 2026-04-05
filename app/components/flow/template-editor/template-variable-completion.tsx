@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatPreviewDisplay } from './template-variable-utils';
 import type { TemplateVariableCompletion } from './types';
@@ -19,10 +19,11 @@ export const TemplateVariableCompletionList = forwardRef<
   TemplateVariableCompletionListProps
 >(function TemplateVariableCompletionList({ items, command }, ref) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
+  const prevItemsRef = useRef(items);
+  if (items !== prevItemsRef.current) {
+    prevItemsRef.current = items;
     setSelectedIndex(0);
-  }, [items]);
+  }
 
   const selectItem = (index: number) => {
     const item = items[index];

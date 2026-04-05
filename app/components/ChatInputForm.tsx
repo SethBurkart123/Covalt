@@ -310,9 +310,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       return [...toolItems, ...toolsetItems, ...mcpItems];
     }, [availableTools, groupedTools.byToolset, groupedTools.toolsetNames, mcpServers]);
 
-    useEffect(() => {
-      mentionItemsRef.current = mentionItems;
-    }, [mentionItems]);
+    mentionItemsRef.current = mentionItems;
 
     const getMentionSuggestions = useCallback((query: string) => {
       const normalized = query.trim().toLowerCase();
@@ -391,9 +389,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       },
     });
 
-    useEffect(() => {
-      editorRef.current = editor ?? null;
-    }, [editor]);
+    editorRef.current = editor ?? null;
 
     useEffect(() => {
       if (!editor) return;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { toPng } from 'html-to-image';
 import { getNodesBounds, getViewportForBounds, useReactFlow } from '@xyflow/react';
 import { agentFileUrl, uploadAgentPreview } from '@/python/api';
@@ -67,6 +67,14 @@ export function useCanvasPreview({ agentId, lastSaved, previewImage }: CanvasPre
   const isCapturingRef = useRef(false);
   const pendingCaptureRef = useRef(false);
   const previewTimestampRef = useRef<number | null>(null);
+  const prevAgentIdRef = useRef(agentId);
+  const prevPreviewImageRef = useRef(previewImage);
+
+  if (prevAgentIdRef.current !== agentId || prevPreviewImageRef.current !== previewImage) {
+    previewTimestampRef.current = null;
+    prevAgentIdRef.current = agentId;
+    prevPreviewImageRef.current = previewImage;
+  }
 
   const getPreviewTimestamp = useCallback(async (): Promise<number | null> => {
     if (previewTimestampRef.current) return previewTimestampRef.current;
@@ -188,10 +196,6 @@ export function useCanvasPreview({ agentId, lastSaved, previewImage }: CanvasPre
       }
     }
   }, [agentId, getNodes, shouldCapture]);
-
-  useEffect(() => {
-    previewTimestampRef.current = null;
-  }, [agentId, previewImage]);
 
   return { captureAndUpload };
 }

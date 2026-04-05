@@ -63,13 +63,8 @@ export function useModels() {
   const modelsRef = useRef<ModelInfo[]>([]);
   const connectedProvidersRef = useRef<string[]>([]);
 
-  useEffect(() => {
-    modelsRef.current = models;
-  }, [models]);
-
-  useEffect(() => {
-    connectedProvidersRef.current = connectedProviders;
-  }, [connectedProviders]);
+  modelsRef.current = models;
+  connectedProvidersRef.current = connectedProviders;
 
   const selectModel = useCallback((nextModels: ModelInfo[]) => {
     if (nextModels.length === 0) {

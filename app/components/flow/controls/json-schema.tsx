@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ControlProps } from './';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -70,11 +70,12 @@ export function JsonSchemaControl({ value, onChange, param }: JsonSchemaControlP
   const [sampleText, setSampleText] = useState('');
   const [sampleError, setSampleError] = useState<string | null>(null);
   const showGenerator = param.id === 'schema';
+  const prevValueRef = useRef(value);
 
-  useEffect(() => {
-    const next = stringify(value ?? {});
-    setText(next);
-  }, [value]);
+  if (value !== prevValueRef.current) {
+    prevValueRef.current = value;
+    setText(stringify(value ?? {}));
+  }
 
   const handleSchemaChange = useCallback((next: string) => {
     setText(next);

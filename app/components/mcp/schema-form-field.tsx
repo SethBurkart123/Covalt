@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
@@ -36,12 +36,14 @@ export function SchemaFormField({
   onChange,
 }: SchemaFormFieldProps) {
   const type = getPrimaryType(schema.type);
-  const [jsonText, setJsonText] = useState("");
-
-  useEffect(() => {
-    if (type !== "array" && type !== "object") return;
-    setJsonText(value === undefined || value === null ? "" : JSON.stringify(value, null, 2));
-  }, [type, value]);
+  const [jsonText, setJsonText] = useState(() =>
+    (type === "array" || type === "object") && value != null ? JSON.stringify(value, null, 2) : ""
+  );
+  const prevValueRef = useRef(value);
+  if (prevValueRef.current !== value && (type === "array" || type === "object")) {
+    prevValueRef.current = value;
+    setJsonText(value == null ? "" : JSON.stringify(value, null, 2));
+  }
 
   if (type === "boolean") {
     return (

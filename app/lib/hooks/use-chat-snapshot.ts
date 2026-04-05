@@ -75,9 +75,7 @@ export function useChatSnapshot({
     [applySnapshot, currentChatIdRef, fetchSnapshot, loadTokenRef],
   );
 
-  useEffect(() => {
-    currentChatIdRef.current = chatId;
-  }, [chatId, currentChatIdRef]);
+  currentChatIdRef.current = chatId;
 
   useEffect(() => {
     if (activeSubmissionChatIdRef.current) return;
