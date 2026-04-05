@@ -1,9 +1,0 @@
-event: RunStarted
-data: {"content": null, "reasoningContent": null, "sessionId": "4dfa27b9-9cf6-43fc-8613-d3452abca159", "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
-
-event: RunCompleted
-data: {"content": null, "reasoningContent": null, "sessionId": null, "tool": null, "error": null, "blocks": null, "fileRenames": null, "memberName": null, "memberRunId": null, "task": null, "groupByNode": null, "nodeId": null, "nodeType": null, "outputs": null}
-
-event: close
-data: {"channelId": "a410d38c-a483-45c1-877a-e220c4206092"}
-
