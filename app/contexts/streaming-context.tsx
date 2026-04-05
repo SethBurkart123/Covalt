@@ -224,8 +224,12 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     if (isInitializedRef.current) return;
     isInitializedRef.current = true;
 
+    let cancelled = false;
+
     const loadActiveStreams = async () => {
       const apiModule = await import("@/python/api");
+      if (cancelled) return;
+
       const api = apiModule as Record<string, unknown>;
       
       if (typeof api.getActiveStreams !== "function") {
@@ -234,6 +238,8 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       }
 
       const response = await (api.getActiveStreams as () => Promise<{ streams: Array<{ chatId: string; messageId: string; status: string; errorMessage?: string }> }>)();
+      if (cancelled) return;
+
       const newStates = new Map<string, ChatStreamState>();
 
       console.log("StreamingContext: Loaded active streams:", response.streams);
@@ -261,14 +267,13 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     };
 
     loadActiveStreams();
-    const subscriptions = subscriptionsRef.current;
-    const streamStates = streamStateRefs.current;
 
     return () => {
-      subscriptions.forEach(({ unsubscribe }) => unsubscribe());
-      subscriptions.clear();
-      streamStates.clear();
+      cancelled = true;
       isInitializedRef.current = false;
+      subscriptionsRef.current.forEach(({ unsubscribe }) => unsubscribe());
+      subscriptionsRef.current.clear();
+      streamStateRefs.current.clear();
     };
   }, [subscribeToStreamInternal]);
 
