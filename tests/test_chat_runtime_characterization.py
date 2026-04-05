@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import pytest
 
-import backend.services.chat_graph_runner as chat_graph_runner_module
+import backend.services.chat_stream as chat_stream_module
 from backend.models.chat import ChatMessage
 from backend.runtime import (
     ApprovalRequired,
@@ -29,7 +29,7 @@ from backend.runtime import (
     ToolCallStarted,
 )
 from backend.services import run_control
-from backend.services.chat_graph_runner import handle_content_stream
+from backend.services.chat_stream import handle_content_stream
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 
@@ -98,8 +98,8 @@ async def test_simple_chat_stream_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
-    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    original_adapter = chat_stream_module._RUNTIME_ADAPTER
+    chat_stream_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
     try:
         await handle_content_stream(
             cast(Any, object()),
@@ -111,7 +111,7 @@ async def test_simple_chat_stream_event_sequence() -> None:
             convert_message=None,
         )
     finally:
-        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
+        chat_stream_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == ["RunContent", "RunContent", "RunCompleted"]
 
@@ -143,8 +143,8 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
-    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    original_adapter = chat_stream_module._RUNTIME_ADAPTER
+    chat_stream_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
     try:
         await handle_content_stream(
             cast(Any, object()),
@@ -156,7 +156,7 @@ async def test_tool_call_lifecycle_event_sequence() -> None:
             convert_message=None,
         )
     finally:
-        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
+        chat_stream_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == [
         "RunContent",
@@ -207,8 +207,8 @@ async def test_approval_pause_resume_event_sequence() -> None:
     )
     channel = CapturingChannel()
 
-    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
-    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    original_adapter = chat_stream_module._RUNTIME_ADAPTER
+    chat_stream_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
     try:
 
         async def _auto_approve() -> None:
@@ -237,7 +237,7 @@ async def test_approval_pause_resume_event_sequence() -> None:
             timeout=3,
         )
     finally:
-        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
+        chat_stream_module._RUNTIME_ADAPTER = original_adapter
 
     assert extract_event_names(channel) == [
         "ToolApprovalRequired",
@@ -249,7 +249,7 @@ async def test_approval_pause_resume_event_sequence() -> None:
     assert len(handle.continue_calls) == 1
     assert handle.continue_calls[0].run_id == run_id
     assert handle.continue_calls[0].decisions == {
-        "approval-1": chat_graph_runner_module.ToolDecision(approved=True)
+        "approval-1": chat_stream_module.ToolDecision(approved=True)
     }
 
 
@@ -285,10 +285,10 @@ async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None
     )
     channel = CapturingChannel()
 
-    original_adapter = chat_graph_runner_module._RUNTIME_ADAPTER
-    original = chat_graph_runner_module._did_tool_call_fail
-    chat_graph_runner_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
-    chat_graph_runner_module._did_tool_call_fail = lambda _name, _id: True
+    original_adapter = chat_stream_module._RUNTIME_ADAPTER
+    original = chat_stream_module._did_tool_call_fail
+    chat_stream_module._RUNTIME_ADAPTER = FakeRuntimeAdapter(handle)
+    chat_stream_module._did_tool_call_fail = lambda _name, _id: True
     try:
         await handle_content_stream(
             cast(Any, object()),
@@ -300,8 +300,8 @@ async def test_tool_call_failed_omits_render_plan_and_sets_failed_flag() -> None
             convert_message=None,
         )
     finally:
-        chat_graph_runner_module._RUNTIME_ADAPTER = original_adapter
-        chat_graph_runner_module._did_tool_call_fail = original
+        chat_stream_module._RUNTIME_ADAPTER = original_adapter
+        chat_stream_module._did_tool_call_fail = original
 
     events = extract_channel_events(channel)
     completed = next(evt for evt in events if evt.get("event") == "ToolCallCompleted")
