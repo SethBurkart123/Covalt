@@ -87,7 +87,7 @@ function ChatItemInner({
               onMouseEnter={onPrefetch}
               onFocus={onPrefetch}
               className={clsx(
-                "hit-area-y-0.5 mb-1 flex-1 overflow-ellipsis py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
+                "hit-area-y-0.5 mb-1 flex-1 overflow-ellipsis overflow-auto py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
                 isActive
                   ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
                   : "hover:bg-muted/50",
