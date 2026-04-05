@@ -48,8 +48,8 @@ class FlowRunCancelHandle:
         self._run_handle = run_handle
         self._execution_ctx = execution_ctx
 
-    def bind_agent(self, agent: Any) -> None:
-        self._run_handle.bind_agent(agent)
+    def bind_agent(self, handle: Any) -> None:
+        self._run_handle.bind_agent(handle)
 
     def set_run_id(self, run_id: str) -> None:
         self._run_handle.set_run_id(run_id)
@@ -59,10 +59,10 @@ class FlowRunCancelHandle:
             setattr(self._execution_ctx, "stop_run", True)
         self._run_handle.request_cancel()
 
-    def cancel_run(self, run_id: str) -> None:
+    def cancel(self, run_id: str | None = None) -> None:
         if self._execution_ctx is not None:
             setattr(self._execution_ctx, "stop_run", True)
-        self._run_handle.cancel_run(run_id)
+        self._run_handle.cancel(run_id)
 
     def is_cancel_requested(self) -> bool:
         return self._run_handle.is_cancel_requested()

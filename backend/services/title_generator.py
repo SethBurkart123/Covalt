@@ -6,7 +6,14 @@ import os
 import re
 
 from .. import db
-from ..runtime import AgentConfig, AgnoRuntimeAdapter, ContentDelta, RunCompleted, RunError, RuntimeMessage
+from ..runtime import (
+    AgentConfig,
+    ContentDelta,
+    RunCompleted,
+    RunError,
+    RuntimeMessage,
+    get_adapter,
+)
 
 DEFAULT_PROMPT = (
     "Generate a brief, descriptive title (max 6 words) for this conversation "
@@ -123,7 +130,7 @@ def _run_title_request(
 
     async def _run() -> str | None:
         model = get_model(provider, model_id)
-        adapter = AgnoRuntimeAdapter()
+        adapter = get_adapter()
         handle = adapter.create_agent(
             AgentConfig(
                 model=model,

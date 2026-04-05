@@ -17,7 +17,7 @@ from .. import db
 from ..db import db_session
 from ..db.models import Tool, ToolCall, ToolOverride, Toolset
 from ..models import normalize_renderer_alias
-from ..runtime import AgnoRuntimeAdapter
+from ..runtime import RuntimeAdapter, get_adapter
 from .render_plan_builder import get_render_plan_builder
 from .toolset_manager import get_toolset_directory
 from .workspace_event_broadcaster import broadcast_workspace_files_changed
@@ -25,7 +25,7 @@ from .workspace_events import WorkspaceFilesChanged
 from .workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
-_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
+_RUNTIME_ADAPTER: RuntimeAdapter = get_adapter()
 
 
 class ToolsetExecutor:

@@ -20,11 +20,11 @@ from mcp.types import Tool as MCPTool
 from ..db import db_session
 from ..db.models import ToolOverride, Toolset, ToolsetMcpServer
 from ..models import format_mcp_tool_id, normalize_renderer_alias
-from ..runtime import AgnoRuntimeAdapter
+from ..runtime import RuntimeAdapter, get_adapter
 from .oauth_manager import get_oauth_manager
 
 logger = logging.getLogger(__name__)
-_RUNTIME_ADAPTER = AgnoRuntimeAdapter()
+_RUNTIME_ADAPTER: RuntimeAdapter = get_adapter()
 
 ServerStatus = Literal[
     "connecting", "connected", "error", "disconnected", "requires_auth"
