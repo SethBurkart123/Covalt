@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import backend.services.chat_graph_runner as chat_graph_runner
+import backend.services.chat_graph_config as chat_graph_config
 
 
 def _graph(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -16,7 +16,7 @@ def test_build_entry_node_ids_uses_on_entry_resolve_hook_candidates(monkeypatch)
         calls.append({"hook_type": hook_type, "context": context})
         return [[{"node_type": "custom-entry"}]]
 
-    monkeypatch.setattr(chat_graph_runner, "dispatch_hook", fake_dispatch, raising=False)
+    monkeypatch.setattr(chat_graph_config, "dispatch_hook", fake_dispatch, raising=False)
 
     graph_data = _graph(
         nodes=[
@@ -25,7 +25,7 @@ def test_build_entry_node_ids_uses_on_entry_resolve_hook_candidates(monkeypatch)
         ]
     )
 
-    entry_ids = chat_graph_runner._build_entry_node_ids(graph_data)
+    entry_ids = chat_graph_config._build_entry_node_ids(graph_data)
 
     assert entry_ids == ["custom"]
     assert calls, "onEntryResolve hook should be dispatched"
@@ -34,7 +34,7 @@ def test_build_entry_node_ids_uses_on_entry_resolve_hook_candidates(monkeypatch)
 
 def test_build_entry_node_ids_accepts_node_id_candidates_from_hook(monkeypatch) -> None:
     monkeypatch.setattr(
-        chat_graph_runner,
+        chat_graph_config,
         "dispatch_hook",
         lambda *_args, **_kwargs: ["preferred-entry"],
         raising=False,
@@ -47,14 +47,14 @@ def test_build_entry_node_ids_accepts_node_id_candidates_from_hook(monkeypatch) 
         ]
     )
 
-    assert chat_graph_runner._build_entry_node_ids(graph_data) == ["preferred-entry"]
+    assert chat_graph_config._build_entry_node_ids(graph_data) == ["preferred-entry"]
 
 
 def test_build_entry_node_ids_falls_back_to_chat_start_preference_when_hooks_return_no_candidates(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        chat_graph_runner,
+        chat_graph_config,
         "dispatch_hook",
         lambda *_args, **_kwargs: [],
         raising=False,
@@ -75,14 +75,14 @@ def test_build_entry_node_ids_falls_back_to_chat_start_preference_when_hooks_ret
         ],
     )
 
-    assert chat_graph_runner._build_entry_node_ids(graph_data) == ["chat"]
+    assert chat_graph_config._build_entry_node_ids(graph_data) == ["chat"]
 
 
 def test_build_entry_node_ids_falls_back_to_roots_when_no_hook_candidates_and_no_chat_start(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        chat_graph_runner,
+        chat_graph_config,
         "dispatch_hook",
         lambda *_args, **_kwargs: [],
         raising=False,
@@ -102,4 +102,4 @@ def test_build_entry_node_ids_falls_back_to_roots_when_no_hook_candidates_and_no
         ],
     )
 
-    assert chat_graph_runner._build_entry_node_ids(graph_data) == ["root"]
+    assert chat_graph_config._build_entry_node_ids(graph_data) == ["root"]

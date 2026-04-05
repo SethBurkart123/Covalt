@@ -21,10 +21,8 @@ from ..models import (
 )
 from ..models.chat import Attachment, ChatMessage
 from ..services import stream_broadcaster as broadcaster
-from ..services.chat_graph_runner import (
-    append_error_block_to_message,
-    extract_error_message,
-)
+from ..services.chat_utils import extract_error_message
+from ..services.stream_lifecycle import append_error_block_to_message
 from ..services.option_validation import (
     ModelResolutionError,
     resolve_and_validate_model_options,

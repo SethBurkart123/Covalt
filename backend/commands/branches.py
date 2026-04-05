@@ -26,11 +26,9 @@ from ..application.conversation import (
     NewAttachmentInput as NewAttachmentInputDTO,
 )
 from ..models.chat import Attachment, ChatMessage
-from ..services.chat_graph_runner import (
-    append_error_block_to_message,
-    get_graph_data_for_chat,
-    run_graph_chat_runtime,
-)
+from ..services.chat_graph_config import get_graph_data_for_chat
+from ..services.chat_stream import run_graph_chat_runtime
+from ..services.stream_lifecycle import append_error_block_to_message
 from ..services.conversation_run_service import (
     build_message_history,
     emit_run_start_events,

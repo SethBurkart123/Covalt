@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from backend.services import chat_graph_runner
+from backend.models.chat import ChatMessage
+from backend.services.chat_stream import handle_flow_stream
 from backend.services.flow_executor import run_flow
 from backend.services.graph_normalizer import normalize_graph_data
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
@@ -64,10 +65,10 @@ async def test_handle_flow_stream_surfaces_unknown_node_error() -> None:
     )
 
     channel = CapturingChannel()
-    await chat_graph_runner.handle_flow_stream(
+    await handle_flow_stream(
         graph,
         None,
-        [chat_graph_runner.ChatMessage(id="user-1", role="user", content="hello")],
+        [ChatMessage(id="user-1", role="user", content="hello")],
         "assistant-unknown",
         channel,
         ephemeral=True,

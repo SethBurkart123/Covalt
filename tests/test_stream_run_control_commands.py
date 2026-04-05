@@ -15,7 +15,7 @@ from backend.application.tooling import (
 )
 from backend.commands import streaming
 from backend.services import run_control
-from backend.services.chat_graph_runner import FlowRunHandle
+from backend.services.chat_stream import FlowRunHandle
 
 
 class _FakeAgent:
