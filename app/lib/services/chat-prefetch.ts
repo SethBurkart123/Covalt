@@ -37,45 +37,37 @@ export function setPrefetchedChat(chatId: string, data: PrefetchedChatData): voi
   setCache(chatId, data);
 }
 
+export function getInflightPrefetch(chatId: string): Promise<PrefetchedChatData> | undefined {
+  return inflight.get(chatId);
+}
+
 export async function prefetchChat(chatId: string): Promise<PrefetchedChatData | null> {
   if (!chatId || typeof window === "undefined") return null;
 
   const cached = cache.get(chatId);
-  if (cached) return cached;
+  if (cached?.siblings) return cached;
 
   const existing = inflight.get(chatId);
   if (existing) return existing;
 
   const promise = (async () => {
     const chat = await api.getChat(chatId);
-    const messageIds = Array.from(new Set((chat.messages || []).map((m) => m.id)));
+    const messages = chat.messages || [];
+    const messageIds = Array.from(new Set(messages.map((m) => m.id)));
+    const fetchedAt = Date.now();
 
-    const baseData: PrefetchedChatData = {
-      messages: chat.messages || [],
-      fetchedAt: Date.now(),
-    };
-    setCache(chatId, baseData);
+    setCache(chatId, { messages, fetchedAt });
 
-    void (async () => {
-      try {
-        const [siblings, agentConfig] = await Promise.all([
-          messageIds.length > 0
-            ? api.getMessageSiblingsBatch(chatId, messageIds)
-            : Promise.resolve({}),
-          getChatAgentConfig({ body: { id: chatId } }),
-        ]);
-        setCache(chatId, {
-          ...baseData,
-          siblings,
-          agentConfig,
-          fetchedAt: baseData.fetchedAt,
-        });
-      } catch {
-        // keep baseData cache if background fetch fails
-      }
-    })();
+    const [siblings, agentConfig] = await Promise.all([
+      messageIds.length > 0
+        ? api.getMessageSiblingsBatch(chatId, messageIds)
+        : Promise.resolve({} as Record<string, never>),
+      getChatAgentConfig({ body: { id: chatId } }).catch(() => undefined),
+    ]);
 
-    return baseData;
+    const fullData: PrefetchedChatData = { messages, siblings, agentConfig, fetchedAt };
+    setCache(chatId, fullData);
+    return fullData;
   })();
 
   inflight.set(chatId, promise);
