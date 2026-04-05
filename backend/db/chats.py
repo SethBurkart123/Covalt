@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from typing import Any
 
+import orjson
 import sqlalchemy
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..models import decode_message_content, normalize_renderer_alias
@@ -34,19 +34,13 @@ def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
 
     messages = []
     for r in rows:
-        toolCalls = json.loads(r.toolCalls) if r.toolCalls else None
+        toolCalls = orjson.loads(r.toolCalls) if r.toolCalls else None
 
         content = decode_message_content(r.content)
-
         if isinstance(content, list):
             _normalize_render_plan_blocks(content)
 
-        attachments = None
-        if r.attachments:
-            raw_attachments = json.loads(r.attachments)
-            attachments = raw_attachments
-
-        msg_data = {
+        msg_data: dict[str, Any] = {
             "id": r.id,
             "role": r.role,
             "content": content,
@@ -58,11 +52,8 @@ def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
             "modelUsed": r.model_used,
         }
 
-        if attachments:
-            msg_data["attachments"] = attachments
-
-        if isinstance(msg_data.get("content"), list):
-            _normalize_render_plan_blocks(msg_data["content"])
+        if r.attachments:
+            msg_data["attachments"] = orjson.loads(r.attachments)
 
         messages.append(msg_data)
     return messages
@@ -159,7 +150,7 @@ def append_message(
             role=role,
             content=content,
             createdAt=createdAt,
-            toolCalls=json.dumps(toolCalls) if toolCalls is not None else None,
+            toolCalls=orjson.dumps(toolCalls).decode() if toolCalls is not None else None,
         )
     )
     sess.commit()
@@ -177,22 +168,39 @@ def update_message_content(
         return
     message.content = content
     if toolCalls is not None:
-        message.toolCalls = json.dumps(toolCalls)
+        message.toolCalls = orjson.dumps(toolCalls).decode()
     sess.commit()
 
 
 def get_message_path(sess: Session, leaf_id: str) -> list[Message]:
+    """Walk from leaf to root in a single recursive CTE query."""
+    cte_sql = text("""
+        WITH RECURSIVE ancestors(id) AS (
+            SELECT :leaf_id
+            UNION ALL
+            SELECT m.parent_message_id
+            FROM messages m
+            JOIN ancestors a ON m.id = a.id
+            WHERE m.parent_message_id IS NOT NULL
+        )
+        SELECT id FROM ancestors
+    """)
+    rows = sess.execute(cte_sql, {"leaf_id": leaf_id}).fetchall()
+    ids = [r[0] for r in rows]
+    if not ids:
+        return []
+
+    messages_by_id = {
+        m.id: m
+        for m in sess.scalars(select(Message).where(Message.id.in_(ids)))
+    }
+
     path = []
-    current_id = leaf_id
-
-    while current_id:
-        message = sess.get(Message, current_id)
-        if not message:
-            break
-        path.append(message)
-        current_id = message.parent_message_id
-
-    return list(reversed(path))
+    for msg_id in reversed(ids):
+        msg = messages_by_id.get(msg_id)
+        if msg:
+            path.append(msg)
+    return path
 
 
 def get_message_children(
@@ -275,20 +283,35 @@ def mark_message_complete(sess: Session, message_id: str) -> None:
 
 
 def get_leaf_descendant(sess: Session, message_id: str, chat_id: str) -> str:
-    current_id = message_id
+    """Walk down to the deepest last-child descendant in a single CTE query.
 
-    while True:
-        children = get_message_children(sess, current_id, chat_id)
-        if not children:
-            return current_id
-        current_id = children[-1].id
+    Picks the highest-sequence child at each level (matching the old behavior
+    of ``children[-1]``).
+    """
+    cte_sql = text("""
+        WITH RECURSIVE descendants(id, depth) AS (
+            SELECT :message_id, 0
+            UNION ALL
+            SELECT (
+                SELECT m.id FROM messages m
+                WHERE m.parent_message_id = d.id AND m."chatId" = :chat_id
+                ORDER BY m.sequence DESC LIMIT 1
+            ), d.depth + 1
+            FROM descendants d
+            WHERE d.id IS NOT NULL
+        )
+        SELECT id FROM descendants WHERE id IS NOT NULL
+        ORDER BY depth DESC LIMIT 1
+    """)
+    row = sess.execute(cte_sql, {"message_id": message_id, "chat_id": chat_id}).fetchone()
+    return row[0] if row else message_id
 
 
 def get_chat_agent_config(sess: Session, chatId: str) -> dict[str, Any] | None:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.agent_config:
         return None
-    return json.loads(chat.agent_config)
+    return orjson.loads(chat.agent_config)
 
 
 def update_chat_agent_config(
@@ -301,7 +324,7 @@ def update_chat_agent_config(
     if not chat:
         return
 
-    chat.agent_config = json.dumps(config)
+    chat.agent_config = orjson.dumps(config).decode()
     sess.commit()
 
 
@@ -315,19 +338,24 @@ def get_default_agent_config() -> dict[str, Any]:
 
 
 def get_manifest_for_message(sess: Session, message_id: str) -> str | None:
-    current_id = message_id
-
-    while current_id:
-        message = sess.get(Message, current_id)
-        if not message:
-            break
-
-        if message.manifest_id:
-            return message.manifest_id
-
-        current_id = message.parent_message_id
-
-    return None
+    """Find the nearest ancestor (inclusive) with a manifest_id in a single CTE."""
+    cte_sql = text("""
+        WITH RECURSIVE ancestors(id) AS (
+            SELECT :message_id
+            UNION ALL
+            SELECT m.parent_message_id
+            FROM messages m
+            JOIN ancestors a ON m.id = a.id
+            WHERE m.parent_message_id IS NOT NULL
+        )
+        SELECT m.manifest_id
+        FROM ancestors a
+        JOIN messages m ON m.id = a.id
+        WHERE m.manifest_id IS NOT NULL
+        LIMIT 1
+    """)
+    row = sess.execute(cte_sql, {"message_id": message_id}).fetchone()
+    return row[0] if row else None
 
 
 def set_message_manifest(sess: Session, message_id: str, manifest_id: str) -> None:

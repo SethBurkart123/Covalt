@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-
+import orjson
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,13 +24,13 @@ def _parse_extra(extra_raw: str | None) -> dict:
     if not extra_raw:
         return {}
     try:
-        return json.loads(extra_raw)
-    except (json.JSONDecodeError, TypeError):
+        return orjson.loads(extra_raw)
+    except (ValueError, TypeError):
         return {}
 
 
 def _serialize_extra(extra_dict: dict) -> str:
-    return json.dumps(extra_dict) if extra_dict else ""
+    return orjson.dumps(extra_dict).decode() if extra_dict else ""
 
 
 def _get_reasoning_from_extra(extra_raw: str | None) -> dict:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+
+import orjson
 
 from ... import db
 from ..models.model_selection import parse_model_id, update_chat_model_selection
@@ -12,12 +13,12 @@ from ..models.model_selection import parse_model_id, update_chat_model_selection
 def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
     agent_ref: str | None = None
     if model_id and model_id.startswith("agent:"):
-        agent_ref = model_id[len("agent:") :]
+        agent_ref = model_id[len("agent:"):]
     effective_model_id = None if agent_ref else model_id
 
-    if not chat_id:
-        chat_id = str(uuid.uuid4())
-        with db.db_session() as sess:
+    with db.db_session() as sess:
+        if not chat_id:
+            chat_id = str(uuid.uuid4())
             now = datetime.now(UTC).isoformat()
             db.create_chat(
                 sess,
@@ -37,9 +38,8 @@ def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
             if agent_ref:
                 config["agent_id"] = agent_ref
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
-        return chat_id
+            return chat_id
 
-    with db.db_session() as sess:
         config = db.get_chat_agent_config(sess, chat_id)
         if not config:
             provider, model = parse_model_id(effective_model_id)
@@ -76,7 +76,7 @@ def save_user_message(
             parent_message_id=parent_id,
             is_complete=True,
             sequence=db.get_next_sibling_sequence(sess, parent_id, chat_id),
-            attachments=json.dumps([attachment.model_dump() for attachment in attachments])
+            attachments=orjson.dumps([a.model_dump() for a in attachments]).decode()
             if attachments
             else None,
             manifest_id=manifest_id,

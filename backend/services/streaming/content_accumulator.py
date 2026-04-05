@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import copy
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable
+
+import orjson
 
 from .runtime_events import (
     EVENT_MEMBER_RUN_COMPLETED,
@@ -317,10 +318,10 @@ class ContentAccumulator:
                         "isCompleted": False,
                     }
                 )
-        return json.dumps(temp)
+        return orjson.dumps(temp).decode()
 
     def dump_final(self) -> str:
-        return json.dumps(self.content_blocks)
+        return orjson.dumps(self.content_blocks).decode()
 
     def apply_agent_event(self, data: dict[str, Any]) -> bool:
         event_name = str(data.get("event") or "")

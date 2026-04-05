@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any
+
+import orjson
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -70,7 +71,7 @@ def save_provider_settings(
 
     json_extra = None
     if extra is not None:
-        json_extra = extra if isinstance(extra, str) else json.dumps(extra)
+        json_extra = extra if isinstance(extra, str) else orjson.dumps(extra).decode()
 
     if settings:
         if settings.provider != canonical:

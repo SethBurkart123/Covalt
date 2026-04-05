@@ -6,6 +6,7 @@ delegation for continue/retry/edit flows.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -119,7 +120,7 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
     assert call.kwargs["role"] == "assistant"
     assert call.kwargs["chat_id"] == chat_id
     assert call.kwargs["is_complete"] is False
-    assert call.kwargs["content"] == '[{"type": "text", "content": "partial"}]'
+    assert json.loads(call.kwargs["content"]) == [{"type": "text", "content": "partial"}]
     materialize_branch.assert_called_once_with(chat_id, "assistant-old")
 
     assert extract_event_names(channel)[:2] == ["RunStarted", "AssistantMessageId"]

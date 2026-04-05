@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any
+
+import orjson
 
 
 def _normalize_blocks(value: list[Any]) -> list[dict[str, Any]]:
@@ -28,7 +29,7 @@ def decode_message_content(content: Any) -> Any:
         return content
 
     try:
-        parsed = json.loads(raw)
+        parsed = orjson.loads(raw)
     except Exception:
         return content
 
@@ -70,4 +71,4 @@ def parse_message_blocks(
 
 def serialize_message_blocks(blocks: list[dict[str, Any]]) -> str:
     """Serialize block list for DB persistence."""
-    return json.dumps(blocks)
+    return orjson.dumps(blocks).decode()

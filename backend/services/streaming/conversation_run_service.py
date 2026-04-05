@@ -6,11 +6,12 @@ into small, composable building blocks.
 
 from __future__ import annotations
 
-import json
 import logging
 import traceback
 from datetime import UTC, datetime
 from typing import Any
+
+import orjson
 
 from zynk import Channel
 
@@ -64,11 +65,11 @@ def build_message_history(db_messages: list[Any]) -> list[ChatMessage]:
         attachments = None
         if m.role == "user" and m.attachments:
             try:
-                attachments_data = json.loads(m.attachments)
+                attachments_data = orjson.loads(m.attachments)
                 attachments = [
                     Attachment(**att_data) for att_data in attachments_data
                 ]
-            except (json.JSONDecodeError, ValueError, TypeError):
+            except (ValueError, TypeError):
                 pass
 
         result.append(
