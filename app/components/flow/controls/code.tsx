@@ -171,10 +171,11 @@ export function CodeControl({ param, value, onChange, compact, nodeId }: CodeCon
   const { executionByNode, lastPromptInput } = useFlowExecution();
 
   const [editorValue, setEditorValue] = useState(currentValue);
-
-  useEffect(() => {
+  const prevCurrentValueRef = useRef(currentValue);
+  if (currentValue !== prevCurrentValueRef.current) {
+    prevCurrentValueRef.current = currentValue;
     setEditorValue(currentValue);
-  }, [currentValue]);
+  }
 
   const extraLib = useMemo(
     () => buildEditorTypes(nodeId ?? null, nodes, edges, executionByNode, lastPromptInput),

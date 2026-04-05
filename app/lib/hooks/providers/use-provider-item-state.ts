@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ProviderDefinition } from '@/lib/types/provider-catalog';
 import type { OAuthState } from './types';
 
@@ -61,11 +61,12 @@ export function useProviderItemState({
   const deviceCode = isDeviceOauth ? extractDeviceCode(oauthStatus?.instructions) : null;
   const formattedDeviceCode = deviceCode ? formatDeviceCode(deviceCode) : null;
 
-  useEffect(() => {
-    if (isDeviceOauth && oauthStatus?.authUrl && !oauthConnected && !isOpen) {
-      setIsOpen(true);
-    }
-  }, [isDeviceOauth, oauthConnected, oauthStatus?.authUrl, isOpen]);
+  const prevAuthUrlRef = useRef<string | undefined>(undefined);
+  const authUrl = oauthStatus?.authUrl;
+  if (isDeviceOauth && authUrl && authUrl !== prevAuthUrlRef.current && !oauthConnected) {
+    setIsOpen(true);
+  }
+  prevAuthUrlRef.current = authUrl;
 
   const handleCopyCode = async () => {
     if (!deviceCode || typeof navigator === 'undefined' || !navigator.clipboard) return;

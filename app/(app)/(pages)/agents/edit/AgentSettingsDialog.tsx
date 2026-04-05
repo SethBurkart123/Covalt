@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -27,24 +27,37 @@ export function AgentSettingsDialog({
   open,
   onOpenChange,
 }: AgentSettingsDialogProps) {
-  const { agent, updateMetadata } = useAgentEditor();
-  
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [icon, setIcon] = useState('');
-  const [originalIcon, setOriginalIcon] = useState<string | null>(null);
+  const { agent } = useAgentEditor();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        {open && agent && (
+          <AgentSettingsForm
+            key={agent.id}
+            agent={agent}
+            onOpenChange={onOpenChange}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface AgentSettingsFormProps {
+  agent: NonNullable<ReturnType<typeof useAgentEditor>['agent']>;
+  onOpenChange: (open: boolean) => void;
+}
+
+function AgentSettingsForm({ agent, onOpenChange }: AgentSettingsFormProps) {
+  const { updateMetadata } = useAgentEditor();
+  const parsedIcon = parseAgentIcon(agent.icon);
+
+  const [name, setName] = useState(agent.name);
+  const [description, setDescription] = useState(agent.description || '');
+  const [icon, setIcon] = useState(parsedIcon.type === 'emoji' ? parsedIcon.value : '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open && agent) {
-      setName(agent.name);
-      setDescription(agent.description || '');
-      const parsedIcon = parseAgentIcon(agent.icon);
-      setIcon(parsedIcon.type === 'emoji' ? parsedIcon.value : '');
-      setOriginalIcon(agent.icon ?? null);
-    }
-  }, [open, agent]);
 
   const handleSave = useCallback(async () => {
     if (!name.trim()) {
@@ -59,7 +72,7 @@ export function AgentSettingsDialog({
       await updateMetadata({
         name: name.trim(),
         description: description.trim() || undefined,
-        icon: nextAgentIconValue({ existingIcon: originalIcon, emoji: icon }),
+        icon: nextAgentIconValue({ existingIcon: agent.icon ?? null, emoji: icon }),
       });
       onOpenChange(false);
     } catch (err) {
@@ -68,67 +81,65 @@ export function AgentSettingsDialog({
     } finally {
       setIsSaving(false);
     }
-  }, [name, description, icon, originalIcon, updateMetadata, onOpenChange]);
+  }, [name, description, icon, agent.icon, updateMetadata, onOpenChange]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Agent Settings</DialogTitle>
-          <DialogDescription>
-            Update your agent&apos;s name, description, and icon.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="settings-name">Name</Label>
-            <Input
-              id="settings-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          
-          <div className="grid gap-2">
-            <Label htmlFor="settings-description">Description</Label>
-            <Textarea
-              id="settings-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="What does this agent do?"
-            />
-          </div>
-          
-          <div className="grid gap-2">
-            <Label>Icon</Label>
-            <EmojiPickerPopover
-              value={icon}
-              onChange={setIcon}
-              placeholder="Pick an emoji..."
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+    <>
+      <DialogHeader>
+        <DialogTitle>Agent Settings</DialogTitle>
+        <DialogDescription>
+          Update your agent&apos;s name, description, and icon.
+        </DialogDescription>
+      </DialogHeader>
+      
+      <div className="grid gap-4 py-4">
+        <div className="grid gap-2">
+          <Label htmlFor="settings-name">Name</Label>
+          <Input
+            id="settings-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
         
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving || !name.trim()}>
-            {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="grid gap-2">
+          <Label htmlFor="settings-description">Description</Label>
+          <Textarea
+            id="settings-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            placeholder="What does this agent do?"
+          />
+        </div>
+        
+        <div className="grid gap-2">
+          <Label>Icon</Label>
+          <EmojiPickerPopover
+            value={icon}
+            onChange={setIcon}
+            placeholder="Pick an emoji..."
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
+      </div>
+      
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={isSaving}
+        >
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={isSaving || !name.trim()}>
+          {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
+          Save Changes
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

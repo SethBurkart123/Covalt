@@ -49,10 +49,6 @@ export function AgentEditorHeaderLeft({ agentName, onUpdateName }: AgentEditorHe
     }
   }, [isEditing]);
 
-  useEffect(() => {
-    setEditValue(agentName);
-  }, [agentName]);
-
   const breadcrumb = (
     <>
       <Link href="/agents" className="text-muted-foreground hover:text-foreground truncate shrink-0">

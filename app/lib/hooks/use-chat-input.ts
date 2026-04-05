@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { useToolsActive } from "@/contexts/tools-context";
 import { useStreaming } from "@/contexts/streaming-context";
@@ -141,9 +141,7 @@ export function useChatInput(
     },
   });
 
-  useEffect(() => {
-    selectedModelRef.current = selectedModel;
-  }, [selectedModel]);
+  selectedModelRef.current = selectedModel;
 
   const { handleSubmit, handleContinue, handleRetry, handleStop } = useChatStreamActions({
     context,

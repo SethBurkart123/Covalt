@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   ModelInfo,
   OptionDefinition,
@@ -156,18 +156,18 @@ export function useModelOptions(
     return model?.options ?? EMPTY_SCHEMA;
   }, [models, storage]);
 
+  const storageKeyRef = useRef<string | null>(null);
+  const currentKey = storage ? getStorageKey(storage.provider, storage.modelId) : null;
+
   const [values, setValues] = useState<Record<string, unknown>>(() =>
-    getDefaults(schema),
+    storage ? loadPersistedOptions(storage, schema) : getDefaults(schema),
   );
 
-  useEffect(() => {
-    if (!storage) {
-      setValues(getDefaults(schema));
-      return;
-    }
-
-    setValues(loadPersistedOptions(storage, schema));
-  }, [schema, storage]);
+  if (currentKey !== storageKeyRef.current) {
+    storageKeyRef.current = currentKey;
+    const nextValues = storage ? loadPersistedOptions(storage, schema) : getDefaults(schema);
+    setValues(nextValues);
+  }
 
   const setValue = useCallback(
     (key: string, value: unknown) => {

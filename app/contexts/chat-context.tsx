@@ -57,6 +57,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // TODO: currentChatId should ideally be derived directly from searchParams
+  // (const currentChatId = searchParams.get("chatId") || ""), but useChatOperations
+  // calls setCurrentChatId before router.push for optimistic updates. Removing the
+  // state would require refactoring useChatOperations to not need the setter.
   useEffect(() => {
     const chatIdFromUrl = searchParams.get("chatId") || "";
     if (chatIdFromUrl !== currentChatIdRef.current) {

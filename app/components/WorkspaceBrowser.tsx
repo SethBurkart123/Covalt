@@ -368,35 +368,37 @@ export function WorkspaceBrowser({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [changedInLastRun, setChangedInLastRun] = useState<Set<string>>(new Set());
+  const [wsChangedPaths, setWsChangedPaths] = useState<Set<string>>(new Set());
 
   const { onWorkspaceFilesChanged } = useWebSocket();
   const lastRunSourceRef = useRef<string | null>(null);
+
+  const changedInLastRun = useMemo(() => {
+    if (lastRunChangedPaths.length > 0) return new Set(lastRunChangedPaths);
+    return wsChangedPaths;
+  }, [lastRunChangedPaths, wsChangedPaths]);
 
   const loadFiles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      setFiles((await getWorkspaceFiles({ body: { chatId } })).files);
+      const result = (await getWorkspaceFiles({ body: { chatId } })).files;
+      setFiles(result);
+      onFilesCountChange?.(result.length);
     } catch (err) {
       setError("Failed to load files");
       console.error("Failed to load workspace files:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [chatId]);
+  }, [chatId, onFilesCountChange]);
 
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
 
   useEffect(() => {
-    if (lastRunChangedPaths.length > 0) {
-      setChangedInLastRun(new Set(lastRunChangedPaths));
-    } else {
-      setChangedInLastRun(new Set());
-    }
     lastRunSourceRef.current = null;
   }, [lastRunChangedPaths]);
 
@@ -407,10 +409,10 @@ export function WorkspaceBrowser({
 
       if (meta?.sourceRef && lastRunSourceRef.current !== meta.sourceRef) {
         lastRunSourceRef.current = meta.sourceRef;
-        setChangedInLastRun(new Set());
+        setWsChangedPaths(new Set());
       }
 
-      setChangedInLastRun((prev) => {
+      setWsChangedPaths((prev) => {
         const next = new Set(prev);
         changedPaths.forEach((path) => next.add(path));
         deletedPaths.forEach((path) => next.add(path));
@@ -420,10 +422,6 @@ export function WorkspaceBrowser({
       void loadFiles();
     });
   }, [chatId, loadFiles, onWorkspaceFilesChanged]);
-
-  useEffect(() => {
-    onFilesCountChange?.(files.length);
-  }, [files.length, onFilesCountChange]);
 
   const fileTree = useMemo(() => buildFileTree(files), [files]);
 

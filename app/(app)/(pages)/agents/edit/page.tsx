@@ -41,6 +41,9 @@ function AgentEditorContent() {
     return () => setFloating(false);
   }, [setFloating]);
 
+  // TODO: consider removing this Effect — storing JSX in state via Effect (anti-pattern 9).
+  // The page-title context API currently expects ReactNode to be set imperatively.
+  // Refactoring this requires changing the context API to accept component props instead.
   useEffect(() => {
     if (!agent) return;
     const handleUpdateName = (name: string) => updateMetadata({ name });
@@ -61,11 +64,9 @@ function AgentEditorContent() {
     };
   }, [agent, saveStatus, updateMetadata, setLeftContent, setRightContent, toggleChat, isChatOpen]);
 
-  useEffect(() => {
-    if (saveStatus === 'dirty') {
-      hasEditedGraphRef.current = true;
-    }
-  }, [saveStatus]);
+  if (saveStatus === 'dirty') {
+    hasEditedGraphRef.current = true;
+  }
 
   useEffect(() => {
     if (isLoading || saveStatus !== 'saved' || !hasEditedGraphRef.current) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Brain } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
@@ -11,6 +11,7 @@ import {
   CollapsibleContent,
   type CollapsibleMode,
 } from "@/components/ui/collapsible";
+import { useAutoCollapse } from "@/lib/hooks/use-auto-collapse";
 
 interface ThinkingCallProps {
   content: string;
@@ -31,49 +32,15 @@ export default function ThinkingCall({
   isCompleted = false,
   mode = "regular",
 }: ThinkingCallProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
+  const { isOpen, isClosing, isManuallyExpanded, setIsOpen, handleToggle } =
+    useAutoCollapse({ active });
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const userInteractedRef = useRef(false);
-
-  useEffect(() => {
-    if (active) {
-      setIsManuallyExpanded(false);
-      userInteractedRef.current = false;
-      setIsClosing(false);
-    }
-  }, [active]);
-
-  useEffect(() => {
-    if (active && !userInteractedRef.current) {
-      setIsOpen(true);
-    } else if (!active && isOpen && !isManuallyExpanded && !userInteractedRef.current) {
-      setIsClosing(true);
-      const timer = setTimeout(() => {
-        setIsOpen(false);
-        setIsClosing(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [active, isOpen, isManuallyExpanded]);
 
   useEffect(() => {
     if (active && !isManuallyExpanded && contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
   }, [content, active, isManuallyExpanded]);
-
-  const handleToggle = () => {
-    userInteractedRef.current = true;
-
-    if (active && isOpen && !isManuallyExpanded) {
-      setIsManuallyExpanded(true);
-    } else {
-      setIsOpen(!isOpen);
-      if (isOpen) setIsManuallyExpanded(false);
-    }
-  };
 
   return (
     <Collapsible

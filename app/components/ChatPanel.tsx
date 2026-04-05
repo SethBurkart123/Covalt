@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Folder, FolderOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { useChat } from "@/contexts/chat-context";
@@ -33,11 +33,10 @@ export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
   const { setRightContent } = usePageTitle();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
-  const [hasCheckedThinkingPrompt, setHasCheckedThinkingPrompt] =
-    useState(false);
   const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
   const [workspaceFilesCount, setWorkspaceFilesCount] = useState(0);
-  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  const [userRequestedOpen, setUserRequestedOpen] = useState(false);
+  const prevSelectedModelRef = useRef(selectedModel);
 
   const hideToolSelector = useMemo(() => {
     if (!selectedModel.startsWith("agent:")) return false;
@@ -53,8 +52,16 @@ export default function ChatPanel() {
       .catch((error) => console.error("Failed to load model settings:", error));
   }, []);
 
+  const hasCheckedThinkingPromptRef = useRef(false);
+
+  if (prevSelectedModelRef.current !== selectedModel) {
+    prevSelectedModelRef.current = selectedModel;
+    hasCheckedThinkingPromptRef.current = false;
+    setShowThinkingPrompt(false);
+  }
+
   const handleThinkTagDetected = useCallback(() => {
-    if (hasCheckedThinkingPrompt) return;
+    if (hasCheckedThinkingPromptRef.current) return;
 
     const [provider, modelId] = selectedModel?.split(":") || [];
     if (!provider || !modelId || !modelSettings) return;
@@ -64,7 +71,7 @@ export default function ChatPanel() {
     );
 
     if (setting?.reasoning?.supports === true && !setting?.thinkingTagPrompted?.declined) {
-      setHasCheckedThinkingPrompt(true);
+      hasCheckedThinkingPromptRef.current = true;
       return;
     }
 
@@ -72,47 +79,30 @@ export default function ChatPanel() {
       setShowThinkingPrompt(true);
     }
 
-    setHasCheckedThinkingPrompt(true);
-  }, [hasCheckedThinkingPrompt, selectedModel, modelSettings]);
+    hasCheckedThinkingPromptRef.current = true;
+  }, [selectedModel, modelSettings]);
 
-  useEffect(() => {
-    setHasCheckedThinkingPrompt(false);
-    setShowThinkingPrompt(false);
-  }, [selectedModel]);
+  const isWorkspaceOpen = chatId != null && workspaceFilesCount > 0 && userRequestedOpen;
 
-  useEffect(() => {
-    if (!chatId) {
-      setWorkspaceFilesCount(0);
-      setIsWorkspaceOpen(false);
-    }
-  }, [chatId]);
-
-  useEffect(() => {
-    if (workspaceFilesCount === 0) {
-      setIsWorkspaceOpen(false);
-    }
-  }, [workspaceFilesCount]);
-
-  useEffect(() => {
-    if (workspaceFilesCount <= 0) {
-      setRightContent(null);
-      return;
-    }
-
-    setRightContent(
+  const workspaceButton = useMemo(() => {
+    if (workspaceFilesCount <= 0) return null;
+    return (
       <Button
         variant="ghost"
         size="icon"
         className="size-8"
-        onClick={() => setIsWorkspaceOpen((prev) => !prev)}
+        onClick={() => setUserRequestedOpen((prev) => !prev)}
         aria-label={isWorkspaceOpen ? "Close workspace" : "Open workspace"}
       >
         {isWorkspaceOpen ? <FolderOpen className="size-4" /> : <Folder className="size-4" />}
       </Button>
     );
+  }, [workspaceFilesCount, isWorkspaceOpen]);
 
+  useEffect(() => {
+    setRightContent(workspaceButton);
     return () => setRightContent(null);
-  }, [isWorkspaceOpen, setRightContent, workspaceFilesCount]);
+  }, [workspaceButton, setRightContent]);
 
   const {
     schema: modelOptionSchema,

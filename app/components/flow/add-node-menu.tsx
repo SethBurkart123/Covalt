@@ -173,7 +173,9 @@ export function AddNodeMenu({
     setTimeout(() => inputRef.current?.focus(), 10);
   }, []);
 
-  useEffect(() => {
+  const wasOpenRef = useRef(false);
+  if (isOpen !== wasOpenRef.current) {
+    wasOpenRef.current = isOpen;
     if (!isOpen) {
       setSearch('');
       setMode('browse');
@@ -185,7 +187,7 @@ export function AddNodeMenu({
     } else {
       setTimeout(() => browseInputRef.current?.focus(), 10);
     }
-  }, [isOpen, connectionFilter]);
+  }
 
   useEffect(() => {
     if (!isOpen) return;

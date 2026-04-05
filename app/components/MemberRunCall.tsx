@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -10,6 +10,7 @@ import {
   CollapsibleHeader,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
+import { useAutoCollapse } from "@/lib/hooks/use-auto-collapse";
 import type { ContentBlock } from "@/lib/types/chat";
 
 interface MemberRunCallProps {
@@ -38,51 +39,15 @@ export default function MemberRunCall({
   alwaysOpen = false,
   compact = false,
 }: MemberRunCallProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
+  const { isOpen, isClosing, isManuallyExpanded, setIsOpen, handleToggle } =
+    useAutoCollapse({ active, disabled: alwaysOpen });
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const userInteractedRef = useRef(false);
-
-  useEffect(() => {
-    if (alwaysOpen) return;
-    if (active) {
-      setIsManuallyExpanded(false);
-      userInteractedRef.current = false;
-      setIsClosing(false);
-    }
-  }, [active, alwaysOpen]);
-
-  useEffect(() => {
-    if (alwaysOpen) return;
-    if (active && !userInteractedRef.current) {
-      setIsOpen(true);
-    } else if (!active && isOpen && !isManuallyExpanded && !userInteractedRef.current) {
-      setIsClosing(true);
-      const timer = setTimeout(() => {
-        setIsOpen(false);
-        setIsClosing(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [active, alwaysOpen, isOpen, isManuallyExpanded]);
 
   useEffect(() => {
     if (active && !isManuallyExpanded && contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
   }, [content, active, isManuallyExpanded]);
-
-  const handleToggle = () => {
-    if (alwaysOpen) return;
-    userInteractedRef.current = true;
-    if (active && isOpen && !isManuallyExpanded) {
-      setIsManuallyExpanded(true);
-    } else {
-      setIsOpen(!isOpen);
-      if (isOpen) setIsManuallyExpanded(false);
-    }
-  };
 
   const activeTools = content.filter(
     (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
@@ -94,7 +59,6 @@ export default function MemberRunCall({
       ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
       : undefined;
   const nameLabel = memberName || "Agent";
-  const isOpenState = alwaysOpen ? true : isOpen;
   const mode = compact || alwaysOpen ? "compact" : "regular";
 
   if (hasError) {
@@ -121,8 +85,8 @@ export default function MemberRunCall({
 
   return (
     <Collapsible
-      open={isOpenState}
-      onOpenChange={alwaysOpen ? undefined : setIsOpen}
+      open={isOpen}
+      onOpenChange={setIsOpen}
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}

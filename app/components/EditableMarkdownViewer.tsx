@@ -401,14 +401,17 @@ function TurnIntoDropdown({ editor, current }: { editor: Editor; current: (typeo
 function LinkMenuBtn({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
   const [href, setHref] = useState("");
-  const activeHref = editor.getAttributes("link").href as string | undefined;
 
-  useEffect(() => {
-    if (open) setHref(activeHref ?? "");
-  }, [activeHref, open]);
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      const activeHref = editor.getAttributes("link").href as string | undefined;
+      setHref(activeHref ?? "");
+    }
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button type="button" variant={editor.isActive("link") ? "secondary" : "ghost"} size="sm" className="h-7 px-2" onMouseDown={(e) => e.preventDefault()} title="Link">
           <Link2 className="size-4" />

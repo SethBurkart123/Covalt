@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { MentionItem } from "./at-mention-extension";
 
@@ -19,15 +19,16 @@ export const MentionSuggestionList = forwardRef<
   MentionSuggestionListProps
 >(function MentionSuggestionList({ items, command, query }, ref) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const prevItemsRef = useRef(items);
+  if (items !== prevItemsRef.current) {
+    prevItemsRef.current = items;
+    setSelectedIndex(0);
+  }
   const normalizedQuery = (query ?? "").trim();
   const showSections = normalizedQuery.length === 0;
   const servers = showSections ? items.filter((item) => item.type === "mcp") : [];
   const tools = showSections ? items.filter((item) => item.type !== "mcp") : [];
   const orderedItems = showSections ? [...servers, ...tools] : items;
-
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [items]);
 
   const selectItem = (index: number) => {
     const item = orderedItems[index];

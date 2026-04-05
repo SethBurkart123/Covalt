@@ -54,17 +54,13 @@ export function useArtifactFileEditorState({
   const isDesynced = externallyChanged && hasUnsavedChanges && !isSavingRef.current;
   const currentContent = localContent ?? syncedContent;
 
-  useEffect(() => {
-    if (externallyChanged && !hasUnsavedChanges && !isSavingRef.current) {
-      setLastSyncedVersion(version);
-    }
-  }, [externallyChanged, hasUnsavedChanges, version]);
+  if (externallyChanged && !hasUnsavedChanges && !isSavingRef.current) {
+    setLastSyncedVersion(version);
+  }
 
-  useEffect(() => {
-    if (!isLoading && lastSyncedVersion === 0 && version > 0) {
-      setLastSyncedVersion(version);
-    }
-  }, [isLoading, lastSyncedVersion, version]);
+  if (!isLoading && lastSyncedVersion === 0 && version > 0) {
+    setLastSyncedVersion(version);
+  }
 
   const persistContent = useCallback(
     async (nextContent: string, path: string) => {

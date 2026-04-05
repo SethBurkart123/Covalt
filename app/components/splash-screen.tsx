@@ -2,15 +2,13 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useWebSocket } from "@/contexts/websocket-context";
-import { useState, useEffect } from "react";
+import { useRef } from "react";
 
 export function SplashScreen() {
   const { isConnected } = useWebSocket();
-  const [show, setShow] = useState(true);
-
-  useEffect(() => {
-    if (isConnected) setShow(false);
-  }, [isConnected]);
+  const hasConnectedRef = useRef(false);
+  if (isConnected) hasConnectedRef.current = true;
+  const show = !hasConnectedRef.current;
 
   return (
     <AnimatePresence>

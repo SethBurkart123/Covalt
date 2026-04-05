@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { OptionDefinition } from "@/lib/types/chat";
 import {
   Select,
@@ -37,14 +37,15 @@ export function SelectOption({
   const effectiveIndex = selectedIndex >= 0 ? selectedIndex : fallbackIndex;
   const currentValue = effectiveIndex >= 0 ? String(effectiveIndex) : "";
 
-  useEffect(() => {
-    if (open) setTooltipOpen(false);
-  }, [open]);
+  const handleSelectOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) setTooltipOpen(false);
+  };
 
   return (
     <Select
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleSelectOpenChange}
       value={currentValue}
       onValueChange={(raw) => {
         const nextIndex = Number(raw);
