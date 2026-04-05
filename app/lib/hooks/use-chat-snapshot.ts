@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/services/api";
 import {
   getPrefetchedChat,
+  getInflightPrefetch,
   setPrefetchedChat,
 } from "@/lib/services/chat-prefetch";
 import type { Message, MessageSibling } from "@/lib/types/chat";
@@ -81,7 +82,6 @@ export function useChatSnapshot({
   useEffect(() => {
     if (activeSubmissionChatIdRef.current) return;
 
-    const isChatSwitch = prevChatIdRef.current !== chatId;
     prevChatIdRef.current = chatId;
 
     if (!chatId) {
@@ -90,33 +90,49 @@ export function useChatSnapshot({
     }
 
     const loadId = ++loadTokenRef.current;
-    const prefetched = getPrefetchedChat(chatId);
-    const prefetchedMessages = prefetched?.messages || [];
-    const prefetchedSiblings = prefetched?.siblings || {};
-    const hasAllSiblings =
-      prefetchedMessages.length > 0
-        ? prefetchedMessages.every((msg) => msg.id in prefetchedSiblings)
-        : true;
-    const isFresh = prefetched ? Date.now() - prefetched.fetchedAt < 2_000 : false;
+    const isStale = (id: string) =>
+      loadTokenRef.current !== loadId || currentChatIdRef.current !== id;
 
-    if (hasAllSiblings && isFresh) {
-      applySnapshot(prefetchedMessages, prefetchedSiblings);
+    const prefetched = getPrefetchedChat(chatId);
+    const isFresh = prefetched ? Date.now() - prefetched.fetchedAt < 5_000 : false;
+
+    if (isFresh && prefetched?.messages?.length) {
+      applySnapshot(prefetched.messages, prefetched.siblings || {});
+
+      if (prefetched.siblings) return;
+
+      const inflightPromise = getInflightPrefetch(chatId);
+      if (inflightPromise) {
+        inflightPromise
+          .then((data) => {
+            if (isStale(chatId)) return;
+            applySnapshot(data.messages || prefetched.messages!, data.siblings || {});
+          })
+          .catch(() => {});
+      } else {
+        fetchSnapshot(chatId)
+          .then(({ messages, siblings }) => {
+            if (isStale(chatId)) return;
+            applySnapshot(messages, siblings);
+          })
+          .catch(() => {});
+      }
       return;
     }
 
-    if (isChatSwitch) {
-      applySnapshot([], {});
+    if (prefetched?.messages?.length) {
+      applySnapshot(prefetched.messages, prefetched.siblings || {});
     }
 
     fetchSnapshot(chatId)
       .then(({ messages, siblings }) => {
-        if (loadTokenRef.current !== loadId || currentChatIdRef.current !== chatId) return;
+        if (isStale(chatId)) return;
         applySnapshot(messages, siblings);
       })
       .catch((err) => {
-        if (loadTokenRef.current !== loadId || currentChatIdRef.current !== chatId) return;
+        if (isStale(chatId)) return;
         console.error("Failed to load chat messages:", err);
-        applySnapshot([], {});
+        if (!prefetched?.messages?.length) applySnapshot([], {});
       });
   }, [
     activeSubmissionChatIdRef,
