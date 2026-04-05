@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.services.flow_migration import migrate_graph_data, migrate_node_type
+from backend.services.flows.flow_migration import migrate_graph_data, migrate_node_type
 
 
 def test_migrate_node_type_removes_np_prefix_and_maps_legacy_aliases() -> None:

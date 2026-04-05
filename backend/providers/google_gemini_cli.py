@@ -1,7 +1,7 @@
 from typing import Any
 
-from ..services.models_dev import fetch_models_dev_provider
-from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.models.models_dev import fetch_models_dev_provider
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
 from .google_code_assist import CloudCodeAssistModel
 
 

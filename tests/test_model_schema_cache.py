@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.services import model_schema_cache
+from backend.services.models import model_schema_cache
 
 
 def test_cache_model_metadata_round_trips_copy() -> None:

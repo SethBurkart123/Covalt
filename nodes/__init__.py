@@ -24,7 +24,7 @@ def _try_register_builtin_plugin() -> None:
         if _BUILTIN_REGISTERED:
             return
 
-        plugin_registry = importlib.import_module("backend.services.plugin_registry")
+        plugin_registry = importlib.import_module("backend.services.plugins.plugin_registry")
         registry = getattr(plugin_registry, "_DEFAULT_PLUGIN_REGISTRY", None)
         if registry is None:
             # plugin_registry is still initializing; retry on next access

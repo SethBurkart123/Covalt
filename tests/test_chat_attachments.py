@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from backend.services import chat_attachments
+from backend.services.chat import chat_attachments
 
 
 def test_prepare_stream_attachments_skips_missing_pending_files(tmp_path) -> None:

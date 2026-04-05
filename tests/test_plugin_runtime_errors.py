@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.services import node_provider_runtime as runtime
+from backend.services.node_providers import node_provider_runtime as runtime
 
 
 def _runtime_spec(tmp_path: Path) -> runtime.NodeProviderRuntimeSpec:

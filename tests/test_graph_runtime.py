@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from backend.services.flow_executor import run_flow
-from backend.services.graph_runtime import GraphRuntime
+from backend.services.flows.flow_executor import run_flow
+from backend.services.flows.graph_runtime import GraphRuntime
 from nodes._types import DataValue, ExecutionResult, FlowContext
 
 

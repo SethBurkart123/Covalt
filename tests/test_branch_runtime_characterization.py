@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.commands import branches
-from backend.services import option_validation as option_validation_service
+from backend.services.models import option_validation as option_validation_service
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 

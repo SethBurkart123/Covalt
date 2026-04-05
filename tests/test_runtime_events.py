@@ -1,6 +1,6 @@
 import pytest
 
-from backend.services.runtime_events import (
+from backend.services.streaming.runtime_events import (
     EVENT_RUN_CONTENT,
     emit_chat_event,
     make_chat_event,

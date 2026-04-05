@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from backend.services.plugin_hooks import (
+from backend.services.plugins.plugin_hooks import (
     HookType,
     PluginHooks,
     deregister_hooks,

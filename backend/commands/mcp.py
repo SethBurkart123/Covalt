@@ -13,13 +13,13 @@ from zynk import command
 
 from ..db import db_session
 from ..db.models import Toolset
-from ..services.mcp_manager import (
+from ..services.tools.mcp_manager import (
     build_server_key,
     get_mcp_manager,
     split_server_key,
 )
-from ..services.oauth_manager import get_oauth_manager
-from ..services.toolset_manager import get_toolset_manager
+from ..services.oauth.oauth_manager import get_oauth_manager
+from ..services.tools.toolset_manager import get_toolset_manager
 
 
 class MCPServerConfig(BaseModel):

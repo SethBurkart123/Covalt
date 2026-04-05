@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from backend.services import node_provider_plugin_manager as npm
-from backend.services import plugin_install_utils, plugin_registry
+from backend.services.plugins import node_provider_plugin_manager as npm
+from backend.services.plugins import plugin_install_utils, plugin_registry
 
 
 def _write_plugin(

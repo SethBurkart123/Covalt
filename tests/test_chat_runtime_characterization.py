@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import pytest
 
-import backend.services.chat_stream as chat_stream_module
+import backend.services.streaming.chat_stream as chat_stream_module
 from backend.models.chat import ChatMessage
 from backend.runtime import (
     ApprovalRequired,
@@ -28,8 +28,8 @@ from backend.runtime import (
     ToolCallCompleted,
     ToolCallStarted,
 )
-from backend.services import run_control
-from backend.services.chat_stream import handle_content_stream
+from backend.services.streaming import run_control
+from backend.services.streaming.chat_stream import handle_content_stream
 from tests.conftest import CapturingChannel, extract_channel_events, extract_event_names
 
 

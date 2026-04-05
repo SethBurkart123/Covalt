@@ -26,20 +26,20 @@ from ..application.conversation import (
     NewAttachmentInput as NewAttachmentInputDTO,
 )
 from ..models.chat import Attachment, ChatMessage
-from ..services.chat_graph_config import get_graph_data_for_chat
-from ..services.chat_stream import run_graph_chat_runtime
-from ..services.stream_lifecycle import append_error_block_to_message
-from ..services.conversation_run_service import (
+from ..services.chat.chat_graph_config import get_graph_data_for_chat
+from ..services.streaming.chat_stream import run_graph_chat_runtime
+from ..services.streaming.stream_lifecycle import append_error_block_to_message
+from ..services.streaming.conversation_run_service import (
     build_message_history,
     emit_run_start_events,
     validate_model_options,
 )
-from ..services.file_storage import (
+from ..services.chat.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
 )
-from ..services.model_selection import update_chat_model_selection
-from ..services.runtime_events import EVENT_RUN_ERROR, emit_chat_event
+from ..services.models.model_selection import update_chat_model_selection
+from ..services.streaming.runtime_events import EVENT_RUN_ERROR, emit_chat_event
 from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.graph_runtime import GraphRuntime
+from backend.services.flows.graph_runtime import GraphRuntime
 from nodes import get_executor
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from nodes.data.code import executor as code_executor_module

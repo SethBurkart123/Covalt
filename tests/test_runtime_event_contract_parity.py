@@ -2,7 +2,7 @@ import json
 import re
 from pathlib import Path
 
-from backend.services.runtime_events import (
+from backend.services.streaming.runtime_events import (
     KNOWN_RUNTIME_EVENTS,
     RUNTIME_EVENT_CONTRACT_VERSION,
 )

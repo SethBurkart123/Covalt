@@ -119,7 +119,7 @@ STUBS = {
 
 
 
-_STREAM_MODULE = "backend.services.chat_stream"
+_STREAM_MODULE = "backend.services.streaming.chat_stream"
 
 
 def _make_chat_message(content: str = "test message") -> MagicMock:
@@ -157,7 +157,7 @@ def _event_names(channel: MagicMock) -> list[str]:
 @contextmanager
 def _patched_env():
     """Patch DB/broadcaster and wire run_flow to use our stubs."""
-    from backend.services.flow_executor import run_flow as real_run_flow
+    from backend.services.flows.flow_executor import run_flow as real_run_flow
 
     async def stubbed_run_flow(graph_data, context, **kwargs):
         async for item in real_run_flow(graph_data, context, executors=STUBS):
@@ -189,7 +189,7 @@ class TestFlowStreamingBasic:
     @pytest.mark.asyncio
     async def test_non_streaming_flow_sends_completed(self):
         """Non-streaming flow should emit RunCompleted."""
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         with _patched_env():
             channel = _make_channel()
@@ -206,7 +206,7 @@ class TestFlowStreamingBasic:
     @pytest.mark.asyncio
     async def test_non_streaming_flow_emits_final_text(self):
         """When no streaming tokens, the final output becomes RunContent."""
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         with _patched_env():
             channel = _make_channel()
@@ -227,7 +227,7 @@ class TestFlowStreamingBasic:
     @pytest.mark.asyncio
     async def test_non_streaming_falsy_output_is_emitted(self):
         """Data outputs like 0 should still be emitted as final text."""
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         graph = make_graph(
             nodes=[
@@ -268,7 +268,7 @@ class TestFlowStreamingTokens:
     @pytest.mark.asyncio
     async def test_streaming_tokens_forwarded(self):
         """Each progress token should produce a RunContent ChatEvent."""
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         with _patched_env():
             channel = _make_channel()
@@ -304,7 +304,7 @@ class TestFlowStreamingError:
     @pytest.mark.asyncio
     async def test_error_produces_error_event(self):
         """When a node fails, an error event should be sent."""
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         with _patched_env():
             channel = _make_channel()
@@ -326,7 +326,7 @@ class TestFlowStreamingEmpty:
 
     @pytest.mark.asyncio
     async def test_empty_flow_completes(self):
-        from backend.services.chat_stream import handle_flow_stream
+        from backend.services.streaming.chat_stream import handle_flow_stream
 
         with _patched_env():
             channel = _make_channel()

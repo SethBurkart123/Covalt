@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 from zynk import StaticFile, UploadFile, command, static, upload
 
-from ..services.agent_manager import get_agent_manager
+from ..services.flows.agent_manager import get_agent_manager
 
 logger = logging.getLogger(__name__)
 

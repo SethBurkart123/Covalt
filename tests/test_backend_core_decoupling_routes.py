@@ -6,8 +6,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import backend.services.http_routes as http_routes
-import backend.services.node_route_index as node_route_index
+import backend.services.flows.http_routes as http_routes
+import backend.services.node_providers.node_route_index as node_route_index
 from nodes._types import HookType, NodeEvent
 
 

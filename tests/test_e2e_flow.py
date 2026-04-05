@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.services.flow_executor import (
+from backend.services.flows.flow_executor import (
     _flow_edges,
     find_flow_nodes,
     run_flow,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..services.tool_registry import tool
+from ..services.tools.tool_registry import tool
 
 
 @tool(name="E2E Echo", renderer="document")

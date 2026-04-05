@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.services.plugin_registry import (
+from backend.services.plugins.plugin_registry import (
     NodeTypeCollisionError,
     PluginAlreadyRegisteredError,
     PluginRegistrationInput,

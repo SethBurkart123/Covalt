@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel
 from zynk import command
 
-from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
 
 
 class ProviderOAuthId(BaseModel):

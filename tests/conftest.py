@@ -12,7 +12,7 @@ import pytest
 from agno.models.base import Model
 from agno.models.response import ModelResponse
 
-from backend.services import run_control
+from backend.services.streaming import run_control
 
 
 @dataclass

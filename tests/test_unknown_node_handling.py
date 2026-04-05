@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from backend.models.chat import ChatMessage
-from backend.services.chat_stream import handle_flow_stream
-from backend.services.flow_executor import run_flow
-from backend.services.graph_normalizer import normalize_graph_data
+from backend.services.streaming.chat_stream import handle_flow_stream
+from backend.services.flows.flow_executor import run_flow
+from backend.services.flows.graph_normalizer import normalize_graph_data
 from tests.conftest import CapturingChannel, make_edge, make_graph, make_node
 
 

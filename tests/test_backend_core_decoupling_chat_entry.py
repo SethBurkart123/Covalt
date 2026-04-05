@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import backend.services.chat_graph_config as chat_graph_config
+import backend.services.chat.chat_graph_config as chat_graph_config
 
 
 def _graph(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> dict[str, Any]:

@@ -11,7 +11,7 @@ from agno.models.message import Message
 from agno.models.openai.responses import OpenAIResponses
 from openai.types.responses import ResponseReasoningItem
 
-from ..services.provider_oauth_manager import get_provider_oauth_manager
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
 from .options import resolve_common_options
 
 

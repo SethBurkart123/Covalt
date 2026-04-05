@@ -6,7 +6,7 @@ import socket
 import httpx
 import pytest
 
-from backend.services.provider_oauth_manager import (
+from backend.services.models.provider_oauth_manager import (
     OAuthFlowState,
     ProviderOAuthManager,
     _build_callback_server_message,

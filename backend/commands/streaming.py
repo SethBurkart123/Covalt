@@ -37,29 +37,29 @@ from ..application.tooling import (
     RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
 )
 from ..models.chat import ChatMessage
-from ..services import run_control
-from ..services import stream_broadcaster as broadcaster
-from ..services.agent_manager import get_agent_manager
-from ..services.chat_attachments import prepare_stream_attachments
-from ..services.chat_graph_config import _build_trigger_payload, get_graph_data_for_chat
-from ..services.chat_stream import FlowRunHandle, run_graph_chat_runtime
-from ..services.conversation_run_service import (
+from ..services.streaming import run_control
+from ..services.streaming import stream_broadcaster as broadcaster
+from ..services.flows.agent_manager import get_agent_manager
+from ..services.chat.chat_attachments import prepare_stream_attachments
+from ..services.chat.chat_graph_config import _build_trigger_payload, get_graph_data_for_chat
+from ..services.streaming.chat_stream import FlowRunHandle, run_graph_chat_runtime
+from ..services.streaming.conversation_run_service import (
     emit_run_start_events,
     handle_streaming_run_error,
     validate_model_options,
 )
-from ..services.conversation_store import (
+from ..services.chat.conversation_store import (
     ensure_chat_initialized,
     get_active_leaf_message_id,
 )
-from ..services.conversation_store import (
+from ..services.chat.conversation_store import (
     init_assistant_message as init_assistant_msg,
 )
-from ..services.conversation_store import (
+from ..services.chat.conversation_store import (
     save_user_message as save_user_msg,
 )
-from ..services.flow_executor import run_flow
-from ..services.runtime_events import (
+from ..services.flows.flow_executor import run_flow
+from ..services.streaming.runtime_events import (
     EVENT_ASSISTANT_MESSAGE_ID,
     EVENT_RUN_ERROR,
     EVENT_RUN_STARTED,
@@ -67,7 +67,7 @@ from ..services.runtime_events import (
     EVENT_STREAM_SUBSCRIBED,
     emit_chat_event,
 )
-from ..services.tool_registry import get_tool_registry
+from ..services.tools.tool_registry import get_tool_registry
 
 logging.basicConfig(
     level=logging.INFO,

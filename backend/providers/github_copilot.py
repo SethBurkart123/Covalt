@@ -15,9 +15,9 @@ from agno.models.openai.responses import OpenAIResponses
 from agno.models.response import ModelResponse
 from openai.types.responses import ResponseReasoningItem
 
-from ..services.models_dev import fetch_models_dev_provider
-from ..services.provider_oauth_manager import get_provider_oauth_manager
-from ..services.tool_name_sanitizer import ToolNameSanitizer
+from ..services.models.models_dev import fetch_models_dev_provider
+from ..services.models.provider_oauth_manager import get_provider_oauth_manager
+from ..services.tools.tool_name_sanitizer import ToolNameSanitizer
 
 COPILOT_HEADERS = {
     "User-Agent": "GitHubCopilotChat/0.35.0",
