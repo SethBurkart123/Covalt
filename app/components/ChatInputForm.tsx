@@ -159,7 +159,7 @@ const SubmitButton = memo(function SubmitButton({
         size="icon"
         data-testid={testId}
         onClick={onStop}
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+        className="rounded-full"
       >
         <Square className="size-4" fill="currentColor" />
       </Button>
@@ -171,10 +171,7 @@ const SubmitButton = memo(function SubmitButton({
       type="submit"
       size="icon"
       data-testid={testId}
-      className={clsx(
-        "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90",
-        canSubmit ? "opacity-100" : "cursor-not-allowed opacity-50"
-      )}
+      className="rounded-full"
       disabled={!canSubmit}
     >
       <ArrowUp className="size-5.5" />
@@ -183,7 +180,11 @@ const SubmitButton = memo(function SubmitButton({
 });
 
 interface ChatInputFormProps {
-  onSubmit: (input: string, attachments: Attachment[], toolIds?: string[]) => void;
+  onSubmit: (
+    input: string,
+    attachments: Attachment[],
+    toolIds?: string[],
+  ) => void;
   isLoading: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
@@ -223,8 +224,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
   }) => {
     const { availableTools, groupedTools, mcpServers } = useToolsCatalog();
     const [hasTextContent, setHasTextContent] = useState(false);
-    const [pendingAttachments, setPendingAttachments] = useState<UploadingAttachment[]>([]);
-    
+    const [pendingAttachments, setPendingAttachments] = useState<
+      UploadingAttachment[]
+    >([]);
+
     const toolSelectorState = useMemo(() => {
       const schema = optionSchema;
       if (!schema) return { disabled: false, reason: undefined };
@@ -249,10 +252,11 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     const mentionItemsRef = useRef<MentionItem[]>([]);
 
     const hasUploadingFiles = pendingAttachments.some(
-      att => att.uploadStatus === "uploading" || att.uploadStatus === "pending"
+      (att) =>
+        att.uploadStatus === "uploading" || att.uploadStatus === "pending",
     );
     const hasUploadErrors = pendingAttachments.some(
-      att => att.uploadStatus === "error"
+      (att) => att.uploadStatus === "error",
     );
 
     const clearAttachments = useCallback(() => {
@@ -267,7 +271,13 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     const getUploadedAttachments = useCallback((): Attachment[] => {
       return pendingAttachments
         .filter((att) => att.uploadStatus === "uploaded")
-        .map(({ id, type, name, mimeType, size }) => ({ id, type, name, mimeType, size }));
+        .map(({ id, type, name, mimeType, size }) => ({
+          id,
+          type,
+          name,
+          mimeType,
+          size,
+        }));
     }, [pendingAttachments]);
 
     const mentionItems = useMemo<MentionItem[]>(() => {
@@ -298,7 +308,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           id: toolsetId,
           label: groupedTools.toolsetNames[toolsetId] ?? toolsetId,
           type: "toolset" as const,
-        })
+        }),
       );
 
       const mcpItems = mcpServers.map((server) => ({
@@ -308,7 +318,12 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       }));
 
       return [...toolItems, ...toolsetItems, ...mcpItems];
-    }, [availableTools, groupedTools.byToolset, groupedTools.toolsetNames, mcpServers]);
+    }, [
+      availableTools,
+      groupedTools.byToolset,
+      groupedTools.toolsetNames,
+      mcpServers,
+    ]);
 
     mentionItemsRef.current = mentionItems;
 
@@ -324,10 +339,20 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
 
           const labelStarts = label.startsWith(normalized);
           const labelIncludes = label.includes(normalized);
-          const serverStarts = serverLabel ? serverLabel.startsWith(normalized) : false;
-          const serverIncludes = serverLabel ? serverLabel.includes(normalized) : false;
+          const serverStarts = serverLabel
+            ? serverLabel.startsWith(normalized)
+            : false;
+          const serverIncludes = serverLabel
+            ? serverLabel.includes(normalized)
+            : false;
 
-          const matchScore = labelStarts ? 3 : labelIncludes ? 2 : serverStarts || serverIncludes ? 1 : 0;
+          const matchScore = labelStarts
+            ? 3
+            : labelIncludes
+              ? 2
+              : serverStarts || serverIncludes
+                ? 1
+                : 0;
           if (matchScore === 0) return null;
 
           const toolSpecific =
@@ -345,11 +370,21 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
             labelLength: label.length,
           };
         })
-        .filter((entry): entry is { item: MentionItem; group: number; matchScore: number; labelLength: number } => !!entry)
+        .filter(
+          (
+            entry,
+          ): entry is {
+            item: MentionItem;
+            group: number;
+            matchScore: number;
+            labelLength: number;
+          } => !!entry,
+        )
         .sort((a, b) => {
           if (a.group !== b.group) return a.group - b.group;
           if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore;
-          if (a.labelLength !== b.labelLength) return a.labelLength - b.labelLength;
+          if (a.labelLength !== b.labelLength)
+            return a.labelLength - b.labelLength;
           return a.item.label.localeCompare(b.item.label);
         });
 
@@ -383,7 +418,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
             "prose-pre:rounded-lg",
             "w-full flex-1 border-none bg-transparent px-1 pt-2 text-base text-foreground",
             "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-            "min-h-[40px] max-h-[200px] overflow-y-auto"
+            "min-h-[40px] max-h-[200px] overflow-y-auto",
           ),
         },
       },
@@ -429,7 +464,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           availableTools
             .filter((tool) => {
               const parsed = parseToolId(tool.id);
-              return parsed.kind === "mcp_tool" && parsed.namespace === attrs.id;
+              return (
+                parsed.kind === "mcp_tool" && parsed.namespace === attrs.id
+              );
             })
             .forEach((tool) => toolIds.add(tool.id));
           return false;
@@ -448,14 +485,25 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
 
       const uploadedAttachments = getUploadedAttachments();
       const markdown = serializeChatInputMarkdown(editor);
-      const hasContent = markdown.trim().length > 0 || uploadedAttachments.length > 0;
+      const hasContent =
+        markdown.trim().length > 0 || uploadedAttachments.length > 0;
 
-      if (!hasContent || isLoading || !canSendMessage || hasUploadingFiles || hasUploadErrors) {
+      if (
+        !hasContent ||
+        isLoading ||
+        !canSendMessage ||
+        hasUploadingFiles ||
+        hasUploadErrors
+      ) {
         return;
       }
 
       const mentionedToolIds = extractMentionedToolIds();
-      onSubmit(markdown, uploadedAttachments, mentionedToolIds.length > 0 ? mentionedToolIds : undefined);
+      onSubmit(
+        markdown,
+        uploadedAttachments,
+        mentionedToolIds.length > 0 ? mentionedToolIds : undefined,
+      );
       editor.commands.clearContent();
       clearAttachments();
     }, [
@@ -477,7 +525,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           submitMessage();
         }
       },
-      [submitMessage]
+      [submitMessage],
     );
 
     const handleFormSubmit = useCallback(
@@ -485,7 +533,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         e.preventDefault();
         submitMessage();
       },
-      [submitMessage]
+      [submitMessage],
     );
 
     useEffect(() => {
@@ -504,7 +552,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
         if (isComposing || e.isComposing || e.defaultPrevented) return;
 
-        const nodeInspectorOpen = document.querySelector('[data-node-inspector="true"]');
+        const nodeInspectorOpen = document.querySelector(
+          '[data-node-inspector="true"]',
+        );
         if (nodeInspectorOpen) return;
 
         const activeElement = document.activeElement;
@@ -514,7 +564,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
           activeElement?.getAttribute("contenteditable") === "true";
 
         const selection = window.getSelection();
-        const hasSelection = selection && selection.toString().trim().length > 0;
+        const hasSelection =
+          selection && selection.toString().trim().length > 0;
         const hasModifiers = e.metaKey || e.ctrlKey || e.altKey;
 
         const specialKeys = [
@@ -581,7 +632,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       files.forEach(async (file) => {
         const id = crypto.randomUUID();
         const type = getMediaType(file.type);
-        const previewUrl = type === "image" ? URL.createObjectURL(file) : undefined;
+        const previewUrl =
+          type === "image" ? URL.createObjectURL(file) : undefined;
 
         const newAttachment: UploadingAttachment = {
           id,
@@ -604,8 +656,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
               prev.map((att) =>
                 att.id === id
                   ? { ...att, uploadProgress: event.percentage }
-                  : att
-              )
+                  : att,
+              ),
             );
           });
 
@@ -615,8 +667,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
             prev.map((att) =>
               att.id === id
                 ? { ...att, uploadStatus: "uploaded", uploadProgress: 100 }
-                : att
-            )
+                : att,
+            ),
           );
         } catch (error) {
           setPendingAttachments((prev) =>
@@ -625,10 +677,11 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 ? {
                     ...att,
                     uploadStatus: "error",
-                    uploadError: error instanceof Error ? error.message : "Upload failed",
+                    uploadError:
+                      error instanceof Error ? error.message : "Upload failed",
                   }
-                : att
-            )
+                : att,
+            ),
           );
         }
       });
@@ -638,25 +691,31 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       setPendingAttachments((prev) => {
         const att = prev.find((a) => a.id === id);
         if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
-        
+
         if (att && att.uploadStatus === "uploaded") {
-          deletePendingUpload({ body: { id: att.id, mimeType: att.mimeType } }).catch(() => {});
+          deletePendingUpload({
+            body: { id: att.id, mimeType: att.mimeType },
+          }).catch(() => {});
         }
-        
+
         return prev.filter((a) => a.id !== id);
       });
     }, []);
 
-    const handleRetryUpload = useCallback((id: string) => {
-      const att = pendingAttachments.find(a => a.id === id);
-      if (!att || att.uploadStatus !== "error") return;
-      
-      handleRemoveAttachment(id);
-    }, [pendingAttachments, handleRemoveAttachment]);
+    const handleRetryUpload = useCallback(
+      (id: string) => {
+        const att = pendingAttachments.find((a) => a.id === id);
+        if (!att || att.uploadStatus !== "error") return;
+
+        handleRemoveAttachment(id);
+      },
+      [pendingAttachments, handleRemoveAttachment],
+    );
 
     const canSubmit =
-      canSendMessage && 
-      (hasTextContent || pendingAttachments.some(att => att.uploadStatus === "uploaded")) &&
+      canSendMessage &&
+      (hasTextContent ||
+        pendingAttachments.some((att) => att.uploadStatus === "uploaded")) &&
       !hasUploadingFiles &&
       !hasUploadErrors;
 
@@ -667,7 +726,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         onSubmit={handleFormSubmit}
         className={clsx(
           "relative flex flex-col items-center gap-2 rounded-3xl max-w-4xl mx-auto border border-border bg-card p-3 shadow-lg",
-          "chat-input-form"
+          "chat-input-form",
         )}
       >
         <FileDropZone
@@ -724,7 +783,7 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         </FileDropZone>
       </form>
     );
-  }
+  },
 );
 
 ChatInputForm.displayName = "ChatInputForm";

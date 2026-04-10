@@ -109,3 +109,4 @@ bun run ci:playwright
 ## Status
 
 Active development — breaking changes are expected before initial release. No backwards compatibility is guaranteed for toolset schemas, APIs, database schemas, or the Python SDK.
+
