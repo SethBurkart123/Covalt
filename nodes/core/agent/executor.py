@@ -155,6 +155,7 @@ class AgentExecutor:
             delegation_context=delegation_context,
         )
         tool_node_lookup = _build_tool_node_lookup(base_tools + config.tools)
+        delegation_tool_names = {_safe_delegation_tool_name(a) for a in linked_agents}
 
         group_by_node = _should_group_by_node(context)
         force_member_output = _force_member_output(context)
@@ -302,6 +303,8 @@ class AgentExecutor:
                         tool = _tool_payload_from_runtime_call(event.tool)
                         if tool is not None:
                             _attach_tool_node_metadata(tool, tool_node_lookup)
+                            if tool.get("toolName") in delegation_tool_names:
+                                tool["isDelegation"] = True
                             yield _agent_event_node(
                                 context,
                                 "ToolCallStarted",
@@ -314,6 +317,8 @@ class AgentExecutor:
                         tool = _tool_payload_from_runtime_result(event.tool)
                         if tool is not None:
                             _attach_tool_node_metadata(tool, tool_node_lookup)
+                            if tool.get("toolName") in delegation_tool_names:
+                                tool["isDelegation"] = True
                             yield _agent_event_node(
                                 context,
                                 "ToolCallCompleted",

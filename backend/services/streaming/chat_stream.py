@@ -134,6 +134,31 @@ class FlowRunHandle:
         return self._cancel_requested
 
 
+class ChatFlowCancelHandle:
+    def __init__(self, run_handle: FlowRunHandle, execution_ctx: Any | None) -> None:
+        self._run_handle = run_handle
+        self._execution_ctx = execution_ctx
+
+    def bind_agent(self, handle: AgentHandle) -> None:
+        self._run_handle.bind_agent(handle)
+
+    def set_run_id(self, run_id: str) -> None:
+        self._run_handle.set_run_id(run_id)
+
+    def request_cancel(self) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.request_cancel()
+
+    def cancel(self, run_id: str | None = None) -> None:
+        if self._execution_ctx is not None:
+            setattr(self._execution_ctx, "stop_run", True)
+        self._run_handle.cancel(run_id)
+
+    def is_cancel_requested(self) -> bool:
+        return self._run_handle.is_cancel_requested()
+
+
 def _pick_text_output(outputs: dict[str, DataValue]) -> DataValue | None:
     if not outputs:
         return None
@@ -209,6 +234,16 @@ def _chat_event_from_agent_runtime_event(data: dict[str, Any]) -> ChatEvent | No
     )
 
 
+def _is_delegation_agent_event(data: dict[str, Any]) -> bool:
+    event_name = str(data.get("event") or "")
+    if event_name not in {EVENT_TOOL_CALL_STARTED, EVENT_TOOL_CALL_COMPLETED}:
+        return False
+    tool = data.get("tool")
+    if not isinstance(tool, dict):
+        return False
+    return bool(tool.get("isDelegation")) or _is_delegation_tool(str(tool.get("toolName") or ""))
+
+
 def _emit_member_started(
     channel: Any,
     *,
@@ -277,7 +312,6 @@ async def handle_flow_stream(
     trace_error: str | None = None
 
     run_handle = FlowRunHandle()
-    run_control.register_active_run(assistant_msg_id, run_handle)
 
     if chat_id:
         await broadcaster.register_stream(chat_id, assistant_msg_id)
@@ -321,8 +355,11 @@ async def handle_flow_stream(
     )
 
     state = types.SimpleNamespace(user_message=user_message)
+    execution_ctx = types.SimpleNamespace(entry_node_ids=entry_node_ids, stop_run=False)
+    cancel_handle = ChatFlowCancelHandle(run_handle, execution_ctx)
+    run_control.register_active_run(assistant_msg_id, cancel_handle)
     services = types.SimpleNamespace(
-        run_handle=run_handle,
+        run_handle=cancel_handle,
         extra_tool_ids=list(extra_tool_ids or []),
         tool_registry=registry,
         chat_output=types.SimpleNamespace(primary_agent_id=None),
@@ -332,7 +369,7 @@ async def handle_flow_stream(
             runtime_messages=runtime_messages,
         ),
         expression_context={"trigger": trigger_payload},
-        execution=types.SimpleNamespace(entry_node_ids=entry_node_ids),
+        execution=execution_ctx,
     )
     _apply_runtime_config(normalized_graph_data, services, mode="chat")
     chat_output = getattr(services, "chat_output", None)
@@ -406,6 +443,10 @@ async def handle_flow_stream(
                         and not event_data.get("memberRunId")
                     ):
                         continue
+
+                    if _is_delegation_agent_event(event_data):
+                        continue
+
                     _ensure_tool_call_completed_payload(event_data, chat_id or None)
                     chat_event = _chat_event_from_agent_runtime_event(event_data)
                     if chat_event is not None:
@@ -867,17 +908,6 @@ async def handle_content_stream(
                         accumulator.flush_reasoning()
                         active_delegation_tool_id = event.tool.id
                         delegation_task = str(event.tool.arguments.get("task") or "")
-                        accumulator.add_tool_block(
-                            accumulator.content_blocks,
-                            {
-                                "id": event.tool.id,
-                                "toolName": event.tool.name,
-                                "toolArgs": event.tool.arguments,
-                                "isCompleted": False,
-                                "isDelegation": True,
-                                **({"providerData": provider_data} if provider_data else {}),
-                            },
-                        )
                         continue
 
                     accumulator.flush_text()
@@ -912,18 +942,6 @@ async def handle_content_stream(
                                 memberRunId=member_state.run_id,
                             )
                         )
-                        delegation_block = accumulator.find_tool_block(
-                            accumulator.content_blocks,
-                            active_delegation_tool_id,
-                        )
-                        if delegation_block is not None:
-                            delegation_block["isCompleted"] = True
-                            delegation_block["toolResult"] = event.tool.result
-                            if bool(event.tool.failed) or did_tool_call_fail(
-                                event.tool.name,
-                                event.tool.id,
-                            ):
-                                delegation_block["failed"] = True
                         active_delegation_tool_id = None
                         delegation_task = ""
                         await _persist_accumulator(

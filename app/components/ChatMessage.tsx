@@ -6,6 +6,7 @@ import clsx from "clsx";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
 import MemberRunCall from "./MemberRunCall";
+import SubAgentCard from "./SubAgentCard";
 import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
@@ -229,10 +230,26 @@ function ChatMessage({
                           continue;
                         }
 
+                        if (block.type === "member_run") {
+                          rendered.push(
+                            <SubAgentCard
+                              key={block.runId || `member-${i}`}
+                              runId={block.runId}
+                              memberName={block.memberName}
+                              content={block.content}
+                              task={block.task}
+                              active={!block.isCompleted && !!isStreaming}
+                              isCompleted={block.isCompleted}
+                              hasError={block.hasError}
+                              chatId={chatId}
+                            />
+                          );
+                          continue;
+                        }
+
                         if (
                           block.type === "tool_call" ||
-                          block.type === "reasoning" ||
-                          block.type === "member_run"
+                          block.type === "reasoning"
                         ) {
                           const start = i;
                           const group: ContentBlock[] = [];
@@ -240,13 +257,12 @@ function ChatMessage({
 
                           while (j < blocks.length) {
                             const b = blocks[j];
-                            if (b.type === "member_run" && b.groupByNode) {
+                            if (b.type === "member_run") {
                               break;
                             }
                             if (
                               b.type === "tool_call" ||
-                              b.type === "reasoning" ||
-                              b.type === "member_run"
+                              b.type === "reasoning"
                             ) {
                               group.push(b);
                               j++;
@@ -298,21 +314,6 @@ function ChatMessage({
                                   isLast={idx === visibleGroup.length - 1}
                                   active={!b.isCompleted && !!isStreaming}
                                   isCompleted={b.isCompleted}
-                                />
-                              );
-                            } else if (b.type === "member_run") {
-                                  return (
-                                <MemberRunCall
-                                  key={b.runId || `member-${start}-${idx}`}
-                                  memberName={b.memberName}
-                                  nodeId={b.nodeId}
-                                  content={b.content}
-                                  isGrouped={visibleGroup.length > 1}
-                                  isFirst={idx === 0}
-                                  isLast={idx === visibleGroup.length - 1}
-                                  active={!b.isCompleted && !!isStreaming}
-                                  isCompleted={b.isCompleted}
-                                  hasError={b.hasError}
                                 />
                               );
                             }
