@@ -92,6 +92,7 @@ This codebase values **clarity, composability, and satisfaction**. Take inspirat
 - **Constants**: UPPER_SNAKE_CASE (`MAX_RECENT_MODELS`, `TRANSITION`)
 - **Files**: kebab-case for components (`artifact-panel-context.tsx`)
 - **Clear names**: `ensureChatInitialized()` beats `initChatStuff()`
+- **Commits**: Single-line conventional commit messages only (e.g. `feat: add sub-agent card UI`). No multi-line bodies or bullet lists.
 
 ## ESLint Configuration
 
