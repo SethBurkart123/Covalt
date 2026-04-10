@@ -328,14 +328,23 @@ class AgentExecutor:
                         continue
 
                     if isinstance(event, ApprovalRequired):
-                        approval_events, approval = await _handle_root_approval(
+                        required_events = _build_approval_required_events(
                             context=context,
                             runtime_event=event,
                             tool_node_lookup=tool_node_lookup,
                             member_fields=member_fields,
                         )
-                        for approval_event in approval_events:
-                            yield approval_event
+                        for ev in required_events:
+                            yield ev
+
+                        approval, resolved_events = await _await_and_resolve_approval(
+                            context=context,
+                            runtime_event=event,
+                            tool_node_lookup=tool_node_lookup,
+                            member_fields=member_fields,
+                        )
+                        for ev in resolved_events:
+                            yield ev
 
                         active_root_streams += 1
                         asyncio.create_task(
@@ -820,13 +829,13 @@ async def _run_delegated_agent(
             return "".join(result_parts)
 
 
-async def _handle_root_approval(
+def _build_approval_required_events(
     *,
     context: FlowContext,
     runtime_event: ApprovalRequired,
     tool_node_lookup: dict[str, dict[str, str]],
     member_fields: dict[str, Any],
-) -> tuple[list[NodeEvent], ApprovalResponse]:
+) -> list[NodeEvent]:
     tools_info = [_pending_tool_payload(tool) for tool in runtime_event.tools]
     tool_registry = _get_tool_registry(context)
     for tool_info in tools_info:
@@ -837,7 +846,7 @@ async def _handle_root_approval(
                 tool_info["editableArgs"] = editable_args
         _attach_tool_node_metadata(tool_info, tool_node_lookup)
 
-    events = [
+    return [
         _agent_event_node(
             context,
             "ToolApprovalRequired",
@@ -846,7 +855,18 @@ async def _handle_root_approval(
         )
     ]
 
+
+async def _await_and_resolve_approval(
+    *,
+    context: FlowContext,
+    runtime_event: ApprovalRequired,
+    tool_node_lookup: dict[str, dict[str, str]],
+    member_fields: dict[str, Any],
+) -> tuple[ApprovalResponse, list[NodeEvent]]:
+    tools_info = [_pending_tool_payload(tool) for tool in runtime_event.tools]
+
     approval = await _await_approval_response(runtime_event.run_id or context.run_id)
+    events: list[NodeEvent] = []
     for tool in tools_info:
         tool_id = str(tool.get("id") or "")
         decision = approval.decisions.get(tool_id)
@@ -872,7 +892,7 @@ async def _handle_root_approval(
             )
         )
 
-    return events, approval
+    return approval, events
 
 
 async def _await_approval_response(run_id: str) -> ApprovalResponse:
