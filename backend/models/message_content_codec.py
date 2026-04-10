@@ -15,11 +15,16 @@ def _normalize_blocks(value: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def _is_delegation_block(block: dict[str, Any]) -> bool:
+    return block.get("type") == "tool_call" and bool(block.get("isDelegation"))
+
+
 def decode_message_content(content: Any) -> Any:
     """Decode persisted message content into runtime shape.
 
     Stringified JSON block arrays are decoded into list[dict]. Other values are
-    returned unchanged to preserve existing behavior.
+    returned unchanged to preserve existing behavior. Legacy delegation tool
+    blocks are stripped on read.
     """
     if not isinstance(content, str):
         return content
@@ -36,7 +41,7 @@ def decode_message_content(content: Any) -> Any:
     if not isinstance(parsed, list):
         return content
 
-    return _normalize_blocks(parsed)
+    return [b for b in _normalize_blocks(parsed) if not _is_delegation_block(b)]
 
 
 def parse_message_blocks(

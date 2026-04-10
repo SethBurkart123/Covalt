@@ -32,7 +32,6 @@ import {
   handleToolApprovalResolved,
   handleToolCallCompleted,
   handleToolCallStarted,
-  removeTopLevelToolBlock,
 } from "@/lib/services/tool-event-handler";
 
 export { createInitialState };
@@ -72,13 +71,8 @@ export function processEvent(
 
   if (isMemberScoped) {
     processMemberEvent(eventType, payload, state);
-    if (
-      eventType !== RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED
-      && eventType !== RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED
-    ) {
-      scheduleUpdate(state, callbacks.onUpdate);
-      return;
-    }
+    scheduleUpdate(state, callbacks.onUpdate);
+    return;
   }
 
   switch (eventType) {
@@ -130,9 +124,6 @@ export function processEvent(
 
     case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
       handleToolApprovalResolved(state, payload.tool);
-      if (payload.memberRunId) {
-        removeTopLevelToolBlock(state, payload.tool);
-      }
       break;
 
     case RUNTIME_EVENT.FLOW_NODE_STARTED:
