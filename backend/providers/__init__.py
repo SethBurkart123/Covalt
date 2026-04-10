@@ -306,25 +306,49 @@ def reload_provider_registry() -> None:
 reload_provider_registry()
 
 
+def _instance_credential_context(raw_provider: str, normalized: str):
+    """If raw_provider is an instance ID, set credential override from DB."""
+    if raw_provider == normalized or ":" not in _normalize_provider_key(raw_provider):
+        return None
+    instance_key = _normalize_provider_key(raw_provider)
+    with db.db_session() as sess:
+        settings = db.get_provider_settings(sess, instance_key)
+    if not settings:
+        return None
+    return _credential_override.set(
+        (settings.get("api_key"), settings.get("base_url"))
+    )
+
+
 def get_model(
     provider: str,
     model_id: str,
     provider_options: dict[str, Any] | None = None,
 ) -> Any:
-    provider = _normalize(provider)
-    if provider not in PROVIDERS:
+    normalized = _normalize(provider)
+    if normalized not in PROVIDERS:
         raise ValueError(
             f"Unknown provider '{provider}'. Available: {', '.join(PROVIDERS.keys())}"
         )
     options = provider_options or {}
-    return PROVIDERS[provider]["get_model"](model_id, provider_options=options)
+    token = _instance_credential_context(provider, normalized)
+    try:
+        return PROVIDERS[normalized]["get_model"](model_id, provider_options=options)
+    finally:
+        if token is not None:
+            _credential_override.reset(token)
 
 
 async def fetch_provider_models(provider: str) -> list[dict[str, Any]]:
-    provider = _normalize(provider)
-    if provider not in PROVIDERS:
+    normalized = _normalize(provider)
+    if normalized not in PROVIDERS:
         return []
-    return await PROVIDERS[provider]["fetch_models"]()
+    token = _instance_credential_context(provider, normalized)
+    try:
+        return await PROVIDERS[normalized]["fetch_models"]()
+    finally:
+        if token is not None:
+            _credential_override.reset(token)
 
 
 def get_provider_model_options(
@@ -354,8 +378,16 @@ def list_providers() -> list[str]:
     return list(PROVIDERS.keys())
 
 
+def _resolve_base_provider(provider: str) -> str:
+    """Strip instance suffix (e.g. 'openai_like:abc123' -> 'openai_like')."""
+    if ":" in provider:
+        return provider.split(":", 1)[0]
+    return provider
+
+
 def _normalize(provider: str) -> str:
     provider = _normalize_provider_key(provider)
+    provider = _resolve_base_provider(provider)
     return ALIASES.get(provider, provider)
 
 

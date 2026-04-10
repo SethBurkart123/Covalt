@@ -29,6 +29,16 @@ const WORKSPACE_PANEL_TRANSITION = {
   damping: 28,
 };
 
+function parseSelectedModel(model: string): { provider: string; modelId: string } | null {
+  if (!model || model.startsWith("agent:")) return null;
+  const separatorIndex = model.lastIndexOf(":");
+  if (separatorIndex <= 0 || separatorIndex >= model.length - 1) return null;
+  return {
+    provider: model.slice(0, separatorIndex),
+    modelId: model.slice(separatorIndex + 1),
+  };
+}
+
 export default function ChatPanel() {
   const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
   const { setRightContent } = usePageTitle();
@@ -63,8 +73,10 @@ export default function ChatPanel() {
   const handleThinkTagDetected = useCallback(() => {
     if (hasCheckedThinkingPromptRef.current) return;
 
-    const [provider, modelId] = selectedModel?.split(":") || [];
-    if (!provider || !modelId || !modelSettings) return;
+    const parsedModel = parseSelectedModel(selectedModel);
+    if (!parsedModel || !modelSettings) return;
+
+    const { provider, modelId } = parsedModel;
 
     const setting = modelSettings.models?.find(
       (m) => m.provider === provider && m.modelId === modelId
@@ -152,10 +164,10 @@ export default function ChatPanel() {
   }, [rawMessages, modelSettings, selectedModel]);
 
   const handleAcceptThinkingPrompt = useCallback(async () => {
-    const [provider, modelId] = selectedModel?.split(":") || [];
-    if (!provider || !modelId) return;
+    const parsedModel = parseSelectedModel(selectedModel);
+    if (!parsedModel) return;
 
-    await api.respondToThinkingTagPrompt(provider, modelId, true);
+    await api.respondToThinkingTagPrompt(parsedModel.provider, parsedModel.modelId, true);
     setShowThinkingPrompt(false);
 
     if (!isLoading && streamingMessageIdRef.current) triggerReload();
@@ -164,10 +176,10 @@ export default function ChatPanel() {
   }, [selectedModel, streamingMessageIdRef, isLoading, triggerReload]);
 
   const handleDeclineThinkingPrompt = useCallback(async () => {
-    const [provider, modelId] = selectedModel?.split(":") || [];
-    if (!provider || !modelId) return;
+    const parsedModel = parseSelectedModel(selectedModel);
+    if (!parsedModel) return;
 
-    await api.respondToThinkingTagPrompt(provider, modelId, false);
+    await api.respondToThinkingTagPrompt(parsedModel.provider, parsedModel.modelId, false);
     setShowThinkingPrompt(false);
     setModelSettings(await getModelSettings());
   }, [selectedModel]);

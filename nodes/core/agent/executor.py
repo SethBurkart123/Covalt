@@ -1171,7 +1171,7 @@ def _resolve_model(
         raise ValueError(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
-    provider, model_id = model_str.split(":", 1)
+    provider, model_id = model_str.rsplit(":", 1)
     provider_options = resolve_provider_options(
         provider,
         model_id,
@@ -1184,7 +1184,7 @@ def _resolve_model(
 def _split_model_id(model_str: str) -> tuple[str | None, str | None]:
     if ":" not in model_str:
         return None, None
-    provider, model_id = model_str.split(":", 1)
+    provider, model_id = model_str.rsplit(":", 1)
     provider = provider.strip()
     model_id = model_id.strip()
     if not provider or not model_id:

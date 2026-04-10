@@ -74,7 +74,11 @@ export function isOptionVisible(
 function resolveStorageContext(selectedModel: string): StorageContext | null {
   if (!selectedModel || !selectedModel.includes(":")) return null;
 
-  const [provider, modelId] = selectedModel.split(":", 2);
+  const separatorIndex = selectedModel.lastIndexOf(":");
+  if (separatorIndex <= 0) return null;
+
+  const provider = selectedModel.slice(0, separatorIndex);
+  const modelId = selectedModel.slice(separatorIndex + 1);
   if (!provider || !modelId || provider === "agent") return null;
 
   return { provider, modelId };

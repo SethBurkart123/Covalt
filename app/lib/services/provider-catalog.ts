@@ -144,6 +144,11 @@ export const toProviderConfigMap = (
   return configMap;
 };
 
+const resolveBaseProvider = (providerId: string): string => {
+  const idx = providerId.indexOf(':');
+  return idx >= 0 ? providerId.slice(0, idx) : providerId;
+};
+
 export const createProviderMap = (providers: ProviderDefinition[]): Record<string, ProviderDefinition> => {
   const map: Record<string, ProviderDefinition> = {};
   for (const provider of providers) {
@@ -154,5 +159,22 @@ export const createProviderMap = (providers: ProviderDefinition[]): Record<strin
       map[toProviderId(alias)] = provider;
     }
   }
-  return map;
+  return new Proxy(map, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string') {
+        if (prop in target) return target[prop];
+        const base = resolveBaseProvider(prop);
+        if (base !== prop && base in target) return target[base];
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      if (typeof prop === 'string') {
+        if (prop in target) return true;
+        const base = resolveBaseProvider(prop);
+        return base !== prop && base in target;
+      }
+      return Reflect.has(target, prop);
+    },
+  });
 };
