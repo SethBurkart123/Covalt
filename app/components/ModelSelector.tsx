@@ -21,6 +21,24 @@ import { getStarredModels, setStarredModels as setStarredModels_backend } from "
 
 const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
 
+const CUSTOM_PROVIDERS_STORAGE_KEY = 'covalt:custom-providers';
+
+function getCustomProviderNames(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const entries: Array<{ id: string; name: string }> = JSON.parse(
+      localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY) || '[]',
+    );
+    const map: Record<string, string> = {};
+    for (const entry of entries) {
+      map[entry.id] = entry.name;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 function MiddleTruncate({ text, className }: { text: string; className?: string }) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const [truncated, setTruncated] = useState(text);
@@ -84,7 +102,6 @@ interface ModelSelectorProps {
 }
 
 const getModelKey = (m: ModelInfo) => `${m.provider}:${m.modelId}`;
-const getProviderFromKey = (key: string) => key.split(":")[0];
 const AGENT_FILTER = "__agents__";
 const STARRED_FILTER = "__starred__";
 const ITEM_HEIGHT = 32;
@@ -178,23 +195,32 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     };
   }, [open, refreshModels, refreshAgents, hideAgents]);
 
+  const customProviderNames = useMemo(() => getCustomProviderNames(), []);
+
   const getProviderDef = useCallback(
     (provider: string) => providerMap[toProviderId(provider)] || providerMap[provider] || null,
     [providerMap],
   );
 
+  const getProviderDisplayName = useCallback(
+    (provider: string): string => {
+      const customName = customProviderNames[provider];
+      if (customName) return customName;
+      const def = getProviderDef(provider);
+      return def?.name || provider;
+    },
+    [customProviderNames, getProviderDef],
+  );
+
   const providers = useMemo(() => {
     const unique = [...new Set(models.map((m) => m.provider))];
     return unique
-      .map((provider) => {
-        const def = getProviderDef(provider);
-        return {
-          id: provider,
-          name: def?.name || provider,
-        };
-      })
+      .map((provider) => ({
+        id: provider,
+        name: getProviderDisplayName(provider),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [models, getProviderDef]);
+  }, [models, getProviderDisplayName]);
 
   const showAgents = !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
   const starredSet = useMemo(() => new Set(starredModels), [starredModels]);
@@ -216,15 +242,21 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     if (providerFilter !== AGENT_FILTER) {
       const allAvailable = new Map(models.map((m) => [getModelKey(m), m]));
 
+      const modelSearchText = (model: ModelInfo) => {
+        const name = getProviderDisplayName(model.provider);
+        return `${name} ${model.displayName} ${model.modelId}`;
+      };
+
+      const modelIcon = (model: ModelInfo) => getProviderDef(model.provider)?.icon || OpenAIIcon;
+
       if (providerFilter === STARRED_FILTER) {
         for (const key of starredModels) {
           const model = allAvailable.get(key);
           if (!model) continue;
-          const def = getProviderDef(model.provider);
           entries.push({
             value: `starred:${model.modelId}`,
-            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
+            searchText: modelSearchText(model),
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
           });
         }
         return entries;
@@ -237,21 +269,19 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         for (const key of starredModels) {
           const model = available.get(key);
           if (!model) continue;
-          const def = getProviderDef(model.provider);
           entries.push({
             value: `starred:${model.modelId}`,
-            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
+            searchText: modelSearchText(model),
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
           });
         }
 
         for (const model of getRecentModels().map((k) => available.get(k)).filter((m): m is ModelInfo => !!m)) {
           if (starredSet.has(getModelKey(model))) continue;
-          const def = getProviderDef(model.provider);
           entries.push({
             value: `recent:${model.modelId}`,
-            searchText: `${def?.name || model.provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: true, ProviderIcon: def?.icon || OpenAIIcon },
+            searchText: modelSearchText(model),
+            row: { type: "model", model, key: getModelKey(model), isRecent: true, ProviderIcon: modelIcon(model) },
           });
         }
       }
@@ -263,24 +293,21 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         groups.set(model.provider, group);
       }
 
-      for (const [provider, providerModels] of [...groups.entries()].sort((a, b) => {
-        const aDef = getProviderDef(a[0]);
-        const bDef = getProviderDef(b[0]);
-        return (aDef?.name || a[0]).localeCompare(bDef?.name || b[0]);
-      })) {
-        const def = getProviderDef(provider);
+      for (const [, providerModels] of [...groups.entries()].sort((a, b) =>
+        getProviderDisplayName(a[0]).localeCompare(getProviderDisplayName(b[0])),
+      )) {
         for (const model of providerModels) {
           entries.push({
             value: model.modelId,
-            searchText: `${def?.name || provider} ${model.displayName} ${model.modelId}`,
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: def?.icon || OpenAIIcon },
+            searchText: modelSearchText(model),
+            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
           });
         }
       }
     }
 
     return entries;
-  }, [models, agents, providerFilter, showAgents, getProviderDef, starredModels, starredSet]);
+  }, [models, agents, providerFilter, showAgents, getProviderDef, getProviderDisplayName, starredModels, starredSet]);
 
   const fuse = useMemo(
     () => new Fuse(allEntries, { keys: ["searchText"], threshold: 0.4, ignoreLocation: true, includeScore: true }),
@@ -297,14 +324,13 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     let lastGroup = "";
 
     for (const { value, row } of filteredEntries) {
-      const def = row.type === "model" ? getProviderDef(row.model.provider) : null;
       const group = row.type === "agent"
         ? "Agents"
         : value.startsWith("starred:")
           ? "Starred"
           : row.isRecent
             ? "Recent"
-            : (def?.name || row.model.provider);
+            : getProviderDisplayName(row.model.provider);
 
       if (group !== lastGroup) {
         rows.push({ type: "heading", label: group });
@@ -314,7 +340,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     }
 
     return rows;
-  }, [filteredEntries, getProviderDef]);
+  }, [filteredEntries, getProviderDisplayName]);
 
   const handleSelect = useCallback(
     (key: string) => {
@@ -326,7 +352,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
 
   const selectedModelInfo = models.find((m) => getModelKey(m) === selectedModel);
   const selectedAgent = selectedModel.startsWith("agent:") ? agents.find((a) => `agent:${a.id}` === selectedModel) : null;
-  const selectedProvider = selectedModel && !selectedModel.startsWith("agent:") ? getProviderDef(getProviderFromKey(selectedModel)) : null;
+  const selectedProvider = selectedModelInfo ? getProviderDef(selectedModelInfo.provider) : null;
   const SelectedProviderIcon = selectedProvider?.icon;
 
   return (

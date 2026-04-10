@@ -7,6 +7,7 @@ from typing import Any
 from ... import db
 from ...models.chat import OptionSchema
 from .model_schema_cache import get_effective_option_schema
+from .model_selection import parse_model_id
 
 MAX_OPTION_KEYS = 20
 MAX_PAYLOAD_SIZE = 2048  # bytes
@@ -57,7 +58,7 @@ def resolve_model_for_chat(
             f"Invalid model ID format: '{effective_model_id}'. Expected 'provider:model_id'"
         )
 
-    provider, model_id = effective_model_id.split(":", 1)
+    provider, model_id = parse_model_id(effective_model_id)
     provider = provider.strip()
     model_id = model_id.strip()
     if not provider or not model_id:

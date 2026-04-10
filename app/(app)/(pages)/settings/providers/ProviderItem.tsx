@@ -17,9 +17,11 @@ import type { ProviderItemRowActions, ProviderItemRowViewModel } from './provide
 interface ProviderItemProps {
   row: ProviderItemRowViewModel;
   actions: ProviderItemRowActions;
+  editableName?: boolean;
+  onNameChange?: (name: string) => void;
 }
 
-export default function ProviderItem({ row, actions }: ProviderItemProps) {
+export default function ProviderItem({ row, actions, editableName, onNameChange }: ProviderItemProps) {
   const { def, config, isConnected, isPluginProvider, connection, oauthStatus, oauthUi } = row;
   const { saving, saved, status: connectionStatus, error: connectionError } = connection;
   const {
@@ -218,9 +220,18 @@ export default function ProviderItem({ row, actions }: ProviderItemProps) {
             className="overflow-hidden"
           >
             <div className="px-2 border-t border-border/60 pt-2 space-y-2 mt-2">
-
-
-
+              {editableName && onNameChange && (
+                <div className="space-y-2">
+                  <Label htmlFor={`${def.key}-custom-name`}>Display Name</Label>
+                  <Input
+                    id={`${def.key}-custom-name`}
+                    type="text"
+                    placeholder="My Custom Provider"
+                    value={def.name}
+                    onChange={(e) => onNameChange(e.target.value)}
+                  />
+                </div>
+              )}
 
               {!isOauth && def.fields.map((field) => (
                 <div className="space-y-2" key={`${def.key}-${field.id}`}>

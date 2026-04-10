@@ -235,7 +235,7 @@ def _resolve_model_ref(provider: str, model_id: str) -> str:
         raise ValueError("Model selection is not configured")
 
     if not provider_clean and ":" in model_clean:
-        provider_clean, model_clean = model_clean.split(":", 1)
+        provider_clean, model_clean = model_clean.rsplit(":", 1)
 
     if not provider_clean:
         raise ValueError("Model provider is not configured")

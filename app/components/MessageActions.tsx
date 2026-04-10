@@ -16,6 +16,33 @@ import {
 } from "@/components/ui/tooltip";
 import type { Message, MessageSibling } from "@/lib/types/chat";
 
+const CUSTOM_PROVIDERS_STORAGE_KEY = 'covalt:custom-providers';
+
+function getCustomProviderName(providerId: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const entries: Array<{ id: string; name: string }> = JSON.parse(
+      localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY) || '[]',
+    );
+    const match = entries.find((entry) => entry.id === providerId);
+    return match?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+function formatModelLabel(modelUsed: string): string {
+  const separatorIndex = modelUsed.lastIndexOf(':');
+  if (separatorIndex <= 0 || separatorIndex >= modelUsed.length - 1) return modelUsed;
+
+  const provider = modelUsed.slice(0, separatorIndex);
+  const modelId = modelUsed.slice(separatorIndex + 1);
+  const customName = getCustomProviderName(provider);
+  if (!customName) return modelUsed;
+
+  return `${customName}:${modelId}`;
+}
+
 interface MessageActionsProps {
   message: Message;
   siblings: MessageSibling[];
@@ -44,7 +71,7 @@ export function MessageActions({
     message.role === "assistant" &&
     "modelUsed" in message &&
     typeof message.modelUsed === "string"
-      ? message.modelUsed
+      ? formatModelLabel(message.modelUsed)
       : undefined;
 
   const handlePrevious = () => {

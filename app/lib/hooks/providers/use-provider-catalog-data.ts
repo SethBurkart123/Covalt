@@ -12,15 +12,22 @@ import { normalizeOAuthStatus } from './types';
 
 interface UseProviderCatalogDataParams {
   getProviders: (options?: { force?: boolean }) => Promise<ProviderDefinition[]>;
+  extraProviderIds?: string[];
 }
 
-export function useProviderCatalogData({ getProviders }: UseProviderCatalogDataParams) {
+const uniqueProviderIds = (providerIds: string[]): string[] => [...new Set(providerIds.filter(Boolean))];
+
+export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: UseProviderCatalogDataParams) {
   const [providers, setProviders] = useState<ProviderDefinition[]>([]);
   const [providerConfigs, setProviderConfigs] = useState<Record<string, ProviderConfig>>({});
   const [providerConnections, setProviderConnections] = useState<Record<string, boolean>>({});
   const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthState>>({});
   const [pluginProviders, setPluginProviders] = useState<Record<string, ProviderPluginMeta>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const extraProviderIdsKey = useMemo(
+    () => uniqueProviderIds(extraProviderIds).sort().join('|'),
+    [extraProviderIds],
+  );
 
   const providerMap = useMemo(
     () => Object.fromEntries(providers.map((provider) => [provider.provider, provider])),
@@ -39,7 +46,10 @@ export function useProviderCatalogData({ getProviders }: UseProviderCatalogDataP
       const catalog = await getProviders({ force: true });
       setProviders(catalog);
 
-      const providerIds = catalog.map((provider) => provider.provider);
+      const providerIds = uniqueProviderIds([
+        ...catalog.map((provider) => provider.provider),
+        ...extraProviderIdsKey.split('|').filter(Boolean),
+      ]);
       const [overviewResponse, pluginResponse] = await Promise.all([
         fetchProviderOverview(providerIds),
         request<ProviderPluginsResponse>('list_provider_plugins', {}),
@@ -103,7 +113,7 @@ export function useProviderCatalogData({ getProviders }: UseProviderCatalogDataP
     } finally {
       setIsLoading(false);
     }
-  }, [fetchProviderOverview, getProviders]);
+  }, [extraProviderIdsKey, fetchProviderOverview, getProviders]);
 
   const applyOverviewStatus = useCallback((overviewProviders: ProviderOverviewResponse['providers']) => {
     setProviderConnections((prev) => {
@@ -149,7 +159,11 @@ export function useProviderCatalogData({ getProviders }: UseProviderCatalogDataP
     (providerId: string, field: keyof ProviderConfig, value: string | boolean) => {
       setProviderConfigs((prev) => ({
         ...prev,
-        [providerId]: { ...prev[providerId], [field]: value },
+        [providerId]: {
+          ...prev[providerId],
+          provider: providerId,
+          [field]: value,
+        },
       }));
     },
     [],

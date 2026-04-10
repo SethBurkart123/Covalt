@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Store } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import ProviderItem from './ProviderItem';
 
 import type { ProviderConfig } from '@/lib/types/provider-catalog';
@@ -22,6 +28,28 @@ import type {
   ProviderItemRowViewModel,
   ProviderOauthUiState,
 } from './provider-item.types';
+import { OpenAIIcon } from './provider-icons';
+
+const CUSTOM_PROVIDERS_STORAGE_KEY = 'covalt:custom-providers';
+
+interface CustomProviderEntry {
+  id: string;
+  baseProvider: string;
+  name: string;
+}
+
+const loadCustomProviders = (): CustomProviderEntry[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const saveCustomProviders = (entries: CustomProviderEntry[]) => {
+  localStorage.setItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(entries));
+};
 
 interface ProvidersPanelProps {
   onOpenStore?: () => void;
@@ -31,9 +59,43 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
   const [search, setSearch] = useState('');
   const [connectionUiByProvider, setConnectionUiByProvider] = useState<Record<string, ProviderConnectionUiState>>({});
   const [oauthUiByProvider, setOauthUiByProvider] = useState<Record<string, ProviderOauthUiState>>({});
+  const [customProviders, setCustomProviders] = useState<CustomProviderEntry[]>(loadCustomProviders);
+
+  const addCustomProvider = useCallback((baseProvider: string, defaultName: string) => {
+    setCustomProviders((prev) => {
+      const entry: CustomProviderEntry = {
+        id: `${baseProvider}:${crypto.randomUUID().slice(0, 8)}`,
+        baseProvider,
+        name: defaultName,
+      };
+      const next = [...prev, entry];
+      saveCustomProviders(next);
+      return next;
+    });
+  }, []);
+
+  const removeCustomProvider = useCallback((id: string) => {
+    setCustomProviders((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      saveCustomProviders(next);
+      return next;
+    });
+  }, []);
+
+  const renameCustomProvider = useCallback((id: string, name: string) => {
+    setCustomProviders((prev) => {
+      const next = prev.map((e) => (e.id === id ? { ...e, name } : e));
+      saveCustomProviders(next);
+      return next;
+    });
+  }, []);
 
   const chatContext = useOptionalChat();
   const refreshModels = chatContext?.refreshModels;
+  const customProviderIds = useMemo(
+    () => customProviders.map((entry) => entry.id),
+    [customProviders],
+  );
 
   const {
     providers,
@@ -49,7 +111,10 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     setProviderConfigField,
     setOauthStatus,
     setProviderConnections,
-  } = useProviderCatalogData({ getProviders });
+  } = useProviderCatalogData({
+    getProviders,
+    extraProviderIds: customProviderIds,
+  });
 
   const { displayProviders, isConnected } = useProviderFiltering({
     providers,
@@ -155,18 +220,31 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
           />
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenStore}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-muted transition-colors relative"
-          aria-label="Open provider store"
-          title="Open provider store"
-        >
-          <Plus size={16} />
-          {hasStoreWarnings ? (
-            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />
-          ) : null}
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-muted transition-colors relative"
+              aria-label="Add provider"
+              title="Add provider"
+            >
+              <Plus size={16} />
+              {hasStoreWarnings ? (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />
+              ) : null}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onOpenStore}>
+              <Store size={14} />
+              Plugin Store
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => addCustomProvider('openai_like', 'OpenAI Compatible (Custom)')}>
+              <OpenAIIcon className="size-3.5" />
+              Add OpenAI Compatible
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="grid grid-cols-1 gap-3 pb-4">
@@ -185,60 +263,92 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
                 </div>
               </Card>
             ))
-          : displayProviders.map((def) => {
-              const providerId = def.provider;
-              const config =
-                providerConfigs[providerId] ||
-                ({
-                  provider: providerId,
-                  apiKey: '',
-                  baseUrl: def.defaults?.baseUrl,
-                } satisfies ProviderConfig);
+          : (() => {
+              const baseProviderDefs = new Map(providers.map((d) => [d.provider, d]));
+              const customBaseProviderIds = new Set(customProviders.map((e) => e.baseProvider));
+              const filteredProviders = displayProviders.filter((d) => !customBaseProviderIds.has(d.provider));
 
-              const connection =
-                connectionUiByProvider[providerId] ||
-                ({
-                  saving: false,
-                  saved: false,
-                  status: 'idle',
-                  error: undefined,
-                } satisfies ProviderConnectionUiState);
+              const renderProviderItem = (providerId: string, def: typeof displayProviders[number], options?: { customName?: string; onRemove?: () => void; onNameChange?: (name: string) => void }) => {
+                const config =
+                  providerConfigs[providerId] ||
+                  ({
+                    provider: providerId,
+                    apiKey: '',
+                    baseUrl: def.defaults?.baseUrl,
+                  } satisfies ProviderConfig);
 
-              const oauthUi =
-                oauthUiByProvider[providerId] ||
-                ({
-                  code: '',
-                  enterpriseDomain: '',
-                  authenticating: false,
-                  revoking: false,
-                  submitting: false,
-                } satisfies ProviderOauthUiState);
+                const connection =
+                  connectionUiByProvider[providerId] ||
+                  ({
+                    saving: false,
+                    saved: false,
+                    status: 'idle',
+                    error: undefined,
+                  } satisfies ProviderConnectionUiState);
 
-              const row: ProviderItemRowViewModel = {
-                def,
-                config,
-                isConnected: isConnected(providerId),
-                isPluginProvider: Boolean(pluginProviders[providerId]),
-                oauthStatus: oauthStatus[providerId],
-                connection,
-                oauthUi,
+                const oauthUi =
+                  oauthUiByProvider[providerId] ||
+                  ({
+                    code: '',
+                    enterpriseDomain: '',
+                    authenticating: false,
+                    revoking: false,
+                    submitting: false,
+                  } satisfies ProviderOauthUiState);
+
+                const displayDef = options?.customName
+                  ? { ...def, name: options.customName, provider: providerId }
+                  : def;
+
+                const row: ProviderItemRowViewModel = {
+                  def: displayDef,
+                  config,
+                  isConnected: isConnected(providerId),
+                  isPluginProvider: Boolean(pluginProviders[providerId]),
+                  oauthStatus: oauthStatus[providerId],
+                  connection,
+                  oauthUi,
+                };
+
+                const actions: ProviderItemRowActions = {
+                  onOauthCodeChange: (value) => patchOauthUi(providerId, { code: value }),
+                  onOauthEnterpriseDomainChange: (value) => patchOauthUi(providerId, { enterpriseDomain: value }),
+                  onOauthStart: () => startOauth(providerId, oauthUi.enterpriseDomain),
+                  onOauthSubmitCode: () => submitOauthCode(providerId, oauthUi.code || ''),
+                  onOauthRevoke: () => revokeOauth(providerId),
+                  onOauthOpenLink: openOauthWindow,
+                  onChange: (field, value) => setProviderConfigField(providerId, field, value),
+                  onSave: () => handleSave(providerId),
+                  onTestConnection: () => handleTestConnection(providerId),
+                  ...(options?.onRemove ? { onUninstall: options.onRemove } : row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
+                };
+
+                return (
+                  <ProviderItem
+                    key={providerId}
+                    row={row}
+                    actions={actions}
+                    editableName={options?.onNameChange != null}
+                    onNameChange={options?.onNameChange}
+                  />
+                );
               };
 
-              const actions: ProviderItemRowActions = {
-                onOauthCodeChange: (value) => patchOauthUi(providerId, { code: value }),
-                onOauthEnterpriseDomainChange: (value) => patchOauthUi(providerId, { enterpriseDomain: value }),
-                onOauthStart: () => startOauth(providerId, oauthUi.enterpriseDomain),
-                onOauthSubmitCode: () => submitOauthCode(providerId, oauthUi.code || ''),
-                onOauthRevoke: () => revokeOauth(providerId),
-                onOauthOpenLink: openOauthWindow,
-                onChange: (field, value) => setProviderConfigField(providerId, field, value),
-                onSave: () => handleSave(providerId),
-                onTestConnection: () => handleTestConnection(providerId),
-                ...(row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
-              };
-
-              return <ProviderItem key={providerId} row={row} actions={actions} />;
-            })}
+              return (
+                <>
+                  {customProviders.map((entry) => {
+                    const baseDef = baseProviderDefs.get(entry.baseProvider);
+                    if (!baseDef) return null;
+                    return renderProviderItem(entry.id, baseDef, {
+                      customName: entry.name,
+                      onRemove: () => removeCustomProvider(entry.id),
+                      onNameChange: (name) => renameCustomProvider(entry.id, name),
+                    });
+                  })}
+                  {filteredProviders.map((def) => renderProviderItem(def.provider, def))}
+                </>
+              );
+            })()}
       </div>
 
     </div>

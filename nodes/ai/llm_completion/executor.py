@@ -13,7 +13,7 @@ def resolve_model(model_str: str) -> Any:
         raise ValueError(
             f"Invalid model format '{model_str}' — expected 'provider:model_id'"
         )
-    provider, model_id = model_str.split(":", 1)
+    provider, model_id = model_str.rsplit(":", 1)
     return get_model(provider, model_id)
 
 

@@ -9,7 +9,7 @@ def parse_model_id(model_id: str | None) -> tuple[str, str]:
     if not model_id:
         return "", ""
     if ":" in model_id:
-        provider, model = model_id.split(":", 1)
+        provider, model = model_id.rsplit(":", 1)
         return provider, model
     return "", model_id
 

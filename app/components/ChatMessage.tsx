@@ -69,23 +69,21 @@ function ChatMessage({
     const content = contentRef.current;
     if (!content) return;
 
-    content.querySelectorAll(".inline-typewriter-indicator").forEach((el) => el.remove());
+    content
+      .querySelectorAll(".inline-typewriter-indicator")
+      .forEach((el) => el.remove());
 
     if (isStreaming) {
-      const walker = document.createTreeWalker(
-        content,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
-            const parentEl = node.parentElement;
-            if (parentEl?.closest("[data-toolcall]")) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            return NodeFilter.FILTER_ACCEPT;
-          },
-        }
-      );
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+          if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
+          const parentEl = node.parentElement;
+          if (parentEl?.closest("[data-toolcall]")) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
 
       let lastTextNode: Text | null = null;
       while (walker.nextNode()) {
@@ -99,7 +97,7 @@ function ChatMessage({
         if (lastTextNode.nextSibling) {
           lastTextNode.parentNode.insertBefore(
             indicatorSpan,
-            lastTextNode.nextSibling
+            lastTextNode.nextSibling,
           );
         } else {
           lastTextNode.parentNode.appendChild(indicatorSpan);
@@ -108,7 +106,9 @@ function ChatMessage({
     }
 
     return () => {
-      content.querySelectorAll(".inline-typewriter-indicator").forEach((el) => el.remove());
+      content
+        .querySelectorAll(".inline-typewriter-indicator")
+        .forEach((el) => el.remove());
     };
   }, [isStreaming, content]);
 
@@ -116,7 +116,9 @@ function ChatMessage({
     <div
       className={clsx(
         "flex w-full group/message",
-        role === "user" ? "justify-end -mb-4 mt-4 max-w-[90%] ml-auto" : "justify-start"
+        role === "user"
+          ? "justify-end -mb-4 mt-4 max-w-[90%] ml-auto"
+          : "justify-start",
       )}
     >
       <div className="relative mb-2 w-full">
@@ -124,7 +126,11 @@ function ChatMessage({
           <div className="flex flex-col w-full place-items-end">
             {message?.attachments && message.attachments.length > 0 && (
               <div className="mb-2">
-                <AttachmentPreview attachments={message.attachments} readonly chatId={chatId} />
+                <AttachmentPreview
+                  attachments={message.attachments}
+                  readonly
+                  chatId={chatId}
+                />
               </div>
             )}
             <div
@@ -142,221 +148,230 @@ function ChatMessage({
           <div
             className={clsx(
               "rounded-3xl text-base leading-relaxed max-w-full min-w-0 text-card-foreground",
-              "prose prose-zinc dark:prose-invert prose-p:my-2 prose-li:my-0.5 px-2 py-2.5 w-full"
+              "prose prose-zinc dark:prose-invert prose-p:my-2 prose-li:my-0.5 px-2 py-2.5 w-full",
             )}
           >
-          <div
-            ref={contentRef}
-            data-testid="chat-message-assistant"
-            className="relative assistant-message w-full prose !max-w-none dark:prose-invert prose-zinc"
-          >
-            {Array.isArray(content) && (
-              <>
-                {content.length === 1 &&
-                content[0].type === "text" &&
-                content[0].content === "" &&
-                isStreaming ? (
-                  <div className="inline-block">
-                    <div className="size-[0.65rem] bg-primary rounded-full animate-pulse"></div>
-                  </div>
-                ) : (
-                  <>
-                    {(() => {
-                      const blocks = content as ContentBlock[];
-                      const rendered: React.ReactNode[] = [];
+            <div
+              ref={contentRef}
+              data-testid="chat-message-assistant"
+              className="relative assistant-message w-full prose !max-w-none dark:prose-invert prose-zinc"
+            >
+              {Array.isArray(content) && (
+                <>
+                  {content.length === 1 &&
+                  content[0].type === "text" &&
+                  content[0].content === "" &&
+                  isStreaming ? (
+                    <div className="inline-block">
+                      <div className="size-[0.65rem] bg-primary rounded-full animate-pulse"></div>
+                    </div>
+                  ) : (
+                    <>
+                      {(() => {
+                        const blocks = content as ContentBlock[];
+                        const rendered: React.ReactNode[] = [];
 
-                      for (let i = 0; i < blocks.length; i++) {
-                        const block = blocks[i];
+                        for (let i = 0; i < blocks.length; i++) {
+                          const block = blocks[i];
 
-                        if (block.type === "text") {
-                          const text = block.content;
-                          if (text && text.trim() !== "") {
-                            rendered.push(
-                              <MarkdownRenderer
-                                key={`text-${i}`}
-                                content={text}
-                              />
-                            );
-                          }
-                          continue;
-                        }
-
-                        if (block.type === "error") {
-                          rendered.push(
-                            <div
-                              key={`error-${i}`}
-                              className="my-3 p-4 rounded-lg selection:bg-destructive/20 relative text-destructive overflow-visible before:content-around before:absolute before:top-0 before:left-0 before:w-full before:h-full before:bg-destructive/20 before:rounded-full before:blur-2xl"
-                            >
-                              <div className="flex items-start gap-3">
-                                <svg
-                                  className="w-5 h-5 mt-0.5 flex-shrink-0"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                  xmlns="http://www.w3.org/2000/svg"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                </svg>
-                                <div className="flex-1">
-                                  <div className="text-sm whitespace-pre-wrap selection:bg-green-500">
-                                    {block.content}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                          continue;
-                        }
-
-                        if (block.type === "member_run" && block.groupByNode) {
-                          rendered.push(
-                            <MemberRunCall
-                              key={block.runId || `member-${i}`}
-                              memberName={block.memberName}
-                              nodeId={block.nodeId}
-                              content={block.content}
-                              active={!block.isCompleted && !!isStreaming}
-                              isCompleted={block.isCompleted}
-                              hasError={block.hasError}
-                              alwaysOpen
-                              compact
-                            />
-                          );
-                          continue;
-                        }
-
-                        if (block.type === "member_run") {
-                          rendered.push(
-                            <SubAgentCard
-                              key={block.runId || `member-${i}`}
-                              runId={block.runId}
-                              memberName={block.memberName}
-                              content={block.content}
-                              task={block.task}
-                              active={!block.isCompleted && !!isStreaming}
-                              isCompleted={block.isCompleted}
-                              hasError={block.hasError}
-                              chatId={chatId}
-                            />
-                          );
-                          continue;
-                        }
-
-                        if (
-                          block.type === "tool_call" ||
-                          block.type === "reasoning"
-                        ) {
-                          const start = i;
-                          const group: ContentBlock[] = [];
-                          let j = i;
-
-                          while (j < blocks.length) {
-                            const b = blocks[j];
-                            if (b.type === "member_run") {
-                              break;
-                            }
-                            if (
-                              b.type === "tool_call" ||
-                              b.type === "reasoning"
-                            ) {
-                              group.push(b);
-                              j++;
-                              continue;
-                            }
-                            if (b.type === "text" && b.content.trim() === "") {
-                              j++;
-                              continue;
-                            }
-                            break;
-                          }
-
-                          i = j - 1;
-
-                          const visibleGroup = group.filter(
-                            (b) => !(b.type === "tool_call" && b.isDelegation),
-                          );
-
-                          const groupItems = visibleGroup.map((b, idx) => {
-                            if (b.type === "tool_call") {
-                              return (
-                                <ToolCall
-                                  key={b.id}
-                                  id={b.id}
-                                  toolName={b.toolName}
-                                  toolArgs={b.toolArgs}
-                                  toolResult={b.toolResult}
-                                  isCompleted={b.isCompleted}
-                                  requiresApproval={b.requiresApproval}
-                                  runId={b.runId}
-                                  toolCallId={b.toolCallId}
-                                  approvalStatus={b.approvalStatus}
-                                  editableArgs={b.editableArgs}
-                                  isGrouped={visibleGroup.length > 1}
-                                  isFirst={idx === 0}
-                                  isLast={idx === visibleGroup.length - 1}
-                                  renderPlan={b.renderPlan}
-                                  failed={b.failed}
-                                  chatId={chatId}
-                                />
-                              );
-                            } else if (b.type === "reasoning") {
-                              return (
-                                <ThinkingCall
-                                  key={`think-${start}-${idx}`}
-                                  content={b.content}
-                                  isGrouped={visibleGroup.length > 1}
-                                  isFirst={idx === 0}
-                                  isLast={idx === visibleGroup.length - 1}
-                                  active={!b.isCompleted && !!isStreaming}
-                                  isCompleted={b.isCompleted}
-                                />
+                          if (block.type === "text") {
+                            const text = block.content;
+                            if (text && text.trim() !== "") {
+                              rendered.push(
+                                <MarkdownRenderer
+                                  key={`text-${i}`}
+                                  content={text}
+                                />,
                               );
                             }
-                            return null;
-                          });
+                            continue;
+                          }
 
-                          if (visibleGroup.length === 1) {
-                            rendered.push(groupItems[0]);
-                          } else if (visibleGroup.length > 1) {
+                          if (block.type === "error") {
                             rendered.push(
                               <div
-                                key={`group-${start}`}
-                                className="my-3 not-prose"
+                                key={`error-${i}`}
+                                className="my-3 p-4 rounded-lg selection:bg-destructive/20 relative text-destructive overflow-visible before:content-around before:absolute before:pointer-events-none before:top-0 before:left-0 before:w-full before:h-full before:bg-destructive/20 before:rounded-full before:blur-2xl"
                               >
-                                <div className="border border-border rounded-lg overflow-hidden bg-card">
-                                  {groupItems}
+                                <div className="flex items-start gap-3">
+                                  <svg
+                                    className="w-5 h-5 mt-0.5 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  <div className="flex-1">
+                                    <div className="text-sm whitespace-pre-wrap selection:bg-green-500">
+                                      {block.content}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              </div>,
                             );
+                            continue;
+                          }
+
+                          if (
+                            block.type === "member_run" &&
+                            block.groupByNode
+                          ) {
+                            rendered.push(
+                              <MemberRunCall
+                                key={block.runId || `member-${i}`}
+                                memberName={block.memberName}
+                                nodeId={block.nodeId}
+                                content={block.content}
+                                active={!block.isCompleted && !!isStreaming}
+                                isCompleted={block.isCompleted}
+                                hasError={block.hasError}
+                                alwaysOpen
+                                compact
+                              />,
+                            );
+                            continue;
+                          }
+
+                          if (block.type === "member_run") {
+                            rendered.push(
+                              <SubAgentCard
+                                key={block.runId || `member-${i}`}
+                                runId={block.runId}
+                                memberName={block.memberName}
+                                content={block.content}
+                                task={block.task}
+                                active={!block.isCompleted && !!isStreaming}
+                                isCompleted={block.isCompleted}
+                                hasError={block.hasError}
+                                chatId={chatId}
+                              />,
+                            );
+                            continue;
+                          }
+
+                          if (
+                            block.type === "tool_call" ||
+                            block.type === "reasoning"
+                          ) {
+                            const start = i;
+                            const group: ContentBlock[] = [];
+                            let j = i;
+
+                            while (j < blocks.length) {
+                              const b = blocks[j];
+                              if (b.type === "member_run") {
+                                break;
+                              }
+                              if (
+                                b.type === "tool_call" ||
+                                b.type === "reasoning"
+                              ) {
+                                group.push(b);
+                                j++;
+                                continue;
+                              }
+                              if (
+                                b.type === "text" &&
+                                b.content.trim() === ""
+                              ) {
+                                j++;
+                                continue;
+                              }
+                              break;
+                            }
+
+                            i = j - 1;
+
+                            const visibleGroup = group.filter(
+                              (b) =>
+                                !(b.type === "tool_call" && b.isDelegation),
+                            );
+
+                            const groupItems = visibleGroup.map((b, idx) => {
+                              if (b.type === "tool_call") {
+                                return (
+                                  <ToolCall
+                                    key={b.id}
+                                    id={b.id}
+                                    toolName={b.toolName}
+                                    toolArgs={b.toolArgs}
+                                    toolResult={b.toolResult}
+                                    isCompleted={b.isCompleted}
+                                    requiresApproval={b.requiresApproval}
+                                    runId={b.runId}
+                                    toolCallId={b.toolCallId}
+                                    approvalStatus={b.approvalStatus}
+                                    editableArgs={b.editableArgs}
+                                    isGrouped={visibleGroup.length > 1}
+                                    isFirst={idx === 0}
+                                    isLast={idx === visibleGroup.length - 1}
+                                    renderPlan={b.renderPlan}
+                                    failed={b.failed}
+                                    chatId={chatId}
+                                  />
+                                );
+                              } else if (b.type === "reasoning") {
+                                return (
+                                  <ThinkingCall
+                                    key={`think-${start}-${idx}`}
+                                    content={b.content}
+                                    isGrouped={visibleGroup.length > 1}
+                                    isFirst={idx === 0}
+                                    isLast={idx === visibleGroup.length - 1}
+                                    active={!b.isCompleted && !!isStreaming}
+                                    isCompleted={b.isCompleted}
+                                  />
+                                );
+                              }
+                              return null;
+                            });
+
+                            if (visibleGroup.length === 1) {
+                              rendered.push(groupItems[0]);
+                            } else if (visibleGroup.length > 1) {
+                              rendered.push(
+                                <div
+                                  key={`group-${start}`}
+                                  className="my-3 not-prose"
+                                >
+                                  <div className="border border-border rounded-lg overflow-hidden bg-card">
+                                    {groupItems}
+                                  </div>
+                                </div>,
+                              );
+                            }
                           }
                         }
-                      }
 
-                      return rendered;
-                    })()}
-                  </>
-                )}
-              </>
-            )}
-          </div>
+                        return rendered;
+                      })()}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
-        
+
         {message && !isStreaming && (
-          <div className={clsx(
-            "flex items-center gap-1 transition-opacity duration-200 px-1 pointer-events-auto",
-            role === "user" ? "justify-end" : "justify-start",
-            role === "user"
-              ? "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100"
-              : isLastAssistantMessage
-                ? "opacity-100"
-                : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100"
-          )}>
+          <div
+            className={clsx(
+              "flex items-center gap-1 transition-opacity duration-200 px-1 pointer-events-auto",
+              role === "user" ? "justify-end" : "justify-start",
+              role === "user"
+                ? "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100"
+                : isLastAssistantMessage
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100",
+            )}
+          >
             <MessageActions
               message={message}
               siblings={siblings || []}
@@ -373,14 +388,18 @@ function ChatMessage({
   );
 }
 
-function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
+function arePropsEqual(
+  prevProps: ChatMessageProps,
+  nextProps: ChatMessageProps,
+) {
   return (
     !nextProps.isStreaming &&
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.role === nextProps.role &&
     prevProps.content === nextProps.content &&
     prevProps.message?.id === nextProps.message?.id &&
-    prevProps.message?.attachments?.length === nextProps.message?.attachments?.length &&
+    prevProps.message?.attachments?.length ===
+      nextProps.message?.attachments?.length &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
     prevProps.siblings?.length === nextProps.siblings?.length
