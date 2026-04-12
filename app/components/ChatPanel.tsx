@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Folder, FolderOpen } from "lucide-react";
+import { Folder, FolderOpen, ArrowDown } from "lucide-react";
 import { motion } from "framer-motion";
 import { useChat } from "@/contexts/chat-context";
 import { usePageTitle } from "@/contexts/page-title-context";
@@ -9,7 +9,10 @@ import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { useModelOptions } from "@/lib/hooks/use-model-options";
 import { api } from "@/lib/services/api";
-import { shouldParseThinkTags, processMessageContent } from "@/lib/utils/think-tag-parser";
+import {
+  shouldParseThinkTags,
+  processMessageContent,
+} from "@/lib/utils/think-tag-parser";
 import { getModelSettings } from "@/python/api";
 import ChatInputForm from "@/components/ChatInputForm";
 import ChatMessageList from "@/components/ChatMessageList";
@@ -25,11 +28,13 @@ import type { Message } from "@/lib/types/chat";
 
 const WORKSPACE_PANEL_TRANSITION = {
   type: "spring" as const,
-  stiffness: 231,
-  damping: 28,
+  stiffness: 393,
+  damping: 35,
 };
 
-function parseSelectedModel(model: string): { provider: string; modelId: string } | null {
+function parseSelectedModel(
+  model: string,
+): { provider: string; modelId: string } | null {
   if (!model || model.startsWith("agent:")) return null;
   const separatorIndex = model.lastIndexOf(":");
   if (separatorIndex <= 0 || separatorIndex >= model.length - 1) return null;
@@ -40,12 +45,22 @@ function parseSelectedModel(model: string): { provider: string; modelId: string 
 }
 
 export default function ChatPanel() {
-  const { selectedModel, setSelectedModel, models: availableModels, chatId, agents } = useChat();
+  const {
+    selectedModel,
+    setSelectedModel,
+    models: availableModels,
+    chatId,
+    agents,
+  } = useChat();
   const { setRightContent } = usePageTitle();
   const [showThinkingPrompt, setShowThinkingPrompt] = useState(false);
-  const [modelSettings, setModelSettings] = useState<AllModelSettingsResponse | null>(null);
+  const [modelSettings, setModelSettings] =
+    useState<AllModelSettingsResponse | null>(null);
   const [workspaceFilesCount, setWorkspaceFilesCount] = useState(0);
   const [userRequestedOpen, setUserRequestedOpen] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(true);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const scrollToBottomRef = useRef<(() => void) | null>(null);
   const prevSelectedModelRef = useRef(selectedModel);
 
   const hideToolSelector = useMemo(() => {
@@ -79,22 +94,29 @@ export default function ChatPanel() {
     const { provider, modelId } = parsedModel;
 
     const setting = modelSettings.models?.find(
-      (m) => m.provider === provider && m.modelId === modelId
+      (m) => m.provider === provider && m.modelId === modelId,
     );
 
-    if (setting?.reasoning?.supports === true && !setting?.thinkingTagPrompted?.declined) {
+    if (
+      setting?.reasoning?.supports === true &&
+      !setting?.thinkingTagPrompted?.declined
+    ) {
       hasCheckedThinkingPromptRef.current = true;
       return;
     }
 
-    if (setting?.parseThinkTags !== true && setting?.thinkingTagPrompted?.prompted !== true) {
+    if (
+      setting?.parseThinkTags !== true &&
+      setting?.thinkingTagPrompted?.prompted !== true
+    ) {
       setShowThinkingPrompt(true);
     }
 
     hasCheckedThinkingPromptRef.current = true;
   }, [selectedModel, modelSettings]);
 
-  const isWorkspaceOpen = chatId != null && workspaceFilesCount > 0 && userRequestedOpen;
+  const isWorkspaceOpen =
+    chatId != null && workspaceFilesCount > 0 && userRequestedOpen;
 
   const workspaceButton = useMemo(() => {
     if (workspaceFilesCount <= 0) return null;
@@ -106,7 +128,11 @@ export default function ChatPanel() {
         onClick={() => setUserRequestedOpen((prev) => !prev)}
         aria-label={isWorkspaceOpen ? "Close workspace" : "Open workspace"}
       >
-        {isWorkspaceOpen ? <FolderOpen className="size-4" /> : <Folder className="size-4" />}
+        {isWorkspaceOpen ? (
+          <FolderOpen className="size-4" />
+        ) : (
+          <Folder className="size-4" />
+        )}
       </Button>
     );
   }, [workspaceFilesCount, isWorkspaceOpen]);
@@ -157,7 +183,7 @@ export default function ChatPanel() {
       if (!modelKey) return msg;
 
       const shouldParse = shouldParseThinkTags(modelKey, modelSettings.models);
-      return shouldParse 
+      return shouldParse
         ? { ...msg, content: processMessageContent(msg.content, shouldParse) }
         : msg;
     });
@@ -167,7 +193,11 @@ export default function ChatPanel() {
     const parsedModel = parseSelectedModel(selectedModel);
     if (!parsedModel) return;
 
-    await api.respondToThinkingTagPrompt(parsedModel.provider, parsedModel.modelId, true);
+    await api.respondToThinkingTagPrompt(
+      parsedModel.provider,
+      parsedModel.modelId,
+      true,
+    );
     setShowThinkingPrompt(false);
 
     if (!isLoading && streamingMessageIdRef.current) triggerReload();
@@ -179,7 +209,11 @@ export default function ChatPanel() {
     const parsedModel = parseSelectedModel(selectedModel);
     if (!parsedModel) return;
 
-    await api.respondToThinkingTagPrompt(parsedModel.provider, parsedModel.modelId, false);
+    await api.respondToThinkingTagPrompt(
+      parsedModel.provider,
+      parsedModel.modelId,
+      false,
+    );
     setShowThinkingPrompt(false);
     setModelSettings(await getModelSettings());
   }, [selectedModel]);
@@ -190,6 +224,10 @@ export default function ChatPanel() {
     if (hour < 18) return "Good Afternoon";
     return "Good Evening";
   };
+
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottomRef.current?.();
+  }, []);
 
   const chatInputForm = (
     <ChatInputForm
@@ -215,10 +253,11 @@ export default function ChatPanel() {
           <Header />
           {!(messages.length === 0 && !chatId) ? (
             <>
-              <div className="overflow-y-scroll flex-1">
-                <div
-                  className="top-0 right-8 sticky h-4 z-20 pointer-events-none [mask-image:linear-gradient(to_bottom,black,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black,transparent)]"
-                >
+              <div
+                ref={scrollContainerRef as React.RefObject<HTMLDivElement>}
+                className="overflow-y-scroll flex-1"
+              >
+                <div className="top-0 right-8 sticky h-4 z-20 pointer-events-none [mask-image:linear-gradient(to_bottom,black,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black,transparent)]">
                   <div className="absolute inset-0 bg-sidebar" />
                   <div className="absolute inset-0 dark:bg-card/30 bg-background dark:block" />
                 </div>
@@ -241,10 +280,28 @@ export default function ChatPanel() {
                     onAddEditingAttachment={addEditingAttachment}
                     onRemoveEditingAttachment={removeEditingAttachment}
                     chatId={chatId ?? undefined}
+                    scrollContainerRef={scrollContainerRef}
+                    onFollowingChange={setIsFollowing}
+                    onScrollToBottomRef={scrollToBottomRef}
                   />
                 </div>
               </div>
-              <div className="px-4 pb-4">{chatInputForm}</div>
+              <div className="relative px-4 pb-4">
+                {!isFollowing && isLoading && (
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-12 z-30">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-8 rounded-full shadow-md bg-background/80 backdrop-blur-sm border-border/60 hover:bg-accent"
+                      onClick={handleScrollToBottom}
+                      aria-label="Scroll to bottom"
+                    >
+                      <ArrowDown className="size-4" />
+                    </Button>
+                  </div>
+                )}
+                {chatInputForm}
+              </div>
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">

@@ -1,6 +1,12 @@
-import { memo, useEffect, useRef, useCallback } from "react";
+import { memo, useEffect, useRef, useCallback, type RefObject } from "react";
+import { useMotionValue, useSpring, type SpringOptions } from "motion/react";
 import ChatMessage from "./ChatMessage";
-import { Message, MessageSibling, Attachment, PendingAttachment } from "@/lib/types/chat";
+import {
+  Message,
+  MessageSibling,
+  Attachment,
+  PendingAttachment,
+} from "@/lib/types/chat";
 import ChatMessageEditor from "./ChatMessageEditor";
 
 interface ChatMessageListProps {
@@ -21,6 +27,10 @@ interface ChatMessageListProps {
   onAddEditingAttachment?: (file: File) => void;
   onRemoveEditingAttachment?: (id: string) => void;
   chatId?: string;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
+  onFollowingChange?: (isFollowing: boolean) => void;
+  onScrollToBottomRef?: RefObject<(() => void) | null>;
+  springConfig?: SpringOptions;
 }
 
 interface MessageRowProps {
@@ -36,67 +46,79 @@ interface MessageRowProps {
   chatId?: string;
 }
 
-const MessageRow = memo(function MessageRow({
-  message,
-  siblings,
-  isStreaming,
-  isLastAssistantMessage,
-  isLoading,
-  onContinue,
-  onRetry,
-  onEditStart,
-  onNavigate,
-  chatId,
-}: MessageRowProps) {
-  const handleContinue = useCallback(() => {
-    onContinue?.(message.id);
-  }, [onContinue, message.id]);
+const MessageRow = memo(
+  function MessageRow({
+    message,
+    siblings,
+    isStreaming,
+    isLastAssistantMessage,
+    isLoading,
+    onContinue,
+    onRetry,
+    onEditStart,
+    onNavigate,
+    chatId,
+  }: MessageRowProps) {
+    const handleContinue = useCallback(() => {
+      onContinue?.(message.id);
+    }, [onContinue, message.id]);
 
-  const handleRetry = useCallback(() => {
-    onRetry?.(message.id);
-  }, [onRetry, message.id]);
+    const handleRetry = useCallback(() => {
+      onRetry?.(message.id);
+    }, [onRetry, message.id]);
 
-  const handleEdit = useCallback(() => {
-    onEditStart?.(message.id);
-  }, [onEditStart, message.id]);
+    const handleEdit = useCallback(() => {
+      onEditStart?.(message.id);
+    }, [onEditStart, message.id]);
 
-  const handleNavigate = useCallback((siblingId: string) => {
-    onNavigate?.(message.id, siblingId);
-  }, [onNavigate, message.id]);
+    const handleNavigate = useCallback(
+      (siblingId: string) => {
+        onNavigate?.(message.id, siblingId);
+      },
+      [onNavigate, message.id],
+    );
 
-  return (
+    return (
       <ChatMessage
         role={message.role as "user" | "assistant"}
         content={message.content}
         isStreaming={isStreaming}
         message={message}
         siblings={siblings}
-        onContinue={message.role === "assistant" && onContinue ? handleContinue : undefined}
-        onRetry={message.role === "assistant" && onRetry ? handleRetry : undefined}
+        onContinue={
+          message.role === "assistant" && onContinue
+            ? handleContinue
+            : undefined
+        }
+        onRetry={
+          message.role === "assistant" && onRetry ? handleRetry : undefined
+        }
         onEdit={message.role === "user" && onEditStart ? handleEdit : undefined}
         onNavigate={onNavigate ? handleNavigate : undefined}
         isLoading={isLoading}
         isLastAssistantMessage={isLastAssistantMessage}
         chatId={chatId}
       />
-  );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.message.id === nextProps.message.id &&
-    prevProps.message.content === nextProps.message.content &&
-    prevProps.message.attachments?.length === nextProps.message.attachments?.length &&
-    prevProps.isStreaming === nextProps.isStreaming &&
-    prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
-    prevProps.isLoading === nextProps.isLoading &&
-    prevProps.siblings.length === nextProps.siblings.length &&
-    prevProps.chatId === nextProps.chatId &&
-
-    prevProps.onContinue === nextProps.onContinue &&
-    prevProps.onRetry === nextProps.onRetry &&
-    prevProps.onEditStart === nextProps.onEditStart &&
-    prevProps.onNavigate === nextProps.onNavigate
-  );
-});
+    );
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.message.id === nextProps.message.id &&
+      prevProps.message.content === nextProps.message.content &&
+      prevProps.message.attachments?.length ===
+        nextProps.message.attachments?.length &&
+      prevProps.isStreaming === nextProps.isStreaming &&
+      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
+      prevProps.isLoading === nextProps.isLoading &&
+      prevProps.siblings.length === nextProps.siblings.length &&
+      prevProps.chatId === nextProps.chatId &&
+      prevProps.onContinue === nextProps.onContinue &&
+      prevProps.onRetry === nextProps.onRetry &&
+      prevProps.onEditStart === nextProps.onEditStart &&
+      prevProps.onNavigate === nextProps.onNavigate
+    );
+  },
+);
 
 const ChatMessageList: React.FC<ChatMessageListProps> = ({
   messages,
@@ -116,42 +138,133 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   onAddEditingAttachment,
   onRemoveEditingAttachment,
   chatId,
+  scrollContainerRef: externalScrollContainerRef,
+  onFollowingChange,
+  onScrollToBottomRef,
+  springConfig,
 }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const userScrolledAwayRef = useRef(false);
   const prevMessagesLengthRef = useRef(messages.length);
-  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const fallbackScrollContainerRef = useRef<HTMLElement | null>(null);
+  const isDrivingScrollRef = useRef(false);
+
+  const scrollTarget = useMotionValue(0);
+  const springScroll = useSpring(scrollTarget, {
+    stiffness: 570,
+    damping: 38,
+    mass: 0.5,
+    ...springConfig,
+  });
+
+  const getScrollContainer = useCallback((): HTMLElement | null => {
+    if (externalScrollContainerRef?.current)
+      return externalScrollContainerRef.current;
+    return fallbackScrollContainerRef.current;
+  }, [externalScrollContainerRef]);
+
+  useEffect(() => {
+    return springScroll.on("change", (v) => {
+      if (!isDrivingScrollRef.current) return;
+      const sc = getScrollContainer();
+      if (sc) sc.scrollTop = v;
+    });
+  }, [springScroll, getScrollContainer]);
+
+  const driveToBottom = useCallback(
+    (instant = false) => {
+      const sc = getScrollContainer();
+      if (!sc) return;
+      const target = sc.scrollHeight - sc.clientHeight;
+      isDrivingScrollRef.current = true;
+      if (instant) {
+        springScroll.jump(target);
+        sc.scrollTop = target;
+      } else {
+        scrollTarget.set(target);
+      }
+    },
+    [getScrollContainer, scrollTarget, springScroll],
+  );
+
+  const stopDriving = useCallback(() => {
+    isDrivingScrollRef.current = false;
+    if (!userScrolledAwayRef.current) {
+      userScrolledAwayRef.current = true;
+      onFollowingChange?.(false);
+    }
+  }, [onFollowingChange]);
+
+  const scrollToBottom = useCallback(() => {
+    userScrolledAwayRef.current = false;
+    isAtBottomRef.current = true;
+    onFollowingChange?.(true);
+    driveToBottom(false);
+  }, [driveToBottom, onFollowingChange]);
+
+  useEffect(() => {
+    if (onScrollToBottomRef) {
+      onScrollToBottomRef.current = scrollToBottom;
+    }
+  }, [onScrollToBottomRef, scrollToBottom]);
 
   useEffect(() => {
     const bottomElement = endOfMessagesRef.current;
     if (!bottomElement) return;
 
-    const scrollContainer = bottomElement.parentElement?.parentElement?.parentElement;
+    const scrollContainer =
+      externalScrollContainerRef?.current ??
+      bottomElement.parentElement?.parentElement?.parentElement;
     if (!scrollContainer) return;
 
-    scrollContainerRef.current = scrollContainer;
+    if (!externalScrollContainerRef?.current) {
+      fallbackScrollContainerRef.current = scrollContainer;
+    }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        isAtBottomRef.current = entries[0].isIntersecting;
-      },
-      { root: scrollContainer, threshold: 0, rootMargin: "100px" }
-    );
+    const initialBottom =
+      scrollContainer.scrollHeight - scrollContainer.clientHeight;
+    springScroll.jump(initialBottom);
 
     const handleScroll = () => {
+      if (isDrivingScrollRef.current) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      isAtBottomRef.current = distanceFromBottom < 50;
+      const atBottom = distanceFromBottom < 50;
+      isAtBottomRef.current = atBottom;
+
+      if (atBottom && userScrolledAwayRef.current) {
+        userScrolledAwayRef.current = false;
+        onFollowingChange?.(true);
+      }
     };
 
-    observer.observe(bottomElement);
+    const handleUserInterrupt = () => {
+      if (isDrivingScrollRef.current) {
+        stopDriving();
+      }
+    };
+
     scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    scrollContainer.addEventListener("wheel", handleUserInterrupt, {
+      passive: true,
+    });
+    scrollContainer.addEventListener("touchstart", handleUserInterrupt, {
+      passive: true,
+    });
 
     return () => {
-      observer.disconnect();
       scrollContainer.removeEventListener("scroll", handleScroll);
+      scrollContainer.removeEventListener("wheel", handleUserInterrupt);
+      scrollContainer.removeEventListener("touchstart", handleUserInterrupt);
+      isDrivingScrollRef.current = false;
     };
-  }, []);
+  }, [
+    externalScrollContainerRef,
+    onFollowingChange,
+    springScroll,
+    stopDriving,
+  ]);
 
   useEffect(() => {
     const userJustSentMessage =
@@ -160,20 +273,18 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
     prevMessagesLengthRef.current = messages.length;
 
-    if (userJustSentMessage || isAtBottomRef.current) {
-      const scrollContainer = scrollContainerRef.current;
-      if (scrollContainer) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-          });
-        });
-      }
-      if (userJustSentMessage) {
-        isAtBottomRef.current = true;
-      }
+    if (userJustSentMessage) {
+      userScrolledAwayRef.current = false;
+      isAtBottomRef.current = true;
+      onFollowingChange?.(true);
+      requestAnimationFrame(() => driveToBottom(false));
+      return;
     }
-  }, [messages, isLoading]);
+
+    if (userScrolledAwayRef.current) return;
+
+    requestAnimationFrame(() => driveToBottom(false));
+  }, [messages, isLoading, driveToBottom, onFollowingChange]);
 
   const filteredMessages = messages.filter(
     (m) => m.role === "user" || m.role === "assistant",
@@ -181,7 +292,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
   const lastAssistantIndex = filteredMessages.reduce(
     (lastIdx, m, idx) => (m.role === "assistant" ? idx : lastIdx),
-    -1
+    -1,
   );
 
   return (
