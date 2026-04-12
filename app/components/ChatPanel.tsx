@@ -292,7 +292,7 @@ export default function ChatPanel() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="size-8 rounded-full shadow-md bg-background/80 backdrop-blur-sm border-border/60 hover:bg-accent"
+                      className="size-8 rounded-full before:rounded-full shadow-md bg-background/80 backdrop-blur-sm border-border/60 hover:bg-accent"
                       onClick={handleScrollToBottom}
                       aria-label="Scroll to bottom"
                     >
