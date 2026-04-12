@@ -239,24 +239,30 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
       }
     };
 
-    const handleUserInterrupt = () => {
+    const handleWheelInterrupt = (e: WheelEvent) => {
+      if (e.deltaY < 0 && isDrivingScrollRef.current) {
+        stopDriving();
+      }
+    };
+
+    const handleTouchInterrupt = () => {
       if (isDrivingScrollRef.current) {
         stopDriving();
       }
     };
 
     scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
-    scrollContainer.addEventListener("wheel", handleUserInterrupt, {
+    scrollContainer.addEventListener("wheel", handleWheelInterrupt, {
       passive: true,
     });
-    scrollContainer.addEventListener("touchstart", handleUserInterrupt, {
+    scrollContainer.addEventListener("touchstart", handleTouchInterrupt, {
       passive: true,
     });
 
     return () => {
       scrollContainer.removeEventListener("scroll", handleScroll);
-      scrollContainer.removeEventListener("wheel", handleUserInterrupt);
-      scrollContainer.removeEventListener("touchstart", handleUserInterrupt);
+      scrollContainer.removeEventListener("wheel", handleWheelInterrupt);
+      scrollContainer.removeEventListener("touchstart", handleTouchInterrupt);
       isDrivingScrollRef.current = false;
     };
   }, [
