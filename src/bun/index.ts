@@ -452,13 +452,41 @@ function stopBackend(processHandle: ChildProcessWithoutNullStreams | null): void
   processHandle.kill();
 }
 
+function showBackendError(mainWindow: BrowserWindowInstance, message: string): void {
+  const escaped = JSON.stringify(message);
+  const js = `
+    try {
+      if (typeof window.__COVALT_BACKEND_ERROR === "function") {
+        window.__COVALT_BACKEND_ERROR(${escaped});
+      } else {
+        window.__COVALT_BACKEND_ERROR_MSG = ${escaped};
+      }
+    } catch {}
+  `;
+  mainWindow.webview.executeJavascript(js);
+}
+
+async function connectBackend(
+  mainWindow: BrowserWindowInstance,
+  backendProcess: ChildProcessWithoutNullStreams,
+  baseUrl: string,
+): Promise<void> {
+  try {
+    await waitForBackend(baseUrl, backendProcess);
+    injectBackendBaseUrl(mainWindow, baseUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Backend failed to start:", message);
+    showBackendError(mainWindow, message);
+  }
+}
+
 async function main(): Promise<void> {
   const devMode = isDevMode();
   const port = await resolveBackendPort();
   const baseUrl = `http://${HOST}:${port}`;
 
   const backendProcess = startBackendProcess({ port, devMode });
-  await waitForBackend(baseUrl, backendProcess);
 
   let frontendServer: FrontendServer | null = null;
   let appUrl: string;
@@ -484,10 +512,18 @@ async function main(): Promise<void> {
       y: 80,
     },
   });
+
+  let backendReady = false;
   mainWindow.webview.on("dom-ready", () => {
-    injectBackendBaseUrl(mainWindow, baseUrl);
+    if (backendReady) {
+      injectBackendBaseUrl(mainWindow, baseUrl);
+    }
   });
   wirePopupHandling(mainWindow.webview.id, appUrl);
+
+  connectBackend(mainWindow, backendProcess, baseUrl).then(() => {
+    backendReady = true;
+  });
 
   mainWindow.on("close", () => {
     stopBackend(backendProcess);
