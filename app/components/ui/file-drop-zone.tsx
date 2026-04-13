@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 
 interface FileDropZoneContextValue {
   isDragging: boolean;
@@ -11,9 +11,8 @@ interface FileDropZoneContextValue {
   onFilesSelected: (files: File[]) => void;
 }
 
-const FileDropZoneContext = React.createContext<FileDropZoneContextValue | null>(
-  null
-);
+const FileDropZoneContext =
+  React.createContext<FileDropZoneContextValue | null>(null);
 
 function useFileDropZoneContext() {
   const context = React.useContext(FileDropZoneContext);
@@ -42,7 +41,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
       className,
       disabled = false,
     },
-    ref
+    ref,
   ) => {
     const [isDragging, setIsDragging] = React.useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -54,7 +53,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           onFilesDrop(Array.from(files));
         }
       },
-      [onFilesDrop, disabled]
+      [onFilesDrop, disabled],
     );
 
     const handleFileSelect = React.useCallback(
@@ -64,7 +63,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           e.target.value = "";
         }
       },
-      [handleFiles]
+      [handleFiles],
     );
 
     const handleDragEnter = React.useCallback(
@@ -76,7 +75,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           setIsDragging(true);
         }
       },
-      [disabled]
+      [disabled],
     );
 
     const handleDragLeave = React.useCallback((e: React.DragEvent) => {
@@ -104,7 +103,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
           handleFiles(e.dataTransfer.files);
         }
       },
-      [handleFiles]
+      [handleFiles],
     );
 
     const contextValue = React.useMemo<FileDropZoneContextValue>(
@@ -113,7 +112,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
         fileInputRef,
         onFilesSelected: handleFiles,
       }),
-      [isDragging, handleFiles]
+      [isDragging, handleFiles],
     );
 
     return (
@@ -156,7 +155,7 @@ const FileDropZone = React.forwardRef<HTMLDivElement, FileDropZoneProps>(
         </div>
       </FileDropZoneContext.Provider>
     );
-  }
+  },
 );
 
 FileDropZone.displayName = "FileDropZone";

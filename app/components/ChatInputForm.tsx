@@ -16,7 +16,7 @@ import { createLowlight, common } from "lowlight";
 import { Button } from "@/components/ui/button";
 import { Plus, MoreHorizontal, ArrowUp, Square } from "lucide-react";
 import clsx from "clsx";
-import { LayoutGroup } from "framer-motion";
+import { LayoutGroup } from "motion/react";
 import type {
   ModelInfo,
   OptionSchema,

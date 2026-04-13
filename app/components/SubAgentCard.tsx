@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, X, Loader2, Wrench } from "lucide-react";
-import { motion, AnimatePresence, useMotionValue, useSpring } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useSpring,
+} from "motion/react";
 import { cn } from "@/lib/utils";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { respondToToolApproval } from "@/python/api";
@@ -44,11 +49,7 @@ function TextBlock({ content }: { content: string }) {
 }
 
 function ErrorBlock({ content }: { content: string }) {
-  return (
-    <div className="text-sm text-destructive px-5 py-1">
-      {content}
-    </div>
-  );
+  return <div className="text-sm text-destructive px-5 py-1">{content}</div>;
 }
 
 function isBlockGroupable(block: ContentBlock): boolean {
@@ -196,7 +197,7 @@ function SubAgentContent({
         scrollTarget.set(target);
       }
     },
-    [scrollTarget, springScroll]
+    [scrollTarget, springScroll],
   );
 
   const stopDriving = useCallback(() => {
@@ -287,7 +288,10 @@ function SubAgentContent({
       const group: ContentBlock[] = [];
       let j = i;
 
-      while (j < content.length && (isBlockGroupable(content[j]) || isEmptyTextBlock(content[j]))) {
+      while (
+        j < content.length &&
+        (isBlockGroupable(content[j]) || isEmptyTextBlock(content[j]))
+      ) {
         if (isBlockGroupable(content[j])) {
           group.push(content[j]);
         }
@@ -300,7 +304,7 @@ function SubAgentContent({
           blocks={group}
           chatId={chatId}
           active={active}
-        />
+        />,
       );
       i = j;
       continue;
@@ -328,12 +332,13 @@ type PendingApproval = Extract<ContentBlock, { type: "tool_call" }> & {
 };
 
 function findPendingApprovals(content: ContentBlock[]): PendingApproval[] {
-  return content.filter((block): block is PendingApproval =>
-    block.type === "tool_call" &&
-    !!block.requiresApproval &&
-    block.approvalStatus === "pending" &&
-    !!block.runId &&
-    !!block.toolCallId
+  return content.filter(
+    (block): block is PendingApproval =>
+      block.type === "tool_call" &&
+      block.requiresApproval &&
+      block.approvalStatus === "pending" &&
+      !!block.runId &&
+      !!block.toolCallId,
   );
 }
 
@@ -342,7 +347,11 @@ function formatToolName(toolName: string): string {
   return namespace ? `${namespace}, ${label}` : label;
 }
 
-function getPreviewText(content: ContentBlock[], isCompleted: boolean, hasError: boolean): string {
+function getPreviewText(
+  content: ContentBlock[],
+  isCompleted: boolean,
+  hasError: boolean,
+): string {
   if (hasError) return "Failed";
   if (isCompleted) return "Completed";
 
@@ -381,7 +390,9 @@ function InlineApprovalToolEntry({
         <span className="text-xs font-mono text-foreground">
           {label}
           {namespace && (
-            <span className="px-1.5 italic text-muted-foreground">{namespace}</span>
+            <span className="px-1.5 italic text-muted-foreground">
+              {namespace}
+            </span>
           )}
         </span>
       </div>
@@ -405,10 +416,16 @@ function InlineApproval({
   onResolved?: () => void;
 }) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [editedValuesMap, setEditedValuesMap] = useState<Record<string, Record<string, unknown>>>({});
+  const [editedValuesMap, setEditedValuesMap] = useState<
+    Record<string, Record<string, unknown>>
+  >({});
   const runId = tools[0]?.runId;
 
-  const updateEditedValue = (toolCallId: string, key: string, value: unknown) => {
+  const updateEditedValue = (
+    toolCallId: string,
+    key: string,
+    value: unknown,
+  ) => {
     setEditedValuesMap((prev) => ({
       ...prev,
       [toolCallId]: { ...prev[toolCallId], [key]: value },
@@ -456,7 +473,9 @@ function InlineApproval({
           <InlineApprovalToolEntry
             tool={tool}
             editedValues={editedValuesMap[tool.toolCallId] ?? {}}
-            onEditedChange={(key, value) => updateEditedValue(tool.toolCallId, key, value)}
+            onEditedChange={(key, value) =>
+              updateEditedValue(tool.toolCallId, key, value)
+            }
           />
         </div>
       ))}
@@ -496,18 +515,24 @@ export default function SubAgentCard({
   const { open, close, activeId } = useArtifactPanel();
   const artifactId = `subagent-${runId}`;
   const isArtifactOpen = activeId === artifactId;
-  const [dismissedToolIds, setDismissedToolIds] = useState<Set<string>>(new Set());
+  const [dismissedToolIds, setDismissedToolIds] = useState<Set<string>>(
+    new Set(),
+  );
   const wasOpenRef = useRef(isArtifactOpen);
 
-  const allPendingApprovals = useMemo(() => findPendingApprovals(content), [content]);
+  const allPendingApprovals = useMemo(
+    () => findPendingApprovals(content),
+    [content],
+  );
 
   const pendingApprovals = useMemo(
-    () => allPendingApprovals.filter((t) => !dismissedToolIds.has(t.toolCallId)),
+    () =>
+      allPendingApprovals.filter((t) => !dismissedToolIds.has(t.toolCallId)),
     [allPendingApprovals, dismissedToolIds],
   );
   const previewText = useMemo(
     () => getPreviewText(content, isCompleted, hasError),
-    [content, isCompleted, hasError]
+    [content, isCompleted, hasError],
   );
 
   useEffect(() => {
@@ -519,7 +544,12 @@ export default function SubAgentCard({
       open(
         artifactId,
         memberName || "Agent",
-        <SubAgentContent content={content} task={task} active={active} chatId={chatId} />
+        <SubAgentContent
+          content={content}
+          task={task}
+          active={active}
+          chatId={chatId}
+        />,
       );
     }
   }, [content, task, active, artifactId, memberName, chatId, open]);
@@ -542,7 +572,12 @@ export default function SubAgentCard({
       open(
         artifactId,
         memberName || "Agent",
-        <SubAgentContent content={content} task={task} active={active} chatId={chatId} />
+        <SubAgentContent
+          content={content}
+          task={task}
+          active={active}
+          chatId={chatId}
+        />,
       );
     }
   };
@@ -556,7 +591,7 @@ export default function SubAgentCard({
             ? "border-primary/40 bg-primary/5"
             : hasPending
               ? "border-primary/40 bg-card"
-              : "border-border bg-card hover:bg-muted/50"
+              : "border-border bg-card hover:bg-muted/50",
         )}
       >
         <button
@@ -565,7 +600,7 @@ export default function SubAgentCard({
             "w-full text-left px-4 py-4 flex items-center gap-3 transition-colors",
             !hasPending && "cursor-pointer",
             hasPending && "cursor-default",
-            active && !hasPending && "shimmer"
+            active && !hasPending && "shimmer",
           )}
         >
           <div className="flex-1 min-w-0">
@@ -576,7 +611,10 @@ export default function SubAgentCard({
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {active && !isCompleted && !hasError && !hasPending && (
-                <Loader2 size={12} className="animate-spin text-muted-foreground flex-shrink-0" />
+                <Loader2
+                  size={12}
+                  className="animate-spin text-muted-foreground flex-shrink-0"
+                />
               )}
               <span className="text-xs text-muted-foreground truncate">
                 {pendingSubtitle ?? previewText}

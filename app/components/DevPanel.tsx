@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useStreaming } from "@/contexts/streaming-context";
 import { useTools } from "@/contexts/tools-context";
 import { useChat } from "@/contexts/chat-context";
@@ -34,7 +34,9 @@ function StatusValue({ status }: { status: string }) {
   return (
     <div className="flex justify-between gap-4">
       <span className="text-zinc-400">status</span>
-      <span className={colors[status] ?? "text-zinc-500"}>{status ?? "idle"}</span>
+      <span className={colors[status] ?? "text-zinc-500"}>
+        {status ?? "idle"}
+      </span>
     </div>
   );
 }
@@ -84,9 +86,15 @@ export function DevPanel({ isLoading, canSendMessage }: DevPanelProps) {
         </div>
 
         <div className="px-3 py-2 space-y-0.5 min-w-[180px]">
-          <BoolValue label="isStreaming" value={streamState?.isStreaming ?? false} />
+          <BoolValue
+            label="isStreaming"
+            value={streamState?.isStreaming ?? false}
+          />
           <StatusValue status={streamState?.status ?? "idle"} />
-          <BoolValue label="isPaused" value={streamState?.isPausedForApproval ?? false} />
+          <BoolValue
+            label="isPaused"
+            value={streamState?.isPausedForApproval ?? false}
+          />
           <BoolValue label="isLoading" value={isLoading} />
           <BoolValue label="canSend" value={canSendMessage} />
 
@@ -103,7 +111,9 @@ export function DevPanel({ isLoading, canSendMessage }: DevPanelProps) {
           {showTools && activeToolIds.length > 0 && (
             <div className="text-zinc-500 text-[10px] pl-2 max-h-24 overflow-y-auto">
               {activeToolIds.map((id) => (
-                <div key={id} className="truncate">{id}</div>
+                <div key={id} className="truncate">
+                  {id}
+                </div>
               ))}
             </div>
           )}

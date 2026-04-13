@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Folder, FolderOpen, ArrowDown } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useChat } from "@/contexts/chat-context";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
