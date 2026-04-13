@@ -97,3 +97,23 @@ def get_starred_models(sess: Session) -> list[str]:
 
 def set_starred_models(sess: Session, model_keys: list[str]) -> None:
     set_user_setting(sess, "starred_models", orjson.dumps(model_keys).decode())
+
+
+def get_selected_model(sess: Session) -> str:
+    return get_user_setting(sess, "selected_model") or ""
+
+
+def set_selected_model(sess: Session, model_key: str) -> None:
+    set_user_setting(sess, "selected_model", model_key)
+
+
+def get_recent_models(sess: Session) -> list[str]:
+    value = get_user_setting(sess, "recent_models")
+    if not value:
+        return []
+    parsed = orjson.loads(value)
+    return parsed if isinstance(parsed, list) else []
+
+
+def set_recent_models(sess: Session, model_keys: list[str]) -> None:
+    set_user_setting(sess, "recent_models", orjson.dumps(model_keys).decode())
