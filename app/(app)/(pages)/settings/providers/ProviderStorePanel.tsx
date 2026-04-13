@@ -27,7 +27,6 @@ import type {
   ProviderPluginPolicy,
   ProviderPluginSourceInfo,
   SaveProviderPluginPolicyInput,
-  NodeProviderPluginInfo,
 } from "@/python/api";
 import {
   getProviderPluginPolicy,
@@ -103,7 +102,7 @@ function InstalledPluginCard({
   error,
   autoUpdateError,
 }: {
-  plugin: NodeProviderPluginInfo;
+  plugin: ProviderPluginInfo;
   isRemoving: boolean;
   onUninstall: () => void;
   onAutoUpdateChange: (override: "inherit" | "enabled" | "disabled") => void;
