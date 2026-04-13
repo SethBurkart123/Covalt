@@ -96,13 +96,14 @@ jobs:
         if: matrix.platform == 'win'
         shell: bash
         run: |
+          WIN_PWD="$(cygpath -w "$PWD")"
           uv run --group dev pyinstaller \
             --noconfirm --clean --onedir \
             --name covalt-backend \
             --distpath backend/dist \
             --workpath backend/build \
             --specpath backend/build \
-            --add-data "$PWD/nodes;nodes" \
+            --add-data "$WIN_PWD\\nodes;nodes" \
             --collect-submodules nodes \
             --collect-submodules zynk \
             --collect-submodules agno \
@@ -112,7 +113,7 @@ jobs:
             --collect-data zynk \
             --collect-data tiktoken \
             --collect-data litellm \
-            --additional-hooks-dir "$PWD/backend/pyinstaller-hooks" \
+            --additional-hooks-dir "$WIN_PWD\\backend\\pyinstaller-hooks" \
             --hidden-import tiktoken_ext.openai_public \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.lifespan.on \
