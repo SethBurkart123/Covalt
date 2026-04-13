@@ -2,7 +2,18 @@ name: Build
 
 on:
   push:
-  pull_request:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Build environment"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - canary
 
 concurrency:
   group: build-${{ github.ref }}
@@ -14,10 +25,39 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos
+            arch: arm64
+          - os: macos-13
+            platform: macos
+            arch: x64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - os: windows-2025
+            platform: win
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Free disk space (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -25,21 +65,105 @@ jobs:
           bun-version: latest
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          uv --version
+        uses: astral-sh/setup-uv@v4
 
-      - name: Install dependencies
+      - name: Install Node.js dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build app
-        run: bun run build:desktop
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            build-essential \
+            cmake \
+            pkg-config
 
-      - name: Upload build artifact
+      # Build frontend (Next.js)
+      - name: Build frontend
+        run: bun run build:frontend
+
+      # Build backend (PyInstaller) - Unix
+      - name: Build backend (Unix)
+        if: matrix.platform != 'win'
+        run: bun run build:backend
+
+      # Build backend (PyInstaller) - Windows (uses ; as path separator)
+      - name: Build backend (Windows)
+        if: matrix.platform == 'win'
+        shell: bash
+        run: |
+          uv run --group dev pyinstaller \
+            --noconfirm --clean --onedir \
+            --name covalt-backend \
+            --distpath backend/dist \
+            --workpath backend/build \
+            --specpath backend/build \
+            --add-data "$PWD/nodes;nodes" \
+            --collect-submodules nodes \
+            --collect-submodules zynk \
+            --collect-submodules agno \
+            --collect-submodules sqlalchemy \
+            --collect-submodules backend \
+            --collect-submodules tiktoken_ext \
+            --collect-data zynk \
+            --collect-data tiktoken \
+            --collect-data litellm \
+            --additional-hooks-dir "$PWD/backend/pyinstaller-hooks" \
+            --hidden-import tiktoken_ext.openai_public \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            main.py
+
+      # Build Electrobun desktop app
+      - name: Build desktop (dev)
+        if: github.event_name == 'workflow_dispatch' && inputs.env == 'canary'
+        run: electrobun build --env=canary
+
+      - name: Build desktop (stable)
+        if: github.event_name != 'workflow_dispatch' || inputs.env == 'stable'
+        run: electrobun build --env=stable
+
+      # Upload each artifact file individually so they aren't wrapped in a zip
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build
-          path: build
+          name: covalt-desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: artifacts/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find all-artifacts -type f -exec cp {} release-assets/ \;
+          echo "Release assets:"
+          ls -lah release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-rc') }}
