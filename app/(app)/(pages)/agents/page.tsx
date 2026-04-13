@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Plus, Bot } from 'lucide-react';
-import { usePageTitle } from '@/contexts/page-title-context';
-import { Button } from '@/components/ui/button';
-import { listAgents, deleteAgent, type AgentInfo } from '@/python/api';
-import { AgentCard } from './AgentCard';
-import { AgentCardSkeleton } from './AgentCardSkeleton';
-import { CreateAgentDialog } from './CreateAgentDialog';
-import { DeleteAgentDialog } from './DeleteAgentDialog';
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Bot } from "lucide-react";
+import { usePageTitle } from "@/contexts/page-title-context";
+import { Button } from "@/components/ui/button";
+import { listAgents, deleteAgent, type AgentInfo } from "@/python/api";
+import { AgentCard } from "./AgentCard";
+import { AgentCardSkeleton } from "./AgentCardSkeleton";
+import { CreateAgentDialog } from "./CreateAgentDialog";
+import { DeleteAgentDialog } from "./DeleteAgentDialog";
 
 export default function AgentsPage() {
   const { setTitle, setRightContent } = usePageTitle();
   const router = useRouter();
-  
+
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -23,7 +23,7 @@ export default function AgentsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    setTitle('Agents');
+    setTitle("Agents");
   }, [setTitle]);
 
   // TODO: consider removing this Effect — storing JSX in state via Effect (anti-pattern 9).
@@ -34,7 +34,7 @@ export default function AgentsPage() {
       <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
         <Plus className="size-4" />
         New Agent
-      </Button>
+      </Button>,
     );
 
     return () => setRightContent(null);
@@ -45,7 +45,7 @@ export default function AgentsPage() {
       const response = await listAgents();
       setAgents(response.agents);
     } catch (err) {
-      console.error('Failed to load agents:', err);
+      console.error("Failed to load agents:", err);
     } finally {
       setIsLoading(false);
     }
@@ -55,19 +55,25 @@ export default function AgentsPage() {
     loadAgents();
   }, [loadAgents]);
 
-  const handleCreateSuccess = useCallback((agentId: string) => {
-    setCreateDialogOpen(false);
-    router.push(`/agents/edit?id=${agentId}`);
-  }, [router]);
+  const handleCreateSuccess = useCallback(
+    (agentId: string) => {
+      setCreateDialogOpen(false);
+      router.push(`/agents/edit?id=${agentId}`);
+    },
+    [router],
+  );
 
-  const handleDeleteClick = useCallback((agentId: string) => {
-    const agent = agents.find(a => a.id === agentId);
-    if (agent) {
-      setDeleteError(null);
-      setAgentToDelete(agent);
-      setDeleteDialogOpen(true);
-    }
-  }, [agents]);
+  const handleDeleteClick = useCallback(
+    (agentId: string) => {
+      const agent = agents.find((a) => a.id === agentId);
+      if (agent) {
+        setDeleteError(null);
+        setAgentToDelete(agent);
+        setDeleteDialogOpen(true);
+      }
+    },
+    [agents],
+  );
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!agentToDelete) return;
@@ -76,13 +82,13 @@ export default function AgentsPage() {
 
     try {
       await deleteAgent({ body: { id: agentToDelete.id } });
-      setAgents(prev => prev.filter(a => a.id !== agentToDelete.id));
+      setAgents((prev) => prev.filter((a) => a.id !== agentToDelete.id));
       setDeleteDialogOpen(false);
       setAgentToDelete(null);
       setDeleteError(null);
     } catch (err) {
-      console.error('Failed to delete agent:', err);
-      setDeleteError('Failed to delete agent. Please try again.');
+      console.error("Failed to delete agent:", err);
+      setDeleteError("Failed to delete agent. Please try again.");
     }
   }, [agentToDelete]);
 
@@ -104,12 +110,9 @@ export default function AgentsPage() {
             </div>
             <h3 className="text-lg font-medium mb-2">No agents yet</h3>
             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-              Create your first agent to start building visual AI workflows with tools and sub-agents.
+              Create your first agent to start building visual AI workflows with
+              tools and sub-agents.
             </p>
-            <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
-              <Plus className="size-4" />
-              Create your first agent
-            </Button>
           </div>
         </div>
       ) : (
@@ -128,7 +131,7 @@ export default function AgentsPage() {
         onOpenChange={setCreateDialogOpen}
         onSuccess={handleCreateSuccess}
       />
-      
+
       <DeleteAgentDialog
         open={deleteDialogOpen}
         onOpenChange={(nextOpen) => {
