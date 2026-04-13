@@ -106,15 +106,11 @@ def _fake_db_session(record: Any | None) -> Iterator[_FakeSession]:
 def _make_manager(tmp_path: Any, monkeypatch: Any) -> AgentManager:
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(
-        "backend.services.agent_manager.get_agents_directory", lambda: agents_dir
-    )
+    monkeypatch.setattr("backend.services.flows.agent_manager.get_agents_directory", lambda: agents_dir)
     return AgentManager()
 
 
-def test_agent_manager_save_graph_preserves_explicit_channel(
-    tmp_path: Any, monkeypatch: Any
-) -> None:
+def test_agent_manager_save_graph_preserves_explicit_channel(tmp_path: Any, monkeypatch: Any) -> None:
     manager = _make_manager(tmp_path, monkeypatch)
     record = SimpleNamespace(
         id="agent-1",
@@ -126,9 +122,7 @@ def test_agent_manager_save_graph_preserves_explicit_channel(
         created_at="2026-01-01T00:00:00",
         updated_at="2026-01-01T00:00:00",
     )
-    monkeypatch.setattr(
-        "backend.services.agent_manager.db_session", lambda: _fake_db_session(record)
-    )
+    monkeypatch.setattr("backend.services.flows.agent_manager.db_session", lambda: _fake_db_session(record))
 
     ok = manager.save_graph(
         "agent-1",
@@ -156,9 +150,7 @@ def test_agent_manager_save_graph_preserves_explicit_channel(
     assert stored_edge["data"]["channel"] == "flow"
 
 
-def test_agent_manager_get_agent_requires_valid_channel(
-    tmp_path: Any, monkeypatch: Any
-) -> None:
+def test_agent_manager_get_agent_requires_valid_channel(tmp_path: Any, monkeypatch: Any) -> None:
     manager = _make_manager(tmp_path, monkeypatch)
     record = SimpleNamespace(
         id="agent-1",
@@ -184,9 +176,7 @@ def test_agent_manager_get_agent_requires_valid_channel(
         created_at="2026-01-01T00:00:00",
         updated_at="2026-01-01T00:00:00",
     )
-    monkeypatch.setattr(
-        "backend.services.agent_manager.db_session", lambda: _fake_db_session(record)
-    )
+    monkeypatch.setattr("backend.services.flows.agent_manager.db_session", lambda: _fake_db_session(record))
 
     with pytest.raises(ValueError, match="invalid channel"):
         manager.get_agent("agent-1")

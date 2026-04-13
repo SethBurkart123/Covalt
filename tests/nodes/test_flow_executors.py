@@ -16,6 +16,13 @@ import httpx
 import pytest
 
 from backend.runtime import RuntimeMessage, RuntimeToolCall
+from backend.runtime.types import (
+    ApprovalRequired,
+    ContentDelta,
+    PendingApproval,
+    RunCompleted,
+    RunError,
+)
 from backend.services.streaming import run_control
 from nodes._types import (
     DataValue,
@@ -63,7 +70,6 @@ _skip_future = pytest.mark.skipif(
 )
 
 
-
 def _flow_ctx(
     *,
     node_id: str = "test-node",
@@ -75,9 +81,7 @@ def _flow_ctx(
     services: Any = None,
 ) -> FlowContext:
     resolved_services = services or SimpleNamespace()
-    resolved_registry = tool_registry or getattr(
-        resolved_services, "tool_registry", MagicMock()
-    )
+    resolved_registry = tool_registry or getattr(resolved_services, "tool_registry", MagicMock())
     if getattr(resolved_services, "tool_registry", None) is None:
         setattr(resolved_services, "tool_registry", resolved_registry)
 
@@ -93,7 +97,6 @@ def _flow_ctx(
 
 def _dv(type_: str, value: Any) -> DataValue:
     return DataValue(type=type_, value=value)
-
 
 
 class TestChatStartExecutor:
@@ -158,7 +161,6 @@ class TestChatStartExecutor:
         assert services.chat_output.primary_agent_source == "chat-start-1"
 
 
-
 async def _fake_astream(*tokens: str):
     for t in tokens:
         yield t
@@ -173,9 +175,7 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = lambda prompt: _fake_astream("Hello", " ", "world")
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             events, result = await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o"},
@@ -195,13 +195,9 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = lambda prompt: _fake_astream("a", "b", "c")
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             events, result = await collect_events(
-                executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "go")}, ctx
-                )
+                executor.execute({"model": "openai:gpt-4o"}, {"prompt": _dv("string", "go")}, ctx)
             )
 
         progress = [e for e in events if e.event_type == "progress"]
@@ -216,13 +212,9 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = lambda prompt: _fake_astream("x")
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             events, _ = await collect_events(
-                executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx
-                )
+                executor.execute({"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx)
             )
 
         assert len(events) >= 1
@@ -240,13 +232,9 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = _exploding_stream
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             events, result = await collect_events(
-                executor.execute(
-                    {"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx
-                )
+                executor.execute({"model": "openai:gpt-4o"}, {"prompt": _dv("string", "")}, ctx)
             )
 
         error_events = [e for e in events if e.event_type == "error"]
@@ -270,9 +258,7 @@ class TestLlmCompletionExecutor:
 
         mock_model.astream = _capturing_astream
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o", "temperature": 0.7, "max_tokens": 100},
@@ -292,12 +278,8 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = lambda prompt: _fake_astream()
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
-            events, result = await collect_events(
-                executor.execute({"model": "openai:gpt-4o"}, {}, ctx)
-            )
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
+            events, result = await collect_events(executor.execute({"model": "openai:gpt-4o"}, {}, ctx))
 
         assert isinstance(result, ExecutionResult)
         assert result.outputs["output"].value["text"] == ""
@@ -310,9 +292,7 @@ class TestLlmCompletionExecutor:
         mock_model = MagicMock()
         mock_model.astream = lambda prompt: _fake_astream("ok")
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ) as resolve_model_mock:
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model) as resolve_model_mock:
             await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o"},
@@ -342,9 +322,7 @@ class TestLlmCompletionExecutor:
 
         mock_model.astream = _capturing_astream
 
-        with patch(
-            "nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model
-        ):
+        with patch("nodes.ai.llm_completion.executor.resolve_model", return_value=mock_model):
             await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o"},
@@ -363,17 +341,14 @@ class TestLlmCompletionExecutor:
 
 
 class _FakeStreamingAgent:
-    def __init__(self, chunks: list[SimpleNamespace]) -> None:
+    def __init__(self, chunks: list[Any]) -> None:
         self._chunks = chunks
         self.model: Any = None
         self.instructions: list[str] | None = None
 
-    def arun(self, *_args: Any, **_kwargs: Any):
-        async def _stream():
-            for chunk in self._chunks:
-                yield chunk
-
-        return _stream()
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        for chunk in self._chunks:
+            yield chunk
 
 
 class _RecordingInputAgent:
@@ -381,25 +356,18 @@ class _RecordingInputAgent:
         self.final_content = final_content
         self.calls: list[dict[str, Any]] = []
 
-    def arun(self, **kwargs: Any):
-        self.calls.append(kwargs)
-
-        async def _stream():
-            yield SimpleNamespace(event="RunCompleted", content=self.final_content)
-
-        return _stream()
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        self.calls.append({"messages": messages, "add_history_to_context": add_history_to_context})
+        yield RunCompleted(content=self.final_content)
 
 
 class _SlowAgent:
     model: Any = None
     instructions: list[str] | None = None
 
-    def arun(self, *_args: Any, **_kwargs: Any):
-        async def _stream():
-            await asyncio.sleep(0.05)
-            yield SimpleNamespace(event="RunCompleted", content="late")
-
-        return _stream()
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        await asyncio.sleep(0.05)
+        yield RunCompleted(content="late")
 
 
 class _ApprovalStreamingAgent:
@@ -408,24 +376,21 @@ class _ApprovalStreamingAgent:
         self._continued_chunks = continued_chunks
         self.continue_calls: list[dict[str, Any]] = []
 
-    def arun(self, *_args: Any, **_kwargs: Any):
-        async def _stream():
-            yield SimpleNamespace(
-                event="RunPaused",
-                run_id="run-approval",
-                tools=self._paused_tools,
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        pending = [
+            PendingApproval(
+                tool_call_id=getattr(tool, "tool_call_id", ""),
+                tool_name=getattr(tool, "tool_name", ""),
+                tool_args=getattr(tool, "tool_args", {}),
             )
+            for tool in self._paused_tools
+        ]
+        yield ApprovalRequired(run_id="run-approval", tools=pending)
 
-        return _stream()
-
-    def acontinue_run(self, **kwargs: Any):
-        self.continue_calls.append(kwargs)
-
-        async def _stream():
-            for chunk in self._continued_chunks:
-                yield chunk
-
-        return _stream()
+    async def continue_run(self, approval: Any):
+        self.continue_calls.append(approval)
+        for chunk in self._continued_chunks:
+            yield chunk
 
 
 class TestAgentExecutor:
@@ -436,19 +401,22 @@ class TestAgentExecutor:
         executor = AgentExecutor()
         fake_agent = _FakeStreamingAgent(
             [
-                SimpleNamespace(event="RunContent", content="ok"),
-                SimpleNamespace(event="RunCompleted", content=""),
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
             ]
         )
         ctx = _flow_ctx()
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ) as resolve_model, patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=fake_agent),
-        ) as build_agent:
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ) as resolve_model,
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ) as build_agent,
+        ):
             events, result = await collect_events(
                 executor.execute(
                     {"model": "openai:gpt-4o", "instructions": "inline"},
@@ -482,12 +450,15 @@ class TestAgentExecutor:
         recording_agent = _RecordingInputAgent()
         ctx = _flow_ctx()
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=recording_agent),
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=recording_agent),
+            ),
         ):
             _, result = await collect_events(
                 executor.execute(
@@ -524,13 +495,13 @@ class TestAgentExecutor:
 
         assert isinstance(result, ExecutionResult)
         assert len(recording_agent.calls) == 1
-        run_input = recording_agent.calls[0]["input"]
-        assert isinstance(run_input, list)
-        assert len(run_input) == 2
-        assert run_input[0].role == "assistant"
-        assert run_input[1].role == "tool"
-        assert getattr(run_input[0], "tool_calls", None)
-        assert getattr(run_input[1], "tool_call_id", "") == "call_1"
+        run_messages = recording_agent.calls[0]["messages"]
+        assert isinstance(run_messages, list)
+        assert len(run_messages) == 2
+        assert run_messages[0].role == "assistant"
+        assert run_messages[1].role == "tool"
+        assert getattr(run_messages[0], "tool_calls", None)
+        assert getattr(run_messages[1], "tool_call_id", "") == "call_1"
 
     @pytest.mark.asyncio
     async def test_agent_accepts_messages_key_from_data_channel(self) -> None:
@@ -538,12 +509,15 @@ class TestAgentExecutor:
         recording_agent = _RecordingInputAgent()
         ctx = _flow_ctx()
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=recording_agent),
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=recording_agent),
+            ),
         ):
             _, result = await collect_events(
                 executor.execute(
@@ -566,10 +540,10 @@ class TestAgentExecutor:
 
         assert isinstance(result, ExecutionResult)
         assert len(recording_agent.calls) == 1
-        run_input = recording_agent.calls[0]["input"]
-        assert isinstance(run_input, list)
-        assert [message.role for message in run_input] == ["user", "assistant"]
-        assert [message.content for message in run_input] == ["first", "second"]
+        run_messages = recording_agent.calls[0]["messages"]
+        assert isinstance(run_messages, list)
+        assert [message.role for message in run_messages] == ["user", "assistant"]
+        assert [message.content for message in run_messages] == ["first", "second"]
 
     @pytest.mark.asyncio
     async def test_agent_falls_back_to_upstream_message_when_no_messages_resolve(
@@ -579,12 +553,15 @@ class TestAgentExecutor:
         recording_agent = _RecordingInputAgent()
         ctx = _flow_ctx()
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=recording_agent),
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=recording_agent),
+            ),
         ):
             _, result = await collect_events(
                 executor.execute(
@@ -596,11 +573,11 @@ class TestAgentExecutor:
 
         assert isinstance(result, ExecutionResult)
         assert len(recording_agent.calls) == 1
-        run_input = recording_agent.calls[0]["input"]
-        assert isinstance(run_input, list)
-        assert len(run_input) == 1
-        assert run_input[0].role == "user"
-        assert run_input[0].content == "from upstream"
+        run_messages = recording_agent.calls[0]["messages"]
+        assert isinstance(run_messages, list)
+        assert len(run_messages) == 1
+        assert run_messages[0].role == "user"
+        assert run_messages[0].content == "from upstream"
 
     @pytest.mark.asyncio
     async def test_materialize_resolves_runtime_link_dependencies(self) -> None:
@@ -615,9 +592,7 @@ class TestAgentExecutor:
         runtime.resolve_links = AsyncMock(return_value=[MagicMock(), child_agent])
         ctx = _flow_ctx(runtime=runtime)
 
-        with patch(
-            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
-        ):
+        with patch("nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"):
             runnable = await executor.materialize(
                 {"model": "openai:gpt-4o"},
                 "input",
@@ -645,9 +620,7 @@ class TestAgentExecutor:
         runtime.incoming_edges.return_value = []
         ctx = _flow_ctx(runtime=runtime)
 
-        with patch(
-            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
-        ):
+        with patch("nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"):
             runnable = await executor.materialize(
                 {"model": "openai:gpt-4o"},
                 "input",
@@ -681,11 +654,7 @@ class TestAgentExecutor:
             channel: str | None = None,
             target_handle: str | None = None,
         ) -> list[dict[str, str]]:
-            if (
-                node_id == "test-node"
-                and channel == "flow"
-                and target_handle == "model"
-            ):
+            if node_id == "test-node" and channel == "flow" and target_handle == "model":
                 return [{"source": "model-1", "sourceHandle": "output"}]
             return []
 
@@ -724,9 +693,7 @@ class TestAgentExecutor:
             services=SimpleNamespace(extra_tool_ids=["mcp:github"]),
         )
 
-        with patch(
-            "nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"
-        ):
+        with patch("nodes.core.agent.executor.get_model", return_value="openai:gpt-4o-mini"):
             runnable = await executor.materialize(
                 {"model": "openai:gpt-4o"},
                 "input",
@@ -753,16 +720,17 @@ class TestAgentExecutor:
 
         fake_agent = _FakeStreamingAgent(
             [
-                SimpleNamespace(event="RunContent", content="ok"),
-                SimpleNamespace(event="RunCompleted", content=""),
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
             ]
         )
 
-        with patch(
-            "nodes.core.agent.executor.get_model", return_value=MagicMock()
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=fake_agent),
+        with (
+            patch("nodes.core.agent.executor.get_model", return_value=MagicMock()),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
         ):
             await collect_events(
                 executor.execute(
@@ -783,21 +751,20 @@ class TestAgentExecutor:
         )
 
     @pytest.mark.asyncio
-    async def test_timeout_emits_error_event(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_timeout_emits_error_event(self, monkeypatch: pytest.MonkeyPatch) -> None:
         executor = AgentExecutor()
         ctx = _flow_ctx()
-        monkeypatch.setattr(
-            "nodes.core.agent.executor.AGENT_STREAM_IDLE_TIMEOUT_SECONDS", 0.001
-        )
+        monkeypatch.setattr("nodes.core.agent.executor.AGENT_STREAM_IDLE_TIMEOUT_SECONDS", 0.001)
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=_SlowAgent()),
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=_SlowAgent()),
+            ),
         ):
             events, result = await collect_events(
                 executor.execute(
@@ -824,12 +791,8 @@ class TestAgentExecutor:
         fake_agent = _ApprovalStreamingAgent(
             paused_tools=[tool],
             continued_chunks=[
-                SimpleNamespace(
-                    event="RunContent", run_id="run-approval", content="ok"
-                ),
-                SimpleNamespace(
-                    event="RunCompleted", run_id="run-approval", content=""
-                ),
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
             ],
         )
         ctx = _flow_ctx()
@@ -844,12 +807,15 @@ class TestAgentExecutor:
                 edited_args={"tool-1": {"query": "updated"}},
             )
 
-        with patch(
-            "nodes.core.agent.executor._resolve_model",
-            return_value=MagicMock(),
-        ), patch(
-            "nodes.core.agent.executor._build_agent_or_team",
-            new=MagicMock(return_value=fake_agent),
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
         ):
             events, result = await asyncio.wait_for(
                 asyncio.gather(
@@ -869,9 +835,7 @@ class TestAgentExecutor:
         agent_events = [
             e.data.get("event")
             for e in flow_events
-            if isinstance(e, NodeEvent)
-            and e.event_type == "agent_event"
-            and isinstance(e.data, dict)
+            if isinstance(e, NodeEvent) and e.event_type == "agent_event" and isinstance(e.data, dict)
         ]
 
         assert "ToolApprovalRequired" in agent_events
@@ -881,11 +845,10 @@ class TestAgentExecutor:
 
         assert len(fake_agent.continue_calls) == 1
         continue_call = fake_agent.continue_calls[0]
-        assert continue_call["run_id"] == "run-approval"
-        updated_tools = continue_call["updated_tools"]
-        assert len(updated_tools) == 1
-        assert updated_tools[0].confirmed is True
-        assert updated_tools[0].tool_args == {"query": "updated"}
+        assert continue_call.run_id == "run-approval"
+        assert len(continue_call.decisions) == 1
+        assert continue_call.decisions["tool-1"].approved is True
+        assert continue_call.decisions["tool-1"].edited_args == {"query": "updated"}
 
 
 class TestToolMaterializers:
@@ -986,9 +949,7 @@ class TestToolMaterializers:
         self,
     ) -> None:
         runtime = MagicMock()
-        runtime.incoming_edges.return_value = [
-            {"source": "model-0", "sourceHandle": "model"}
-        ]
+        runtime.incoming_edges.return_value = [{"source": "model-0", "sourceHandle": "model"}]
         runtime.materialize_output = AsyncMock(return_value="google:gemini-2.5-flash")
         ctx = _flow_ctx(runtime=runtime)
 
@@ -1008,7 +969,6 @@ class TestToolMaterializers:
                 "tools",
                 _flow_ctx(),
             )
-
 
 
 class TestConditionalExecutor:
@@ -1163,7 +1123,6 @@ class TestConditionalExecutor:
         assert ConditionalExecutor().node_type == "conditional"
 
 
-
 class TestMergeExecutor:
     @pytest.mark.asyncio
     async def test_merge_outputs_values_in_handle_index_order(self) -> None:
@@ -1201,7 +1160,6 @@ class TestMergeExecutor:
 
     def test_node_type_attribute(self) -> None:
         assert MergeExecutor().node_type == "merge"
-
 
 
 class TestRerouteExecutor:
@@ -1252,11 +1210,7 @@ class TestRerouteExecutor:
 
         assert result == {"payload": 1}
 
-        flow_calls = [
-            call
-            for call in runtime.incoming_edges.call_args_list
-            if call.kwargs.get("channel") == "flow"
-        ]
+        flow_calls = [call for call in runtime.incoming_edges.call_args_list if call.kwargs.get("channel") == "flow"]
         assert len(flow_calls) == 1
 
         runtime.incoming_edges.reset_mock()
@@ -1269,11 +1223,7 @@ class TestRerouteExecutor:
             _flow_ctx(runtime=runtime),
         )
 
-        link_calls = [
-            call
-            for call in runtime.incoming_edges.call_args_list
-            if call.kwargs.get("channel") == "link"
-        ]
+        link_calls = [call for call in runtime.incoming_edges.call_args_list if call.kwargs.get("channel") == "link"]
         assert len(link_calls) == 1
 
     @pytest.mark.asyncio
@@ -1316,7 +1266,6 @@ class TestRerouteExecutor:
 
     def test_node_type_attribute(self) -> None:
         assert RerouteExecutor().node_type == "reroute"
-
 
 
 @_skip_future
@@ -1486,7 +1435,6 @@ class TestHttpRequestExecutor:
         assert HttpRequestExecutor().node_type == "http-request"
 
 
-
 @_skip_future
 class TestFilterExecutor:
     @pytest.mark.asyncio
@@ -1563,7 +1511,6 @@ class TestFilterExecutor:
 
     def test_node_type_attribute(self) -> None:
         assert FilterExecutor().node_type == "filter"
-
 
 
 @_skip_future
@@ -1643,7 +1590,6 @@ class TestTypeConverterExecutor:
 
     def test_node_type_attribute(self) -> None:
         assert TypeConverterExecutor().node_type == "type-converter"
-
 
 
 @_skip_future

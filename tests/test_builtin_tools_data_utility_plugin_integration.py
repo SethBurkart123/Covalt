@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.runtime import RuntimeToolCall
+from backend.runtime.types import ContentDelta, RunCompleted, ToolCallStarted
 from backend.services.flows.graph_runtime import GraphRuntime
 from nodes import get_executor
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
@@ -35,15 +37,12 @@ TARGET_NODE_MANIFEST_PATHS: dict[str, tuple[str, str]] = {
 
 
 class _StreamingAgentStub:
-    def __init__(self, chunks: list[SimpleNamespace]) -> None:
+    def __init__(self, chunks: list[Any]) -> None:
         self._chunks = chunks
 
-    def arun(self, *_args: Any, **_kwargs: Any):
-        async def _stream():
-            for chunk in self._chunks:
-                yield chunk
-
-        return _stream()
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        for chunk in self._chunks:
+            yield chunk
 
 
 def _repo_root() -> Path:
@@ -183,25 +182,28 @@ async def test_tools_nodes_materialized_tools_are_available_to_downstream_agent_
         executors={node_type: source_executor},
     )
 
-    tool_call = SimpleNamespace(
-        tool_call_id="tool-call-1",
-        tool_name="search_docs",
-        tool_args={"query": "covalt"},
+    tool_call = RuntimeToolCall(
+        id="tool-call-1",
+        name="search_docs",
+        arguments={"query": "covalt"},
     )
     fake_agent = _StreamingAgentStub(
         [
-            SimpleNamespace(event="ToolCallStarted", run_id="agent-run-1", tool=tool_call),
-            SimpleNamespace(event="RunContent", run_id="agent-run-1", content="done"),
-            SimpleNamespace(event="RunCompleted", run_id="agent-run-1", content=""),
+            ToolCallStarted(tool=tool_call),
+            ContentDelta(text="done"),
+            RunCompleted(content=""),
         ]
     )
 
-    with patch(
-        "nodes.core.agent.executor._resolve_model",
-        return_value=MagicMock(),
-    ), patch(
-        "nodes.core.agent.executor._build_agent_or_team",
-        new=MagicMock(return_value=fake_agent),
+    with (
+        patch(
+            "nodes.core.agent.executor._resolve_model",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "nodes.core.agent.executor._build_agent_or_team",
+            new=MagicMock(return_value=fake_agent),
+        ),
     ):
         events, result = await collect_events(
             agent_executor.execute(
