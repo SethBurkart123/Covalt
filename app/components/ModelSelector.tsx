@@ -9,6 +9,7 @@ import { Command, CommandInput, CommandItem } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CachedImage, preloadImages } from "@/components/ui/cached-image";
 import { VirtualizedCommandList } from "@/components/ui/virtualized-command-list";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ModelInfo } from "@/lib/types/chat";
 import type { AgentInfo } from "@/python/api";
 import { agentFileUrl } from "@/python/api";
@@ -131,6 +132,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   const [starredModels, setStarredModels] = useState<string[]>([]);
   const { agents, refreshAgents, refreshModels } = useChat();
 
+  const hasModels = models.length > 0;
   useEffect(() => {
     let cancelled = false;
     getProviderMap()
@@ -146,7 +148,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasModels]);
 
   useEffect(() => {
     preloadImages(
@@ -378,6 +380,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
               )}
               <MiddleTruncate text={selectedModelInfo.modelId} />
             </span>
+          ) : models.length === 0 ? (
+            <Skeleton className="h-4 w-24" />
           ) : (
             <span className="text-muted-foreground">Select model</span>
           )}

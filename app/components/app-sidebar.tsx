@@ -24,6 +24,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const {
     chatId: currentChatId,
     chatIds,
+    chatsLoaded,
     chatsData,
     startNewChat,
     switchChat,
@@ -89,11 +90,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <SidebarMenu className="px-2 flex flex-col gap-0">
           {chatGroups.length === 0 ? (
-            <SidebarMenuItem>
-              <span className="px-4 py-2 text-sm text-muted-foreground italic">
-                No chats yet
-              </span>
-            </SidebarMenuItem>
+            chatsLoaded ? (
+              <SidebarMenuItem>
+                <span className="px-4 py-2 text-sm text-muted-foreground italic">
+                  No chats yet
+                </span>
+              </SidebarMenuItem>
+            ) : null
           ) : (
             chatGroups.map((group) => (
               <div key={group.label} className="contents">

@@ -97,6 +97,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     chatId: currentChatId,
     chatTitle,
     chatIds,
+    chatsLoaded: isLoaded,
     chatsData: allChatsData.chats,
     startNewChat: operations.startNewChat,
     switchChat: operations.switchChat,
@@ -114,6 +115,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     currentChatId,
     chatTitle,
     chatIds,
+    isLoaded,
     allChatsData.chats,
     operations,
     refreshChats,
@@ -124,8 +126,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     agents,
     refreshAgents,
   ]);
-
-  if (!isLoaded) return null;
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
