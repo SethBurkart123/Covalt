@@ -77,12 +77,15 @@ function buildApplicationMenu(): ApplicationMenuItemConfig[] {
   if (isMac) {
     return [
       {
+        label: "Covalt",
         submenu: [
+          { role: "about" },
+          { type: "separator" },
           { role: "hide" },
           { role: "hideOthers" },
           { role: "showAll" },
           { type: "separator" },
-          { role: "quit" },
+          { role: "quit", accelerator: "q" },
         ],
       },
       fileMenu,

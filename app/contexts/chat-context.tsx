@@ -35,12 +35,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const loadChats = async () => {
       try {
-        setAllChatsData(await api.getAllChats());
+        const data = await api.getAllChats();
+        if (!cancelled) {
+          setAllChatsData(data);
+          setIsLoaded(true);
+        }
       } catch (error) {
         console.error("Failed to load chats:", error);
-        setAllChatsData({ chats: {} });
-      } finally {
-        if (!cancelled) setIsLoaded(true);
       }
     };
 

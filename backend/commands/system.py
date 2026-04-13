@@ -21,11 +21,15 @@ from ..models.chat import (
     ProviderOverview,
     ProviderOverviewResponse,
     ReasoningInfo,
+    RecentModelsResponse,
     SaveAutoTitleSettingsInput,
     SaveModelSettingsInput,
     SaveProviderConfigInput,
     SaveSystemPromptSettingsInput,
+    SelectedModelResponse,
     SetDefaultToolsInput,
+    SetRecentModelsInput,
+    SetSelectedModelInput,
     SetStarredModelsInput,
     StarredModelsResponse,
     SystemPromptSettings,
@@ -254,6 +258,30 @@ async def get_default_tools() -> DefaultToolsResponse:
 async def set_default_tools(body: SetDefaultToolsInput) -> None:
     with db.db_session() as sess:
         db.set_default_tool_ids(sess, body.toolIds)
+
+
+@command
+async def get_selected_model() -> SelectedModelResponse:
+    with db.db_session() as sess:
+        return SelectedModelResponse(modelKey=db.get_selected_model(sess))
+
+
+@command
+async def set_selected_model(body: SetSelectedModelInput) -> None:
+    with db.db_session() as sess:
+        db.set_selected_model(sess, body.modelKey)
+
+
+@command
+async def get_recent_models() -> RecentModelsResponse:
+    with db.db_session() as sess:
+        return RecentModelsResponse(modelKeys=db.get_recent_models(sess))
+
+
+@command
+async def set_recent_models(body: SetRecentModelsInput) -> None:
+    with db.db_session() as sess:
+        db.set_recent_models(sess, body.modelKeys)
 
 
 @command

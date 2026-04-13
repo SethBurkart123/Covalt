@@ -453,6 +453,22 @@ class SetDefaultToolsInput(BaseModel):
     toolIds: list[str]
 
 
+class SelectedModelResponse(BaseModel):
+    modelKey: str
+
+
+class SetSelectedModelInput(BaseModel):
+    modelKey: str
+
+
+class RecentModelsResponse(BaseModel):
+    modelKeys: list[str]
+
+
+class SetRecentModelsInput(BaseModel):
+    modelKeys: list[str]
+
+
 class StarredModelsResponse(BaseModel):
     modelKeys: list[str]
 
