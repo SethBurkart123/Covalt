@@ -321,7 +321,7 @@ export default function ProviderItem({ row, actions, editableName, onNameChange 
                     </p>
                   </div>
                   <ExtraModelsInput
-                    models={(config.extra as Record<string, unknown>)?.extraModels as string[] ?? []}
+                    models={(config.extra?.extraModels as string[]) ?? []}
                     onChange={onExtraModelsChange}
                   />
                 </div>
