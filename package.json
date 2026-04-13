@@ -81,7 +81,7 @@
     "cmdk": "^1.1.1",
     "covalt-desktop": ".",
     "electrobun": "latest",
-    "framer-motion": "^12.7.4",
+    "motion/react": "^12.7.4",
     "frimousse": "^0.3.0",
     "fuse.js": "^7.1.0",
     "hast-util-to-html": "^9.0.5",

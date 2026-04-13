@@ -2,10 +2,13 @@
 
 import { useCallback, useLayoutEffect } from "react";
 import { X } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useAgentTestChat } from "@/contexts/agent-test-chat-context";
 import { useAgentEditor } from "@/contexts/agent-editor-context";
-import { ArtifactPanelProvider, useArtifactPanel } from "@/contexts/artifact-panel-context";
+import {
+  ArtifactPanelProvider,
+  useArtifactPanel,
+} from "@/contexts/artifact-panel-context";
 import { useTestChatInput } from "@/lib/hooks/use-test-chat-input";
 import { useResizePanel } from "@/lib/hooks/use-resize-panel";
 import { usePageTitle } from "@/contexts/page-title-context";
@@ -30,11 +33,13 @@ function TestChatInner() {
   const { isOpen: artifactOpen } = useArtifactPanel();
   const { handleSubmit } = chat;
 
-  const { containerRef, width, isResizing, handleResizeStart } = useResizePanel({
-    defaultWidth: 420,
-    minWidth: 320,
-    maxWidth: artifactOpen ? 1200 : 700,
-  });
+  const { containerRef, width, isResizing, handleResizeStart } = useResizePanel(
+    {
+      defaultWidth: 420,
+      minWidth: 320,
+      maxWidth: artifactOpen ? 1200 : 700,
+    },
+  );
 
   const effectiveWidth = artifactOpen ? Math.max(width, 800) : width;
 
@@ -47,11 +52,11 @@ function TestChatInner() {
     (
       input: string,
       attachments: Parameters<typeof handleSubmit>[1],
-      toolIds?: Parameters<typeof handleSubmit>[2]
+      toolIds?: Parameters<typeof handleSubmit>[2],
     ) => {
       handleSubmit(input, attachments, toolIds);
     },
-    [handleSubmit]
+    [handleSubmit],
   );
 
   return (
@@ -69,16 +74,18 @@ function TestChatInner() {
         <div
           className={cn(
             "absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-primary/20 transition-colors z-10",
-            isResizing && "bg-primary/30"
+            isResizing && "bg-primary/30",
           )}
           onMouseDown={handleResizeStart}
         />
 
         <div className="flex flex-row h-full">
-          <div className={cn(
-            "flex flex-col overflow-hidden min-w-0",
-            artifactOpen ? "w-1/2" : "flex-1",
-          )}>
+          <div
+            className={cn(
+              "flex flex-col overflow-hidden min-w-0",
+              artifactOpen ? "w-1/2" : "flex-1",
+            )}
+          >
             <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-medium text-sm">Test Chat</h3>
@@ -93,7 +100,12 @@ function TestChatInner() {
                   </Button>
                 )}
               </div>
-              <Button variant="ghost" size="icon" className="size-7" onClick={close}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={close}
+              >
                 <X className="size-4" />
               </Button>
             </div>

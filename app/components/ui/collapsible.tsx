@@ -1,43 +1,50 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useState, type HTMLAttributes, type ReactNode } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { ChevronRight, ChevronDown, type LucideIcon } from "lucide-react"
-import { cn } from "@/lib/utils"
+import {
+  createContext,
+  useContext,
+  useState,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { ChevronRight, ChevronDown, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-type CollapsibleMode = "regular" | "minimal" | "compact"
+type CollapsibleMode = "regular" | "minimal" | "compact";
 
 interface CollapsibleContextValue {
-  isOpen: boolean
-  setIsOpen: (open: boolean) => void
-  isGrouped: boolean
-  isFirst: boolean
-  isLast: boolean
-  shimmer: boolean
-  disableToggle: boolean
-  mode: CollapsibleMode
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  isGrouped: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  shimmer: boolean;
+  disableToggle: boolean;
+  mode: CollapsibleMode;
 }
 
-const CollapsibleContext = createContext<CollapsibleContextValue | null>(null)
+const CollapsibleContext = createContext<CollapsibleContextValue | null>(null);
 
 function useCollapsible() {
-  const context = useContext(CollapsibleContext)
-  if (!context) throw new Error("Collapsible components must be used within a Collapsible")
-  return context
+  const context = useContext(CollapsibleContext);
+  if (!context)
+    throw new Error("Collapsible components must be used within a Collapsible");
+  return context;
 }
 
 interface CollapsibleProps extends HTMLAttributes<HTMLDivElement> {
-  children: ReactNode
-  defaultOpen?: boolean
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  isGrouped?: boolean
-  isFirst?: boolean
-  isLast?: boolean
-  shimmer?: boolean
-  disableToggle?: boolean
-  mode?: CollapsibleMode
-  "data-testid"?: string
+  children: ReactNode;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  isGrouped?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
+  shimmer?: boolean;
+  disableToggle?: boolean;
+  mode?: CollapsibleMode;
+  "data-testid"?: string;
 }
 
 function Collapsible({
@@ -55,11 +62,20 @@ function Collapsible({
   "data-testid": testId,
   ...props
 }: CollapsibleProps) {
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
-  const isOpen = controlledOpen ?? uncontrolledOpen
-  const setIsOpen = onOpenChange ?? setUncontrolledOpen
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const isOpen = controlledOpen ?? uncontrolledOpen;
+  const setIsOpen = onOpenChange ?? setUncontrolledOpen;
 
-  const value = { isOpen, setIsOpen, isGrouped, isFirst, isLast, shimmer, disableToggle, mode }
+  const value = {
+    isOpen,
+    setIsOpen,
+    isGrouped,
+    isFirst,
+    isLast,
+    shimmer,
+    disableToggle,
+    mode,
+  };
 
   if (mode === "minimal") {
     return (
@@ -72,63 +88,89 @@ function Collapsible({
           {children}
         </div>
       </CollapsibleContext.Provider>
-    )
+    );
   }
 
   if (mode === "compact") {
     return (
       <CollapsibleContext.Provider value={value}>
-        <div data-testid={testId} className={cn("my-2 not-prose", className)} {...props}>
+        <div
+          data-testid={testId}
+          className={cn("my-2 not-prose", className)}
+          {...props}
+        >
           <div className="border border-border/60 rounded-md overflow-hidden bg-card/80">
             {children}
           </div>
         </div>
       </CollapsibleContext.Provider>
-    )
+    );
   }
 
   if (isGrouped) {
     return (
       <CollapsibleContext.Provider value={value}>
-        <div data-testid={testId} className={cn("relative", className)} {...props}>{children}</div>
+        <div
+          data-testid={testId}
+          className={cn("relative", className)}
+          {...props}
+        >
+          {children}
+        </div>
       </CollapsibleContext.Provider>
-    )
+    );
   }
 
   return (
     <CollapsibleContext.Provider value={value}>
-      <div data-testid={testId} className={cn("my-3 not-prose", className)} {...props}>
+      <div
+        data-testid={testId}
+        className={cn("my-3 not-prose", className)}
+        {...props}
+      >
         <div className="border border-border rounded-lg overflow-hidden bg-card">
           {children}
         </div>
       </div>
     </CollapsibleContext.Provider>
-  )
+  );
 }
 
 interface CollapsibleTriggerProps {
-  children: ReactNode
-  rightContent?: ReactNode
-  className?: string
-  onClick?: () => void
-  overrideIsOpenPreview?: boolean
+  children: ReactNode;
+  rightContent?: ReactNode;
+  className?: string;
+  onClick?: () => void;
+  overrideIsOpenPreview?: boolean;
 }
 
-function CollapsibleTrigger({ children, rightContent, className, onClick, overrideIsOpenPreview }: CollapsibleTriggerProps) {
-  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle, mode } = useCollapsible()
+function CollapsibleTrigger({
+  children,
+  rightContent,
+  className,
+  onClick,
+  overrideIsOpenPreview,
+}: CollapsibleTriggerProps) {
+  const { isOpen, setIsOpen, isGrouped, shimmer, disableToggle, mode } =
+    useCollapsible();
 
   const handleClick = () => {
     if (onClick) {
-      onClick()
+      onClick();
     } else if (!disableToggle) {
-      setIsOpen(!isOpen)
+      setIsOpen(!isOpen);
     }
-  }
+  };
 
   if (mode === "minimal") {
-    const rotation = overrideIsOpenPreview !== undefined
-      ? (overrideIsOpenPreview ? 90 : 0)
-      : (isOpen ? 90 : 0)
+    const rotation =
+      overrideIsOpenPreview !== undefined
+        ? overrideIsOpenPreview
+          ? 90
+          : 0
+        : isOpen
+          ? 90
+          : 0;
 
     return (
       <div
@@ -136,26 +178,39 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
         className={cn(
           "inline-flex items-center gap-1.5 py-1 transition-colors",
           disableToggle ? "cursor-default" : "cursor-pointer hover:opacity-80",
-          className
+          className,
         )}
       >
-        <span className={cn("text-sm font-mono text-muted-foreground", shimmer && "shimmer-text")}>
+        <span
+          className={cn(
+            "text-sm font-mono text-muted-foreground",
+            shimmer && "shimmer-text",
+          )}
+        >
           {children}
         </span>
         {!disableToggle && (
-          <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.15 }}>
+          <motion.div
+            animate={{ rotate: rotation }}
+            transition={{ duration: 0.15 }}
+          >
             <ChevronRight size={14} className="text-muted-foreground" />
           </motion.div>
         )}
         {rightContent}
       </div>
-    )
+    );
   }
 
   if (mode === "compact") {
-    const rotation = overrideIsOpenPreview !== undefined
-      ? (overrideIsOpenPreview ? 180 : 0)
-      : (isOpen ? 180 : 0)
+    const rotation =
+      overrideIsOpenPreview !== undefined
+        ? overrideIsOpenPreview
+          ? 180
+          : 0
+        : isOpen
+          ? 180
+          : 0;
 
     return (
       <div
@@ -165,25 +220,33 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
           "hover:bg-border/30",
           shimmer && "shimmer",
           disableToggle ? "cursor-default" : "cursor-pointer",
-          className
+          className,
         )}
       >
         {children}
         <div className="flex items-center gap-2">
           {rightContent}
           {!disableToggle && (
-            <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.2 }}>
+            <motion.div
+              animate={{ rotate: rotation }}
+              transition={{ duration: 0.2 }}
+            >
               <ChevronDown size={14} className="text-muted-foreground" />
             </motion.div>
           )}
         </div>
       </div>
-    )
+    );
   }
 
-  const rotation = overrideIsOpenPreview !== undefined 
-    ? (overrideIsOpenPreview ? 180 : 0)
-    : (isOpen ? 180 : 0)
+  const rotation =
+    overrideIsOpenPreview !== undefined
+      ? overrideIsOpenPreview
+        ? 180
+        : 0
+      : isOpen
+        ? 180
+        : 0;
 
   return (
     <div
@@ -193,36 +256,39 @@ function CollapsibleTrigger({ children, rightContent, className, onClick, overri
         isGrouped ? "hover:bg-border/30" : "hover:bg-muted/50",
         shimmer && "shimmer",
         disableToggle ? "cursor-default" : "cursor-pointer",
-        className
+        className,
       )}
     >
       {children}
       <div className="flex items-center gap-2">
         {rightContent}
         {!disableToggle && (
-          <motion.div animate={{ rotate: rotation }} transition={{ duration: 0.2 }}>
+          <motion.div
+            animate={{ rotate: rotation }}
+            transition={{ duration: 0.2 }}
+          >
             <ChevronDown size={16} className="text-muted-foreground" />
           </motion.div>
         )}
       </div>
     </div>
-  )
+  );
 }
 
 interface CollapsibleIconProps {
-  icon: LucideIcon
-  className?: string
+  icon: LucideIcon;
+  className?: string;
 }
 
 function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
-  const { isGrouped, isFirst, isLast, mode } = useCollapsible()
+  const { isGrouped, isFirst, isLast, mode } = useCollapsible();
 
-  if (mode === "minimal") return null
+  if (mode === "minimal") return null;
 
   if (isGrouped) {
     return (
       <>
-        {(isFirst && isLast) || (isFirst !== isLast) ? (
+        {(isFirst && isLast) || isFirst !== isLast ? (
           <div
             className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
             style={{
@@ -232,38 +298,46 @@ function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
           />
         ) : (
           <>
-            <div className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border" style={{ top: "2.2rem" }} />
-            <div className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border" style={{ bottom: "calc(100% - 0.7rem)" }} />
+            <div
+              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
+              style={{ top: "2.2rem" }}
+            />
+            <div
+              className="absolute left-7 top-0 bottom-0 z-10 w-px bg-border"
+              style={{ bottom: "calc(100% - 0.7rem)" }}
+            />
           </>
         )}
         <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
           <Icon size={16} className={cn("text-muted-foreground", className)} />
         </div>
       </>
-    )
+    );
   }
 
-  return <Icon size={16} className={cn("text-muted-foreground", className)} />
+  return <Icon size={16} className={cn("text-muted-foreground", className)} />;
 }
 
 interface CollapsibleHeaderProps {
-  children: ReactNode
-  className?: string
+  children: ReactNode;
+  className?: string;
 }
 
 function CollapsibleHeader({ children, className }: CollapsibleHeaderProps) {
-  const { mode } = useCollapsible()
-  if (mode === "minimal") return <>{children}</>
-  return <div className={cn("flex items-center gap-2", className)}>{children}</div>
+  const { mode } = useCollapsible();
+  if (mode === "minimal") return <>{children}</>;
+  return (
+    <div className={cn("flex items-center gap-2", className)}>{children}</div>
+  );
 }
 
 interface CollapsibleContentProps {
-  children: ReactNode
-  className?: string
+  children: ReactNode;
+  className?: string;
 }
 
 function CollapsibleContent({ children, className }: CollapsibleContentProps) {
-  const { isOpen, isGrouped, isLast, mode } = useCollapsible()
+  const { isOpen, isGrouped, isLast, mode } = useCollapsible();
 
   if (mode === "minimal") {
     return (
@@ -282,7 +356,7 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
           </motion.div>
         )}
       </AnimatePresence>
-    )
+    );
   }
 
   if (mode === "compact") {
@@ -299,8 +373,10 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
             <div
               className={cn(
                 "px-2 pb-2 pt-2 space-y-2",
-                isGrouped ? (isLast ? "border-t border-border/60" : "") + " pl-8" : "border-t border-border/60",
-                className
+                isGrouped
+                  ? (isLast ? "border-t border-border/60" : "") + " pl-8"
+                  : "border-t border-border/60",
+                className,
               )}
             >
               {children}
@@ -308,7 +384,7 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
           </motion.div>
         )}
       </AnimatePresence>
-    )
+    );
   }
 
   return (
@@ -324,8 +400,10 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
           <div
             className={cn(
               "px-4 pb-3 space-y-3 pt-3",
-              isGrouped ? (isLast ? "border-t border-border" : "") + " pl-9" : "border-t border-border",
-              className
+              isGrouped
+                ? (isLast ? "border-t border-border" : "") + " pl-9"
+                : "border-t border-border",
+              className,
             )}
           >
             {children}
@@ -333,7 +411,7 @@ function CollapsibleContent({ children, className }: CollapsibleContentProps) {
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }
 
 export {
@@ -342,5 +420,5 @@ export {
   CollapsibleIcon,
   CollapsibleHeader,
   CollapsibleContent,
-}
-export type { CollapsibleMode }
+};
+export type { CollapsibleMode };

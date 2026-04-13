@@ -1,6 +1,6 @@
-import { type ComponentType, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { type ComponentType, type ReactNode } from "react";
+import { motion } from "motion/react";
+import { ChevronDown } from "lucide-react";
 
 interface ProviderItemHeaderProps {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -20,7 +20,10 @@ function ProviderIdentity({
   description,
   status,
   truncateDescription,
-}: Omit<ProviderItemHeaderProps, 'action' | 'collapsible' | 'isOpen' | 'onToggle'>) {
+}: Omit<
+  ProviderItemHeaderProps,
+  "action" | "collapsible" | "isOpen" | "onToggle"
+>) {
   return (
     <div className="flex items-center gap-3 text-left flex-1 min-w-0">
       <div className="rounded-md flex items-center justify-center">
@@ -31,7 +34,9 @@ function ProviderIdentity({
           {name}
           {status}
         </div>
-        <div className={`text-xs text-muted-foreground mt-1${truncateDescription ? ' truncate' : ''}`}>
+        <div
+          className={`text-xs text-muted-foreground mt-1${truncateDescription ? " truncate" : ""}`}
+        >
           {description}
         </div>
       </div>
@@ -49,7 +54,10 @@ export function ProviderItemHeader(props: ProviderItemHeaderProps) {
         onClick={onToggle}
       >
         <ProviderIdentity {...props} />
-        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+        <motion.div
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
           <ChevronDown size={16} className="text-muted-foreground" />
         </motion.div>
       </button>

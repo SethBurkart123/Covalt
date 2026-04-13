@@ -2,31 +2,32 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { cn } from "@/lib/utils";
 
 const TRANSITION = {
   type: "spring" as const,
   stiffness: 231,
-  damping: 28
+  damping: 28,
 };
 
 export function ArtifactPanel() {
-  const { isOpen, artifacts, activeId, setActive, remove, close, clearFiles } = useArtifactPanel();
-  
+  const { isOpen, artifacts, activeId, setActive, remove, close, clearFiles } =
+    useArtifactPanel();
+
   const displayArtifactsRef = useRef(artifacts);
   const displayActiveRef = useRef(artifacts.find((a) => a.id === activeId));
   const wasOpenRef = useRef(isOpen);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const [animatingWidth, setAnimatingWidth] = useState<number | null>(null);
-  
+
   const handleAnimationStart = useCallback(() => {
     const parent = containerRef.current?.parentElement;
     if (!parent) return;
-    
+
     setAnimatingWidth(parent.clientWidth * 0.5);
     const observer = new ResizeObserver(([entry]) => {
       setAnimatingWidth(entry.contentRect.width * 0.5);
@@ -34,22 +35,22 @@ export function ArtifactPanel() {
     observer.observe(parent);
     observerRef.current = observer;
   }, []);
-  
+
   const handleAnimationComplete = useCallback(() => {
     observerRef.current?.disconnect();
     observerRef.current = null;
     setAnimatingWidth(null);
-    
+
     if (wasOpenRef.current && !isOpen) {
       clearFiles();
     }
     wasOpenRef.current = isOpen;
   }, [isOpen, clearFiles]);
-  
+
   useEffect(() => {
     return () => observerRef.current?.disconnect();
   }, []);
-  
+
   if (artifacts.length > 0) {
     displayArtifactsRef.current = artifacts;
     displayActiveRef.current = artifacts.find((a) => a.id === activeId);
@@ -80,7 +81,7 @@ export function ArtifactPanel() {
                   "flex items-center gap-2 px-4 py-1 text-sm whitespace-nowrap transition-colors rounded-lg",
                   artifact.id === activeId
                     ? "bg-background/50 text-foreground"
-                    : "text-muted-foreground hover:bg-background/25"
+                    : "text-muted-foreground hover:bg-background/25",
                 )}
               >
                 <span className="truncate max-w-[150px]">{artifact.title}</span>
@@ -97,11 +98,16 @@ export function ArtifactPanel() {
             ))
           ) : (
             <div className="flex-1 flex items-center">
-              <p className="font-medium">{displayArtifactsRef.current[0].title}</p>
+              <p className="font-medium">
+                {displayArtifactsRef.current[0].title}
+              </p>
             </div>
           )}
 
-          <button onClick={close} className="p-3 rounded hover:bg-muted ml-auto">
+          <button
+            onClick={close}
+            className="p-3 rounded hover:bg-muted ml-auto"
+          >
             <X size={18} />
           </button>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { useWebSocket } from "@/contexts/websocket-context";
 import { useRef } from "react";
 

@@ -1,59 +1,68 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, ComponentProps, CSSProperties } from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { VariantProps, cva } from "class-variance-authority"
-import { PanelLeftIcon } from "lucide-react"
-import { motion, AnimatePresence, HTMLMotionProps } from "framer-motion"
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  ComponentProps,
+  CSSProperties,
+} from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { VariantProps, cva } from "class-variance-authority";
+import { PanelLeftIcon } from "lucide-react";
+import { motion, AnimatePresence, HTMLMotionProps } from "motion/react";
 
-import { useIsMobile } from "@/hooks/use-mobile"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
+} from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state"
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "s"
+const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_MOBILE = "18rem";
+const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_KEYBOARD_SHORTCUT = "s";
 
 export const SIDEBAR_TRANSITION = {
   type: "spring" as const,
   stiffness: 300,
-  damping: 29
-}
+  damping: 29,
+};
 
 type SidebarContextProps = {
-  state: "expanded" | "collapsed"
-  open: boolean
-  setOpen: (open: boolean) => void
-  openMobile: boolean
-  setOpenMobile: (open: boolean) => void
-  isMobile: boolean
-  toggleSidebar: () => void
-}
+  state: "expanded" | "collapsed";
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  openMobile: boolean;
+  setOpenMobile: (open: boolean) => void;
+  isMobile: boolean;
+  toggleSidebar: () => void;
+};
 
-const SidebarContext = createContext<SidebarContextProps | null>(null)
+const SidebarContext = createContext<SidebarContextProps | null>(null);
 
 function useSidebar() {
-  const context = useContext(SidebarContext)
+  const context = useContext(SidebarContext);
   if (!context) {
-    throw new Error("useSidebar must be used within a SidebarProvider.")
+    throw new Error("useSidebar must be used within a SidebarProvider.");
   }
-  return context
+  return context;
 }
 
 function SidebarProvider({
@@ -65,42 +74,45 @@ function SidebarProvider({
   children,
   ...props
 }: ComponentProps<"div"> & {
-  defaultOpen?: boolean
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const isMobile = useIsMobile()
-  const [openMobile, setOpenMobile] = useState(false)
-  const [_open, _setOpen] = useState(defaultOpen)
-  const open = openProp ?? _open
-  
+  const isMobile = useIsMobile();
+  const [openMobile, setOpenMobile] = useState(false);
+  const [_open, _setOpen] = useState(defaultOpen);
+  const open = openProp ?? _open;
+
   const setOpen = useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
-      const openState = typeof value === "function" ? value(open) : value
+      const openState = typeof value === "function" ? value(open) : value;
       if (setOpenProp) {
-        setOpenProp(openState)
+        setOpenProp(openState);
       } else {
-        _setOpen(openState)
+        _setOpen(openState);
       }
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
-    [setOpenProp, open]
-  )
+    [setOpenProp, open],
+  );
 
   const toggleSidebar = useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-  }, [isMobile, setOpen, setOpenMobile])
+    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
+  }, [isMobile, setOpen, setOpenMobile]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault()
-        toggleSidebar()
+      if (
+        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey)
+      ) {
+        event.preventDefault();
+        toggleSidebar();
       }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [toggleSidebar])
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSidebar]);
 
   const contextValue = useMemo<SidebarContextProps>(
     () => ({
@@ -112,22 +124,24 @@ function SidebarProvider({
       setOpenMobile,
       toggleSidebar,
     }),
-    [open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
-  )
+    [open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+  );
 
   return (
     <SidebarContext.Provider value={contextValue}>
       <TooltipProvider delayDuration={0}>
         <div
           data-slot="sidebar-wrapper"
-        style={{
-          "--sidebar-width": SIDEBAR_WIDTH,
-          "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-          ...style,
-        } as CSSProperties}
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+              ...style,
+            } as CSSProperties
+          }
           className={cn(
             "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
-            className
+            className,
           )}
           {...props}
         >
@@ -135,7 +149,7 @@ function SidebarProvider({
         </div>
       </TooltipProvider>
     </SidebarContext.Provider>
-  )
+  );
 }
 
 function Sidebar({
@@ -146,11 +160,11 @@ function Sidebar({
   children,
   ...props
 }: ComponentProps<"div"> & {
-  side?: "left" | "right"
-  variant?: "sidebar" | "floating" | "inset"
-  collapsible?: "offcanvas" | "icon" | "none"
+  side?: "left" | "right";
+  variant?: "sidebar" | "floating" | "inset";
+  collapsible?: "offcanvas" | "icon" | "none";
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
   if (collapsible === "none") {
     return (
@@ -158,13 +172,13 @@ function Sidebar({
         data-slot="sidebar"
         className={cn(
           "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
-          className
+          className,
         )}
         {...props}
       >
         {children}
       </div>
-    )
+    );
   }
 
   if (isMobile) {
@@ -175,9 +189,11 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
-          style={{
-            "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-          } as CSSProperties}
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+            } as CSSProperties
+          }
           side={side}
         >
           <SheetHeader className="sr-only">
@@ -187,7 +203,7 @@ function Sidebar({
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
       </Sheet>
-    )
+    );
   }
 
   return (
@@ -207,7 +223,7 @@ function Sidebar({
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
         )}
       />
       <AnimatePresence>
@@ -219,9 +235,9 @@ function Sidebar({
             variant === "floating" || variant === "inset"
               ? "p-2 pt-0"
               : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className
+            className,
           )}
-          animate={{ 
+          animate={{
             x: state === "expanded" ? 0 : side === "left" ? "-100%" : "100%",
           }}
           transition={SIDEBAR_TRANSITION}
@@ -230,14 +246,17 @@ function Sidebar({
           <motion.div
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
-            className={cn("group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm", variant !== "inset" && "bg-sidebar")}
+            className={cn(
+              "group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm",
+              variant !== "inset" && "bg-sidebar",
+            )}
           >
             {children}
           </motion.div>
         </motion.div>
       </AnimatePresence>
     </div>
-  )
+  );
 }
 
 function SidebarTrigger({
@@ -245,7 +264,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar } = useSidebar();
 
   return (
     <Button
@@ -255,40 +274,46 @@ function SidebarTrigger({
       size="icon"
       className={cn("size-7", className)}
       onClick={(event) => {
-        onClick?.(event)
-        toggleSidebar()
+        onClick?.(event);
+        toggleSidebar();
       }}
       {...props}
     >
       <PanelLeftIcon />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
-  )
+  );
 }
 
 function SidebarInset({ className, ...props }: ComponentProps<"main">) {
-  const { state } = useSidebar()
-  
+  const { state } = useSidebar();
+
   return (
     <motion.main
       data-slot="sidebar-inset"
       className={cn(
         "bg-background relative flex w-full flex-1 flex-col",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:mt-2 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",
-        className
+        className,
       )}
-      initial={{ 
+      initial={{
         marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width: state === "expanded" ? "calc(100% - var(--sidebar-width) - 0.5rem)" : "calc(100% - 1rem)"
+        width:
+          state === "expanded"
+            ? "calc(100% - var(--sidebar-width) - 0.5rem)"
+            : "calc(100% - 1rem)",
       }}
-      animate={{ 
+      animate={{
         marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width: state === "expanded" ? "calc(100% - var(--sidebar-width) - 0.5rem)" : "calc(100% - 1rem)"
+        width:
+          state === "expanded"
+            ? "calc(100% - var(--sidebar-width) - 0.5rem)"
+            : "calc(100% - 1rem)",
       }}
       transition={SIDEBAR_TRANSITION}
       {...(props as HTMLMotionProps<"main">)}
     />
-  )
+  );
 }
 
 function SidebarHeader({ className, ...props }: ComponentProps<"div">) {
@@ -299,7 +324,7 @@ function SidebarHeader({ className, ...props }: ComponentProps<"div">) {
       className={cn("flex flex-col gap-2 p-2", className)}
       {...props}
     />
-  )
+  );
 }
 
 function SidebarFooter({ className, ...props }: ComponentProps<"div">) {
@@ -310,7 +335,7 @@ function SidebarFooter({ className, ...props }: ComponentProps<"div">) {
       className={cn("flex flex-col gap-2 p-2", className)}
       {...props}
     />
-  )
+  );
 }
 
 function SidebarContent({ className, ...props }: ComponentProps<"div">) {
@@ -320,11 +345,11 @@ function SidebarContent({ className, ...props }: ComponentProps<"div">) {
       data-sidebar="content"
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-2 overflow-auto",
-        className
+        className,
       )}
       {...props}
     />
-  )
+  );
 }
 
 function SidebarMenu({ className, ...props }: ComponentProps<"ul">) {
@@ -335,10 +360,13 @@ function SidebarMenu({ className, ...props }: ComponentProps<"ul">) {
       className={cn("flex w-full min-w-0 flex-col gap-1", className)}
       {...props}
     />
-  )
+  );
 }
 
-function SidebarMenuItem({ className, ...props }: ComponentProps<"li"> & HTMLMotionProps<"li">) {
+function SidebarMenuItem({
+  className,
+  ...props
+}: ComponentProps<"li"> & HTMLMotionProps<"li">) {
   return (
     <li
       data-slot="sidebar-menu-item"
@@ -346,7 +374,7 @@ function SidebarMenuItem({ className, ...props }: ComponentProps<"li"> & HTMLMot
       className={cn("group/menu-item relative", className)}
       {...props}
     />
-  )
+  );
 }
 
 const sidebarMenuButtonVariants = cva(
@@ -368,8 +396,8 @@ const sidebarMenuButtonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
-)
+  },
+);
 
 function SidebarMenuButton({
   asChild = false,
@@ -380,12 +408,12 @@ function SidebarMenuButton({
   className,
   ...props
 }: ComponentProps<"button"> & {
-  asChild?: boolean
-  isActive?: boolean
-  tooltip?: string | ComponentProps<typeof TooltipContent>
+  asChild?: boolean;
+  isActive?: boolean;
+  tooltip?: string | ComponentProps<typeof TooltipContent>;
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const Comp = asChild ? Slot : "button"
-  const { isMobile, state } = useSidebar()
+  const Comp = asChild ? Slot : "button";
+  const { isMobile, state } = useSidebar();
 
   const button = (
     <Comp
@@ -396,16 +424,16 @@ function SidebarMenuButton({
       className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
       {...props}
     />
-  )
+  );
 
   if (!tooltip) {
-    return button
+    return button;
   }
 
   if (typeof tooltip === "string") {
     tooltip = {
       children: tooltip,
-    }
+    };
   }
 
   return (
@@ -418,7 +446,7 @@ function SidebarMenuButton({
         {...tooltip}
       />
     </Tooltip>
-  )
+  );
 }
 
 export {
@@ -433,4 +461,4 @@ export {
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
-}
+};
