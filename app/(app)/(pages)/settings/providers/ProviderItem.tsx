@@ -12,6 +12,7 @@ import { useProviderItemState } from '@/lib/hooks/providers/use-provider-item-st
 import { ProviderItemHeader } from './provider-item-header';
 import { ProviderOauthActionButton } from './provider-oauth-action-button';
 import { ProviderItemStatus } from './provider-item-status';
+import ExtraModelsInput from './ExtraModelsInput';
 import type { ProviderItemRowActions, ProviderItemRowViewModel } from './provider-item.types';
 
 interface ProviderItemProps {
@@ -42,6 +43,7 @@ export default function ProviderItem({ row, actions, editableName, onNameChange 
     onOauthSubmitCode,
     onOauthRevoke,
     onOauthOpenLink,
+    onExtraModelsChange,
   } = actions;
 
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
@@ -306,6 +308,21 @@ export default function ProviderItem({ row, actions, editableName, onNameChange 
                     placeholder="Paste the authorization code or redirect URL"
                     value={oauthCode || ''}
                     onChange={(e) => onOauthCodeChange(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {onExtraModelsChange && (
+                <div className="space-y-2 pt-1 border-t border-border/60 mt-1">
+                  <div>
+                    <Label className="text-sm font-medium">Extra Models</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Force models that aren&apos;t listed by the provider
+                    </p>
+                  </div>
+                  <ExtraModelsInput
+                    models={(config.extra as Record<string, unknown>)?.extraModels as string[] ?? []}
+                    onChange={onExtraModelsChange}
                   />
                 </div>
               )}

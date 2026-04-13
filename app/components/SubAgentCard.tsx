@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, X, Loader2, Wrench } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useSpring } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { respondToToolApproval } from "@/python/api";
@@ -161,6 +161,106 @@ function SubAgentContent({
   active?: boolean;
   chatId?: string;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const endOfContentRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const userScrolledAwayRef = useRef(false);
+  const prevContentLengthRef = useRef(content.length);
+  const isDrivingScrollRef = useRef(false);
+
+  const scrollTarget = useMotionValue(0);
+  const springScroll = useSpring(scrollTarget, {
+    stiffness: 570,
+    damping: 38,
+    mass: 0.5,
+  });
+
+  useEffect(() => {
+    return springScroll.on("change", (v) => {
+      if (!isDrivingScrollRef.current) return;
+      const sc = scrollContainerRef.current;
+      if (sc) sc.scrollTop = v;
+    });
+  }, [springScroll]);
+
+  const driveToBottom = useCallback(
+    (instant = false) => {
+      const sc = scrollContainerRef.current;
+      if (!sc) return;
+      const target = sc.scrollHeight - sc.clientHeight;
+      isDrivingScrollRef.current = true;
+      if (instant) {
+        springScroll.jump(target);
+        sc.scrollTop = target;
+      } else {
+        scrollTarget.set(target);
+      }
+    },
+    [scrollTarget, springScroll]
+  );
+
+  const stopDriving = useCallback(() => {
+    isDrivingScrollRef.current = false;
+    userScrolledAwayRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    const sc = scrollContainerRef.current;
+    if (!sc) return;
+
+    const initialBottom = sc.scrollHeight - sc.clientHeight;
+    springScroll.jump(initialBottom);
+
+    const handleScroll = () => {
+      if (isDrivingScrollRef.current) return;
+      const { scrollTop, scrollHeight, clientHeight } = sc;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const atBottom = distanceFromBottom < 50;
+      isAtBottomRef.current = atBottom;
+
+      if (atBottom && userScrolledAwayRef.current) {
+        userScrolledAwayRef.current = false;
+      }
+    };
+
+    const handleWheelInterrupt = (e: WheelEvent) => {
+      if (e.deltaY < 0 && isDrivingScrollRef.current) {
+        stopDriving();
+      }
+    };
+
+    const handleTouchInterrupt = () => {
+      if (isDrivingScrollRef.current) {
+        stopDriving();
+      }
+    };
+
+    sc.addEventListener("scroll", handleScroll, { passive: true });
+    sc.addEventListener("wheel", handleWheelInterrupt, { passive: true });
+    sc.addEventListener("touchstart", handleTouchInterrupt, { passive: true });
+
+    return () => {
+      sc.removeEventListener("scroll", handleScroll);
+      sc.removeEventListener("wheel", handleWheelInterrupt);
+      sc.removeEventListener("touchstart", handleTouchInterrupt);
+      isDrivingScrollRef.current = false;
+    };
+  }, [springScroll, stopDriving]);
+
+  useEffect(() => {
+    const contentAdded = content.length > prevContentLengthRef.current;
+    prevContentLengthRef.current = content.length;
+
+    if (contentAdded) {
+      userScrolledAwayRef.current = false;
+      isAtBottomRef.current = true;
+    }
+
+    if (userScrolledAwayRef.current) return;
+
+    requestAnimationFrame(() => driveToBottom(false));
+  }, [content, driveToBottom]);
+
   const elements: React.ReactNode[] = [];
 
   if (task) {
@@ -209,7 +309,15 @@ function SubAgentContent({
     i++;
   }
 
-  return <div className="space-y-1 pb-4">{elements}</div>;
+  return (
+    <div
+      ref={scrollContainerRef}
+      className="flex-1 overflow-auto space-y-1 pb-4"
+    >
+      {elements}
+      <div ref={endOfContentRef} className="h-4" />
+    </div>
+  );
 }
 
 type PendingApproval = Extract<ContentBlock, { type: "tool_call" }> & {
