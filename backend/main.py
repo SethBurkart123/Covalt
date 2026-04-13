@@ -52,7 +52,7 @@ def main() -> int:
         "generate_ts": str(output_dir / "api.ts") if generate_ts else None,
         "port": port,
         "debug": False,
-        "app_init": "backend.services.http_routes:register_http_routes",
+        "app_init": "backend.services.flows.http_routes:register_http_routes",
         "reload_includes": ["backend"],
         "reload_excludes": [
             ".next",
