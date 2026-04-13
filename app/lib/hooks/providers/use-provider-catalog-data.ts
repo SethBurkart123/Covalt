@@ -156,7 +156,7 @@ export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: 
   );
 
   const setProviderConfigField = useCallback(
-    (providerId: string, field: keyof ProviderConfig, value: string | boolean) => {
+    (providerId: string, field: keyof ProviderConfig, value: string | boolean | Record<string, unknown>) => {
       setProviderConfigs((prev) => ({
         ...prev,
         [providerId]: {

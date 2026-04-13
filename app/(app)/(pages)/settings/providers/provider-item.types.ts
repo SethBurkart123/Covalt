@@ -27,7 +27,7 @@ export interface ProviderItemRowViewModel {
 }
 
 export interface ProviderItemRowActions {
-  onChange: (field: keyof ProviderConfig, value: string | boolean) => void;
+  onChange: (field: keyof ProviderConfig, value: string | boolean | Record<string, unknown>) => void;
   onSave: () => Promise<void> | void;
   onTestConnection: () => Promise<void> | void;
   onUninstall?: () => Promise<void> | void;
@@ -37,4 +37,5 @@ export interface ProviderItemRowActions {
   onOauthSubmitCode: () => Promise<void> | void;
   onOauthRevoke: () => Promise<void> | void;
   onOauthOpenLink: (url: string) => void;
+  onExtraModelsChange?: (models: string[]) => void;
 }

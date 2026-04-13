@@ -15,7 +15,7 @@ import ProviderItem from './ProviderItem';
 
 import type { ProviderConfig } from '@/lib/types/provider-catalog';
 import { getProviders } from './provider-registry';
-import { uninstallProviderPlugin } from '@/python/api';
+import { saveProviderSettings, uninstallProviderPlugin } from '@/python/api';
 import { useOptionalChat } from '@/contexts/chat-context';
 import { useProviderCatalogData } from '@/lib/hooks/providers/use-provider-catalog-data';
 import { useProviderConnectionActions } from '@/lib/hooks/providers/use-provider-connection-actions';
@@ -197,6 +197,29 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     [pluginProviders, loadSettings],
   );
 
+  const handleExtraModelsChange = useCallback(
+    async (providerId: string, models: string[]) => {
+      const config = providerConfigs[providerId];
+      const currentExtra = (config?.extra ?? {}) as Record<string, unknown>;
+      const nextExtra = { ...currentExtra, extraModels: models };
+      setProviderConfigField(providerId, 'extra', nextExtra);
+      try {
+        await saveProviderSettings({
+          body: {
+            provider: providerId,
+            apiKey: config?.apiKey || undefined,
+            baseUrl: config?.baseUrl || undefined,
+            extra: nextExtra,
+          },
+        });
+        refreshModels?.();
+      } catch (error) {
+        console.error('Failed to save extra models', error);
+      }
+    },
+    [providerConfigs, setProviderConfigField, refreshModels],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -320,6 +343,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
                   onChange: (field, value) => setProviderConfigField(providerId, field, value),
                   onSave: () => handleSave(providerId),
                   onTestConnection: () => handleTestConnection(providerId),
+                  onExtraModelsChange: (models) => handleExtraModelsChange(providerId, models),
                   ...(options?.onRemove ? { onUninstall: options.onRemove } : row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
                 };
 

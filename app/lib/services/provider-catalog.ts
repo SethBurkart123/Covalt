@@ -105,7 +105,7 @@ export const fetchProviderCatalog = async (options?: { force?: boolean }): Promi
 
 export const toProviderConfigMap = (
   providers: ProviderDefinition[],
-  source: Array<{ provider: string; apiKey?: string | null; baseUrl?: string | null }> = []
+  source: Array<{ provider: string; apiKey?: string | null; baseUrl?: string | null; extra?: Record<string, unknown> | null }> = []
 ): Record<string, ProviderConfig> => {
   const byAlias = new Map<string, string>();
   for (const provider of providers) {
@@ -138,6 +138,7 @@ export const toProviderConfigMap = (
       provider: providerId,
       apiKey: row.apiKey ?? configMap[providerId].apiKey ?? '',
       baseUrl: row.baseUrl ?? configMap[providerId].baseUrl,
+      extra: row.extra ?? configMap[providerId].extra,
     };
   }
 

@@ -45,6 +45,7 @@ export function useProviderConnectionActions({
             provider: providerId,
             apiKey: config.apiKey || undefined,
             baseUrl: config.baseUrl || undefined,
+            extra: config.extra || undefined,
           },
         });
 

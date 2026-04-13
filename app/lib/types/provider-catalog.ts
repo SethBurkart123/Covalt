@@ -2,6 +2,7 @@ export interface ProviderConfig {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
+  extra?: Record<string, unknown>;
 }
 
 export type FieldId = "apiKey" | "baseUrl";
