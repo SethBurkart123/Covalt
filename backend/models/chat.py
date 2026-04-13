@@ -313,6 +313,7 @@ class ProviderPluginInfo(BaseModel):
     name: str
     version: str
     provider: str
+    enabled: bool = True
     blockedByPolicy: bool = False
     installedAt: str | None = None
     sourceType: str | None = None
@@ -442,7 +443,6 @@ class ImportProviderPluginResponse(BaseModel):
     verificationStatus: Literal["verified", "untrusted", "unsigned", "invalid"] = "unsigned"
     verificationMessage: str | None = None
     signingKeyId: str | None = None
-
 
 
 class DefaultToolsResponse(BaseModel):

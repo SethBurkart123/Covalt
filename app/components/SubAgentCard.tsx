@@ -330,7 +330,7 @@ type PendingApproval = Extract<ContentBlock, { type: "tool_call" }> & {
 function findPendingApprovals(content: ContentBlock[]): PendingApproval[] {
   return content.filter((block): block is PendingApproval =>
     block.type === "tool_call" &&
-    block.requiresApproval &&
+    !!block.requiresApproval &&
     block.approvalStatus === "pending" &&
     !!block.runId &&
     !!block.toolCallId
