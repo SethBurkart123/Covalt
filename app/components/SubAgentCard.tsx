@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, X, Loader2, Wrench } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -388,19 +388,15 @@ export default function SubAgentCard({
   const { open, close, activeId } = useArtifactPanel();
   const artifactId = `subagent-${runId}`;
   const isArtifactOpen = activeId === artifactId;
-  const [dismissedRunId, setDismissedRunId] = useState<string | null>(null);
+  const [dismissedToolIds, setDismissedToolIds] = useState<Set<string>>(new Set());
   const wasOpenRef = useRef(isArtifactOpen);
 
   const allPendingApprovals = useMemo(() => findPendingApprovals(content), [content]);
-  const pendingRunId = allPendingApprovals[0]?.runId ?? null;
 
-  useEffect(() => {
-    if (pendingRunId && pendingRunId !== dismissedRunId) {
-      setDismissedRunId(null);
-    }
-  }, [pendingRunId, dismissedRunId]);
-
-  const pendingApprovals = pendingRunId === dismissedRunId ? [] : allPendingApprovals;
+  const pendingApprovals = useMemo(
+    () => allPendingApprovals.filter((t) => !dismissedToolIds.has(t.toolCallId)),
+    [allPendingApprovals, dismissedToolIds],
+  );
   const previewText = useMemo(
     () => getPreviewText(content, isCompleted, hasError),
     [content, isCompleted, hasError]
@@ -419,6 +415,11 @@ export default function SubAgentCard({
       );
     }
   }, [content, task, active, artifactId, memberName, chatId, open]);
+
+  const dismissCurrentTools = useCallback(() => {
+    const ids = new Set(pendingApprovals.map((t) => t.toolCallId));
+    setDismissedToolIds((prev) => new Set([...prev, ...ids]));
+  }, [pendingApprovals]);
 
   const hasPending = pendingApprovals.length > 0;
   const pendingSubtitle = hasPending
@@ -488,7 +489,7 @@ export default function SubAgentCard({
               <div className="border-t border-border/60 pt-4">
                 <InlineApproval
                   tools={pendingApprovals}
-                  onResolved={() => setDismissedRunId(pendingRunId)}
+                  onResolved={dismissCurrentTools}
                 />
               </div>
             </motion.div>
