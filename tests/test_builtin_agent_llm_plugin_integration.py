@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.runtime import RuntimeToolCall
+from backend.runtime.types import ContentDelta, RunCompleted, ToolCallStarted
 from backend.services.flows.graph_runtime import GraphRuntime
 from nodes import get_executor
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
@@ -13,15 +15,12 @@ from tests.conftest import collect_events, make_edge, make_graph, make_node
 
 
 class _StreamingAgentStub:
-    def __init__(self, chunks: list[SimpleNamespace]) -> None:
+    def __init__(self, chunks: list[Any]) -> None:
         self._chunks = chunks
 
-    def arun(self, *_args: Any, **_kwargs: Any):
-        async def _stream():
-            for chunk in self._chunks:
-                yield chunk
-
-        return _stream()
+    async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
+        for chunk in self._chunks:
+            yield chunk
 
 
 def _flow_context(
@@ -59,18 +58,21 @@ async def test_agent_streams_progress_and_returns_final_response_via_registry() 
 
     fake_agent = _StreamingAgentStub(
         [
-            SimpleNamespace(event="RunContent", run_id="agent-run-1", content="Hello "),
-            SimpleNamespace(event="RunContent", run_id="agent-run-1", content="world"),
-            SimpleNamespace(event="RunCompleted", run_id="agent-run-1", content=""),
+            ContentDelta(text="Hello "),
+            ContentDelta(text="world"),
+            RunCompleted(content=""),
         ]
     )
 
-    with patch(
-        "nodes.core.agent.executor._resolve_model",
-        return_value=MagicMock(),
-    ), patch(
-        "nodes.core.agent.executor._build_agent_or_team",
-        new=MagicMock(return_value=fake_agent),
+    with (
+        patch(
+            "nodes.core.agent.executor._resolve_model",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "nodes.core.agent.executor._build_agent_or_team",
+            new=MagicMock(return_value=fake_agent),
+        ),
     ):
         events, result = await collect_events(
             executor.execute(
@@ -80,11 +82,7 @@ async def test_agent_streams_progress_and_returns_final_response_via_registry() 
             )
         )
 
-    progress = [
-        event
-        for event in events
-        if isinstance(event, NodeEvent) and event.event_type == "progress"
-    ]
+    progress = [event for event in events if isinstance(event, NodeEvent) and event.event_type == "progress"]
     assert [event.data["token"] for event in progress] == ["Hello ", "world"]
 
     assert isinstance(result, ExecutionResult)
@@ -123,25 +121,28 @@ async def test_agent_resolves_linked_tools_from_link_edges_and_emits_metadata() 
         executors={"toolset": toolset_executor},
     )
 
-    tool_call = SimpleNamespace(
-        tool_call_id="tool-call-1",
-        tool_name="search_docs",
-        tool_args={"query": "covalt"},
+    tool_call = RuntimeToolCall(
+        id="tool-call-1",
+        name="search_docs",
+        arguments={"query": "covalt"},
     )
     fake_agent = _StreamingAgentStub(
         [
-            SimpleNamespace(event="ToolCallStarted", run_id="agent-run-2", tool=tool_call),
-            SimpleNamespace(event="RunContent", run_id="agent-run-2", content="done"),
-            SimpleNamespace(event="RunCompleted", run_id="agent-run-2", content=""),
+            ToolCallStarted(tool=tool_call),
+            ContentDelta(text="done"),
+            RunCompleted(content=""),
         ]
     )
 
-    with patch(
-        "nodes.core.agent.executor._resolve_model",
-        return_value=MagicMock(),
-    ), patch(
-        "nodes.core.agent.executor._build_agent_or_team",
-        new=MagicMock(return_value=fake_agent),
+    with (
+        patch(
+            "nodes.core.agent.executor._resolve_model",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "nodes.core.agent.executor._build_agent_or_team",
+            new=MagicMock(return_value=fake_agent),
+        ),
     ):
         events, result = await collect_events(
             executor.execute(
@@ -205,11 +206,7 @@ async def test_llm_completion_streams_tokens_and_returns_full_text_via_registry(
     assert isinstance(events[0], NodeEvent)
     assert events[0].event_type == "started"
 
-    progress = [
-        event
-        for event in events
-        if isinstance(event, NodeEvent) and event.event_type == "progress"
-    ]
+    progress = [event for event in events if isinstance(event, NodeEvent) and event.event_type == "progress"]
     assert [event.data["token"] for event in progress] == ["Hi", " there"]
 
     assert isinstance(result, ExecutionResult)

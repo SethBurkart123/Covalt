@@ -237,7 +237,7 @@ describe("stream-processor", () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps member-scoped approval updates top-level ordered and removes resolved member tool blocks", () => {
+  it("keeps member-scoped approval updates ordered and removes resolved member tool blocks", () => {
     const state = createInitialState();
     const { callbacks, updates } = makeCallbacks();
 
@@ -262,7 +262,7 @@ describe("stream-processor", () => {
 
     animationFrame.flushAll();
     const pendingUpdate = updates.at(-1) || [];
-    expect(pendingUpdate).toHaveLength(2);
+    expect(pendingUpdate).toHaveLength(1);
 
     const pendingMemberRun = pendingUpdate[0];
     expect(pendingMemberRun).toMatchObject({
@@ -273,20 +273,11 @@ describe("stream-processor", () => {
     });
 
     if (!pendingMemberRun || pendingMemberRun.type !== "member_run") {
-      throw new Error("expected first update block to be member_run");
+      throw new Error("expected update block to be member_run");
     }
 
     expect(pendingMemberRun.content).toHaveLength(1);
     expect(pendingMemberRun.content[0]).toMatchObject({
-      type: "tool_call",
-      id: "tool-1",
-      toolName: "search",
-      toolArgs: { q: "a" },
-      approvalStatus: "pending",
-      isCompleted: false,
-    });
-
-    expect(pendingUpdate[1]).toMatchObject({
       type: "tool_call",
       id: "tool-1",
       toolName: "search",
