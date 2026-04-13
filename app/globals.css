@@ -81,6 +81,12 @@
   --shadow-opacity: var(--shadow-opacity);
   --color-shadow-color: var(--shadow-color);
   --color-destructive-foreground: var(--destructive-foreground);
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  @keyframes skeleton {
+  to {
+    background-position: -200% 0;
+    }
+  }
 }
 
 :root {

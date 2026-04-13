@@ -327,8 +327,7 @@ function startFrontendServer(): { url: string; server: FrontendServer } {
   return { url, server };
 }
 
-function injectBackendBaseUrl(mainWindow: BrowserWindowInstance, baseUrl: string): void {
-  const payload = JSON.stringify(baseUrl);
+function injectPlatformInfo(mainWindow: BrowserWindowInstance): void {
   const platform = process.platform;
   const isMac = platform === "darwin";
   const js = `
@@ -336,6 +335,15 @@ function injectBackendBaseUrl(mainWindow: BrowserWindowInstance, baseUrl: string
       document.documentElement?.classList?.add("electrobun");
       ${isMac ? 'document.documentElement?.classList?.add("electrobun-macos");' : ""}
       window.__COVALT_ELECTROBUN_PLATFORM = ${JSON.stringify(platform)};
+    } catch {}
+  `;
+  mainWindow.webview.executeJavascript(js);
+}
+
+function injectBackendBaseUrl(mainWindow: BrowserWindowInstance, baseUrl: string): void {
+  const payload = JSON.stringify(baseUrl);
+  const js = `
+    try {
       if (typeof window.__COVALT_SET_BACKEND_BASE_URL === "function") {
         window.__COVALT_SET_BACKEND_BASE_URL(${payload});
       } else {
@@ -518,6 +526,7 @@ async function main(): Promise<void> {
 
   let backendReady = false;
   mainWindow.webview.on("dom-ready", () => {
+    injectPlatformInfo(mainWindow);
     if (backendReady) {
       injectBackendBaseUrl(mainWindow, baseUrl);
     }

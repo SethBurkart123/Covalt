@@ -185,6 +185,7 @@ export interface ChatContextType {
   chatId: string;
   chatTitle: string;
   chatIds: string[];
+  chatsLoaded: boolean;
   chatsData: AllChatsData["chats"];
   startNewChat: () => void;
   switchChat: (id: string) => void;

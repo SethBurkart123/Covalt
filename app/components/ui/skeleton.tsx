@@ -1,42 +1,18 @@
-import { useId, ComponentProps } from "react"
-import { cn } from "@/lib/utils"
+import type React from "react";
+import { cn } from "@/lib/utils";
 
-function Skeleton({ className, ...props }: ComponentProps<"div">) {
-  const id = useId().replace(/:/g, '')
-  
+export function Skeleton({
+  className,
+  ...props
+}: React.ComponentProps<"div">): React.ReactElement {
   return (
-    <>
-      <style>{`
-        @keyframes shimmer-${id} {
-          0% {
-            transform: translateX(-100%) skewX(-15deg);
-          }
-          100% {
-            transform: translateX(200%) skewX(-15deg);
-          }
-        }
-        
-        .skeleton-${id}::before {
-          animation: shimmer-${id} 2s infinite;
-        }
-      `}</style>
-      <div
-        data-slot="skeleton"
-        className={cn(
-          "relative overflow-hidden rounded-md",
-          "bg-muted dark:bg-muted/20",
-          `skeleton-${id}`,
-          "before:absolute before:inset-0",
-          "before:bg-gradient-to-r",
-          "before:from-transparent",
-          "before:via-primary/20 dark:before:via-primary/10",
-          "before:to-transparent",
-          className
-        )}
-        {...props}
-      />
-    </>
-  )
+    <div
+      className={cn(
+        "animate-skeleton rounded-sm [--skeleton-highlight:--alpha(var(--color-white)/64%)] [background:linear-gradient(120deg,transparent_40%,var(--skeleton-highlight),transparent_60%)_var(--color-muted)_0_0/200%_100%_fixed] dark:[--skeleton-highlight:--alpha(var(--color-white)/4%)]",
+        className,
+      )}
+      data-slot="skeleton"
+      {...props}
+    />
+  );
 }
-
-export { Skeleton }
