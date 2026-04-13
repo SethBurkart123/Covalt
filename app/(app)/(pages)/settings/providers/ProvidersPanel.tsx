@@ -199,19 +199,11 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
 
   const handleExtraModelsChange = useCallback(
     async (providerId: string, models: string[]) => {
-      const config = providerConfigs[providerId];
-      const currentExtra = (config?.extra ?? {}) as Record<string, unknown>;
+      const currentExtra = (providerConfigs[providerId]?.extra ?? {}) as Record<string, unknown>;
       const nextExtra = { ...currentExtra, extraModels: models };
       setProviderConfigField(providerId, 'extra', nextExtra);
       try {
-        await saveProviderSettings({
-          body: {
-            provider: providerId,
-            apiKey: config?.apiKey || undefined,
-            baseUrl: config?.baseUrl || undefined,
-            extra: nextExtra,
-          },
-        });
+        await saveProviderSettings({ body: { provider: providerId, extra: nextExtra } });
         refreshModels?.();
       } catch (error) {
         console.error('Failed to save extra models', error);
