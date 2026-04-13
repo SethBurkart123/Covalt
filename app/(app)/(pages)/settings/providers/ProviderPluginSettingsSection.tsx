@@ -198,7 +198,7 @@ export function ProviderPluginSettingsSection() {
               e.target.value = '';
             }}
           />
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm">
             <span>
               {isUploading ? (
                 <>
