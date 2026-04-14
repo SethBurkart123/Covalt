@@ -13,6 +13,10 @@ export default {
       bundleCEF: true,
       defaultRenderer: "cef",
     },
+    linux: {
+      bundleCEF: true,
+      defaultRenderer: "cef",
+    },
     targets: "current",
   },
 };
