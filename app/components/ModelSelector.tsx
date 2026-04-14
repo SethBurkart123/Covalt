@@ -1,12 +1,24 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, memo, useRef, useLayoutEffect } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  memo,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import { Bot, CheckIcon, ChevronDownIcon, Star } from "lucide-react";
 import Fuse from "fuse.js";
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandInput, CommandItem } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CachedImage, preloadImages } from "@/components/ui/cached-image";
 import { VirtualizedCommandList } from "@/components/ui/virtualized-command-list";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,17 +30,21 @@ import { cn, getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
 import { OpenAIIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
 import type { ProviderDefinition } from "@/lib/types/provider-catalog";
-import { getStarredModels, setStarredModels as setStarredModels_backend } from "@/python/api";
+import {
+  getStarredModels,
+  setStarredModels as setStarredModels_backend,
+} from "@/python/api";
 
-const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, "_");
+const toProviderId = (value: string): string =>
+  value.toLowerCase().trim().replace(/-/g, "_");
 
-const CUSTOM_PROVIDERS_STORAGE_KEY = 'covalt:custom-providers';
+const CUSTOM_PROVIDERS_STORAGE_KEY = "covalt:custom-providers";
 
 function getCustomProviderNames(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
+  if (typeof window === "undefined") return {};
   try {
     const entries: Array<{ id: string; name: string }> = JSON.parse(
-      localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY) || '[]',
+      localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY) || "[]",
     );
     const map: Record<string, string> = {};
     for (const entry of entries) {
@@ -40,7 +56,13 @@ function getCustomProviderNames(): Record<string, string> {
   }
 }
 
-function MiddleTruncate({ text, className }: { text: string; className?: string }) {
+function MiddleTruncate({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const [truncated, setTruncated] = useState(text);
 
@@ -62,14 +84,19 @@ function MiddleTruncate({ text, className }: { text: string; className?: string 
       while (end - start > 2) {
         const mid = Math.floor((start + end) / 2);
         const half = Math.floor(mid / 2);
-        container.textContent = text.slice(0, half) + ellipsis + text.slice(text.length - half);
+        container.textContent =
+          text.slice(0, half) + ellipsis + text.slice(text.length - half);
 
         if (container.scrollWidth <= container.clientWidth) start = mid;
         else end = mid;
       }
 
       const half = Math.floor(start / 2);
-      setTruncated(half > 0 ? text.slice(0, half) + ellipsis + text.slice(text.length - half) : ellipsis);
+      setTruncated(
+        half > 0
+          ? text.slice(0, half) + ellipsis + text.slice(text.length - half)
+          : ellipsis,
+      );
     };
 
     measure();
@@ -79,7 +106,10 @@ function MiddleTruncate({ text, className }: { text: string; className?: string 
   }, [text]);
 
   return (
-    <span ref={containerRef} className={cn("block overflow-hidden whitespace-nowrap", className)}>
+    <span
+      ref={containerRef}
+      className={cn("block overflow-hidden whitespace-nowrap", className)}
+    >
       {truncated}
     </span>
   );
@@ -87,10 +117,17 @@ function MiddleTruncate({ text, className }: { text: string; className?: string 
 
 function AgentIconSmall({ icon, agentId }: { icon?: string; agentId: string }) {
   if (icon?.startsWith("image:")) {
-    return <CachedImage src={agentFileUrl({ agentId, fileType: "icon" })} className="size-4 rounded object-cover" />;
+    return (
+      <CachedImage
+        src={agentFileUrl({ agentId, fileType: "icon" })}
+        className="size-4 rounded object-cover"
+      />
+    );
   }
-  if (icon?.startsWith("emoji:")) return <span className="text-sm leading-none">{icon.slice(6)}</span>;
-  if (icon && !icon.includes(":")) return <span className="text-sm leading-none">{icon}</span>;
+  if (icon?.startsWith("emoji:"))
+    return <span className="text-sm leading-none">{icon.slice(6)}</span>;
+  if (icon && !icon.includes(":"))
+    return <span className="text-sm leading-none">{icon}</span>;
   return <Bot size={16} className="text-muted-foreground" />;
 }
 
@@ -107,14 +144,21 @@ const AGENT_FILTER = "__agents__";
 const STARRED_FILTER = "__starred__";
 const ITEM_HEIGHT = 32;
 const HEADING_HEIGHT = 28;
-const MODEL_OPTION_CLASS = "group/model-item mx-2 hover:bg-accent/50 hover:text-accent-foreground transition-colors duration-100";
+const MODEL_OPTION_CLASS =
+  "group/model-item mx-2 hover:bg-accent/50 hover:text-accent-foreground transition-colors duration-100";
 const STAR_BUTTON_CLASS =
   "ml-2 flex size-5 shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 type FlatRow =
   | { type: "heading"; label: string }
   | { type: "agent"; agent: AgentInfo; key: string }
-  | { type: "model"; model: ModelInfo; key: string; isRecent: boolean; ProviderIcon?: React.ComponentType };
+  | {
+      type: "model";
+      model: ModelInfo;
+      key: string;
+      isRecent: boolean;
+      ProviderIcon?: React.ComponentType;
+    };
 
 type ItemRow = Exclude<FlatRow, { type: "heading" }>;
 
@@ -124,11 +168,19 @@ interface FuzzyEntry {
   row: ItemRow;
 }
 
-function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, className }: ModelSelectorProps) {
+function ModelSelector({
+  selectedModel,
+  setSelectedModel,
+  models,
+  hideAgents,
+  className,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [providerMap, setProviderMap] = useState<Record<string, ProviderDefinition>>({});
+  const [providerMap, setProviderMap] = useState<
+    Record<string, ProviderDefinition>
+  >({});
   const [starredModels, setStarredModels] = useState<string[]>([]);
   const { agents, refreshAgents, refreshModels } = useChat();
 
@@ -142,7 +194,7 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         }
       })
       .catch((error) => {
-        console.error('Failed to load provider map', error);
+        console.error("Failed to load provider map", error);
       });
 
     return () => {
@@ -200,7 +252,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
   const customProviderNames = useMemo(() => getCustomProviderNames(), []);
 
   const getProviderDef = useCallback(
-    (provider: string) => providerMap[toProviderId(provider)] || providerMap[provider] || null,
+    (provider: string) =>
+      providerMap[toProviderId(provider)] || providerMap[provider] || null,
     [providerMap],
   );
 
@@ -224,7 +277,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [models, getProviderDisplayName]);
 
-  const showAgents = !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
+  const showAgents =
+    !hideAgents && (!providerFilter || providerFilter === AGENT_FILTER);
   const starredSet = useMemo(() => new Set(starredModels), [starredModels]);
 
   const allEntries = useMemo((): FuzzyEntry[] => {
@@ -249,7 +303,8 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         return `${name} ${model.displayName} ${model.modelId}`;
       };
 
-      const modelIcon = (model: ModelInfo) => getProviderDef(model.provider)?.icon || OpenAIIcon;
+      const modelIcon = (model: ModelInfo) =>
+        getProviderDef(model.provider)?.icon || OpenAIIcon;
 
       if (providerFilter === STARRED_FILTER) {
         for (const key of starredModels) {
@@ -258,13 +313,21 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
           entries.push({
             value: `starred:${model.modelId}`,
             searchText: modelSearchText(model),
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: false,
+              ProviderIcon: modelIcon(model),
+            },
           });
         }
         return entries;
       }
 
-      const filtered = providerFilter ? models.filter((m) => m.provider === providerFilter) : models;
+      const filtered = providerFilter
+        ? models.filter((m) => m.provider === providerFilter)
+        : models;
       const available = new Map(filtered.map((m) => [getModelKey(m), m]));
 
       if (!providerFilter) {
@@ -274,16 +337,30 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
           entries.push({
             value: `starred:${model.modelId}`,
             searchText: modelSearchText(model),
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: false,
+              ProviderIcon: modelIcon(model),
+            },
           });
         }
 
-        for (const model of getRecentModels().map((k) => available.get(k)).filter((m): m is ModelInfo => !!m)) {
+        for (const model of getRecentModels()
+          .map((k) => available.get(k))
+          .filter((m): m is ModelInfo => !!m)) {
           if (starredSet.has(getModelKey(model))) continue;
           entries.push({
             value: `recent:${model.modelId}`,
             searchText: modelSearchText(model),
-            row: { type: "model", model, key: getModelKey(model), isRecent: true, ProviderIcon: modelIcon(model) },
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: true,
+              ProviderIcon: modelIcon(model),
+            },
           });
         }
       }
@@ -296,23 +373,46 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
       }
 
       for (const [, providerModels] of [...groups.entries()].sort((a, b) =>
-        getProviderDisplayName(a[0]).localeCompare(getProviderDisplayName(b[0])),
+        getProviderDisplayName(a[0]).localeCompare(
+          getProviderDisplayName(b[0]),
+        ),
       )) {
         for (const model of providerModels) {
           entries.push({
             value: model.modelId,
             searchText: modelSearchText(model),
-            row: { type: "model", model, key: getModelKey(model), isRecent: false, ProviderIcon: modelIcon(model) },
+            row: {
+              type: "model",
+              model,
+              key: getModelKey(model),
+              isRecent: false,
+              ProviderIcon: modelIcon(model),
+            },
           });
         }
       }
     }
 
     return entries;
-  }, [models, agents, providerFilter, showAgents, getProviderDef, getProviderDisplayName, starredModels, starredSet]);
+  }, [
+    models,
+    agents,
+    providerFilter,
+    showAgents,
+    getProviderDef,
+    getProviderDisplayName,
+    starredModels,
+    starredSet,
+  ]);
 
   const fuse = useMemo(
-    () => new Fuse(allEntries, { keys: ["searchText"], threshold: 0.4, ignoreLocation: true, includeScore: true }),
+    () =>
+      new Fuse(allEntries, {
+        keys: ["searchText"],
+        threshold: 0.4,
+        ignoreLocation: true,
+        includeScore: true,
+      }),
     [allEntries],
   );
 
@@ -326,13 +426,14 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     let lastGroup = "";
 
     for (const { value, row } of filteredEntries) {
-      const group = row.type === "agent"
-        ? "Agents"
-        : value.startsWith("starred:")
-          ? "Starred"
-          : row.isRecent
-            ? "Recent"
-            : getProviderDisplayName(row.model.provider);
+      const group =
+        row.type === "agent"
+          ? "Agents"
+          : value.startsWith("starred:")
+            ? "Starred"
+            : row.isRecent
+              ? "Recent"
+              : getProviderDisplayName(row.model.provider);
 
       if (group !== lastGroup) {
         rows.push({ type: "heading", label: group });
@@ -352,9 +453,15 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
     [setSelectedModel],
   );
 
-  const selectedModelInfo = models.find((m) => getModelKey(m) === selectedModel);
-  const selectedAgent = selectedModel.startsWith("agent:") ? agents.find((a) => `agent:${a.id}` === selectedModel) : null;
-  const selectedProvider = selectedModelInfo ? getProviderDef(selectedModelInfo.provider) : null;
+  const selectedModelInfo = models.find(
+    (m) => getModelKey(m) === selectedModel,
+  );
+  const selectedAgent = selectedModel.startsWith("agent:")
+    ? agents.find((a) => `agent:${a.id}` === selectedModel)
+    : null;
+  const selectedProvider = selectedModelInfo
+    ? getProviderDef(selectedModelInfo.provider)
+    : null;
   const SelectedProviderIcon = selectedProvider?.icon;
 
   return (
@@ -364,19 +471,27 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
           variant="secondary"
           role="combobox"
           aria-expanded={open}
-          className={cn("flex flex-shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20", className)}
+          className={cn(
+            "flex shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20",
+            className,
+          )}
         >
           {selectedAgent ? (
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="shrink-0 flex items-center">
-                <AgentIconSmall icon={selectedAgent.icon} agentId={selectedAgent.id} />
+                <AgentIconSmall
+                  icon={selectedAgent.icon}
+                  agentId={selectedAgent.id}
+                />
               </span>
               <MiddleTruncate text={selectedAgent.name} />
             </span>
           ) : selectedModelInfo ? (
             <span className="flex min-w-0 items-center gap-1.5">
               {SelectedProviderIcon && (
-                <span className="shrink-0 flex items-center"><SelectedProviderIcon /></span>
+                <span className="shrink-0 flex items-center">
+                  <SelectedProviderIcon />
+                </span>
               )}
               <MiddleTruncate text={selectedModelInfo.modelId} />
             </span>
@@ -385,7 +500,11 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
           ) : (
             <span className="text-muted-foreground">Select model</span>
           )}
-          <ChevronDownIcon size={16} className="shrink-0 text-muted-foreground/80" aria-hidden="true" />
+          <ChevronDownIcon
+            size={16}
+            className="shrink-0 text-muted-foreground/80"
+            aria-hidden="true"
+          />
         </Button>
       </PopoverTrigger>
 
@@ -393,19 +512,46 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
         className="w-full min-w-[min(var(--radix-popper-available-width),40rem)] max-w-[min(var(--radix-popper-available-width),40rem)] overflow-hidden border border-border bg-secondary shadow-lg rounded-2xl p-0"
         align="start"
       >
-        <Command className="rounded-2xl" shouldFilter={false} disablePointerSelection>
-          <CommandInput placeholder="Search model or agent..." value={search} onValueChange={setSearch} />
+        <Command
+          className="rounded-2xl"
+          shouldFilter={false}
+          disablePointerSelection
+        >
+          <CommandInput
+            placeholder="Search model or agent..."
+            value={search}
+            onValueChange={setSearch}
+          />
 
           <div className="flex w-full min-w-0 max-w-full flex-nowrap gap-1 px-3 pt-2 pb-1 overflow-x-auto overflow-y-hidden scrollbar-hide">
-            <FilterTab active={providerFilter === null} onClick={() => setProviderFilter(null)}>All</FilterTab>
+            <FilterTab
+              active={providerFilter === null}
+              onClick={() => setProviderFilter(null)}
+            >
+              All
+            </FilterTab>
             {starredModels.length > 0 && (
-              <FilterTab active={providerFilter === STARRED_FILTER} onClick={() => setProviderFilter(STARRED_FILTER)}>Starred</FilterTab>
+              <FilterTab
+                active={providerFilter === STARRED_FILTER}
+                onClick={() => setProviderFilter(STARRED_FILTER)}
+              >
+                Starred
+              </FilterTab>
             )}
             {!hideAgents && agents.length > 0 && (
-              <FilterTab active={providerFilter === AGENT_FILTER} onClick={() => setProviderFilter(AGENT_FILTER)}>Agents</FilterTab>
+              <FilterTab
+                active={providerFilter === AGENT_FILTER}
+                onClick={() => setProviderFilter(AGENT_FILTER)}
+              >
+                Agents
+              </FilterTab>
             )}
             {providers.map((provider) => (
-              <FilterTab key={provider.id} active={providerFilter === provider.id} onClick={() => setProviderFilter(provider.id)}>
+              <FilterTab
+                key={provider.id}
+                active={providerFilter === provider.id}
+                onClick={() => setProviderFilter(provider.id)}
+              >
                 {provider.name}
               </FilterTab>
             ))}
@@ -413,13 +559,19 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
 
           <VirtualizedCommandList
             items={flatRows}
-            estimateSize={(i) => (flatRows[i].type === "heading" ? HEADING_HEIGHT : ITEM_HEIGHT)}
+            estimateSize={(i) =>
+              flatRows[i].type === "heading" ? HEADING_HEIGHT : ITEM_HEIGHT
+            }
             emptyMessage="No model found."
             className="pb-2 min-h-80"
           >
             {(row) => {
               if (row.type === "heading") {
-                return <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">{row.label}</div>;
+                return (
+                  <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                    {row.label}
+                  </div>
+                );
               }
 
               if (row.type === "agent") {
@@ -431,11 +583,16 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
                   >
                     <span className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="shrink-0 flex items-center">
-                        <AgentIconSmall icon={row.agent.icon} agentId={row.agent.id} />
+                        <AgentIconSmall
+                          icon={row.agent.icon}
+                          agentId={row.agent.id}
+                        />
                       </span>
                       <span className="truncate">{row.agent.name}</span>
                     </span>
-                    {row.key === selectedModel && <CheckIcon size={16} className="ml-auto shrink-0" />}
+                    {row.key === selectedModel && (
+                      <CheckIcon size={16} className="ml-auto shrink-0" />
+                    )}
                   </CommandItem>
                 );
               }
@@ -444,19 +601,30 @@ function ModelSelector({ selectedModel, setSelectedModel, models, hideAgents, cl
 
               return (
                 <CommandItem
-                  value={row.isRecent ? `recent:${row.model.modelId}` : row.model.modelId}
+                  value={
+                    row.isRecent
+                      ? `recent:${row.model.modelId}`
+                      : row.model.modelId
+                  }
                   onSelect={() => handleSelect(row.key)}
                   className={MODEL_OPTION_CLASS}
                 >
                   <span className="flex items-center gap-2 flex-1 min-w-0">
                     {row.ProviderIcon && (
-                      <span className="shrink-0 flex items-center"><row.ProviderIcon /></span>
+                      <span className="shrink-0 flex items-center">
+                        <row.ProviderIcon />
+                      </span>
                     )}
                     <MiddleTruncate text={row.model.modelId} />
                   </span>
                   <span className="ml-auto flex shrink-0 items-center gap-1">
-                    <ModelStarButton isStarred={isStarred} onToggle={() => handleToggleStar(row.key)} />
-                    {row.key === selectedModel && <CheckIcon size={16} className="shrink-0" />}
+                    <ModelStarButton
+                      isStarred={isStarred}
+                      onToggle={() => handleToggleStar(row.key)}
+                    />
+                    {row.key === selectedModel && (
+                      <CheckIcon size={16} className="shrink-0" />
+                    )}
                   </span>
                 </CommandItem>
               );
@@ -492,18 +660,33 @@ function ModelStarButton({
         "hit-area-1.5",
       )}
     >
-      <Star className={cn("size-3.5", isStarred && "fill-yellow-500 text-yellow-500")} />
+      <Star
+        className={cn(
+          "size-3.5",
+          isStarred && "fill-yellow-500 text-yellow-500",
+        )}
+      />
     </button>
   );
 }
 
-function FilterTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function FilterTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
       className={cn(
         "shrink-0 px-3 py-1 text-[13px] font-medium rounded-lg transition-colors hit-area-0.5 hit-area-y-1",
-        active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-muted-foreground",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "hover:bg-accent/50 text-muted-foreground",
       )}
     >
       {children}

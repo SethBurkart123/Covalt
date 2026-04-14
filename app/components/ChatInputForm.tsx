@@ -85,7 +85,7 @@ const LeftToolbar = memo(function LeftToolbar({
           type="button"
           variant="secondary"
           size="icon"
-          className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+          className="h-9 w-9 shrink-0 rounded-full p-2"
           disabled={isLoading}
         >
           <Plus className="size-5" />
@@ -127,7 +127,7 @@ const LeftToolbar = memo(function LeftToolbar({
             type="button"
             variant="secondary"
             size="icon"
-            className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+            className="h-9 w-9 shrink-0 rounded-full p-2"
             disabled={isLoading || toolSelectorDisabled}
             title={toolSelectorDisabledReason}
           >

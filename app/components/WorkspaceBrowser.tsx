@@ -39,11 +39,32 @@ function getFileExtension(fileName: string): string {
 function getPreviewType(fileName: string): PreviewType {
   const ext = getFileExtension(fileName);
   if (ext === "md" || ext === "markdown") return "markdown";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"].includes(ext)) {
+  if (
+    ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"].includes(
+      ext,
+    )
+  ) {
     return "image";
   }
   if (["mp4", "webm", "mov", "m4v", "ogg"].includes(ext)) return "video";
-  if (["txt", "json", "yaml", "yml", "py", "js", "ts", "tsx", "jsx", "css", "html", "xml", "csv", "log"].includes(ext)) {
+  if (
+    [
+      "txt",
+      "json",
+      "yaml",
+      "yml",
+      "py",
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "css",
+      "html",
+      "xml",
+      "csv",
+      "log",
+    ].includes(ext)
+  ) {
     return "text";
   }
   return "binary";
@@ -99,7 +120,7 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 }
 
 function getBase64ByteLength(base64: string): number {
-  const padding = (base64.match(/=+$/)?.[0].length ?? 0);
+  const padding = base64.match(/=+$/)?.[0].length ?? 0;
   return Math.floor((base64.length * 3) / 4) - padding;
 }
 
@@ -110,7 +131,12 @@ interface FileNodeProps {
   changedInLastRun: Set<string>;
 }
 
-function FileNode({ node, depth, onFileClick, changedInLastRun }: FileNodeProps) {
+function FileNode({
+  node,
+  depth,
+  onFileClick,
+  changedInLastRun,
+}: FileNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const isChanged = changedInLastRun.has(node.path);
 
@@ -125,7 +151,7 @@ function FileNode({ node, depth, onFileClick, changedInLastRun }: FileNodeProps)
           <ChevronRight
             className={cn(
               "size-3 text-muted-foreground transition-transform",
-              isOpen && "rotate-90"
+              isOpen && "rotate-90",
             )}
           />
           {isOpen ? (
@@ -158,7 +184,7 @@ function FileNode({ node, depth, onFileClick, changedInLastRun }: FileNodeProps)
       onClick={() => onFileClick(node.path)}
       className={cn(
         "flex items-center gap-2 w-full px-2 py-1.5 text-sm hover:bg-muted rounded-md transition-colors text-left",
-        isChanged && "bg-primary/5"
+        isChanged && "bg-primary/5",
       )}
       style={{ paddingLeft: `${depth * 16 + 24}px` }}
     >
@@ -214,7 +240,11 @@ function FilePreviewContent({
   if (previewType === "image" && objectUrl) {
     return (
       <div className="h-[400px] border rounded-lg overflow-auto bg-muted/20 flex items-center justify-center p-2">
-        <img src={objectUrl} alt={fileName} className="max-w-full max-h-full object-contain" />
+        <img
+          src={objectUrl}
+          alt={fileName}
+          className="max-w-full max-h-full object-contain"
+        />
       </div>
     );
   }
@@ -270,7 +300,11 @@ function FilePreviewDialog({
 
   const textContent = useMemo(() => {
     if (!base64Content) return null;
-    if (previewType === "binary" || previewType === "image" || previewType === "video") {
+    if (
+      previewType === "binary" ||
+      previewType === "image" ||
+      previewType === "video"
+    ) {
       return null;
     }
     return decodeBase64Utf8(base64Content);
@@ -310,7 +344,7 @@ function FilePreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between pr-8">
             <span className="truncate">{fileName}</span>
             <Button
@@ -403,24 +437,26 @@ export function WorkspaceBrowser({
   }, [lastRunChangedPaths]);
 
   useEffect(() => {
-    return onWorkspaceFilesChanged((eventChatId, changedPaths, deletedPaths, meta) => {
-      if (eventChatId !== chatId) return;
-      if (meta?.source !== "tool_run") return;
+    return onWorkspaceFilesChanged(
+      (eventChatId, changedPaths, deletedPaths, meta) => {
+        if (eventChatId !== chatId) return;
+        if (meta?.source !== "tool_run") return;
 
-      if (meta?.sourceRef && lastRunSourceRef.current !== meta.sourceRef) {
-        lastRunSourceRef.current = meta.sourceRef;
-        setWsChangedPaths(new Set());
-      }
+        if (meta?.sourceRef && lastRunSourceRef.current !== meta.sourceRef) {
+          lastRunSourceRef.current = meta.sourceRef;
+          setWsChangedPaths(new Set());
+        }
 
-      setWsChangedPaths((prev) => {
-        const next = new Set(prev);
-        changedPaths.forEach((path) => next.add(path));
-        deletedPaths.forEach((path) => next.add(path));
-        return next;
-      });
+        setWsChangedPaths((prev) => {
+          const next = new Set(prev);
+          changedPaths.forEach((path) => next.add(path));
+          deletedPaths.forEach((path) => next.add(path));
+          return next;
+        });
 
-      void loadFiles();
-    });
+        void loadFiles();
+      },
+    );
   }, [chatId, loadFiles, onWorkspaceFilesChanged]);
 
   const fileTree = useMemo(() => buildFileTree(files), [files]);
@@ -431,7 +467,9 @@ export function WorkspaceBrowser({
         <div className="flex items-center gap-2 text-sm font-medium">
           <Folder className="size-4 text-muted-foreground" />
           <span>Workspace</span>
-          <span className="text-muted-foreground text-xs">({files.length} files)</span>
+          <span className="text-muted-foreground text-xs">
+            ({files.length} files)
+          </span>
           {changedInLastRun.size > 0 && (
             <span className="text-xs text-primary">
               {changedInLastRun.size} changed in last run
@@ -484,4 +522,3 @@ export function WorkspaceBrowser({
     </div>
   );
 }
-

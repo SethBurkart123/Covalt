@@ -74,8 +74,13 @@ interface McpServerInspectorDialogProps {
   onTestTool: (
     serverId: string,
     toolName: string,
-    args: Record<string, unknown>
-  ) => Promise<{ success: boolean; result?: string; error?: string; durationMs?: number }>;
+    args: Record<string, unknown>,
+  ) => Promise<{
+    success: boolean;
+    result?: string;
+    error?: string;
+    durationMs?: number;
+  }>;
 }
 
 export function McpServerInspectorDialog({
@@ -89,7 +94,9 @@ export function McpServerInspectorDialog({
   onReconnect,
   onTestTool,
 }: McpServerInspectorDialogProps) {
-  const [userSelectedToolId, setUserSelectedToolId] = useState<string | null>(null);
+  const [userSelectedToolId, setUserSelectedToolId] = useState<string | null>(
+    null,
+  );
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   const selectedToolId = useMemo(() => {
@@ -133,7 +140,7 @@ export function McpServerInspectorDialog({
         className="!max-w-[90vw] sm:!max-w-[90vw] w-full h-[85vh] p-0 flex flex-col overflow-hidden gap-0 [&>button:last-child]:hidden"
         overlayClose
       >
-        <DialogHeader className="px-5 py-3 border-b border-border flex-shrink-0">
+        <DialogHeader className="px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2 mt-0.5">
@@ -155,7 +162,7 @@ export function McpServerInspectorDialog({
               )}
             </div>
 
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               {server.status === "error" || server.status === "disconnected" ? (
                 <Button
                   variant="outline"
@@ -181,7 +188,12 @@ export function McpServerInspectorDialog({
                   />
                 </Button>
               )}
-              <Button variant="ghost" size="icon" onClick={handleEdit} title="Edit server">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleEdit}
+                title="Edit server"
+              >
                 <Pencil className="size-4" />
               </Button>
               <Button
@@ -204,7 +216,10 @@ export function McpServerInspectorDialog({
         </DialogHeader>
 
         {server.status === "connected" && tools.length > 0 ? (
-          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="flex-1 min-h-0"
+          >
             <ResizablePanel defaultSize="25%" minSize="15%">
               <div className="h-full overflow-auto border-r border-border">
                 <ToolList
@@ -239,9 +254,10 @@ export function McpServerInspectorDialog({
               Please wait while we establish the connection
             </p>
           </div>
-        ) : (server.status === "error" || server.status === "disconnected") && server.error ? (
+        ) : (server.status === "error" || server.status === "disconnected") &&
+          server.error ? (
           <div className="flex-1 flex min-h-0">
-            <div className="w-80 flex-shrink-0 flex flex-col items-center justify-center text-center p-8 border-r border-border">
+            <div className="w-80 shrink-0 flex flex-col items-center justify-center text-center p-8 border-r border-border">
               <Plug className="size-12 text-muted-foreground/50 mb-4" />
               <p className="text-lg font-medium">Server not connected</p>
               <p className="text-sm text-muted-foreground mt-1">
@@ -277,7 +293,8 @@ export function McpServerInspectorDialog({
                 ? "The server is disconnected. Click reconnect to try again."
                 : "This server doesn't expose any tools"}
             </p>
-            {(server.status === "error" || server.status === "disconnected") && (
+            {(server.status === "error" ||
+              server.status === "disconnected") && (
               <Button
                 variant="outline"
                 className="mt-4"

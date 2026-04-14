@@ -62,7 +62,7 @@ export default function ChatMessageEditor({
         onAddAttachment(file);
       });
     },
-    [onAddAttachment]
+    [onAddAttachment],
   );
 
   return (
@@ -98,7 +98,7 @@ export default function ChatMessageEditor({
               type="button"
               variant="secondary"
               size="icon"
-              className="h-8 w-8 flex-shrink-0 rounded-full p-2"
+              className="h-8 w-8 shrink-0 rounded-full p-2"
               disabled={isLoading}
             >
               <Plus className="size-4" />
@@ -117,7 +117,9 @@ export default function ChatMessageEditor({
               type="button"
               className="h-8 px-3 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
               onClick={onSubmit}
-              disabled={(!value.trim() && attachments.length === 0) || isLoading}
+              disabled={
+                (!value.trim() && attachments.length === 0) || isLoading
+              }
             >
               Send
             </button>
