@@ -108,14 +108,15 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.55.0",
     "@shikijs/rehype": "^3.3.0",
     "@tailwindcss/postcss": "^4",
+    "@types/bun": "latest",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@playwright/test": "^1.55.0",
+    "@types/three": "^0.183.1",
     "concurrently": "^9.1.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",

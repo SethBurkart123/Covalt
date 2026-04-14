@@ -335,7 +335,7 @@ function findPendingApprovals(content: ContentBlock[]): PendingApproval[] {
   return content.filter(
     (block): block is PendingApproval =>
       block.type === "tool_call" &&
-      block.requiresApproval &&
+      block.requiresApproval === true &&
       block.approvalStatus === "pending" &&
       !!block.runId &&
       !!block.toolCallId,
