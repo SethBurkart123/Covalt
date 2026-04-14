@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronRight, ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 type CollapsibleMode = "regular" | "minimal" | "compact";
 
@@ -281,9 +282,15 @@ interface CollapsibleIconProps {
 }
 
 function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
-  const { isGrouped, isFirst, isLast, mode } = useCollapsible();
+  const { isGrouped, isFirst, isLast, shimmer, mode } = useCollapsible();
 
   if (mode === "minimal") return null;
+
+  const IconElement = shimmer ? (
+    <Spinner size={16} className={cn("text-muted-foreground", className)} />
+  ) : (
+    <Icon size={16} className={cn("text-muted-foreground", className)} />
+  );
 
   if (isGrouped) {
     return (
@@ -309,13 +316,13 @@ function CollapsibleIcon({ icon: Icon, className }: CollapsibleIconProps) {
           </>
         )}
         <div className="size-6 p-0.5 flex justify-center items-center relative z-10">
-          <Icon size={16} className={cn("text-muted-foreground", className)} />
+          {IconElement}
         </div>
       </>
     );
   }
 
-  return <Icon size={16} className={cn("text-muted-foreground", className)} />;
+  return IconElement;
 }
 
 interface CollapsibleHeaderProps {
