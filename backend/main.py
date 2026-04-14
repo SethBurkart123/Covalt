@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 def _ensure_e2e_toolset() -> None:
     if os.environ.get("COVALT_E2E_TESTS") != "1":
+        _cleanup_e2e_state()
         return
     manager = get_toolset_manager()
     if manager.get_toolset("artifact-tools"):
@@ -36,6 +37,35 @@ def _ensure_e2e_toolset() -> None:
         logger.warning(f"E2E toolset directory missing: {toolset_dir}")
         return
     manager.import_from_directory(toolset_dir)
+
+
+def _cleanup_e2e_state() -> None:
+    """Remove e2e artifacts left in the database from previous test runs."""
+    from .db import db_session
+    from .db.settings import get_selected_model, set_selected_model, get_recent_models, set_recent_models, get_default_tool_ids, set_default_tool_ids
+
+    manager = get_toolset_manager()
+    if manager.get_toolset("artifact-tools"):
+        manager.uninstall("artifact-tools")
+        logger.info("Cleaned up e2e toolset 'artifact-tools'")
+
+    with db_session() as sess:
+        selected = get_selected_model(sess)
+        if selected.startswith("e2e:"):
+            set_selected_model(sess, "")
+            logger.info(f"Cleared e2e selected model '{selected}'")
+
+        recent = get_recent_models(sess)
+        filtered = [m for m in recent if not m.startswith("e2e:")]
+        if len(filtered) != len(recent):
+            set_recent_models(sess, filtered)
+            logger.info("Cleaned up e2e models from recent models")
+
+        default_tools = get_default_tool_ids(sess)
+        filtered_tools = [t for t in default_tools if not t.startswith("artifact-tools:")]
+        if len(filtered_tools) != len(default_tools):
+            set_default_tool_ids(sess, filtered_tools)
+            logger.info("Cleaned up e2e tools from default tool IDs")
 
 
 def main() -> int:
