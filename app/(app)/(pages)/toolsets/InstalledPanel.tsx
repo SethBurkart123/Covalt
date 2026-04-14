@@ -53,16 +53,14 @@ import { getToolDisplayLabel, parseToolId } from "@/lib/tooling";
 function ToolCard({ tool }: { tool: ToolsetToolInfo }) {
   const toolLabel = useMemo(
     () => getToolDisplayLabel(tool.toolId, tool.name),
-    [tool.name, tool.toolId]
+    [tool.name, tool.toolId],
   );
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-      <Wrench className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+      <Wrench className="size-4 text-muted-foreground mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm truncate">
-          {toolLabel}
-        </p>
+        <p className="font-medium text-sm truncate">{toolLabel}</p>
         {tool.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
             {tool.description}
@@ -94,7 +92,7 @@ function ToolsetCard({
 
   const handleOpenChange = async (open: boolean) => {
     setIsOpen(open);
-    
+
     if (open && tools.length === 0) {
       setIsLoadingTools(true);
       try {
@@ -158,13 +156,13 @@ function ToolsetCard({
           <div
             className={cn(
               "flex items-center justify-center size-9 rounded-lg",
-              toolset.enabled ? "bg-emerald-500/10" : "bg-muted"
+              toolset.enabled ? "bg-emerald-500/10" : "bg-muted",
             )}
           >
             <Package
               className={cn(
                 "size-4",
-                toolset.enabled ? "text-emerald-500" : "text-muted-foreground"
+                toolset.enabled ? "text-emerald-500" : "text-muted-foreground",
               )}
             />
           </div>
@@ -256,7 +254,11 @@ function UninstallDialog({
 }
 
 interface InstalledPanelProps {
-  onEditServer: (serverKey: string, serverId: string, serverName: string) => void;
+  onEditServer: (
+    serverKey: string,
+    serverId: string,
+    serverName: string,
+  ) => void;
   onDeleteServer: (serverKey: string, serverLabel: string) => void;
 }
 
@@ -264,18 +266,22 @@ export default function InstalledPanel({
   onEditServer,
   onDeleteServer,
 }: InstalledPanelProps) {
-  const { availableTools, mcpServers, isLoadingTools, refreshTools } = useTools();
+  const { availableTools, mcpServers, isLoadingTools, refreshTools } =
+    useTools();
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [isLoadingToolsets, setIsLoadingToolsets] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
-  const [uninstallingToolset, setUninstallingToolset] = useState<ToolsetInfo | null>(null);
+  const [uninstallingToolset, setUninstallingToolset] =
+    useState<ToolsetInfo | null>(null);
   const [isUninstalling, setIsUninstalling] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectingServerKey, setInspectingServerKey] = useState<string | null>(null);
+  const [inspectingServerKey, setInspectingServerKey] = useState<string | null>(
+    null,
+  );
   const [inspectorTools, setInspectorTools] = useState<MCPToolInfo[]>([]);
 
   const mcpTools = useMemo(() => {
@@ -290,11 +296,14 @@ export default function InstalledPanel({
     return byServer;
   }, [availableTools]);
 
-  const mcpServerLabels = useMemo(() => buildMcpServerLabelMap(mcpServers), [mcpServers]);
+  const mcpServerLabels = useMemo(
+    () => buildMcpServerLabelMap(mcpServers),
+    [mcpServers],
+  );
 
   const inspectingServer = useMemo(
     () => mcpServers.find((s) => s.id === inspectingServerKey) || null,
-    [mcpServers, inspectingServerKey]
+    [mcpServers, inspectingServerKey],
   );
 
   const reloadInspectorTools = useCallback(async (serverId: string) => {
@@ -308,11 +317,14 @@ export default function InstalledPanel({
     }
   }, []);
 
-  const handleInspectServer = useCallback(async (serverKey: string) => {
-    setInspectingServerKey(serverKey);
-    setInspectorOpen(true);
-    await reloadInspectorTools(serverKey);
-  }, [reloadInspectorTools]);
+  const handleInspectServer = useCallback(
+    async (serverKey: string) => {
+      setInspectingServerKey(serverKey);
+      setInspectorOpen(true);
+      await reloadInspectorTools(serverKey);
+    },
+    [reloadInspectorTools],
+  );
 
   const handleInspectorReconnect = useCallback(async () => {
     if (!inspectingServerKey) return;
@@ -324,8 +336,13 @@ export default function InstalledPanel({
     async (
       serverId: string,
       toolName: string,
-      args: Record<string, unknown>
-    ): Promise<{ success: boolean; result?: string; error?: string; durationMs?: number }> => {
+      args: Record<string, unknown>,
+    ): Promise<{
+      success: boolean;
+      result?: string;
+      error?: string;
+      durationMs?: number;
+    }> => {
       try {
         const result = await testMcpTool({
           body: { serverId, toolName, arguments: args },
@@ -338,7 +355,7 @@ export default function InstalledPanel({
         };
       }
     },
-    []
+    [],
   );
 
   const loadToolsets = useCallback(async () => {
@@ -373,7 +390,9 @@ export default function InstalledPanel({
   const handleExport = async (toolset: ToolsetInfo) => {
     try {
       const response = await exportToolset({ body: { id: toolset.id } });
-      const bytes = Uint8Array.from(atob(response.data), (c) => c.charCodeAt(0));
+      const bytes = Uint8Array.from(atob(response.data), (c) =>
+        c.charCodeAt(0),
+      );
       const blob = new Blob([bytes], { type: "application/zip" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -451,7 +470,8 @@ export default function InstalledPanel({
         </div>
         <h3 className="text-lg font-medium mb-2">No tools installed</h3>
         <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-          Add MCP servers for external integrations or import toolsets to extend your AI&apos;s capabilities.
+          Add MCP servers for external integrations or import toolsets to extend
+          your AI&apos;s capabilities.
         </p>
         <Button onClick={handleImportClick} disabled={isImporting}>
           {isImporting ? (
@@ -509,7 +529,8 @@ export default function InstalledPanel({
           <div className="border border-dashed border-border rounded-lg p-6 text-center">
             <Plug className="size-8 mx-auto mb-2 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              No MCP servers configured. Click &quot;Add Server&quot; to connect one.
+              No MCP servers configured. Click &quot;Add Server&quot; to connect
+              one.
             </p>
           </div>
         )}
@@ -599,11 +620,18 @@ export default function InstalledPanel({
         }}
         onDelete={() => {
           if (inspectingServer) {
-            const serverLabel = getMcpServerLabel(inspectingServer, mcpServerLabels);
+            const serverLabel = getMcpServerLabel(
+              inspectingServer,
+              mcpServerLabels,
+            );
             onDeleteServer(inspectingServer.id, serverLabel);
           }
         }}
-        serverLabel={inspectingServer ? getMcpServerLabel(inspectingServer, mcpServerLabels) : undefined}
+        serverLabel={
+          inspectingServer
+            ? getMcpServerLabel(inspectingServer, mcpServerLabels)
+            : undefined
+        }
         onReconnect={handleInspectorReconnect}
         onTestTool={handleTestTool}
       />

@@ -36,21 +36,23 @@ const ToolList = memo(function ToolList({
             "w-full text-left p-3 rounded-lg transition-colors",
             tool.id === selectedToolId
               ? "bg-primary/10 border border-primary/30"
-              : "border border-transparent hover:bg-muted/80"
+              : "border border-transparent hover:bg-muted/80",
           )}
         >
           <div className="flex items-start gap-2">
             <Wrench
               className={cn(
-                "size-4 mt-0.5 flex-shrink-0",
-                tool.id === selectedToolId ? "text-primary" : "text-muted-foreground"
+                "size-4 mt-0.5 shrink-0",
+                tool.id === selectedToolId
+                  ? "text-primary"
+                  : "text-muted-foreground",
               )}
             />
             <div className="flex-1 min-w-0">
               <p
                 className={cn(
                   "font-medium text-sm truncate",
-                  tool.id === selectedToolId && "text-primary"
+                  tool.id === selectedToolId && "text-primary",
                 )}
               >
                 {getToolDisplayLabel(tool.id, tool.name)}
@@ -63,8 +65,12 @@ const ToolList = memo(function ToolList({
                 </p>
               )}
               {(() => {
-                const schema = tool.inputSchema as { properties?: Record<string, unknown> } | undefined;
-                const paramCount = schema?.properties ? Object.keys(schema.properties).length : 0;
+                const schema = tool.inputSchema as
+                  | { properties?: Record<string, unknown> }
+                  | undefined;
+                const paramCount = schema?.properties
+                  ? Object.keys(schema.properties).length
+                  : 0;
                 return paramCount > 0 ? (
                   <p className="text-xs text-muted-foreground/70 mt-1">
                     {paramCount} parameter{paramCount !== 1 ? "s" : ""}

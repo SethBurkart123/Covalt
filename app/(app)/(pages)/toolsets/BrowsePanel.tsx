@@ -105,7 +105,7 @@ function ToolsetCard({ toolset }: ToolsetCardProps) {
 
   return (
     <div className="group relative flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
-      <div className="flex items-center justify-center size-10 rounded-lg bg-muted flex-shrink-0">
+      <div className="flex items-center justify-center size-10 rounded-lg bg-muted shrink-0">
         <CategoryIcon className="size-5 text-muted-foreground" />
       </div>
       <div className="flex-1 min-w-0">
@@ -150,11 +150,7 @@ export default function BrowsePanel() {
     <div className="space-y-6">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          placeholder="Search toolsets..."
-          className="pl-10"
-          disabled
-        />
+        <Input placeholder="Search toolsets..." className="pl-10" disabled />
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -166,7 +162,7 @@ export default function BrowsePanel() {
               "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
               activeCategory === category.id
                 ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:text-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
             <category.icon className="size-3.5" />
@@ -201,8 +197,8 @@ export default function BrowsePanel() {
 
       <div className="text-center py-6 border-t border-border">
         <p className="text-sm text-muted-foreground">
-          The toolset marketplace is coming soon. You&apos;ll be able to discover and install
-          toolsets created by the community.
+          The toolset marketplace is coming soon. You&apos;ll be able to
+          discover and install toolsets created by the community.
         </p>
       </div>
     </div>

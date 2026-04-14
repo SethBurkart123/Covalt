@@ -25,7 +25,7 @@ export default function MainModelOptions({
   return (
     <div className="flex items-center gap-2 overflow-x-auto">
       {visibleMainOptions.map((definition) => (
-        <div key={definition.key} className="flex-shrink-0">
+        <div key={definition.key} className="shrink-0">
           <ModelOptionControl
             definition={definition}
             value={values[definition.key]}

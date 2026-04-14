@@ -59,7 +59,7 @@ function SourceCard({
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
-      <div className="flex items-center justify-center size-10 rounded-lg bg-muted flex-shrink-0">
+      <div className="flex items-center justify-center size-10 rounded-lg bg-muted shrink-0">
         <Icon />
       </div>
       <div className="flex-1 min-w-0">
@@ -109,14 +109,17 @@ function InstalledPluginCard({
   error?: string;
   autoUpdateError?: string;
 }) {
-  const trustStatus = normalizeProviderPluginTrustStatus(plugin.verificationStatus);
+  const trustStatus = normalizeProviderPluginTrustStatus(
+    plugin.verificationStatus,
+  );
   const sourceLabel = getProviderPluginSourceLabel(plugin.sourceType);
-  const hasTrustIssue = trustStatus === "invalid" || trustStatus === "untrusted";
+  const hasTrustIssue =
+    trustStatus === "invalid" || trustStatus === "untrusted";
   const Icon = getProviderIcon(plugin.icon);
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
-      <div className="flex items-center justify-center size-10 rounded-lg bg-muted flex-shrink-0 mt-0.5">
+      <div className="flex items-center justify-center size-10 rounded-lg bg-muted shrink-0 mt-0.5">
         <Icon />
       </div>
       <div className="flex-1 min-w-0">
@@ -134,26 +137,35 @@ function InstalledPluginCard({
           {hasTrustIssue && (
             <span className="text-xs text-amber-600 inline-flex items-center gap-1">
               <AlertTriangle size={12} />
-              {trustStatus === "invalid" ? "Invalid signature" : "Untrusted signer"}
+              {trustStatus === "invalid"
+                ? "Invalid signature"
+                : "Untrusted signer"}
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5">{plugin.description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {plugin.description}
+        </p>
         <div className="flex items-center gap-3 mt-2 flex-wrap">
           {sourceLabel && (
             <span className="text-xs text-muted-foreground">{sourceLabel}</span>
           )}
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground">Auto-update:</Label>
+            <Label className="text-xs text-muted-foreground">
+              Auto-update:
+            </Label>
             <select
               className="h-7 rounded border bg-background px-1.5 text-xs"
               value={
-                plugin.autoUpdateOverride === "enabled" || plugin.autoUpdateOverride === "disabled"
+                plugin.autoUpdateOverride === "enabled" ||
+                plugin.autoUpdateOverride === "disabled"
                   ? plugin.autoUpdateOverride
                   : "inherit"
               }
               onChange={(event) =>
-                onAutoUpdateChange(event.target.value as "inherit" | "enabled" | "disabled")
+                onAutoUpdateChange(
+                  event.target.value as "inherit" | "enabled" | "disabled",
+                )
               }
             >
               <option value="inherit">Inherit</option>
@@ -162,12 +174,18 @@ function InstalledPluginCard({
             </select>
           </div>
         </div>
-        {plugin.error && <p className="text-xs text-red-600 mt-1">{plugin.error}</p>}
+        {plugin.error && (
+          <p className="text-xs text-red-600 mt-1">{plugin.error}</p>
+        )}
         {plugin.updateError && (
-          <p className="text-xs text-red-600 mt-1">Update error: {plugin.updateError}</p>
+          <p className="text-xs text-red-600 mt-1">
+            Update error: {plugin.updateError}
+          </p>
         )}
         {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
-        {autoUpdateError && <p className="text-xs text-red-600 mt-1">{autoUpdateError}</p>}
+        {autoUpdateError && (
+          <p className="text-xs text-red-600 mt-1">{autoUpdateError}</p>
+        )}
       </div>
       <Button
         size="sm"
@@ -202,9 +220,9 @@ function CommunityGate({
       </div>
       <h2 className="text-lg font-semibold mb-3">Community Plugins</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Community plugins are created by third-party developers and are not reviewed by the Covalt
-        team. They may contain arbitrary code that runs on your machine. Only install plugins from
-        sources you trust.
+        Community plugins are created by third-party developers and are not
+        reviewed by the Covalt team. They may contain arbitrary code that runs
+        on your machine. Only install plugins from sources you trust.
       </p>
       <label className="inline-flex items-center gap-2 text-sm mb-4 cursor-pointer">
         <Checkbox
@@ -214,9 +232,7 @@ function CommunityGate({
         I understand the risks
       </label>
       <Button onClick={onEnableUnsafe} disabled={!riskChecked || isSaving}>
-        {isSaving ? (
-          <Loader2 className="mr-1.5 size-4 animate-spin" />
-        ) : null}
+        {isSaving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
         Enable community plugins
       </Button>
     </div>
@@ -255,7 +271,9 @@ export default function ProviderStorePanel() {
   const [installed, setInstalled] = useState<ProviderPluginInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingPolicy, setIsSavingPolicy] = useState(false);
-  const [installingSourceId, setInstallingSourceId] = useState<string | null>(null);
+  const [installingSourceId, setInstallingSourceId] = useState<string | null>(
+    null,
+  );
   const [removingPluginId, setRemovingPluginId] = useState<string | null>(null);
   const [errorByKey, setErrorByKey] = useState<Record<string, string>>({});
 
@@ -272,7 +290,10 @@ export default function ProviderStorePanel() {
       setInstalled(pluginsResp.plugins || []);
       setErrorByKey({});
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load provider store";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load provider store";
       setErrorByKey({ global: message });
     } finally {
       setIsLoading(false);
@@ -295,10 +316,15 @@ export default function ProviderStorePanel() {
     const targetClass = storeTab === "official" ? "official" : "community";
     const term = normalize(search);
     return sources
-      .filter((s) => normalizeProviderPluginSourceClass(s.sourceClass) === targetClass)
+      .filter(
+        (s) =>
+          normalizeProviderPluginSourceClass(s.sourceClass) === targetClass,
+      )
       .filter((s) => {
         if (!term) return true;
-        return `${s.name} ${s.description} ${s.provider}`.toLowerCase().includes(term);
+        return `${s.name} ${s.description} ${s.provider}`
+          .toLowerCase()
+          .includes(term);
       });
   }, [sources, search, storeTab]);
 
@@ -306,7 +332,9 @@ export default function ProviderStorePanel() {
     const term = normalize(search);
     if (!term) return installed;
     return installed.filter((plugin) =>
-      `${plugin.name} ${plugin.description} ${plugin.provider}`.toLowerCase().includes(term),
+      `${plugin.name} ${plugin.description} ${plugin.provider}`
+        .toLowerCase()
+        .includes(term),
     );
   }, [search, installed]);
 
@@ -323,13 +351,18 @@ export default function ProviderStorePanel() {
       setIsSavingPolicy(true);
       setErrorByKey((prev) => ({ ...prev, policy: "" }));
       try {
-        const saved = await saveProviderPluginPolicy({ body: toPolicyInput(next) });
+        const saved = await saveProviderPluginPolicy({
+          body: toPolicyInput(next),
+        });
         setPolicy(saved);
         await reload();
       } catch (error) {
         setErrorByKey((prev) => ({
           ...prev,
-          policy: error instanceof Error ? error.message : "Failed to save plugin policy",
+          policy:
+            error instanceof Error
+              ? error.message
+              : "Failed to save plugin policy",
         }));
       } finally {
         setIsSavingPolicy(false);
@@ -347,7 +380,8 @@ export default function ProviderStorePanel() {
     } catch (error) {
       setErrorByKey((prev) => ({
         ...prev,
-        [source.id]: error instanceof Error ? error.message : "Failed to install",
+        [source.id]:
+          error instanceof Error ? error.message : "Failed to install",
       }));
     } finally {
       setInstallingSourceId(null);
@@ -363,7 +397,8 @@ export default function ProviderStorePanel() {
     } catch (error) {
       setErrorByKey((prev) => ({
         ...prev,
-        [plugin.id]: error instanceof Error ? error.message : "Failed to uninstall",
+        [plugin.id]:
+          error instanceof Error ? error.message : "Failed to uninstall",
       }));
     } finally {
       setRemovingPluginId(null);
@@ -382,7 +417,9 @@ export default function ProviderStorePanel() {
       setErrorByKey((prev) => ({
         ...prev,
         [`autoupdate:${pluginId}`]:
-          error instanceof Error ? error.message : "Failed to update auto-update",
+          error instanceof Error
+            ? error.message
+            : "Failed to update auto-update",
       }));
     }
   };
@@ -395,7 +432,10 @@ export default function ProviderStorePanel() {
         <button
           key={tab.key}
           type="button"
-          onClick={() => { setStoreTab(tab.key); setSearch(""); }}
+          onClick={() => {
+            setStoreTab(tab.key);
+            setSearch("");
+          }}
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors select-none",
             storeTab === tab.key
@@ -428,7 +468,9 @@ export default function ProviderStorePanel() {
             }
           />
           {errorByKey.policy && (
-            <p className="text-sm text-red-600 text-center">{errorByKey.policy}</p>
+            <p className="text-sm text-red-600 text-center">
+              {errorByKey.policy}
+            </p>
           )}
         </>
       );
@@ -438,7 +480,10 @@ export default function ProviderStorePanel() {
       return (
         <>
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -446,7 +491,9 @@ export default function ProviderStorePanel() {
               className="pl-8"
             />
           </div>
-          {errorByKey.global && <p className="text-sm text-red-600">{errorByKey.global}</p>}
+          {errorByKey.global && (
+            <p className="text-sm text-red-600">{errorByKey.global}</p>
+          )}
           {filteredSources.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">
               {storeTab === "community"
@@ -474,7 +521,10 @@ export default function ProviderStorePanel() {
     return (
       <>
         <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}

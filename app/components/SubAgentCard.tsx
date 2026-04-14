@@ -386,7 +386,7 @@ function InlineApprovalToolEntry({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
-        <Wrench size={12} className="text-muted-foreground flex-shrink-0" />
+        <Wrench size={12} className="text-muted-foreground shrink-0" />
         <span className="text-xs font-mono text-foreground">
           {label}
           {namespace && (
@@ -613,7 +613,7 @@ export default function SubAgentCard({
               {active && !isCompleted && !hasError && !hasPending && (
                 <Loader2
                   size={12}
-                  className="animate-spin text-muted-foreground flex-shrink-0"
+                  className="animate-spin text-muted-foreground shrink-0"
                 />
               )}
               <span className="text-xs text-muted-foreground truncate">

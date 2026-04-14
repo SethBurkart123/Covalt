@@ -6,7 +6,11 @@ import type { OptionSchema } from "@/lib/types/chat";
 import { isOptionVisible } from "@/lib/hooks/use-model-options";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ModelOptionControl } from "@/components/model-options/ModelOptionControl";
 
 interface AdvancedOptionsPopoverProps {
@@ -37,7 +41,7 @@ export default function AdvancedOptionsPopover({
           type="button"
           variant="secondary"
           size="icon"
-          className="h-9 w-9 flex-shrink-0 rounded-full p-2"
+          className="h-9 w-9 shrink-0 rounded-full p-2"
           disabled={disabled}
           aria-label="Advanced model options"
         >
@@ -49,7 +53,9 @@ export default function AdvancedOptionsPopover({
           <h3 className="text-sm font-semibold">Advanced Options</h3>
 
           {visibleAdvancedOptions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No advanced options available.</p>
+            <p className="text-xs text-muted-foreground">
+              No advanced options available.
+            </p>
           ) : (
             visibleAdvancedOptions.map((definition) => (
               <div key={definition.key} className="space-y-2">

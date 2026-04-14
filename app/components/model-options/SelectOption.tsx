@@ -9,7 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface SelectOptionProps {
@@ -49,7 +53,9 @@ export function SelectOption({
       value={currentValue}
       onValueChange={(raw) => {
         const nextIndex = Number(raw);
-        const option = Number.isInteger(nextIndex) ? options[nextIndex] : undefined;
+        const option = Number.isInteger(nextIndex)
+          ? options[nextIndex]
+          : undefined;
         if (option) {
           onChange(option.value);
         }
@@ -65,7 +71,7 @@ export function SelectOption({
             <SelectTrigger
               className={cn(
                 "h-9 justify-between gap-1.5 rounded-xl border-transparent !bg-secondary dark:!bg-secondary px-3 py-1 text-sm font-medium text-secondary-foreground shadow-xs hover:!bg-secondary/80 dark:hover:!bg-secondary/80 [&_svg]:text-muted-foreground/80 [&_svg]:opacity-100",
-                compact ? "max-w-[130px] flex-shrink-0" : "w-full",
+                compact ? "max-w-[130px] shrink-0" : "w-full",
               )}
             >
               <SelectValue placeholder={definition.label} />
@@ -79,7 +85,7 @@ export function SelectOption({
         <SelectTrigger
           className={cn(
             "h-9 justify-between gap-1.5 rounded-xl border-transparent !bg-secondary dark:!bg-secondary px-3 py-1 text-sm font-medium text-secondary-foreground shadow-xs hover:!bg-secondary/80 dark:hover:!bg-secondary/80 [&_svg]:text-muted-foreground/80 [&_svg]:opacity-100",
-            compact ? "max-w-[130px] flex-shrink-0" : "w-full",
+            compact ? "max-w-[130px] shrink-0" : "w-full",
           )}
         >
           <SelectValue placeholder={definition.label} />

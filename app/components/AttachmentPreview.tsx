@@ -5,11 +5,15 @@ import { X, FileText, Music, Video, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UploadProgressRing } from "@/components/ui/upload-progress-ring";
 import clsx from "clsx";
-import type { Attachment, PendingAttachment, UploadingAttachment } from "@/lib/types/chat";
+import type {
+  Attachment,
+  PendingAttachment,
+  UploadingAttachment,
+} from "@/lib/types/chat";
 import { getAttachment } from "@/python/api";
 
 function isUploadingAttachment(
-  att: Attachment | PendingAttachment | UploadingAttachment
+  att: Attachment | PendingAttachment | UploadingAttachment,
 ): att is UploadingAttachment {
   return "uploadStatus" in att;
 }
@@ -41,7 +45,9 @@ function getFileIcon(type: string) {
   }
 }
 
-function getImageSrc(att: Attachment | PendingAttachment | UploadingAttachment): string {
+function getImageSrc(
+  att: Attachment | PendingAttachment | UploadingAttachment,
+): string {
   if ("previewUrl" in att && att.previewUrl) {
     return att.previewUrl;
   }
@@ -64,10 +70,10 @@ const AttachmentItem = memo<{
   const isUploading = isUploadingAttachment(attachment);
   const uploadStatus = isUploading ? attachment.uploadStatus : "uploaded";
   const uploadProgress = isUploading ? attachment.uploadProgress : 100;
-  
+
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  
+
   const canRemove = !readonly && onRemove && uploadStatus !== "uploading";
   const localImageSrc = getImageSrc(attachment);
   const attachmentId = attachment.id;
@@ -106,7 +112,14 @@ const AttachmentItem = memo<{
     return () => {
       cancelled = true;
     };
-  }, [isImage, localImageSrc, chatId, attachmentId, attachmentMimeType, attachmentName]);
+  }, [
+    isImage,
+    localImageSrc,
+    chatId,
+    attachmentId,
+    attachmentMimeType,
+    attachmentName,
+  ]);
 
   if (isImage) {
     const src = localImageSrc || loadedSrc || "";
@@ -116,7 +129,7 @@ const AttachmentItem = memo<{
         <div
           className={clsx(
             "relative overflow-hidden rounded-lg border border-border bg-muted",
-            "w-20 h-20 flex-shrink-0"
+            "w-20 h-20 shrink-0",
           )}
         >
           {src ? (
@@ -134,7 +147,7 @@ const AttachmentItem = memo<{
               <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
             </div>
           )}
-          
+
           {isUploading && uploadStatus !== "uploaded" && (
             <UploadProgressRing
               progress={uploadProgress}
@@ -152,7 +165,7 @@ const AttachmentItem = memo<{
             className={clsx(
               "absolute -top-2 -right-2 h-5 w-5 rounded-full",
               "bg-muted-foreground/80 hover:bg-destructive text-background",
-              "opacity-0 group-hover:opacity-100 transition-opacity"
+              "opacity-0 group-hover:opacity-100 transition-opacity",
             )}
           >
             <X className="size-3" />
@@ -169,10 +182,10 @@ const AttachmentItem = memo<{
           "flex items-center gap-2 px-3 py-2 rounded-lg",
           "border border-border bg-muted",
           "max-w-[200px]",
-          isUploading && uploadStatus === "uploading" && "opacity-70"
+          isUploading && uploadStatus === "uploading" && "opacity-70",
         )}
       >
-        <div className="flex-shrink-0 text-muted-foreground relative">
+        <div className="shrink-0 text-muted-foreground relative">
           {getFileIcon(attachment.type)}
           {isUploading && uploadStatus === "uploading" && (
             <div className="absolute -bottom-1 -right-1">
@@ -186,14 +199,15 @@ const AttachmentItem = memo<{
           )}
         </div>
         <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-sm font-medium truncate">{attachment.name}</span>
+          <span className="text-sm font-medium truncate">
+            {attachment.name}
+          </span>
           <span className="text-xs text-muted-foreground">
-            {isUploading && uploadStatus === "uploading" 
-              ? `${uploadProgress}%` 
+            {isUploading && uploadStatus === "uploading"
+              ? `${uploadProgress}%`
               : isUploading && uploadStatus === "error"
-              ? "Upload failed"
-              : formatFileSize(attachment.size)
-            }
+                ? "Upload failed"
+                : formatFileSize(attachment.size)}
           </span>
         </div>
         {canRemove && (
@@ -202,7 +216,7 @@ const AttachmentItem = memo<{
             variant="ghost"
             size="icon"
             onClick={onRemove}
-            className="h-5 w-5 flex-shrink-0 hover:bg-destructive/20 hover:text-destructive"
+            className="h-5 w-5 shrink-0 hover:bg-destructive/20 hover:text-destructive"
           >
             <X className="size-3" />
           </Button>
@@ -213,7 +227,7 @@ const AttachmentItem = memo<{
             variant="ghost"
             size="icon"
             onClick={onRetry}
-            className="h-5 w-5 flex-shrink-0 hover:bg-primary/20 hover:text-primary"
+            className="h-5 w-5 shrink-0 hover:bg-primary/20 hover:text-primary"
           >
             <span className="text-xs">Retry</span>
           </Button>
@@ -225,42 +239,37 @@ const AttachmentItem = memo<{
 
 AttachmentItem.displayName = "AttachmentItem";
 
-export const AttachmentPreview = memo<AttachmentPreviewProps>(({
-  attachments,
-  onRemove,
-  onRetry,
-  readonly = false,
-  chatId,
-}) => {
-  const createRemoveHandler = useCallback(
-    (id: string) => (onRemove ? () => onRemove(id) : undefined),
-    [onRemove]
-  );
+export const AttachmentPreview = memo<AttachmentPreviewProps>(
+  ({ attachments, onRemove, onRetry, readonly = false, chatId }) => {
+    const createRemoveHandler = useCallback(
+      (id: string) => (onRemove ? () => onRemove(id) : undefined),
+      [onRemove],
+    );
 
-  const createRetryHandler = useCallback(
-    (id: string) => (onRetry ? () => onRetry(id) : undefined),
-    [onRetry]
-  );
+    const createRetryHandler = useCallback(
+      (id: string) => (onRetry ? () => onRetry(id) : undefined),
+      [onRetry],
+    );
 
-  if (attachments.length === 0) {
-    return null;
-  }
+    if (attachments.length === 0) {
+      return null;
+    }
 
-  return (
-    <div className="flex flex-wrap gap-2 w-full">
-      {attachments.map((att) => (
-        <AttachmentItem
-          key={att.id}
-          attachment={att}
-          onRemove={createRemoveHandler(att.id)}
-          onRetry={createRetryHandler(att.id)}
-          readonly={readonly}
-          chatId={chatId}
-        />
-      ))}
-    </div>
-  );
-});
+    return (
+      <div className="flex flex-wrap gap-2 w-full">
+        {attachments.map((att) => (
+          <AttachmentItem
+            key={att.id}
+            attachment={att}
+            onRemove={createRemoveHandler(att.id)}
+            onRetry={createRetryHandler(att.id)}
+            readonly={readonly}
+            chatId={chatId}
+          />
+        ))}
+      </div>
+    );
+  },
+);
 
 AttachmentPreview.displayName = "AttachmentPreview";
-

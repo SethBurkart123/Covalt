@@ -9,7 +9,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const splitLines = (error: string) => error.split("\n").filter((line) => line.trim());
+const splitLines = (error: string) =>
+  error.split("\n").filter((line) => line.trim());
 
 interface McpErrorDisplayProps {
   error: string;
@@ -23,11 +24,11 @@ export function McpErrorDisplay({ error, className }: McpErrorDisplayProps) {
     <div
       className={cn(
         "rounded-lg border border-red-500/20 bg-red-500/5 p-4",
-        className
+        className,
       )}
     >
       <div className="flex items-start gap-3">
-        <AlertCircle className="size-5 text-red-500 flex-shrink-0 mt-0.5" />
+        <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-red-500 mb-2">
             Connection Error
@@ -66,7 +67,7 @@ export function McpErrorHover({ error, children }: McpErrorHoverProps) {
       >
         <div className="p-3">
           <div className="flex items-start gap-2">
-            <AlertCircle className="size-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="size-4 text-red-500 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-red-500 mb-1.5">
                 Connection Error

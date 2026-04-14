@@ -17,20 +17,20 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { startMcpOauth, getMcpOauthStatus, reconnectMcpServer } from "@/python/api";
+import {
+  startMcpOauth,
+  getMcpOauthStatus,
+  reconnectMcpServer,
+} from "@/python/api";
 import { openOauthPopup } from "@/lib/hooks/use-oauth-popup";
 import { useOauthPolling } from "@/lib/hooks/use-oauth-polling";
 import { ServerFormDialog } from "@/components/mcp/server-form-dialog";
 
-function McpStatusIndicator({
-  status,
-}: {
-  status: McpServerStatus["status"];
-}) {
+function McpStatusIndicator({ status }: { status: McpServerStatus["status"] }) {
   return (
     <div
       className={cn(
-        "size-2 rounded-full flex-shrink-0",
+        "size-2 rounded-full shrink-0",
         status === "connected"
           ? "bg-emerald-500"
           : status === "connecting"
@@ -40,14 +40,14 @@ function McpStatusIndicator({
               : status === "error"
                 ? "bg-red-500"
                 : "bg-zinc-500",
-        status === "connecting" && "animate-pulse"
+        status === "connecting" && "animate-pulse",
       )}
     />
   );
 }
 
 function getAggregateStatus(
-  servers: McpServerStatus[]
+  servers: McpServerStatus[],
 ): McpServerStatus["status"] | null {
   if (servers.length === 0) return null;
   if (servers.some((s) => s.status === "requires_auth")) return "requires_auth";
@@ -83,36 +83,42 @@ export const ToolSelector = memo(function ToolSelector({
   const [authenticatingId, setAuthenticatingId] = useState<string | null>(null);
   const [editingServerKey, setEditingServerKey] = useState<string | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
-  const [editingServerName, setEditingServerName] = useState<string | null>(null);
+  const [editingServerName, setEditingServerName] = useState<string | null>(
+    null,
+  );
   const { startOauthPolling } = useOauthPolling(openOauthPopup);
 
-  const handleAuthenticate = useCallback(async (server: McpServerStatus, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    const serverUrl = server.config?.url;
-    if (!serverUrl) return;
+  const handleAuthenticate = useCallback(
+    async (server: McpServerStatus, e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
 
-    setAuthenticatingId(server.id);
+      const serverUrl = server.config?.url;
+      if (!serverUrl) return;
 
-    await startOauthPolling({
-      key: server.id,
-      start: () => startMcpOauth({ body: { serverId: server.id, serverUrl } }),
-      poll: () => getMcpOauthStatus({ body: { id: server.id } }),
-      isStartSuccess: (result) => result.success,
-      getStartAuthUrl: (result) => result.authUrl || undefined,
-      getPollStatus: (result) => result.status,
-      onAuthenticated: async () => {
-        await reconnectMcpServer({ body: { id: server.id } });
-      },
-      onError: (error) => {
-        console.error("OAuth status polling failed:", error);
-      },
-      onFinish: () => {
-        setAuthenticatingId(null);
-      },
-    });
-  }, [startOauthPolling]);
+      setAuthenticatingId(server.id);
+
+      await startOauthPolling({
+        key: server.id,
+        start: () =>
+          startMcpOauth({ body: { serverId: server.id, serverUrl } }),
+        poll: () => getMcpOauthStatus({ body: { id: server.id } }),
+        isStartSuccess: (result) => result.success,
+        getStartAuthUrl: (result) => result.authUrl || undefined,
+        getPollStatus: (result) => result.status,
+        onAuthenticated: async () => {
+          await reconnectMcpServer({ body: { id: server.id } });
+        },
+        onError: (error) => {
+          console.error("OAuth status polling failed:", error);
+        },
+        onFinish: () => {
+          setAuthenticatingId(null);
+        },
+      });
+    },
+    [startOauthPolling],
+  );
 
   const openEditServer = useCallback((server: McpServerStatus) => {
     setEditingServerKey(server.id);
@@ -148,11 +154,9 @@ export const ToolSelector = memo(function ToolSelector({
       ...mcpServers.map((s) => s.toolsetId).filter((id): id is string => !!id),
     ]);
     return Array.from(idSet).sort((a, b) =>
-      (toolsetNameById[a] || a).localeCompare(toolsetNameById[b] || b)
+      (toolsetNameById[a] || a).localeCompare(toolsetNameById[b] || b),
     );
   }, [groupedTools.byToolset, mcpServers, toolsetNameById]);
-
-
 
   if (disabled) {
     return (
@@ -199,7 +203,9 @@ export const ToolSelector = memo(function ToolSelector({
                     onCheckedChange={() => toggleTool(tool.id)}
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="flex-1 truncate">{tool.name || tool.id}</span>
+                  <span className="flex-1 truncate">
+                    {tool.name || tool.id}
+                  </span>
                 </DropdownMenuItem>
               );
             })}
@@ -219,13 +225,16 @@ export const ToolSelector = memo(function ToolSelector({
                 mcpStatus === "connecting" ||
                 mcpStatus === "disconnected";
               const needsAuth = mcpStatus === "requires_auth";
-              const isUnavailable = (isErrorOrLoading || needsAuth) && tools.length === 0;
-              const activeCount = tools.filter((t) => activeToolIds.includes(t.id)).length;
+              const isUnavailable =
+                (isErrorOrLoading || needsAuth) && tools.length === 0;
+              const activeCount = tools.filter((t) =>
+                activeToolIds.includes(t.id),
+              ).length;
 
               if (needsAuth && primaryServer && tools.length === 0) {
                 const isAuthenticating = authenticatingId === primaryServer.id;
                 const showOauthButton = primaryServer.authHint !== "token";
-                
+
                 return (
                   <DropdownMenuItem
                     key={toolsetId}
@@ -280,8 +289,11 @@ export const ToolSelector = memo(function ToolSelector({
                     disabled
                     className={cn(
                       "gap-2 py-2",
-                      mcpStatus === "error" && "opacity-60 text-muted-foreground",
-                      (mcpStatus === "connecting" || mcpStatus === "disconnected") && "opacity-70"
+                      mcpStatus === "error" &&
+                        "opacity-60 text-muted-foreground",
+                      (mcpStatus === "connecting" ||
+                        mcpStatus === "disconnected") &&
+                        "opacity-70",
                     )}
                   >
                     {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
@@ -298,10 +310,10 @@ export const ToolSelector = memo(function ToolSelector({
 
               return (
                 <DropdownMenuSub key={toolsetId}>
-                  <DropdownMenuSubTrigger 
+                  <DropdownMenuSubTrigger
                     className={cn(
                       "gap-2 py-2",
-                      isUnavailable && "opacity-60 text-muted-foreground"
+                      isUnavailable && "opacity-60 text-muted-foreground",
                     )}
                   >
                     {mcpStatus && <McpStatusIndicator status={mcpStatus} />}
