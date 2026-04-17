@@ -153,6 +153,32 @@ async def test_cancel_run_without_active_run_marks_early_cancel(
 
 
 @pytest.mark.asyncio
+async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent = _FakeAgent()
+    fake_db = _FakeDb()
+    monkeypatch.setattr(streaming, "db", fake_db)
+
+    run_control.register_active_run("msg-hitl", fake_agent)
+    run_control.set_active_run_id("msg-hitl", "run-hitl")
+
+    waiter = asyncio.Event()
+    run_control.register_approval_waiter("run-hitl", waiter)
+
+    result = await streaming.cancel_run(
+        streaming.CancelRunRequest(messageId="msg-hitl")
+    )
+
+    assert result == {"cancelled": True}
+    assert waiter.is_set() is True
+    assert run_control.was_approval_cancelled("run-hitl") is True
+    # Stream handler is responsible for finalizing once it wakes up.
+    assert run_control.get_active_run("msg-hitl") == ("run-hitl", fake_agent)
+    assert not hasattr(fake_db, "last_marked_id")
+
+
+@pytest.mark.asyncio
 async def test_cancel_run_with_graph_flow_handle_cancels_bound_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -179,6 +205,7 @@ def _cancel_flow_dependencies(logger: _CancelFlowLogger) -> CancelFlowRunDepende
         get_active_run=run_control.get_active_run,
         mark_early_cancel=run_control.mark_early_cancel,
         remove_active_run=run_control.remove_active_run,
+        cancel_approval_waiter=run_control.cancel_approval_waiter,
         logger=logger,
     )
 

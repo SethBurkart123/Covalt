@@ -81,3 +81,20 @@ def test_approval_response_signals_waiter() -> None:
     run_control.clear_approval("run-approve")
     assert run_control.get_approval_waiter("run-approve") is None
     assert run_control.get_approval_response("run-approve") == {}
+
+
+def test_cancel_approval_waiter_wakes_waiter_and_marks_cancelled() -> None:
+    waiter = asyncio.Event()
+    run_control.register_approval_waiter("run-cancel", waiter)
+
+    assert run_control.cancel_approval_waiter("run-cancel") is True
+    assert waiter.is_set() is True
+    assert run_control.was_approval_cancelled("run-cancel") is True
+
+    run_control.clear_approval("run-cancel")
+    assert run_control.was_approval_cancelled("run-cancel") is False
+
+
+def test_cancel_approval_waiter_without_registered_waiter_is_noop() -> None:
+    assert run_control.cancel_approval_waiter("missing-run") is False
+    assert run_control.was_approval_cancelled("missing-run") is False

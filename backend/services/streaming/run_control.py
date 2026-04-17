@@ -7,6 +7,7 @@ _active_runs: dict[str, tuple[str | None, Any]] = {}
 _cancelled_messages: set[str] = set()
 _approval_events: dict[str, asyncio.Event] = {}
 _approval_responses: dict[str, dict[str, Any]] = {}
+_cancelled_approvals: set[str] = set()
 
 
 def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> None:
@@ -37,6 +38,7 @@ def reset_state() -> None:
     _cancelled_messages.clear()
     _approval_events.clear()
     _approval_responses.clear()
+    _cancelled_approvals.clear()
 
 
 def register_active_run(message_id: str, agent: Any) -> None:
@@ -108,3 +110,18 @@ def get_approval_response(run_id: str) -> dict[str, Any]:
 def clear_approval(run_id: str) -> None:
     _approval_events.pop(run_id, None)
     _approval_responses.pop(run_id, None)
+    _cancelled_approvals.discard(run_id)
+
+
+def cancel_approval_waiter(run_id: str) -> bool:
+    """Wake an HITL approval wait with a cancellation intent. Returns True if a waiter was signalled."""
+    event = _approval_events.get(run_id)
+    if event is None:
+        return False
+    _cancelled_approvals.add(run_id)
+    event.set()
+    return True
+
+
+def was_approval_cancelled(run_id: str) -> bool:
+    return run_id in _cancelled_approvals

@@ -50,6 +50,7 @@ class CancelRunDependencies:
     mark_early_cancel: Callable[[str], None]
     mark_message_complete: Callable[[str], None]
     remove_active_run: Callable[[str], tuple[str | None, Any] | None]
+    cancel_approval_waiter: Callable[[str], bool]
     logger: Any
 
 
@@ -63,6 +64,7 @@ class CancelFlowRunDependencies:
     get_active_run: Callable[[str], tuple[str | None, Any] | None]
     mark_early_cancel: Callable[[str], None]
     remove_active_run: Callable[[str], tuple[str | None, Any] | None]
+    cancel_approval_waiter: Callable[[str], bool]
     logger: Any
 
 
@@ -97,14 +99,14 @@ def execute_cancel_run(
         return {"cancelled": True}
 
     run_id, agent = active_run
-    remove_active_run = False
+    paused_at_hitl = False
     try:
         if run_id:
             deps.logger.info(
                 f"[cancel_run] Cancelling run {run_id} for message {input_data.message_id}"
             )
             _cancel_run(agent, run_id)
-            remove_active_run = True
+            paused_at_hitl = deps.cancel_approval_waiter(run_id)
         else:
             deps.logger.info(
                 f"[cancel_run] Flagging early cancel for message {input_data.message_id}"
@@ -112,9 +114,12 @@ def execute_cancel_run(
             deps.mark_early_cancel(input_data.message_id)
             _request_cancel(agent)
 
-        deps.mark_message_complete(input_data.message_id)
-        if remove_active_run:
-            deps.remove_active_run(input_data.message_id)
+        # If paused at HITL, the stream handler will finalize and emit RUN_CANCELLED
+        # itself once the approval waiter wakes up. Don't race ahead.
+        if not paused_at_hitl:
+            deps.mark_message_complete(input_data.message_id)
+            if run_id:
+                deps.remove_active_run(input_data.message_id)
 
         deps.logger.info(
             f"[cancel_run] Successfully cancelled for message {input_data.message_id}"
@@ -137,14 +142,14 @@ def execute_cancel_flow_run(
         return {"cancelled": False}
 
     run_id, agent = active_run
-    remove_active_run = False
+    paused_at_hitl = False
     try:
         if run_id:
             deps.logger.info(
                 f"[cancel_flow_run] Cancelling run {run_id} for flow run {input_data.run_id}"
             )
             _cancel_run(agent, run_id)
-            remove_active_run = True
+            paused_at_hitl = deps.cancel_approval_waiter(run_id)
         else:
             deps.logger.info(
                 f"[cancel_flow_run] Flagging early cancel for flow run {input_data.run_id}"
@@ -152,7 +157,7 @@ def execute_cancel_flow_run(
             deps.mark_early_cancel(input_data.run_id)
             _request_cancel(agent)
 
-        if remove_active_run:
+        if run_id and not paused_at_hitl:
             deps.remove_active_run(input_data.run_id)
 
         deps.logger.info(

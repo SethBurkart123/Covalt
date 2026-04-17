@@ -276,6 +276,35 @@ def _mark_message_complete(assistant_msg_id: str) -> None:
         db.mark_message_complete(sess, assistant_msg_id)
 
 
+def _deny_pending_approvals(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark every pending HITL tool block (recursing into member_runs) as denied."""
+    denied: list[dict[str, Any]] = []
+    for block in blocks:
+        block_type = block.get("type")
+        if block_type == "tool_call":
+            tool_id = str(block.get("id") or "")
+            if (
+                tool_id
+                and bool(block.get("requiresApproval"))
+                and block.get("approvalStatus") == "pending"
+            ):
+                block["approvalStatus"] = "denied"
+                block["isCompleted"] = True
+                tool_args = block.get("toolArgs")
+                denied.append(
+                    {
+                        "id": tool_id,
+                        "approvalStatus": "denied",
+                        "toolArgs": tool_args if isinstance(tool_args, dict) else {},
+                    }
+                )
+        elif block_type == "member_run":
+            member_content = block.get("content")
+            if isinstance(member_content, list):
+                denied.extend(_deny_pending_approvals(member_content))
+    return denied
+
+
 async def handle_flow_stream(
     graph_data: dict[str, Any],
     agent: Any,
@@ -404,6 +433,22 @@ async def handle_flow_stream(
             allow_unknown=True,
         )
 
+    async def _finalize_cancelled() -> None:
+        nonlocal was_cancelled, terminal_event, trace_status
+        was_cancelled = True
+        terminal_event = EVENT_RUN_CANCELLED
+        trace_status = "cancelled"
+        accumulator.flush_text()
+        accumulator.flush_reasoning()
+        accumulator.flush_all_member_runs()
+        for tool in _deny_pending_approvals(accumulator.content_blocks):
+            emit_chat_event(ch, EVENT_TOOL_APPROVAL_RESOLVED, tool=tool)
+        await _persist_accumulator(save_content, assistant_msg_id, accumulator, final=True)
+        emit_chat_event(ch, EVENT_RUN_CANCELLED)
+        if chat_id:
+            await broadcaster.update_stream_status(chat_id, "completed")
+            await broadcaster.unregister_stream(chat_id)
+
     try:
         async for item in runtime_run_flow(normalized_graph_data, context):
             if isinstance(item, NodeEvent):
@@ -461,22 +506,7 @@ async def handle_flow_stream(
                     elif event_name == EVENT_TOOL_APPROVAL_RESOLVED and chat_id:
                         await broadcaster.update_stream_status(chat_id, "streaming")
                 elif item.event_type == "cancelled":
-                    was_cancelled = True
-                    terminal_event = EVENT_RUN_CANCELLED
-                    trace_status = "cancelled"
-                    accumulator.flush_text()
-                    accumulator.flush_reasoning()
-                    accumulator.flush_all_member_runs()
-                    await _persist_accumulator(
-                        save_content,
-                        assistant_msg_id,
-                        accumulator,
-                        final=True,
-                    )
-                    emit_chat_event(ch, EVENT_RUN_CANCELLED)
-                    if chat_id:
-                        await broadcaster.update_stream_status(chat_id, "completed")
-                        await broadcaster.unregister_stream(chat_id)
+                    await _finalize_cancelled()
                     return
                 elif item.event_type == "completed":
                     _send_flow_node_event(
@@ -542,6 +572,10 @@ async def handle_flow_stream(
         accumulator.flush_text()
         accumulator.flush_reasoning()
         accumulator.flush_all_member_runs()
+
+        if cancel_handle.is_cancel_requested():
+            await _finalize_cancelled()
+            return
 
         has_main_text = any(
             block.get("type") == "text" for block in accumulator.content_blocks
@@ -1054,6 +1088,27 @@ async def handle_content_stream(
                             default_approved=False,
                         )
                     else:
+                        if run_control.was_approval_cancelled(event.run_id):
+                            run_control.clear_approval(event.run_id)
+                            trace_status = "cancelled"
+                            accumulator.flush_text()
+                            accumulator.flush_reasoning()
+                            for tool in _deny_pending_approvals(accumulator.content_blocks):
+                                emit_chat_event(ch, EVENT_TOOL_APPROVAL_RESOLVED, tool=tool)
+                            await _persist_accumulator(
+                                save_content, assistant_msg_id, accumulator, final=True
+                            )
+                            if not ephemeral:
+                                await asyncio.to_thread(_mark_message_complete, assistant_msg_id)
+                            run_control.remove_active_run(assistant_msg_id)
+                            run_control.clear_early_cancel(assistant_msg_id)
+                            emit_chat_event(ch, EVENT_RUN_CANCELLED)
+                            if chat_id:
+                                await broadcaster.update_stream_status(chat_id, "completed")
+                                await broadcaster.unregister_stream(chat_id)
+                            trace_recorder.finish(status=trace_status)
+                            return
+
                         response = run_control.get_approval_response(event.run_id)
                         tool_decisions = response.get("tool_decisions", {})
                         edited_args = response.get("edited_args", {})

@@ -144,6 +144,7 @@ def _build_cancel_run_dependencies() -> CancelRunDependencies:
         mark_early_cancel=run_control.mark_early_cancel,
         mark_message_complete=_mark_message_complete,
         remove_active_run=run_control.remove_active_run,
+        cancel_approval_waiter=run_control.cancel_approval_waiter,
         logger=logger,
     )
 
@@ -153,6 +154,7 @@ def _build_cancel_flow_run_dependencies() -> CancelFlowRunDependencies:
         get_active_run=run_control.get_active_run,
         mark_early_cancel=run_control.mark_early_cancel,
         remove_active_run=run_control.remove_active_run,
+        cancel_approval_waiter=run_control.cancel_approval_waiter,
         logger=logger,
     )
 

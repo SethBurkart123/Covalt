@@ -193,6 +193,69 @@ async def test_handle_flow_stream_emits_cancelled_when_runtime_cancels() -> None
 
 
 @pytest.mark.asyncio
+async def test_handle_flow_stream_cancelled_runtime_does_not_emit_fallback_run_content() -> None:
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        yield NodeEvent(
+            node_id="agent",
+            node_type="agent",
+            event_type="cancelled",
+            run_id="run-1",
+            data={},
+        )
+        yield ExecutionResult(
+            outputs={"output": DataValue(type="data", value={"response": "user text echo"})}
+        )
+
+    channel = CapturingChannel()
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="hello")],
+        "assistant-1",
+        channel,
+        ephemeral=True,
+        run_flow_impl=fake_run_flow,
+    )
+
+    event_names = [event.get("event") for event in channel.events]
+    assert "RunCancelled" in event_names
+    assert "RunContent" not in event_names
+
+
+@pytest.mark.asyncio
+async def test_handle_flow_stream_cancel_requested_without_cancelled_event_does_not_inject_user_text() -> None:
+    async def fake_run_flow(*_args: Any, **_kwargs: Any):
+        active = run_control.get_active_run("assistant-1")
+        assert active is not None
+        _, cancel_handle = active
+        cancel_handle.request_cancel()
+        yield ExecutionResult(
+            outputs={
+                "output": DataValue(
+                    type="data",
+                    value={"message": "can you try searching agno?"},
+                )
+            }
+        )
+
+    channel = CapturingChannel()
+    await handle_flow_stream(
+        _graph(),
+        None,
+        [ChatMessage(id="user-1", role="user", content="can you try searching agno?")],
+        "assistant-1",
+        channel,
+        ephemeral=True,
+        run_flow_impl=fake_run_flow,
+    )
+
+    event_names = [event.get("event") for event in channel.events]
+    assert "RunCancelled" in event_names
+    run_content_events = [event for event in channel.events if event.get("event") == "RunContent"]
+    assert run_content_events == []
+
+
+@pytest.mark.asyncio
 async def test_handle_flow_stream_error_is_terminal_and_no_content_after_error() -> (
     None
 ):

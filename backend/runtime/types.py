@@ -61,6 +61,7 @@ class ApprovalResponse:
     run_id: str
     decisions: dict[str, ToolDecision] = field(default_factory=dict)
     default_approved: bool = False
+    cancelled: bool = False
 
 
 @dataclass(slots=True)

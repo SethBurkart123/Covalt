@@ -586,6 +586,19 @@ async def run_flow(
         await asyncio.gather(*running_tasks.values(), return_exceptions=True)
         running_tasks.clear()
 
+    def _build_cancellation_marker() -> NodeEvent:
+        target_node_id = next(iter(running_tasks), None) or next(iter(ready_set), None)
+        if target_node_id is None:
+            target_node_id = next(iter(node_ids), "")
+        node = nodes_by_id.get(target_node_id) if target_node_id else None
+        node_type = str(node.get("type")) if isinstance(node, dict) else ""
+        return NodeEvent(
+            node_id=target_node_id or "",
+            node_type=node_type,
+            event_type="cancelled",
+            run_id=run_id,
+        )
+
     async def _run_node_task(
         node_id: str,
         node_type: str,
@@ -724,6 +737,7 @@ async def run_flow(
     while ready or running_tasks:
         can_continue = await _schedule_ready_nodes()
         if not can_continue:
+            yield _build_cancellation_marker()
             return
 
         if not running_tasks:
@@ -731,6 +745,7 @@ async def run_flow(
 
         if _should_stop():
             await _cancel_running_tasks()
+            yield _build_cancellation_marker()
             return
 
         message = await event_queue.get()

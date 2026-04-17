@@ -374,7 +374,7 @@ class _ApprovalStreamingAgent:
     def __init__(self, paused_tools: list[Any], continued_chunks: list[Any]) -> None:
         self._paused_tools = paused_tools
         self._continued_chunks = continued_chunks
-        self.continue_calls: list[dict[str, Any]] = []
+        self.continue_calls: list[Any] = []
 
     async def run(self, messages: list[Any], *, add_history_to_context: bool = True):
         pending = [
@@ -849,6 +849,79 @@ class TestAgentExecutor:
         assert len(continue_call.decisions) == 1
         assert continue_call.decisions["tool-1"].approved is True
         assert continue_call.decisions["tool-1"].edited_args == {"query": "updated"}
+
+    @pytest.mark.asyncio
+    async def test_run_paused_cancelled_during_approval_does_not_continue_and_denies_tool(
+        self,
+    ) -> None:
+        executor = AgentExecutor()
+        tool = SimpleNamespace(
+            tool_call_id="tool-1",
+            tool_name="search_docs",
+            tool_args={"query": "covalt"},
+        )
+        fake_agent = _ApprovalStreamingAgent(
+            paused_tools=[tool],
+            continued_chunks=[
+                ContentDelta(text="should-not-run"),
+                RunCompleted(content=""),
+            ],
+        )
+        ctx = _flow_ctx()
+
+        async def _auto_cancel() -> None:
+            while run_control.get_approval_waiter("run-approval") is None:
+                await asyncio.sleep(0)
+            run_control.cancel_approval_waiter("run-approval")
+
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
+        ):
+            events, result = await asyncio.wait_for(
+                asyncio.gather(
+                    collect_events(
+                        executor.execute(
+                            {"model": "openai:gpt-4o"},
+                            {"input": _dv("data", {"message": "hello"})},
+                            ctx,
+                        )
+                    ),
+                    _auto_cancel(),
+                ),
+                timeout=3,
+            )
+
+        flow_events, final = events
+        assert final is None
+
+        cancelled_events = [
+            e
+            for e in flow_events
+            if isinstance(e, NodeEvent) and e.event_type == "cancelled"
+        ]
+        assert len(cancelled_events) == 1
+
+        resolved_events = [
+            e
+            for e in flow_events
+            if isinstance(e, NodeEvent)
+            and e.event_type == "agent_event"
+            and isinstance(e.data, dict)
+            and e.data.get("event") == "ToolApprovalResolved"
+        ]
+        assert len(resolved_events) == 1
+        resolved_tool = resolved_events[0].data.get("tool") if isinstance(resolved_events[0].data, dict) else None
+        assert isinstance(resolved_tool, dict)
+        assert resolved_tool.get("approvalStatus") == "denied"
+
+        assert len(fake_agent.continue_calls) == 0
 
 
 class TestToolMaterializers:

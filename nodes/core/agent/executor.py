@@ -346,6 +346,15 @@ class AgentExecutor:
                         for ev in resolved_events:
                             yield ev
 
+                        if approval.cancelled:
+                            yield NodeEvent(
+                                node_id=context.node_id,
+                                node_type=self.node_type,
+                                event_type="cancelled",
+                                run_id=context.run_id,
+                            )
+                            return
+
                         active_root_streams += 1
                         asyncio.create_task(
                             _pump_runtime_events(
@@ -777,6 +786,8 @@ async def _run_delegated_agent(
                     member_fields=member_fields,
                     queue=delegation_context.queue,
                 )
+                if approval.cancelled:
+                    return ""
                 current_stream = handle.continue_run(approval)
                 break
 
@@ -871,7 +882,10 @@ async def _await_and_resolve_approval(
         tool_id = str(tool.get("id") or "")
         decision = approval.decisions.get(tool_id)
         if decision is None:
-            status = "timeout" if not approval.default_approved else "approved"
+            if approval.cancelled:
+                status = "denied"
+            else:
+                status = "timeout" if not approval.default_approved else "approved"
             resolved_args = tool.get("toolArgs")
         else:
             status = "approved" if decision.approved else "denied"
@@ -900,6 +914,9 @@ async def _await_approval_response(run_id: str) -> ApprovalResponse:
     run_control.register_approval_waiter(run_id, approval_event)
     try:
         await asyncio.wait_for(approval_event.wait(), timeout=300)
+        if run_control.was_approval_cancelled(run_id):
+            return ApprovalResponse(run_id=run_id, default_approved=False, cancelled=True)
+
         response = run_control.get_approval_response(run_id)
         tool_decisions = response.get("tool_decisions", {}) or {}
         edited_args = response.get("edited_args", {}) or {}
@@ -933,7 +950,10 @@ async def _emit_approval_resolved_events(
         if decision is None:
             approved = approval.default_approved
             tool_args = tool.tool_args
-            status = "timeout" if not approved else "approved"
+            if approval.cancelled:
+                status = "denied"
+            else:
+                status = "timeout" if not approved else "approved"
         else:
             approved = decision.approved
             tool_args = decision.edited_args or tool.tool_args
