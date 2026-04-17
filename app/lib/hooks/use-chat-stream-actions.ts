@@ -2,12 +2,15 @@
 
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { api } from "@/lib/services/api";
-import { processMessageStream } from "@/lib/services/stream-processor";
 import {
-  createErrorMessage,
-  createUserMessage,
-} from "@/lib/utils/message";
+  getPrefetchedChat,
+  setPrefetchedChat,
+} from "@/lib/services/chat-prefetch";
+import { processMessageStream } from "@/lib/services/stream-processor";
+import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
+import { createErrorMessage, createUserMessage } from "@/lib/utils/message";
 import type { Attachment, Message } from "@/lib/types/chat";
+import type { RunEvent } from "@/lib/services/chat-run-machine";
 import type {
   PreserveStreamingMessage,
   ReloadMessages,
@@ -17,6 +20,43 @@ import type {
   UseChatInputRefs,
 } from "@/lib/hooks/use-chat-input.types";
 
+function seedPrefetchWithLocalHistory(
+  chatId: string,
+  localMessages: Message[],
+): void {
+  if (!chatId || localMessages.length === 0) return;
+  const existing = getPrefetchedChat(chatId);
+  if (existing?.siblings) return;
+  setPrefetchedChat(chatId, {
+    ...(existing ?? {}),
+    messages: localMessages,
+    fetchedAt: Date.now(),
+  });
+}
+
+function runtimeEventToRunEvent(
+  eventType: string,
+  payload: Record<string, unknown>,
+): RunEvent | null {
+  switch (eventType) {
+    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
+      return { type: "PAUSED_HITL" };
+    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
+      return { type: "RESUME_HITL" };
+    case RUNTIME_EVENT.RUN_COMPLETED:
+      return { type: "COMPLETED" };
+    case RUNTIME_EVENT.RUN_CANCELLED:
+      return { type: "CANCELLED" };
+    case RUNTIME_EVENT.RUN_ERROR:
+      return {
+        type: "ERROR",
+        message: (payload.content as string) || "Unknown error",
+      };
+    default:
+      return null;
+  }
+}
+
 interface UseChatStreamActionsParams {
   context: Pick<
     UseChatInputContext,
@@ -25,18 +65,15 @@ interface UseChatStreamActionsParams {
     | "refreshChats"
     | "activeToolIds"
     | "setChatToolIds"
-    | "registerStream"
-    | "unregisterStream"
-    | "updateStreamContent"
+    | "startRun"
+    | "completeRun"
+    | "getRunState"
+    | "dispatchRunEvent"
   >;
   options: UseChatInputOptions;
-  refs: Pick<
-    UseChatInputRefs,
-    "streamingMessageIdRef" | "streamAbortRef" | "selectedModelRef" | "activeSubmissionChatIdRef"
-  >;
+  refs: Pick<UseChatInputRefs, "streamAbortRef" | "selectedModelRef" | "currentChatIdRef">;
   baseMessages: Message[];
   setBaseMessages: Dispatch<SetStateAction<Message[]>>;
-  setSubmissionChatId: Dispatch<SetStateAction<string | null>>;
   isLoading: boolean;
   canSendMessage: boolean;
   preserveStreamingMessage: PreserveStreamingMessage;
@@ -50,7 +87,6 @@ export function useChatStreamActions({
   refs,
   baseMessages,
   setBaseMessages,
-  setSubmissionChatId,
   isLoading,
   canSendMessage,
   preserveStreamingMessage,
@@ -63,21 +99,37 @@ export function useChatStreamActions({
     refreshChats,
     activeToolIds,
     setChatToolIds,
-    registerStream,
-    unregisterStream,
-    updateStreamContent,
+    startRun,
+    completeRun,
+    getRunState,
+    dispatchRunEvent,
   } = context;
   const { onThinkTagDetected, getVisibleModelOptions } = options;
-  const { streamingMessageIdRef, streamAbortRef, selectedModelRef, activeSubmissionChatIdRef } = refs;
+  const { streamAbortRef, selectedModelRef, currentChatIdRef } = refs;
+
+  const isStillForeground = useCallback(
+    (targetChatId: string) => currentChatIdRef.current === targetChatId,
+    [currentChatIdRef],
+  );
 
   const handleSubmit = useCallback(
-    async (inputText: string, attachments: Attachment[], extraToolIds?: string[]) => {
-      if ((!inputText.trim() && attachments.length === 0) || isLoading || !canSendMessage) return;
+    async (
+      inputText: string,
+      attachments: Attachment[],
+      extraToolIds?: string[],
+    ) => {
+      if (
+        (!inputText.trim() && attachments.length === 0) ||
+        isLoading ||
+        !canSendMessage
+      )
+        return;
 
       const mergedToolIds = extraToolIds?.length
         ? Array.from(new Set([...activeToolIds, ...extraToolIds]))
         : activeToolIds;
-      const hasNewToolIds = extraToolIds?.some((id) => !activeToolIds.includes(id)) ?? false;
+      const hasNewToolIds =
+        extraToolIds?.some((id) => !activeToolIds.includes(id)) ?? false;
 
       if (hasNewToolIds) {
         void setChatToolIds(mergedToolIds, { persistDefaults: false });
@@ -85,11 +137,15 @@ export function useChatStreamActions({
 
       const userMessage = createUserMessage(inputText.trim(), attachments);
       const newBaseMessages = [...baseMessages, userMessage];
-
       setBaseMessages(newBaseMessages);
 
       let sessionId: string | null = null;
       const modelOptions = getVisibleModelOptions?.();
+
+      if (chatId) {
+        startRun(chatId);
+        seedPrefetchWithLocalHistory(chatId, newBaseMessages);
+      }
 
       try {
         const { response, abort } = api.streamChat(
@@ -102,36 +158,50 @@ export function useChatStreamActions({
         );
         streamAbortRef.current = abort;
 
-        if (!response.ok) throw new Error(`Failed to stream chat: ${response.statusText}`);
+        if (!response.ok)
+          throw new Error(`Failed to stream chat: ${response.statusText}`);
 
         const result = await processMessageStream(response, {
           onUpdate: (content) => {
-            const currentSessionId = sessionId || chatId;
-            if (currentSessionId) {
-              updateStreamContent(currentSessionId, content);
+            const currentChatId = sessionId || chatId;
+            if (currentChatId) {
+              dispatchRunEvent(currentChatId, {
+                type: "CONTENT_UPDATE",
+                content,
+              });
             }
           },
           onSessionId: async (id) => {
             sessionId = id;
             if (id) {
-              activeSubmissionChatIdRef.current = id;
-              setSubmissionChatId(id);
-            }
-            if (!chatId && id) {
-              window.history.replaceState(null, "", `/?chatId=${id}`);
-              refreshChats();
-              api.generateChatTitle(id).then(refreshChats).catch(console.error);
-            }
-            if (id && streamingMessageIdRef.current) {
-              registerStream(id, streamingMessageIdRef.current);
+              if (!chatId) {
+                startRun(id);
+                seedPrefetchWithLocalHistory(id, newBaseMessages);
+                window.history.replaceState(null, "", `/?chatId=${id}`);
+                refreshChats();
+                api
+                  .generateChatTitle(id)
+                  .then(refreshChats)
+                  .catch(console.error);
+              } else {
+                dispatchRunEvent(chatId, { type: "SESSION_ID", chatId: id });
+              }
             }
           },
           onMessageId: (id) => {
-            streamingMessageIdRef.current = id;
-            const currentSessionId = sessionId || chatId;
-            if (currentSessionId) {
-              registerStream(currentSessionId, id);
+            const currentChatId = sessionId || chatId;
+            if (currentChatId) {
+              dispatchRunEvent(currentChatId, {
+                type: "MESSAGE_ID",
+                messageId: id,
+              });
             }
+          },
+          onEvent: (eventType, payload) => {
+            const currentChatId = sessionId || chatId;
+            if (!currentChatId) return;
+            const runEvent = runtimeEventToRunEvent(eventType, payload);
+            if (runEvent) dispatchRunEvent(currentChatId, runEvent);
           },
           onThinkTagDetected,
         });
@@ -139,48 +209,50 @@ export function useChatStreamActions({
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
           trackModel();
-          preserveStreamingMessage(result);
-          unregisterStream(finalChatId);
+          if (isStillForeground(finalChatId)) preserveStreamingMessage(result);
+          completeRun(finalChatId);
         }
       } catch (error) {
         console.error("Error streaming chat:", error);
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
-          unregisterStream(finalChatId);
-          await reloadMessages(finalChatId).catch(() => {});
+          dispatchRunEvent(finalChatId, {
+            type: "ERROR",
+            message: String(error),
+          });
+          completeRun(finalChatId);
+          if (isStillForeground(finalChatId)) {
+            await reloadMessages(finalChatId).catch(() => {});
+          }
         }
-        if (!finalChatId) {
+        if (!finalChatId && currentChatIdRef.current === chatId) {
           setBaseMessages([...newBaseMessages, createErrorMessage(error)]);
         }
       } finally {
-        streamingMessageIdRef.current = null;
         streamAbortRef.current = null;
-        activeSubmissionChatIdRef.current = null;
-        setSubmissionChatId(null);
       }
     },
     [
-      activeSubmissionChatIdRef,
       activeToolIds,
       baseMessages,
       canSendMessage,
       chatId,
+      completeRun,
+      currentChatIdRef,
+      dispatchRunEvent,
       getVisibleModelOptions,
       isLoading,
+      isStillForeground,
       onThinkTagDetected,
       preserveStreamingMessage,
       refreshChats,
-      registerStream,
       reloadMessages,
       selectedModel,
       setBaseMessages,
       setChatToolIds,
-      setSubmissionChatId,
+      startRun,
       streamAbortRef,
-      streamingMessageIdRef,
       trackModel,
-      unregisterStream,
-      updateStreamContent,
     ],
   );
 
@@ -190,6 +262,11 @@ export function useChatStreamActions({
 
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
+
+      startRun(chatId);
+      const truncated = baseMessages.slice(0, idx);
+      setBaseMessages(truncated);
+      seedPrefetchWithLocalHistory(chatId, truncated);
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -204,40 +281,47 @@ export function useChatStreamActions({
         streamAbortRef.current = abort;
 
         const result = await processMessageStream(response, {
-          onUpdate: (content) => updateStreamContent(chatId, content),
+          onUpdate: (content) => {
+            dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+          },
           onMessageId: (id) => {
-            streamingMessageIdRef.current = id;
-            registerStream(chatId, id);
-            setBaseMessages(baseMessages.slice(0, idx));
+            dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+          },
+          onEvent: (eventType, payload) => {
+            const runEvent = runtimeEventToRunEvent(eventType, payload);
+            if (runEvent) dispatchRunEvent(chatId, runEvent);
           },
           onThinkTagDetected,
         });
 
-        preserveStreamingMessage(result);
-        unregisterStream(chatId);
+        if (isStillForeground(chatId)) preserveStreamingMessage(result);
+        completeRun(chatId);
         trackModel(baseMessages[idx]?.modelUsed);
       } catch (error) {
         console.error("Failed to continue message:", error);
-        unregisterStream(chatId);
-        await reloadMessages(chatId).catch(() => {});
+        dispatchRunEvent(chatId, { type: "ERROR", message: String(error) });
+        completeRun(chatId);
+        if (isStillForeground(chatId)) {
+          await reloadMessages(chatId).catch(() => {});
+        }
       }
     },
     [
       activeToolIds,
       baseMessages,
       chatId,
+      completeRun,
+      dispatchRunEvent,
       getVisibleModelOptions,
+      isStillForeground,
       onThinkTagDetected,
       preserveStreamingMessage,
-      registerStream,
       reloadMessages,
       selectedModelRef,
       setBaseMessages,
+      startRun,
       streamAbortRef,
-      streamingMessageIdRef,
       trackModel,
-      unregisterStream,
-      updateStreamContent,
     ],
   );
 
@@ -248,7 +332,10 @@ export function useChatStreamActions({
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      setBaseMessages(baseMessages.slice(0, idx));
+      const truncated = baseMessages.slice(0, idx);
+      setBaseMessages(truncated);
+      startRun(chatId);
+      seedPrefetchWithLocalHistory(chatId, truncated);
 
       try {
         const currentModel = selectedModelRef.current || undefined;
@@ -264,49 +351,58 @@ export function useChatStreamActions({
 
         const result = await processMessageStream(response, {
           onUpdate: (content) => {
-            updateStreamContent(chatId, content);
+            dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
           },
           onMessageId: (id) => {
-            streamingMessageIdRef.current = id;
-            registerStream(chatId, id);
+            dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+          },
+          onEvent: (eventType, payload) => {
+            const runEvent = runtimeEventToRunEvent(eventType, payload);
+            if (runEvent) dispatchRunEvent(chatId, runEvent);
           },
           onThinkTagDetected,
         });
 
-        preserveStreamingMessage(result);
-        unregisterStream(chatId);
+        if (isStillForeground(chatId)) preserveStreamingMessage(result);
+        completeRun(chatId);
         trackModel();
       } catch (error) {
         console.error("Failed to retry message:", error);
-        unregisterStream(chatId);
-        await reloadMessages(chatId).catch(() => {});
+        dispatchRunEvent(chatId, { type: "ERROR", message: String(error) });
+        completeRun(chatId);
+        if (isStillForeground(chatId)) {
+          await reloadMessages(chatId).catch(() => {});
+        }
       }
     },
     [
       activeToolIds,
       baseMessages,
       chatId,
+      completeRun,
+      dispatchRunEvent,
       getVisibleModelOptions,
+      isStillForeground,
       onThinkTagDetected,
       preserveStreamingMessage,
-      registerStream,
       reloadMessages,
       selectedModelRef,
       setBaseMessages,
+      startRun,
       streamAbortRef,
-      streamingMessageIdRef,
       trackModel,
-      unregisterStream,
-      updateStreamContent,
     ],
   );
 
   const handleStop = useCallback(async () => {
-    const messageId = streamingMessageIdRef.current;
-
     streamAbortRef.current?.();
     streamAbortRef.current = null;
 
+    const finalChatId = chatId;
+    if (!finalChatId) return;
+
+    const runState = getRunState(finalChatId);
+    const messageId = runState?.messageId;
     if (messageId) {
       try {
         await api.cancelRun(messageId);
@@ -314,21 +410,19 @@ export function useChatStreamActions({
         console.error("Error cancelling run:", error);
       }
     }
-
-    const finalChatId = activeSubmissionChatIdRef.current || chatId;
-    if (finalChatId) {
-      unregisterStream(finalChatId);
+    dispatchRunEvent(finalChatId, { type: "CANCELLED" });
+    completeRun(finalChatId);
+    if (isStillForeground(finalChatId)) {
       await reloadMessages(finalChatId).catch(() => {});
     }
-
-    streamingMessageIdRef.current = null;
   }, [
-    activeSubmissionChatIdRef,
     chatId,
+    completeRun,
+    dispatchRunEvent,
+    getRunState,
+    isStillForeground,
     reloadMessages,
     streamAbortRef,
-    streamingMessageIdRef,
-    unregisterStream,
   ]);
 
   return {

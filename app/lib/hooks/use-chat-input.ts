@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { useToolsActive } from "@/contexts/tools-context";
 import { useStreaming } from "@/contexts/streaming-context";
+import { isActivePhase } from "@/lib/services/chat-run-machine";
 import { useChatBranchEditActions } from "@/lib/hooks/use-chat-branch-edit-actions";
 import { useChatSnapshot } from "@/lib/hooks/use-chat-snapshot";
 import { useChatStreamActions } from "@/lib/hooks/use-chat-stream-actions";
@@ -24,23 +25,22 @@ export function useChatInput(
   const { chatId, selectedModel, refreshChats } = useChat();
   const { activeToolIds, setChatToolIds } = useToolsActive();
   const {
-    getStreamState,
-    registerStream,
-    unregisterStream,
-    updateStreamContent,
-    onStreamComplete,
+    getRunState,
+    startRun,
+    completeRun,
+    onPhaseChange,
+    dispatchRunEvent,
   } = useStreaming();
 
   const editing = useMessageEditing();
 
   const [baseMessages, setBaseMessages] = useState<Message[]>([]);
-  const [submissionChatId, setSubmissionChatId] = useState<string | null>(null);
-  const [messageSiblings, setMessageSiblings] = useState<Record<string, MessageSibling[]>>({});
+  const [messageSiblings, setMessageSiblings] = useState<
+    Record<string, MessageSibling[]>
+  >({});
 
-  const streamingMessageIdRef = useRef<string | null>(null);
   const streamAbortRef = useRef<(() => void) | null>(null);
   const selectedModelRef = useRef<string>(selectedModel);
-  const activeSubmissionChatIdRef = useRef<string | null>(null);
   const loadTokenRef = useRef(0);
   const currentChatIdRef = useRef<string | null>(chatId);
   const prevChatIdRef = useRef<string | null>(null);
@@ -51,11 +51,11 @@ export function useChatInput(
     refreshChats,
     activeToolIds,
     setChatToolIds,
-    getStreamState,
-    registerStream,
-    unregisterStream,
-    updateStreamContent,
-    onStreamComplete,
+    getRunState,
+    startRun,
+    completeRun,
+    onPhaseChange,
+    dispatchRunEvent,
   };
 
   const options: UseChatInputOptions = {
@@ -64,32 +64,42 @@ export function useChatInput(
   };
 
   const refs: UseChatInputRefs = {
-    streamingMessageIdRef,
     streamAbortRef,
     selectedModelRef,
-    activeSubmissionChatIdRef,
     loadTokenRef,
     currentChatIdRef,
     prevChatIdRef,
   };
 
-  const effectiveStreamChatId = submissionChatId || chatId || null;
-  const streamState = effectiveStreamChatId ? getStreamState(effectiveStreamChatId) : undefined;
-  const isLoading = streamState?.isStreaming || streamState?.isPausedForApproval || false;
-  const streamingContent = streamState?.streamingContent || null;
-  const streamingMessageId = streamState?.streamingMessageId || null;
+  const runState = chatId ? getRunState(chatId) : undefined;
+  const isLoading = runState ? isActivePhase(runState.phase) : false;
+  const streamingContent = runState?.content || null;
+  const streamingMessageId = runState?.messageId || null;
 
-  const preserveStreamingMessage = useCallback(({ finalContent, messageId: msgId }: StreamResult) => {
-    if (finalContent.length > 0 && msgId) {
-      setBaseMessages((prev) => [
-        ...prev.filter((m) => m.id !== msgId),
-        { id: msgId, role: "assistant", content: finalContent, isComplete: true, sequence: 1 },
-      ]);
-    }
-  }, []);
+  const preserveStreamingMessage = useCallback(
+    ({ finalContent, messageId: msgId }: StreamResult) => {
+      if (finalContent.length > 0 && msgId) {
+        setBaseMessages((prev) => [
+          ...prev.filter((m) => m.id !== msgId),
+          {
+            id: msgId,
+            role: "assistant",
+            content: finalContent,
+            isComplete: true,
+            sequence: 1,
+          },
+        ]);
+      }
+    },
+    [],
+  );
 
   const messages = useMemo(() => {
-    if (!streamingContent || streamingContent.length === 0 || !streamingMessageId) {
+    if (
+      !streamingContent ||
+      streamingContent.length === 0 ||
+      !streamingMessageId
+    ) {
       return baseMessages;
     }
 
@@ -128,9 +138,9 @@ export function useChatInput(
 
   const { triggerReload, reloadMessages } = useChatSnapshot({
     chatId,
-    onStreamComplete,
+    getRunState,
+    onPhaseChange,
     refs: {
-      activeSubmissionChatIdRef,
       loadTokenRef,
       currentChatIdRef,
       prevChatIdRef,
@@ -143,36 +153,40 @@ export function useChatInput(
 
   selectedModelRef.current = selectedModel;
 
-  const { handleSubmit, handleContinue, handleRetry, handleStop } = useChatStreamActions({
-    context,
-    options,
-    refs,
-    baseMessages,
-    setBaseMessages,
-    setSubmissionChatId,
-    isLoading,
-    canSendMessage,
-    preserveStreamingMessage,
-    reloadMessages,
-    trackModel,
-  });
+  const { handleSubmit, handleContinue, handleRetry, handleStop } =
+    useChatStreamActions({
+      context,
+      options,
+      refs,
+      baseMessages,
+      setBaseMessages,
+      isLoading,
+      canSendMessage,
+      preserveStreamingMessage,
+      reloadMessages,
+      trackModel,
+    });
 
-  const { handleEdit, handleEditSubmit, handleNavigate } = useChatBranchEditActions({
-    context,
-    options,
-    refs,
-    editing,
-    baseMessages,
-    setBaseMessages,
-    preserveStreamingMessage,
-    reloadMessages,
-    trackModel,
-    triggerReload,
-  });
+  const { handleEdit, handleEditSubmit, handleNavigate } =
+    useChatBranchEditActions({
+      context,
+      options,
+      refs,
+      editing,
+      baseMessages,
+      setBaseMessages,
+      preserveStreamingMessage,
+      reloadMessages,
+      trackModel,
+      triggerReload,
+    });
 
-  const setMessages = useCallback((messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
-    setBaseMessages(messagesOrUpdater);
-  }, []);
+  const setMessages = useCallback(
+    (messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
+      setBaseMessages(messagesOrUpdater);
+    },
+    [],
+  );
 
   return {
     handleSubmit,
@@ -192,7 +206,6 @@ export function useChatInput(
     handleEditSubmit,
     handleNavigate,
     messageSiblings,
-    streamingMessageIdRef,
     editingAttachments: editing.editingAttachments,
     addEditingAttachment: editing.addAttachment,
     removeEditingAttachment: editing.removeAttachment,

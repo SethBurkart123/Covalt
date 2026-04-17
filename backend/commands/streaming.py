@@ -391,12 +391,15 @@ class ActiveStreamsResponse(BaseModel):
     streams: list[ActiveStreamInfo]
 
 
-class SubscribeToStreamRequest(BaseModel):
+class ConnectStreamRequest(BaseModel):
     chatId: str
 
 
-class ClearStreamRequest(BaseModel):
-    chatId: str
+class ConnectStreamResponse(BaseModel):
+    active: bool
+    status: str | None = None
+    messageId: str | None = None
+    errorMessage: str | None = None
 
 
 @command
@@ -416,16 +419,28 @@ async def get_active_streams() -> ActiveStreamsResponse:
 
 
 @command
-async def subscribe_to_stream(channel: Channel, body: SubscribeToStreamRequest) -> None:
-    queue = await broadcaster.subscribe(body.chatId)
-    if queue is None:
+async def connect_stream(channel: Channel, body: ConnectStreamRequest) -> None:
+    """Atomically check if a stream exists and subscribe in one call.
+
+    Replaces the old get_active_streams + subscribe_to_stream two-step.
+    """
+    result = await broadcaster.get_or_subscribe(body.chatId)
+    if result is None:
         emit_chat_event(channel, EVENT_STREAM_NOT_ACTIVE, content=body.chatId)
         return
 
-    emit_chat_event(channel, EVENT_STREAM_SUBSCRIBED, content=body.chatId)
+    emit_chat_event(
+        channel,
+        EVENT_STREAM_SUBSCRIBED,
+        content=body.chatId,
+        status=result.status,
+        messageId=result.message_id,
+        errorMessage=result.error_message,
+    )
+
     try:
         while True:
-            event = await queue.get()
+            event = await result.queue.get()
             if event is None:
                 break
             event_name = str(event.get("event") or "")
@@ -440,10 +455,7 @@ async def subscribe_to_stream(channel: Channel, body: SubscribeToStreamRequest) 
     except asyncio.CancelledError:
         pass
     finally:
-        await broadcaster.unsubscribe(body.chatId, queue)
+        await broadcaster.unsubscribe(body.chatId, result.queue)
 
 
-@command
-async def clear_stream_record(body: ClearStreamRequest) -> dict:
-    await broadcaster.clear_stream_record(body.chatId)
-    return {"success": True}
+

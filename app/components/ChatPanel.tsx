@@ -166,7 +166,6 @@ export default function ChatPanel() {
     handleEditSubmit,
     handleNavigate,
     messageSiblings,
-    streamingMessageIdRef,
     triggerReload,
     editingAttachments,
     addEditingAttachment,
@@ -200,10 +199,10 @@ export default function ChatPanel() {
     );
     setShowThinkingPrompt(false);
 
-    if (!isLoading && streamingMessageIdRef.current) triggerReload();
+    if (!isLoading) triggerReload();
 
     setModelSettings(await getModelSettings());
-  }, [selectedModel, streamingMessageIdRef, isLoading, triggerReload]);
+  }, [selectedModel, isLoading, triggerReload]);
 
   const handleDeclineThinkingPrompt = useCallback(async () => {
     const parsedModel = parseSelectedModel(selectedModel);

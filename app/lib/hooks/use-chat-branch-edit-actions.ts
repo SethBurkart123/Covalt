@@ -2,8 +2,14 @@
 
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { api } from "@/lib/services/api";
-import { clearPrefetchedChat } from "@/lib/services/chat-prefetch";
+import {
+  clearPrefetchedChat,
+  getPrefetchedChat,
+  setPrefetchedChat,
+} from "@/lib/services/chat-prefetch";
 import { processMessageStream } from "@/lib/services/stream-processor";
+import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
+import type { RunEvent } from "@/lib/services/chat-run-machine";
 import {
   createUserMessage,
   isPendingAttachment,
@@ -27,10 +33,10 @@ import type {
 interface UseChatBranchEditActionsParams {
   context: Pick<
     UseChatInputContext,
-    "chatId" | "activeToolIds" | "registerStream" | "unregisterStream" | "updateStreamContent"
+    "chatId" | "activeToolIds" | "startRun" | "completeRun" | "dispatchRunEvent"
   >;
   options: UseChatInputOptions;
-  refs: Pick<UseChatInputRefs, "streamingMessageIdRef" | "streamAbortRef" | "selectedModelRef">;
+  refs: Pick<UseChatInputRefs, "streamAbortRef" | "selectedModelRef" | "currentChatIdRef">;
   editing: UseChatInputEditing;
   baseMessages: Message[];
   setBaseMessages: Dispatch<SetStateAction<Message[]>>;
@@ -52,9 +58,14 @@ export function useChatBranchEditActions({
   trackModel,
   triggerReload,
 }: UseChatBranchEditActionsParams) {
-  const { chatId, activeToolIds, registerStream, unregisterStream, updateStreamContent } = context;
+  const { chatId, activeToolIds, startRun, completeRun, dispatchRunEvent } = context;
   const { onThinkTagDetected, getVisibleModelOptions } = options;
-  const { streamingMessageIdRef, streamAbortRef, selectedModelRef } = refs;
+  const { streamAbortRef, selectedModelRef, currentChatIdRef } = refs;
+
+  const isStillForeground = useCallback(
+    (targetChatId: string) => currentChatIdRef.current === targetChatId,
+    [currentChatIdRef],
+  );
 
   const handleEdit = useCallback(
     (messageId: string) => {
@@ -83,14 +94,25 @@ export function useChatBranchEditActions({
       }
     });
 
-    setBaseMessages([
+    const nextBaseMessages: Message[] = [
       ...baseMessages.slice(0, idx),
       createUserMessage(
         newContent,
         editing.editingAttachments.length > 0 ? editing.editingAttachments : undefined,
       ),
-    ]);
+    ];
+    setBaseMessages(nextBaseMessages);
     editing.clearEditing();
+
+    startRun(chatId);
+    const existing = getPrefetchedChat(chatId);
+    if (!existing?.siblings) {
+      setPrefetchedChat(chatId, {
+        ...(existing ?? {}),
+        messages: nextBaseMessages,
+        fetchedAt: Date.now(),
+      });
+    }
 
     try {
       const currentModel = selectedModelRef.current || undefined;
@@ -109,40 +131,51 @@ export function useChatBranchEditActions({
 
       const result = await processMessageStream(response, {
         onUpdate: (content) => {
-          updateStreamContent(chatId, content);
+          dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
         },
         onMessageId: (id) => {
-          streamingMessageIdRef.current = id;
-          registerStream(chatId, id);
+          dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+        },
+        onEvent: (eventType, payload) => {
+          let runEvent: RunEvent | null = null;
+          if (eventType === RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED) runEvent = { type: "PAUSED_HITL" };
+          else if (eventType === RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) runEvent = { type: "RESUME_HITL" };
+          else if (eventType === RUNTIME_EVENT.RUN_COMPLETED) runEvent = { type: "COMPLETED" };
+          else if (eventType === RUNTIME_EVENT.RUN_CANCELLED) runEvent = { type: "CANCELLED" };
+          else if (eventType === RUNTIME_EVENT.RUN_ERROR) runEvent = { type: "ERROR", message: (payload.content as string) || "Unknown error" };
+          if (runEvent) dispatchRunEvent(chatId, runEvent);
         },
         onThinkTagDetected,
       });
 
-      preserveStreamingMessage(result);
-      unregisterStream(chatId);
+      if (isStillForeground(chatId)) preserveStreamingMessage(result);
+      completeRun(chatId);
       trackModel();
     } catch (error) {
       console.error("Failed to edit message:", error);
-      unregisterStream(chatId);
-      await reloadMessages(chatId).catch(() => {});
+      dispatchRunEvent(chatId, { type: "ERROR", message: String(error) });
+      completeRun(chatId);
+      if (isStillForeground(chatId)) {
+        await reloadMessages(chatId).catch(() => {});
+      }
     }
   }, [
     activeToolIds,
     baseMessages,
     chatId,
+    completeRun,
+    dispatchRunEvent,
     editing,
     getVisibleModelOptions,
+    isStillForeground,
     onThinkTagDetected,
     preserveStreamingMessage,
-    registerStream,
     reloadMessages,
     selectedModelRef,
     setBaseMessages,
+    startRun,
     streamAbortRef,
-    streamingMessageIdRef,
     trackModel,
-    unregisterStream,
-    updateStreamContent,
   ]);
 
   const handleNavigate = useCallback(

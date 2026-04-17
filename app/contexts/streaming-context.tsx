@@ -1,221 +1,183 @@
 "use client";
 
-import { createContext, useContext, useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
-import type { ContentBlock } from "@/lib/types/chat";
 import {
-  type BridgeChannel,
-  subscribeToStream as apiSubscribeToStream,
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  type ReactNode,
+} from "react";
+import {
+  connectStream as apiConnectStream,
   getActiveStreams as apiGetActiveStreams,
-  clearStreamRecord as apiClearStreamRecord,
 } from "@/python/api";
-import { processEvent, createInitialState, type StreamState } from "@/lib/services/stream-processor";
+import {
+  processEvent,
+  createInitialState,
+  type StreamState as ProcessorStreamState,
+} from "@/lib/services/stream-processor";
+import { clearPrefetchedChat } from "@/lib/services/chat-prefetch";
 import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
+import {
+  type RunPhase,
+  type RunState,
+  type RunEvent,
+  transition,
+  createIdleState,
+  isActivePhase,
+  isTerminalPhase,
+} from "@/lib/services/chat-run-machine";
 
-export type StreamStatus = 
-  | "streaming" 
-  | "paused_hitl" 
-  | "completed" 
-  | "error" 
-  | "interrupted";
+export type { RunPhase, RunState };
 
-export interface ChatStreamState {
-  isStreaming: boolean;
-  isPausedForApproval: boolean;
-  streamingContent: ContentBlock[];
-  streamingMessageId: string | null;
-  status: StreamStatus;
-  errorMessage: string | null;
-  hasUnseenUpdate: boolean;
-}
-
-function getPendingMessageId(chatId: string): string {
-  return `pending:${chatId}`;
-}
-
-type StreamCompleteCallback = (chatId: string) => void;
+type PhaseChangeCallback = (chatId: string, phase: RunPhase, prevPhase: RunPhase) => void;
 
 interface StreamingContextValue {
-  streamStates: Map<string, ChatStreamState>;
-  isStreaming: (chatId: string) => boolean;
-  isAnyStreaming: () => boolean;
-  getStreamState: (chatId: string) => ChatStreamState | undefined;
-  markChatAsSeen: (chatId: string) => void;
-  clearStreamRecord: (chatId: string) => Promise<void>;
-  subscribeToStream: (chatId: string) => void;
-  registerStream: (chatId: string, messageId: string) => void;
-  unregisterStream: (chatId: string) => void;
-  updateStreamContent: (chatId: string, content: ContentBlock[]) => void;
-  onStreamComplete: (callback: StreamCompleteCallback) => () => void;
+  runStates: Map<string, RunState>;
+  getRunState: (chatId: string) => RunState | undefined;
+  isRunning: (chatId: string) => boolean;
+  isAnyRunning: () => boolean;
+  startRun: (chatId: string) => void;
+  completeRun: (chatId: string) => void;
+  markSeen: (chatId: string) => void;
+  subscribeToChat: (chatId: string) => void;
+  onPhaseChange: (callback: PhaseChangeCallback) => () => void;
+  dispatchRunEvent: (chatId: string, event: RunEvent) => void;
 }
 
 const StreamingContext = createContext<StreamingContextValue | undefined>(undefined);
 
 export function StreamingProvider({ children }: { children: ReactNode }) {
-  const [streamStates, setStreamStates] = useState<Map<string, ChatStreamState>>(new Map());
-  const subscriptionsRef = useRef<Map<string, { channel: BridgeChannel<unknown>; unsubscribe: () => void }>>(new Map());
-  const streamStateRefs = useRef<Map<string, StreamState>>(new Map());
+  const [runStates, setRunStates] = useState<Map<string, RunState>>(new Map());
+  const subscriptionsRef = useRef<Map<string, { unsubscribe: () => void }>>(new Map());
+  const processorStatesRef = useRef<Map<string, ProcessorStreamState>>(new Map());
   const isInitializedRef = useRef(false);
-  const completeCallbacksRef = useRef<Set<StreamCompleteCallback>>(new Set());
-  const cleanedUpChatsRef = useRef<Set<string>>(new Set());
+  const phaseCallbacksRef = useRef<Set<PhaseChangeCallback>>(new Set());
 
-  const subscribeToStreamInternal = useCallback(async (chatId: string) => {
+  const dispatch = useCallback((chatId: string, event: RunEvent) => {
+    setRunStates((prev) => {
+      const current = prev.get(chatId);
+      if (!current && event.type !== "START") return prev;
+
+      const state = current ?? createIdleState(chatId);
+      const next = transition(state, event);
+      if (next === state) return prev;
+
+      const prevPhase = state.phase;
+      const nextPhase = next.phase;
+
+      if (prevPhase !== nextPhase) {
+        if (isTerminalPhase(nextPhase)) {
+          clearPrefetchedChat(chatId);
+        }
+
+        queueMicrotask(() => {
+          phaseCallbacksRef.current.forEach((cb) => cb(chatId, nextPhase, prevPhase));
+        });
+      }
+
+      const map = new Map(prev);
+      if (isTerminalPhase(nextPhase) && nextPhase === "idle") {
+        map.delete(chatId);
+      } else {
+        map.set(chatId, next);
+      }
+      return map;
+    });
+  }, []);
+
+  const cleanupSubscription = useCallback((chatId: string) => {
+    const sub = subscriptionsRef.current.get(chatId);
+    if (sub) {
+      sub.unsubscribe();
+      subscriptionsRef.current.delete(chatId);
+    }
+    processorStatesRef.current.delete(chatId);
+  }, []);
+
+  const connectToStream = useCallback((chatId: string) => {
     if (subscriptionsRef.current.has(chatId)) return;
 
-    const channel = apiSubscribeToStream({ body: { chatId } });
-    
-    if (!channel) {
-      console.error(`StreamingContext: Failed to create subscription channel for ${chatId}`);
-      return;
-    }
+    const channel = apiConnectStream({ body: { chatId } });
+    if (!channel) return;
 
-    console.log(`StreamingContext: Created subscription for ${chatId}`);
     subscriptionsRef.current.set(chatId, {
-      channel,
       unsubscribe: () => channel.close?.(),
     });
 
-    streamStateRefs.current.set(chatId, createInitialState());
+    processorStatesRef.current.set(chatId, createInitialState());
 
-      const handleEvent = (data: unknown) => {
-        const eventData = data as Record<string, unknown>;
-        const eventType = eventData.event as string;
-        
-        if (eventType === RUNTIME_EVENT.TOOL_CALL_COMPLETED) {
-          try {
-            console.log(
-              `StreamingContext: ToolCallCompleted payload for ${chatId}: ${JSON.stringify(eventData)}`
-            );
-          } catch (err) {
-            console.warn("StreamingContext: Failed to serialize ToolCallCompleted payload", err);
-          }
+    const handleEvent = (data: unknown) => {
+      const eventData = data as Record<string, unknown>;
+      const eventType = eventData.event as string;
+
+      if (eventType === RUNTIME_EVENT.STREAM_SUBSCRIBED) {
+        const status = eventData.status as string | undefined;
+        const messageId = eventData.messageId as string | undefined;
+        if (messageId) {
+          dispatch(chatId, { type: "MESSAGE_ID", messageId });
         }
-
-        const streamState = streamStateRefs.current.get(chatId) ?? createInitialState();
-        if (!streamStateRefs.current.has(chatId)) {
-          streamStateRefs.current.set(chatId, streamState);
+        if (status === "paused_hitl") {
+          dispatch(chatId, { type: "PAUSED_HITL" });
         }
+        return;
+      }
 
-        processEvent(eventType, eventData, streamState, {
-          onUpdate: (content) => {
-            setStreamStates((prev) => {
-              const current = prev.get(chatId);
-              if (!current) return prev;
-              
-              const next = new Map(prev);
-              next.set(chatId, {
-                ...current,
-                streamingContent: content,
-                isStreaming: true,
-                status: "streaming",
-              });
-              return next;
-            });
-          },
-          onSessionId: (sessionId) => {
-            console.log(`StreamingContext: Session ID for ${chatId}:`, sessionId);
-          },
-          onMessageId: (messageId) => {
-            console.log(`StreamingContext: Message ID for ${chatId}:`, messageId);
-            setStreamStates((prev) => {
-              const current = prev.get(chatId);
-              if (!current) return prev;
-              
-              const next = new Map(prev);
-              next.set(chatId, {
-                ...current,
-                streamingMessageId: messageId,
-              });
-              return next;
-            });
-          },
-        });
+      if (eventType === RUNTIME_EVENT.STREAM_NOT_ACTIVE) {
+        cleanupSubscription(chatId);
+        dispatch(chatId, { type: "STREAM_NOT_ACTIVE" });
+        return;
+      }
 
-        switch (eventType) {
-          case RUNTIME_EVENT.STREAM_NOT_ACTIVE:
-            console.log(`StreamingContext: Stream not active for ${chatId}`);
-            subscriptionsRef.current.get(chatId)?.unsubscribe();
-            subscriptionsRef.current.delete(chatId);
-            streamStateRefs.current.delete(chatId);
-            setStreamStates((prev) => {
-              const next = new Map(prev);
-              next.delete(chatId);
-              return next;
-            });
-            break;
+      const pState = processorStatesRef.current.get(chatId) ?? createInitialState();
+      if (!processorStatesRef.current.has(chatId)) {
+        processorStatesRef.current.set(chatId, pState);
+      }
 
-          case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
-            console.log(`StreamingContext: Tool approval required for ${chatId}`);
-            setStreamStates((prev) => {
-              const current = prev.get(chatId);
-              if (!current) return prev;
-              
-              const next = new Map(prev);
-              next.set(chatId, {
-                ...current,
-                isStreaming: false,
-                isPausedForApproval: true,
-                status: "paused_hitl",
-              });
-              return next;
-            });
-            break;
-
-          case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
-            setStreamStates((prev) => {
-              const current = prev.get(chatId);
-              if (!current) return prev;
-              
-              const next = new Map(prev);
-              next.set(chatId, {
-                ...current,
-                isStreaming: true,
-                isPausedForApproval: false,
-                status: "streaming",
-              });
-              return next;
-            });
-            break;
-
-          case RUNTIME_EVENT.RUN_COMPLETED:
-          case RUNTIME_EVENT.RUN_CANCELLED:
-            // Don't delete stream state here - let the original sender's code path
-            // (handleSubmit/handleContinue/etc.) handle cleanup via unregisterStream().
-            // This prevents a race condition where the WebSocket event arrives before
-            // the stream processor finishes, causing the message to briefly disappear.
-            console.log(`StreamingContext: Stream completed for ${chatId} (cleanup handled by sender)`);
-            subscriptionsRef.current.get(chatId)?.unsubscribe();
-            subscriptionsRef.current.delete(chatId);
-            break;
-
-          case RUNTIME_EVENT.RUN_ERROR:
-            console.log(`StreamingContext: Stream error for ${chatId}:`, eventData.content);
-            subscriptionsRef.current.get(chatId)?.unsubscribe();
-            subscriptionsRef.current.delete(chatId);
-            streamStateRefs.current.delete(chatId);
-            setStreamStates((prev) => {
-              const next = new Map(prev);
-              next.delete(chatId);
-              return next;
-            });
-            completeCallbacksRef.current.forEach(cb => cb(chatId));
-            break;
-        }
-      };
-
-      channel.subscribe(handleEvent);
-      
-      channel.onError?.((error: unknown) => {
-        console.error(`StreamingContext: Stream subscription error for ${chatId}:`, error);
-        subscriptionsRef.current.delete(chatId);
-        streamStateRefs.current.delete(chatId);
+      processEvent(eventType, eventData, pState, {
+        onUpdate: (content) => {
+          dispatch(chatId, { type: "CONTENT_UPDATE", content });
+        },
+        onSessionId: (sessionId) => {
+          dispatch(chatId, { type: "SESSION_ID", chatId: sessionId });
+        },
+        onMessageId: (messageId) => {
+          dispatch(chatId, { type: "MESSAGE_ID", messageId });
+        },
       });
 
-      channel.onClose?.(() => {
-        console.log(`StreamingContext: Stream subscription closed for ${chatId}`);
-        subscriptionsRef.current.delete(chatId);
-        streamStateRefs.current.delete(chatId);
-      });
-  }, []);
+      switch (eventType) {
+        case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
+          dispatch(chatId, { type: "PAUSED_HITL" });
+          break;
+        case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
+          dispatch(chatId, { type: "RESUME_HITL" });
+          break;
+        case RUNTIME_EVENT.RUN_COMPLETED:
+          cleanupSubscription(chatId);
+          dispatch(chatId, { type: "COMPLETED" });
+          break;
+        case RUNTIME_EVENT.RUN_CANCELLED:
+          cleanupSubscription(chatId);
+          dispatch(chatId, { type: "CANCELLED" });
+          break;
+        case RUNTIME_EVENT.RUN_ERROR:
+          cleanupSubscription(chatId);
+          dispatch(chatId, {
+            type: "ERROR",
+            message: (eventData.content as string) || "Unknown error",
+          });
+          break;
+      }
+    };
+
+    channel.subscribe(handleEvent);
+    channel.onError?.(() => cleanupSubscription(chatId));
+    channel.onClose?.(() => cleanupSubscription(chatId));
+  }, [cleanupSubscription, dispatch]);
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -227,183 +189,120 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       const response = await apiGetActiveStreams();
       if (cancelled) return;
 
-      const newStates = new Map<string, ChatStreamState>();
-
-      console.log("StreamingContext: Loaded active streams:", response.streams);
+      const newStates = new Map<string, RunState>();
+      const toSubscribe: string[] = [];
 
       for (const stream of response.streams) {
         const isActive = stream.status === "streaming" || stream.status === "paused_hitl";
-        
+
+        const phase: RunPhase = stream.status === "streaming"
+          ? "streaming"
+          : stream.status === "paused_hitl"
+            ? "paused_hitl"
+            : stream.status === "error"
+              ? "error"
+              : "completed";
+
         newStates.set(stream.chatId, {
-          isStreaming: stream.status === "streaming",
-          isPausedForApproval: stream.status === "paused_hitl",
-          streamingContent: [],
-          streamingMessageId: stream.messageId,
-          status: stream.status as StreamStatus,
+          phase,
+          chatId: stream.chatId,
+          messageId: stream.messageId,
+          content: [],
           errorMessage: stream.errorMessage || null,
           hasUnseenUpdate: !isActive,
         });
 
         if (isActive) {
-          console.log(`StreamingContext: Subscribing to active stream: ${stream.chatId}`);
-          subscribeToStreamInternal(stream.chatId);
+          toSubscribe.push(stream.chatId);
         }
       }
 
-      setStreamStates(newStates);
+      setRunStates(newStates);
+      toSubscribe.forEach(connectToStream);
     };
 
     loadActiveStreams();
 
+    const subs = subscriptionsRef.current;
+    const pStates = processorStatesRef.current;
     return () => {
       cancelled = true;
       isInitializedRef.current = false;
-      subscriptionsRef.current.forEach(({ unsubscribe }) => unsubscribe());
-      subscriptionsRef.current.clear();
-      streamStateRefs.current.clear();
+      subs.forEach(({ unsubscribe }) => unsubscribe());
+      subs.clear();
+      pStates.clear();
     };
-  }, [subscribeToStreamInternal]);
+  }, [connectToStream]);
 
-  const isStreaming = useCallback((chatId: string) => 
-    streamStates.get(chatId)?.isStreaming ?? false,
-    [streamStates]
+  const getRunState = useCallback((chatId: string) =>
+    runStates.get(chatId),
+    [runStates],
   );
 
-  const isAnyStreaming = useCallback(() => {
-    for (const state of streamStates.values()) {
-      if (state.isStreaming) return true;
+  const isRunning = useCallback((chatId: string) => {
+    const state = runStates.get(chatId);
+    return state ? isActivePhase(state.phase) : false;
+  }, [runStates]);
+
+  const isAnyRunning = useCallback(() => {
+    for (const state of runStates.values()) {
+      if (isActivePhase(state.phase)) return true;
     }
     return false;
-  }, [streamStates]);
+  }, [runStates]);
 
-  const getStreamState = useCallback((chatId: string) => 
-    streamStates.get(chatId),
-    [streamStates]
-  );
+  const startRun = useCallback((chatId: string) => {
+    dispatch(chatId, { type: "START", chatId });
+    connectToStream(chatId);
+  }, [dispatch, connectToStream]);
 
-  const markChatAsSeen = useCallback((chatId: string) => {
-    setStreamStates((prev) => {
-      const current = prev.get(chatId);
-      if (!current || !current.hasUnseenUpdate) return prev;
-
-      const next = new Map(prev);
-      next.set(chatId, { ...current, hasUnseenUpdate: false });
-      return next;
-    });
-  }, []);
-
-  const clearStreamRecord = useCallback(async (chatId: string) => {
-    await apiClearStreamRecord({ body: { chatId } });
-    setStreamStates((prev) => {
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-  }, []);
-
-  const subscribeToStream = useCallback((chatId: string) => {
-    subscribeToStreamInternal(chatId);
-  }, [subscribeToStreamInternal]);
-
-  const registerStream = useCallback((chatId: string, messageId: string) => {
-    console.log(`StreamingContext: Registering stream for ${chatId}, message ${messageId}`);
-    cleanedUpChatsRef.current.delete(chatId);
-    streamStateRefs.current.set(chatId, createInitialState());
-    
-    setStreamStates((prev) => {
-      const current = prev.get(chatId);
-      const next = new Map(prev);
-      next.set(chatId, {
-        isStreaming: true,
-        isPausedForApproval: false,
-        streamingContent:
-          current && current.streamingContent.length > 0
-            ? current.streamingContent
-            : [{ type: "text", content: "" }],
-        streamingMessageId: messageId,
-        status: "streaming",
-        errorMessage: null,
-        hasUnseenUpdate: false,
+  const completeRun = useCallback((chatId: string) => {
+    cleanupSubscription(chatId);
+    queueMicrotask(() => {
+      setRunStates((prev) => {
+        if (!prev.has(chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
       });
-      return next;
     });
-  }, []);
+  }, [cleanupSubscription]);
 
-  const unregisterStream = useCallback((chatId: string) => {
-    console.log(`StreamingContext: Unregistering stream for ${chatId}`);
-    cleanedUpChatsRef.current.add(chatId);
-    streamStateRefs.current.delete(chatId);
-    
-    subscriptionsRef.current.get(chatId)?.unsubscribe();
-    subscriptionsRef.current.delete(chatId);
-    
-    setStreamStates((prev) => {
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
+  const markSeen = useCallback((chatId: string) => {
+    dispatch(chatId, { type: "MARK_SEEN" });
+  }, [dispatch]);
 
-    completeCallbacksRef.current.forEach(cb => cb(chatId));
-    clearStreamRecord(chatId).catch(() => {});
-  }, [clearStreamRecord]);
+  const subscribeToChat = useCallback((chatId: string) => {
+    connectToStream(chatId);
+  }, [connectToStream]);
 
-  const updateStreamContent = useCallback((chatId: string, content: ContentBlock[]) => {
-    if (cleanedUpChatsRef.current.has(chatId)) return;
-    setStreamStates((prev) => {
-      const current = prev.get(chatId);
-      const next = new Map(prev);
-      if (!current) {
-        next.set(chatId, {
-          isStreaming: true,
-          isPausedForApproval: false,
-          streamingContent: content,
-          streamingMessageId: getPendingMessageId(chatId),
-          status: "streaming",
-          errorMessage: null,
-          hasUnseenUpdate: false,
-        });
-      } else {
-        next.set(chatId, {
-          ...current,
-          streamingContent: content,
-          streamingMessageId: current.streamingMessageId ?? getPendingMessageId(chatId),
-        });
-      }
-      return next;
-    });
-  }, []);
-
-  const onStreamComplete = useCallback((callback: StreamCompleteCallback) => {
-    completeCallbacksRef.current.add(callback);
-    return () => {
-      completeCallbacksRef.current.delete(callback);
-    };
+  const onPhaseChange = useCallback((callback: PhaseChangeCallback) => {
+    phaseCallbacksRef.current.add(callback);
+    return () => { phaseCallbacksRef.current.delete(callback); };
   }, []);
 
   const value = useMemo<StreamingContextValue>(() => ({
-    streamStates,
-    isStreaming,
-    isAnyStreaming,
-    getStreamState,
-    markChatAsSeen,
-    clearStreamRecord,
-    subscribeToStream,
-    registerStream,
-    unregisterStream,
-    updateStreamContent,
-    onStreamComplete,
+    runStates,
+    getRunState,
+    isRunning,
+    isAnyRunning,
+    startRun,
+    completeRun,
+    markSeen,
+    subscribeToChat,
+    onPhaseChange,
+    dispatchRunEvent: dispatch,
   }), [
-    streamStates,
-    isStreaming,
-    isAnyStreaming,
-    getStreamState,
-    markChatAsSeen,
-    clearStreamRecord,
-    subscribeToStream,
-    registerStream,
-    unregisterStream,
-    updateStreamContent,
-    onStreamComplete,
+    runStates,
+    getRunState,
+    isRunning,
+    isAnyRunning,
+    startRun,
+    completeRun,
+    markSeen,
+    subscribeToChat,
+    onPhaseChange,
+    dispatch,
   ]);
 
   return (
@@ -418,4 +317,3 @@ export function useStreaming() {
   if (!context) throw new Error("useStreaming must be used within a StreamingProvider");
   return context;
 }
-

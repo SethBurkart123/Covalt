@@ -1,9 +1,9 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import type { ChatStreamState } from "@/contexts/streaming-context";
+import type { RunPhase, RunState } from "@/contexts/streaming-context";
+import type { RunEvent } from "@/lib/services/chat-run-machine";
 import type { StreamResult } from "@/lib/services/stream-processor";
 import type {
   Attachment,
-  ContentBlock,
   Message,
   MessageSibling,
   PendingAttachment,
@@ -19,15 +19,11 @@ export interface UseChatInputState {
   setBaseMessages: Dispatch<SetStateAction<Message[]>>;
   messageSiblings: Record<string, MessageSibling[]>;
   setMessageSiblings: Dispatch<SetStateAction<Record<string, MessageSibling[]>>>;
-  submissionChatId: string | null;
-  setSubmissionChatId: Dispatch<SetStateAction<string | null>>;
 }
 
 export interface UseChatInputRefs {
-  streamingMessageIdRef: MutableRefObject<string | null>;
   streamAbortRef: MutableRefObject<(() => void) | null>;
   selectedModelRef: MutableRefObject<string>;
-  activeSubmissionChatIdRef: MutableRefObject<string | null>;
   loadTokenRef: MutableRefObject<number>;
   currentChatIdRef: MutableRefObject<string | null>;
   prevChatIdRef: MutableRefObject<string | null>;
@@ -42,11 +38,11 @@ export interface UseChatInputContext {
     toolIds: string[],
     options?: { persistDefaults?: boolean },
   ) => Promise<void>;
-  getStreamState: (chatId: string) => ChatStreamState | undefined;
-  registerStream: (chatId: string, messageId: string) => void;
-  unregisterStream: (chatId: string) => void;
-  updateStreamContent: (chatId: string, content: ContentBlock[]) => void;
-  onStreamComplete: (callback: (chatId: string) => void) => () => void;
+  getRunState: (chatId: string) => RunState | undefined;
+  startRun: (chatId: string) => void;
+  completeRun: (chatId: string) => void;
+  onPhaseChange: (callback: (chatId: string, phase: RunPhase, prevPhase: RunPhase) => void) => () => void;
+  dispatchRunEvent: (chatId: string, event: RunEvent) => void;
 }
 
 export interface UseChatInputEditing {

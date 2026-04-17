@@ -1,4 +1,8 @@
-"""Pub/Sub system for multi-frontend stream support."""
+"""Pub/Sub system for multi-frontend stream support.
+
+In-memory only -- no DB persistence. On process restart all streams are gone
+(they can't resume anyway).
+"""
 
 from __future__ import annotations
 
@@ -7,15 +11,6 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-
-from ...db.core import db_session
-from ...db.models import ActiveStream
-
-
-@dataclass
-class StreamSubscription:
-    queue: asyncio.Queue
-    subscribed_at: datetime = field(default_factory=datetime.now)
 
 
 @dataclass
@@ -29,6 +24,15 @@ class StreamState:
     error_message: str | None = None
 
 
+@dataclass
+class SubscribeResult:
+    """Returned by get_or_subscribe so the caller gets state + queue atomically."""
+    status: str
+    message_id: str
+    error_message: str | None
+    queue: asyncio.Queue
+
+
 _active_streams: dict[str, StreamState] = {}
 _lock = asyncio.Lock()
 
@@ -37,8 +41,6 @@ async def register_stream(
     chat_id: str, message_id: str, run_id: str | None = None
 ) -> None:
     async with _lock:
-        now = datetime.now().isoformat()
-
         _active_streams[chat_id] = StreamState(
             chat_id=chat_id,
             message_id=message_id,
@@ -46,35 +48,11 @@ async def register_stream(
             status="streaming",
         )
 
-        with db_session() as session:
-            existing = session.get(ActiveStream, chat_id)
-            if existing:
-                session.delete(existing)
-
-            session.add(
-                ActiveStream(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    run_id=run_id,
-                    status="streaming",
-                    started_at=now,
-                    updated_at=now,
-                )
-            )
-            session.commit()
-
 
 async def update_stream_run_id(chat_id: str, run_id: str) -> None:
     async with _lock:
         if chat_id in _active_streams:
             _active_streams[chat_id].run_id = run_id
-
-        with db_session() as session:
-            stream = session.get(ActiveStream, chat_id)
-            if stream:
-                stream.run_id = run_id
-                stream.updated_at = datetime.now().isoformat()
-                session.commit()
 
 
 async def update_stream_status(
@@ -84,14 +62,6 @@ async def update_stream_status(
         if chat_id in _active_streams:
             _active_streams[chat_id].status = status
             _active_streams[chat_id].error_message = error_message
-
-        with db_session() as session:
-            stream = session.get(ActiveStream, chat_id)
-            if stream:
-                stream.status = status
-                stream.error_message = error_message
-                stream.updated_at = datetime.now().isoformat()
-                session.commit()
 
 
 async def unregister_stream(chat_id: str) -> None:
@@ -107,12 +77,6 @@ async def unregister_stream(chat_id: str) -> None:
 
             del _active_streams[chat_id]
 
-        with db_session() as session:
-            stream = session.get(ActiveStream, chat_id)
-            if stream:
-                session.delete(stream)
-                session.commit()
-
 
 async def broadcast_event(chat_id: str, event: dict[str, Any]) -> None:
     async with _lock:
@@ -120,14 +84,7 @@ async def broadcast_event(chat_id: str, event: dict[str, Any]) -> None:
             return
 
         state = _active_streams[chat_id]
-
         state.recent_events.append(event)
-
-        with db_session() as session:
-            stream = session.get(ActiveStream, chat_id)
-            if stream:
-                stream.updated_at = datetime.now().isoformat()
-                session.commit()
 
         dead_queues = set()
         for queue in state.subscribers:
@@ -139,13 +96,40 @@ async def broadcast_event(chat_id: str, event: dict[str, Any]) -> None:
         state.subscribers -= dead_queues
 
 
+async def get_or_subscribe(chat_id: str) -> SubscribeResult | None:
+    """Atomically check if a stream exists and subscribe in one call.
+
+    Returns None if no active stream for this chatId.
+    """
+    async with _lock:
+        if chat_id not in _active_streams:
+            return None
+
+        state = _active_streams[chat_id]
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+
+        for event in state.recent_events:
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                break
+
+        state.subscribers.add(queue)
+        return SubscribeResult(
+            status=state.status,
+            message_id=state.message_id,
+            error_message=state.error_message,
+            queue=queue,
+        )
+
+
 async def subscribe(chat_id: str) -> asyncio.Queue | None:
     async with _lock:
         if chat_id not in _active_streams:
             return None
 
         state = _active_streams[chat_id]
-        queue = asyncio.Queue(maxsize=1000)
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
         for event in state.recent_events:
             try:
@@ -174,7 +158,6 @@ def is_stream_active(chat_id: str) -> bool:
 
 async def get_all_active_streams() -> list[dict[str, Any]]:
     result = []
-
     async with _lock:
         for chat_id, state in _active_streams.items():
             result.append(
@@ -185,28 +168,4 @@ async def get_all_active_streams() -> list[dict[str, Any]]:
                     "errorMessage": state.error_message,
                 }
             )
-
-    with db_session() as session:
-        db_streams = session.query(ActiveStream).all()
-        existing_chat_ids = {s["chatId"] for s in result}
-
-        for stream in db_streams:
-            if stream.chat_id not in existing_chat_ids:
-                result.append(
-                    {
-                        "chatId": stream.chat_id,
-                        "messageId": stream.message_id,
-                        "status": stream.status,
-                        "errorMessage": stream.error_message,
-                    }
-                )
-
     return result
-
-
-async def clear_stream_record(chat_id: str) -> None:
-    with db_session() as session:
-        stream = session.get(ActiveStream, chat_id)
-        if stream:
-            session.delete(stream)
-            session.commit()

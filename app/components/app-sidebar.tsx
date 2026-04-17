@@ -32,7 +32,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     renameChat,
     toggleStarChat,
   } = useChat();
-  const { getStreamState, markChatAsSeen } = useStreaming();
+  const { getRunState, markSeen } = useStreaming();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -106,7 +106,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                 </SidebarMenuItem>
                 {group.chatIds.map((id) => {
-                  const streamState = getStreamState(id);
+                  const runState = getRunState(id);
                   const isEditing = editingId === id;
                   const itemEditTitle = isEditing ? editTitle : "";
                   return (
@@ -114,17 +114,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       key={id}
                       title={chatsData[id]?.title || `Chat #${chatIds.indexOf(id) + 1}`}
                       isActive={currentChatId === id}
-                      isStreaming={streamState?.isStreaming ?? false}
-                      isPausedForApproval={streamState?.isPausedForApproval ?? false}
-                      hasError={streamState?.status === "error" || streamState?.status === "interrupted"}
-                      hasUnseenUpdate={streamState?.hasUnseenUpdate ?? false}
+                      isStreaming={runState?.phase === "streaming" || runState?.phase === "starting"}
+                      isPausedForApproval={runState?.phase === "paused_hitl"}
+                      hasError={runState?.phase === "error"}
+                      hasUnseenUpdate={runState?.hasUnseenUpdate ?? false}
                       isEditing={isEditing}
                       editTitle={itemEditTitle}
                       onEditTitleChange={setEditTitle}
                       onEditConfirm={() => handleRenameConfirm(id)}
                       onEditCancel={handleRenameCancel}
                       onSelect={() => {
-                        markChatAsSeen(id);
+                        markSeen(id);
                         switchChat(id);
                       }}
                       onPrefetch={() => handlePrefetch(id)}

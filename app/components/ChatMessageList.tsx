@@ -149,6 +149,8 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   const prevMessagesLengthRef = useRef(messages.length);
   const fallbackScrollContainerRef = useRef<HTMLElement | null>(null);
   const isDrivingScrollRef = useRef(false);
+  const prevChatIdRef = useRef<string | undefined>(chatId);
+  const hasDoneInitialScrollRef = useRef(false);
 
   const scrollTarget = useMotionValue(0);
   const springScroll = useSpring(scrollTarget, {
@@ -273,11 +275,35 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   ]);
 
   useEffect(() => {
+    const chatSwitched = prevChatIdRef.current !== chatId;
+    prevChatIdRef.current = chatId;
+
     const userJustSentMessage =
+      !chatSwitched &&
       messages.length > prevMessagesLengthRef.current &&
       messages[messages.length - 1]?.role === "user";
 
     prevMessagesLengthRef.current = messages.length;
+
+    if (chatSwitched) {
+      userScrolledAwayRef.current = false;
+      isAtBottomRef.current = true;
+      onFollowingChange?.(true);
+      if (messages.length > 0) {
+        hasDoneInitialScrollRef.current = true;
+        requestAnimationFrame(() => driveToBottom(true));
+      }
+      return;
+    }
+
+    if (!hasDoneInitialScrollRef.current && messages.length > 0) {
+      hasDoneInitialScrollRef.current = true;
+      userScrolledAwayRef.current = false;
+      isAtBottomRef.current = true;
+      onFollowingChange?.(true);
+      requestAnimationFrame(() => driveToBottom(false));
+      return;
+    }
 
     if (userJustSentMessage) {
       userScrolledAwayRef.current = false;
@@ -290,7 +316,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     if (userScrolledAwayRef.current) return;
 
     requestAnimationFrame(() => driveToBottom(false));
-  }, [messages, isLoading, driveToBottom, onFollowingChange]);
+  }, [messages, isLoading, chatId, driveToBottom, onFollowingChange]);
 
   const filteredMessages = messages.filter(
     (m) => m.role === "user" || m.role === "assistant",

@@ -46,10 +46,10 @@ export function DevPanel({ isLoading, canSendMessage }: DevPanelProps) {
   const [showTools, setShowTools] = useState(false);
 
   const { chatId } = useChat();
-  const { getStreamState } = useStreaming();
+  const { getRunState } = useStreaming();
   const { activeToolIds } = useTools();
 
-  const streamState = chatId ? getStreamState(chatId) : undefined;
+  const runState = chatId ? getRunState(chatId) : undefined;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "d") {
@@ -88,12 +88,12 @@ export function DevPanel({ isLoading, canSendMessage }: DevPanelProps) {
         <div className="px-3 py-2 space-y-0.5 min-w-[180px]">
           <BoolValue
             label="isStreaming"
-            value={streamState?.isStreaming ?? false}
+            value={runState?.phase === "streaming" || runState?.phase === "starting"}
           />
-          <StatusValue status={streamState?.status ?? "idle"} />
+          <StatusValue status={runState?.phase ?? "idle"} />
           <BoolValue
             label="isPaused"
-            value={streamState?.isPausedForApproval ?? false}
+            value={runState?.phase === "paused_hitl"}
           />
           <BoolValue label="isLoading" value={isLoading} />
           <BoolValue label="canSend" value={canSendMessage} />

@@ -20,6 +20,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const currentChatIdRef = useRef(currentChatId);
   currentChatIdRef.current = currentChatId;
 
+  const pendingUrlSyncsRef = useRef(0);
+
+  const setCurrentChatIdOptimistic = useCallback((id: string) => {
+    if (id !== currentChatIdRef.current) {
+      pendingUrlSyncsRef.current += 1;
+    }
+    setCurrentChatId(id);
+  }, []);
+
   const { models, selectedModel, setSelectedModel, refreshModels } = useModels();
   const { agents, refreshAgents } = useAgents();
 
@@ -27,7 +36,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     allChatsData,
     setAllChatsData,
     currentChatId,
-    setCurrentChatId,
+    setCurrentChatId: setCurrentChatIdOptimistic,
   });
 
   useEffect(() => {
@@ -58,15 +67,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // TODO: currentChatId should ideally be derived directly from searchParams
-  // (const currentChatId = searchParams.get("chatId") || ""), but useChatOperations
-  // calls setCurrentChatId before router.push for optimistic updates. Removing the
-  // state would require refactoring useChatOperations to not need the setter.
   useEffect(() => {
     const chatIdFromUrl = searchParams.get("chatId") || "";
-    if (chatIdFromUrl !== currentChatIdRef.current) {
-      setCurrentChatId(chatIdFromUrl);
+    if (chatIdFromUrl === currentChatIdRef.current) {
+      if (pendingUrlSyncsRef.current > 0) pendingUrlSyncsRef.current -= 1;
+      return;
     }
+    if (pendingUrlSyncsRef.current > 0) {
+      pendingUrlSyncsRef.current -= 1;
+      return;
+    }
+    setCurrentChatId(chatIdFromUrl);
   }, [searchParams]);
 
   const chatIds = useMemo(() => 
