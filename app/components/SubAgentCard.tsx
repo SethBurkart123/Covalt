@@ -315,12 +315,11 @@ function SubAgentContent({
   }
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className="flex-1 overflow-auto space-y-1 pb-4"
-    >
-      {elements}
-      <div ref={endOfContentRef} className="h-4" />
+    <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+      <div className="max-w-[50rem] w-full mx-auto space-y-1 pb-4">
+        {elements}
+        <div ref={endOfContentRef} className="h-4" />
+      </div>
     </div>
   );
 }
