@@ -285,8 +285,10 @@ function SidebarTrigger({
   );
 }
 
-function SidebarInset({ className, ...props }: ComponentProps<"main">) {
+function SidebarInset({ className, style, ...props }: ComponentProps<"main">) {
   const { state } = useSidebar();
+  const expandedMargin = "var(--sidebar-width)";
+  const collapsedMargin = "0.5rem";
 
   return (
     <motion.main
@@ -296,19 +298,19 @@ function SidebarInset({ className, ...props }: ComponentProps<"main">) {
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:mt-2 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",
         className,
       )}
+      style={{
+        ...style,
+        width: "calc(100% - var(--sidebar-inset-margin-left) - 0.5rem)",
+      }}
       initial={{
-        marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width:
-          state === "expanded"
-            ? "calc(100% - var(--sidebar-width) - 0.5rem)"
-            : "calc(100% - 1rem)",
+        ["--sidebar-inset-margin-left" as string]:
+          state === "expanded" ? expandedMargin : collapsedMargin,
+        marginLeft: state === "expanded" ? expandedMargin : collapsedMargin,
       }}
       animate={{
-        marginLeft: state === "expanded" ? "var(--sidebar-width)" : "0.5rem",
-        width:
-          state === "expanded"
-            ? "calc(100% - var(--sidebar-width) - 0.5rem)"
-            : "calc(100% - 1rem)",
+        ["--sidebar-inset-margin-left" as string]:
+          state === "expanded" ? expandedMargin : collapsedMargin,
+        marginLeft: state === "expanded" ? expandedMargin : collapsedMargin,
       }}
       transition={SIDEBAR_TRANSITION}
       {...(props as HTMLMotionProps<"main">)}

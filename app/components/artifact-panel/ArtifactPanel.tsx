@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useLayoutEffect } from "react";
 import { X } from "lucide-react";
 import { motion } from "motion/react";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
+import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 const TRANSITION = {
@@ -12,44 +13,60 @@ const TRANSITION = {
   damping: 28,
 };
 
+function computeFinalInsetWidth(sidebarExpanded: boolean): number {
+  const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return sidebarExpanded
+    ? window.innerWidth - 19 * remPx - 0.5 * remPx
+    : window.innerWidth - remPx;
+}
+
 export function ArtifactPanel() {
   const { isOpen, artifacts, activeId, setActive, remove, close, clearFiles } =
     useArtifactPanel();
+  const { state: sidebarState } = useSidebar();
 
   const displayArtifactsRef = useRef(artifacts);
   const displayActiveRef = useRef(artifacts.find((a) => a.id === activeId));
   const wasOpenRef = useRef(isOpen);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const [animatingWidth, setAnimatingWidth] = useState<number | null>(null);
+  const [lockedWidth, setLockedWidth] = useState<number | null>(null);
 
-  const handleAnimationStart = useCallback(() => {
-    const parent = containerRef.current?.parentElement;
-    if (!parent) return;
+  useLayoutEffect(() => {
+    if (isOpen && lockedWidth === null && !wasOpenRef.current) {
+      setLockedWidth(computeFinalInsetWidth(false) * 0.5);
+      return;
+    }
+    if (!isOpen && lockedWidth === null && wasOpenRef.current) {
+      const inner = containerRef.current?.firstElementChild as HTMLElement | null;
+      const measured = inner?.getBoundingClientRect().width;
+      if (typeof measured === "number" && measured > 0) {
+        setLockedWidth(measured);
+      } else {
+        setLockedWidth(computeFinalInsetWidth(sidebarState === "expanded") * 0.5);
+      }
+    }
+  }, [isOpen, lockedWidth, sidebarState]);
 
-    setAnimatingWidth(parent.clientWidth * 0.5);
-    const observer = new ResizeObserver(([entry]) => {
-      setAnimatingWidth(entry.contentRect.width * 0.5);
-    });
-    observer.observe(parent);
-    observerRef.current = observer;
-  }, []);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const onResize = () => {
+      if (lockedWidth === null) return;
+      setLockedWidth(computeFinalInsetWidth(sidebarState === "expanded") * 0.5);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [isOpen, sidebarState, lockedWidth]);
 
   const handleAnimationComplete = useCallback(() => {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
-    setAnimatingWidth(null);
-
     if (wasOpenRef.current && !isOpen) {
+      setLockedWidth(null);
       clearFiles();
+    } else if (isOpen) {
+      setLockedWidth(null);
     }
     wasOpenRef.current = isOpen;
   }, [isOpen, clearFiles]);
-
-  useEffect(() => {
-    return () => observerRef.current?.disconnect();
-  }, []);
 
   if (artifacts.length > 0) {
     displayArtifactsRef.current = artifacts;
@@ -63,13 +80,12 @@ export function ArtifactPanel() {
       initial={false}
       animate={{ width: isOpen ? "50%" : 0 }}
       transition={TRANSITION}
-      onAnimationStart={handleAnimationStart}
       onAnimationComplete={handleAnimationComplete}
     >
       <div
         data-testid="artifact-panel"
         className="h-full bg-card/80 border-l border-border rounded-l-xl flex flex-col overflow-hidden"
-        style={animatingWidth ? { width: animatingWidth } : undefined}
+        style={lockedWidth ? { width: lockedWidth } : undefined}
       >
         <div className="flex border-b border-border overflow-x-auto p-2 gap-2 px-4">
           {displayArtifactsRef.current.length !== 1 ? (
