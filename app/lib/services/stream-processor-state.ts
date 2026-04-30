@@ -108,17 +108,12 @@ export function buildCurrentContent(state: StreamState): ContentBlock[] {
       continue;
     }
 
-    const memberState = state.memberStates.get(block.runId);
-    if (!memberState || (!memberState.currentTextBlock && !memberState.currentReasoningBlock)) {
-      content.push(block);
-      continue;
-    }
-
     const cloned: MemberRunBlock = { ...block, content: [...block.content] };
-    if (memberState.currentTextBlock) {
+    const memberState = state.memberStates.get(block.runId);
+    if (memberState?.currentTextBlock) {
       cloned.content.push({ type: "text", content: memberState.currentTextBlock });
     }
-    if (memberState.currentReasoningBlock) {
+    if (memberState?.currentReasoningBlock) {
       cloned.content.push({
         type: "reasoning",
         content: memberState.currentReasoningBlock,

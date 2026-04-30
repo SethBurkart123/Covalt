@@ -319,4 +319,98 @@ describe("stream-processor", () => {
     });
     expect(animationFrame.pendingCount()).toBe(0);
   });
+
+  it("emits fresh member_run references on each update so React picks up in-place mutations", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.MEMBER_RUN_STARTED,
+      { memberRunId: "sub-1", memberName: "Researcher A", task: "task-a" },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.MEMBER_RUN_STARTED,
+      { memberRunId: "sub-2", memberName: "Researcher B", task: "task-b" },
+      state,
+      callbacks,
+    );
+    animationFrame.flushAll();
+    const initialUpdate = updates.at(-1) || [];
+    expect(initialUpdate).toHaveLength(2);
+    const initialSub1 = initialUpdate[0];
+    const initialSub2 = initialUpdate[1];
+    if (
+      !initialSub1 ||
+      initialSub1.type !== "member_run" ||
+      !initialSub2 ||
+      initialSub2.type !== "member_run"
+    ) {
+      throw new Error("expected two member_run blocks in initial update");
+    }
+    expect(initialSub1.content).toHaveLength(0);
+    expect(initialSub2.content).toHaveLength(0);
+
+    processEvent(
+      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      {
+        memberRunId: "sub-1",
+        tool: {
+          runId: "sub-1",
+          tools: [{ id: "tool-a", toolName: "search", toolArgs: { q: "agno" } }],
+        },
+      },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      {
+        memberRunId: "sub-2",
+        tool: {
+          runId: "sub-2",
+          tools: [{ id: "tool-b", toolName: "search", toolArgs: { q: "teams" } }],
+        },
+      },
+      state,
+      callbacks,
+    );
+    animationFrame.flushAll();
+
+    const finalUpdate = updates.at(-1) || [];
+    expect(finalUpdate).toHaveLength(2);
+    const finalSub1 = finalUpdate[0];
+    const finalSub2 = finalUpdate[1];
+    if (
+      !finalSub1 ||
+      finalSub1.type !== "member_run" ||
+      !finalSub2 ||
+      finalSub2.type !== "member_run"
+    ) {
+      throw new Error("expected two member_run blocks in final update");
+    }
+
+    // React relies on referential changes; both the block and its content array
+    // must have fresh refs once an inner mutation happens.
+    expect(finalSub1).not.toBe(initialSub1);
+    expect(finalSub2).not.toBe(initialSub2);
+    expect(finalSub1.content).not.toBe(initialSub1.content);
+    expect(finalSub2.content).not.toBe(initialSub2.content);
+
+    expect(finalSub1.content).toHaveLength(1);
+    expect(finalSub1.content[0]).toMatchObject({
+      type: "tool_call",
+      id: "tool-a",
+      approvalStatus: "pending",
+      isCompleted: false,
+    });
+    expect(finalSub2.content).toHaveLength(1);
+    expect(finalSub2.content[0]).toMatchObject({
+      type: "tool_call",
+      id: "tool-b",
+      approvalStatus: "pending",
+      isCompleted: false,
+    });
+  });
 });
