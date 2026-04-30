@@ -245,7 +245,7 @@ export function useModels() {
   }, [selectModel]);
 
   useEffect(() => {
-    loadModels();
+    fetchPreferences().then(() => loadModels());
 
     const unsubscribe = subscribeBackendBaseUrl(() => {
       fetchPreferences().then(() => loadModels(true));
