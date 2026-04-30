@@ -15,16 +15,16 @@ type MdProps<T extends keyof React.JSX.IntrinsicElements> = React.ComponentProps
 
 const MemoizedComponents: Partial<Components> = {
   h1: ({ ...props }: MdProps<'h1'>) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />,
-  h2: ({ ...props }: MdProps<'h2'>) => <h2 className="scroll-m-20 border-b pb-2 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />,
+  h2: ({ ...props }: MdProps<'h2'>) => <h2 className="scroll-m-20 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />,
   h3: ({ ...props }: MdProps<'h3'>) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />,
   h4: ({ ...props }: MdProps<'h4'>) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />,
-  p: ({ ...props }: MdProps<'p'>) => <p className="leading-7 [&:not(:first-child)]:mt-6" {...props} />,
+  p: ({ ...props }: MdProps<'p'>) => <p className="leading-7 not-first:mt-6" {...props} />,
   blockquote: ({ ...props }: MdProps<'blockquote'>) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />,
-  ul: ({ ...props }: MdProps<'ul'>) => <ul className="!my-1 list-disc pl-[1.625em]" {...props} />,
+  ul: ({ ...props }: MdProps<'ul'>) => <ul className="my-1! list-disc pl-[1.625em]" {...props} />,
   ol: ({ ...props }: MdProps<'ol'>) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />,
   table: ({ ...props }: MdProps<'table'>) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>,
-  th: ({ ...props }: MdProps<'th'>) => <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,
-  td: ({ ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,
+  th: ({ ...props }: MdProps<'th'>) => <th className="border px-4 py-2 text-left font-bold [[align=center]]:text-center [[align=right]]:text-right" {...props} />,
+  td: ({ ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [[align=center]]:text-center [[align=right]]:text-right" {...props} />,
   a: ({ ...props }: MdProps<'a'>) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />,
   pre: ({ ...props }: MdProps<'pre'>) => <pre {...props} />,
   img: ({ alt = "", ...props }: MdProps<'img'>) => (
@@ -34,7 +34,7 @@ const MemoizedComponents: Partial<Components> = {
       {...props}
     />
   ),
-  hr: ({ ...props }: MdProps<'hr'>) => <hr className="!my-8" {...props} />,
+  hr: ({ ...props }: MdProps<'hr'>) => <hr className="my-8!" {...props} />,
   input: ({ type, checked, className, ...props }: MdProps<'input'>) => {
     if (type === 'checkbox') {
       return <Checkbox checked={!!checked} className={`mr-2 ${className}`} disabled />;
@@ -140,7 +140,7 @@ function MarkdownRendererInner({
     <div
       className={cn(
         "prose prose-neutral dark:prose-invert max-w-none",
-        trimLast && "[&>*:last-child]:!mb-0 [&>*:last-child]:!pb-0"
+        trimLast && "[&>*:last-child]:mb-0! [&>*:last-child]:pb-0!"
       )}
       style={{ fontSize }}
     >
