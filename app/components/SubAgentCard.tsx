@@ -26,6 +26,7 @@ interface SubAgentCardProps {
   active?: boolean;
   isCompleted?: boolean;
   hasError?: boolean;
+  cancelled?: boolean;
   chatId?: string;
 }
 
@@ -351,8 +352,10 @@ function getPreviewText(
   content: ContentBlock[],
   isCompleted: boolean,
   hasError: boolean,
+  cancelled: boolean = false,
 ): string {
   if (hasError) return "Failed";
+  if (cancelled) return "Cancelled";
   if (isCompleted) return "Completed";
 
   for (let i = content.length - 1; i >= 0; i--) {
@@ -510,6 +513,7 @@ export default function SubAgentCard({
   active = false,
   isCompleted = false,
   hasError = false,
+  cancelled = false,
   chatId,
 }: SubAgentCardProps) {
   const { open, close, activeId } = useArtifactPanel();
@@ -531,8 +535,8 @@ export default function SubAgentCard({
     [allPendingApprovals, dismissedToolIds],
   );
   const previewText = useMemo(
-    () => getPreviewText(content, isCompleted, hasError),
-    [content, isCompleted, hasError],
+    () => getPreviewText(content, isCompleted, hasError, cancelled),
+    [content, isCompleted, hasError, cancelled],
   );
 
   useEffect(() => {

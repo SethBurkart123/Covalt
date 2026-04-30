@@ -122,6 +122,7 @@ export type ContentBlock =
       isCompleted: boolean;
       task?: string;
       hasError?: boolean;
+      cancelled?: boolean;
       nodeId?: string;
       nodeType?: string;
       groupByNode?: boolean;

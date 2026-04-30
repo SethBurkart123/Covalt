@@ -23,6 +23,7 @@ interface MemberRunCallProps {
   isLast?: boolean;
   isCompleted?: boolean;
   hasError?: boolean;
+  cancelled?: boolean;
   alwaysOpen?: boolean;
   compact?: boolean;
 }
@@ -36,6 +37,7 @@ export default function MemberRunCall({
   isLast = false,
   isCompleted = false,
   hasError = false,
+  cancelled = false,
   alwaysOpen = false,
   compact = false,
 }: MemberRunCallProps) {
@@ -55,9 +57,11 @@ export default function MemberRunCall({
   );
   const rightLabel = hasError
     ? undefined
-    : activeTools.length > 0
-      ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
-      : undefined;
+    : cancelled
+      ? "Cancelled"
+      : activeTools.length > 0
+        ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
+        : undefined;
   const nameLabel = memberName || "Agent";
   const mode = compact || alwaysOpen ? "compact" : "regular";
 

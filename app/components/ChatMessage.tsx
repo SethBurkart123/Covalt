@@ -232,6 +232,7 @@ function ChatMessage({
                                 active={!block.isCompleted && !!isStreaming}
                                 isCompleted={block.isCompleted}
                                 hasError={block.hasError}
+                                cancelled={block.cancelled}
                                 alwaysOpen
                                 compact
                               />,
@@ -250,6 +251,7 @@ function ChatMessage({
                                 active={!block.isCompleted && !!isStreaming}
                                 isCompleted={block.isCompleted}
                                 hasError={block.hasError}
+                                cancelled={block.cancelled}
                                 chatId={chatId}
                               />,
                             );
