@@ -83,6 +83,7 @@ This codebase values **clarity, composability, and satisfaction**. Take inspirat
 - Context pattern: create context, provider, and hook together in one file
 - Use try-catch with `console.error` logging and guard clauses for early returns
 - Use `cn()` from `@/lib/utils` for conditional classes, `cva()` for variants
+- **No filler comments** - never add comments that just restate what the code does or explain obvious behaviour ("// shallow-clone X so React picks it up", "// loop over items", etc.). Only add a comment if it captures non-obvious intent, a gotcha, or a "why" that the code itself can't express.
 
 ### Naming Conventions
 
