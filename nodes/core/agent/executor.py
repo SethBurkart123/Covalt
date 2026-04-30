@@ -60,6 +60,8 @@ class LinkedAgentArtifact:
 class DelegationContext:
     queue: asyncio.Queue[Any] = field(default_factory=asyncio.Queue)
     active_delegations: int = 0
+    root_run_id: str = ""
+    cancelled: bool = False
 
 
 @dataclass(slots=True)
@@ -243,6 +245,7 @@ class AgentExecutor:
                     )
                     if event.run_id and event.run_id != root_run_id:
                         root_run_id = event.run_id
+                        delegation_context.root_run_id = root_run_id
                         if run_handle is not None and hasattr(run_handle, "set_run_id"):
                             run_handle.set_run_id(root_run_id)
                         yield NodeEvent(
@@ -342,6 +345,7 @@ class AgentExecutor:
                             runtime_event=event,
                             tool_node_lookup=tool_node_lookup,
                             member_fields=member_fields,
+                            owner_run_id=delegation_context.root_run_id or context.run_id,
                         )
                         for ev in resolved_events:
                             yield ev
@@ -625,6 +629,16 @@ def _build_delegation_tool(
                 delegation_context=delegation_context,
                 task=task,
             )
+            if delegation_context.cancelled:
+                # Stop the team run and surface cancellation to agno so the parent
+                # LLM cannot keep generating tokens that interpret an empty result.
+                run_handle = _get_run_handle(context)
+                if run_handle is not None and hasattr(run_handle, "request_cancel"):
+                    try:
+                        run_handle.request_cancel()
+                    except Exception:
+                        pass
+                raise asyncio.CancelledError("Delegation cancelled by user")
             return result
         finally:
             await delegation_context.queue.put(_StreamDone("delegation"))
@@ -778,7 +792,10 @@ async def _run_delegated_agent(
                         **member_fields,
                     )
                 )
-                approval = await _await_approval_response(event.run_id or context.run_id)
+                approval = await _await_approval_response(
+                    event.run_id or context.run_id,
+                    owner_run_id=delegation_context.root_run_id or context.run_id,
+                )
                 await _emit_approval_resolved_events(
                     context=context,
                     approval=approval,
@@ -787,6 +804,7 @@ async def _run_delegated_agent(
                     queue=delegation_context.queue,
                 )
                 if approval.cancelled:
+                    delegation_context.cancelled = True
                     return ""
                 current_stream = handle.continue_run(approval)
                 break
@@ -816,6 +834,7 @@ async def _run_delegated_agent(
                 return "".join(result_parts) if result_parts else (event.content or "")
 
             if isinstance(event, RunCancelled):
+                delegation_context.cancelled = True
                 await delegation_context.queue.put(
                     _agent_event_node(
                         context,
@@ -873,10 +892,14 @@ async def _await_and_resolve_approval(
     runtime_event: ApprovalRequired,
     tool_node_lookup: dict[str, dict[str, str]],
     member_fields: dict[str, Any],
+    owner_run_id: str | None = None,
 ) -> tuple[ApprovalResponse, list[NodeEvent]]:
     tools_info = [_pending_tool_payload(tool) for tool in runtime_event.tools]
 
-    approval = await _await_approval_response(runtime_event.run_id or context.run_id)
+    approval = await _await_approval_response(
+        runtime_event.run_id or context.run_id,
+        owner_run_id=owner_run_id or context.run_id,
+    )
     events: list[NodeEvent] = []
     for tool in tools_info:
         tool_id = str(tool.get("id") or "")
@@ -909,9 +932,15 @@ async def _await_and_resolve_approval(
     return approval, events
 
 
-async def _await_approval_response(run_id: str) -> ApprovalResponse:
+async def _await_approval_response(
+    run_id: str,
+    *,
+    owner_run_id: str | None = None,
+) -> ApprovalResponse:
     approval_event = asyncio.Event()
-    run_control.register_approval_waiter(run_id, approval_event)
+    run_control.register_approval_waiter(
+        run_id, approval_event, owner_run_id=owner_run_id
+    )
     try:
         await asyncio.wait_for(approval_event.wait(), timeout=300)
         if run_control.was_approval_cancelled(run_id):

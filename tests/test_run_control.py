@@ -98,3 +98,17 @@ def test_cancel_approval_waiter_wakes_waiter_and_marks_cancelled() -> None:
 def test_cancel_approval_waiter_without_registered_waiter_is_noop() -> None:
     assert run_control.cancel_approval_waiter("missing-run") is False
     assert run_control.was_approval_cancelled("missing-run") is False
+
+
+def test_cancel_approval_waiter_wakes_subagent_via_owner_run_id() -> None:
+    waiter = asyncio.Event()
+    run_control.register_approval_waiter(
+        "sub-run", waiter, owner_run_id="team-run"
+    )
+
+    assert run_control.cancel_approval_waiter("team-run") is True
+    assert waiter.is_set() is True
+    assert run_control.was_approval_cancelled("sub-run") is True
+
+    run_control.clear_approval("sub-run")
+    assert run_control.was_approval_cancelled("sub-run") is False

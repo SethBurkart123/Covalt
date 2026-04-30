@@ -160,6 +160,10 @@ class ContentAccumulator:
                 member_block["task"] = task
             return member_state, False
 
+        # Flush any buffered parent text/reasoning so chronological order is preserved
+        # when a sub-agent block lands between parent tokens.
+        self.flush_text()
+        self.flush_reasoning(is_completed=False)
         block = {
             "type": "member_run",
             "runId": run_id,
@@ -278,11 +282,15 @@ class ContentAccumulator:
         self,
         *,
         on_completed: Callable[[MemberRunState], None] | None = None,
+        cancelled: bool = False,
     ) -> None:
         for member_state in list(self.member_runs.values()):
             self.flush_member_text(member_state)
             self.flush_member_reasoning(member_state)
-            self.member_block(member_state)["isCompleted"] = True
+            block = self.member_block(member_state)
+            block["isCompleted"] = True
+            if cancelled:
+                block["cancelled"] = True
             if on_completed is not None:
                 on_completed(member_state)
         self.member_runs.clear()

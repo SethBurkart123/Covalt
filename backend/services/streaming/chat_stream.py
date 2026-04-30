@@ -305,6 +305,35 @@ def _deny_pending_approvals(blocks: list[dict[str, Any]]) -> list[dict[str, Any]
     return denied
 
 
+def _fail_inflight_tool_calls(
+    blocks: list[dict[str, Any]],
+    *,
+    message: str = "Cancelled by user",
+) -> list[dict[str, Any]]:
+    """Mark any still-running, non-approval tool calls (recursing into member_runs)
+    as failed with a cancellation result. Returns the affected tool blocks."""
+    affected: list[dict[str, Any]] = []
+    for block in blocks:
+        block_type = block.get("type")
+        if block_type == "tool_call":
+            if block.get("isCompleted"):
+                continue
+            if block.get("requiresApproval") and block.get("approvalStatus") == "pending":
+                continue
+            block["isCompleted"] = True
+            block["failed"] = True
+            block["toolResult"] = message
+            block.pop("renderPlan", None)
+            affected.append(block)
+        elif block_type == "member_run":
+            member_content = block.get("content")
+            if isinstance(member_content, list):
+                affected.extend(
+                    _fail_inflight_tool_calls(member_content, message=message)
+                )
+    return affected
+
+
 async def handle_flow_stream(
     graph_data: dict[str, Any],
     agent: Any,
@@ -440,10 +469,24 @@ async def handle_flow_stream(
         trace_status = "cancelled"
         accumulator.flush_text()
         accumulator.flush_reasoning()
-        accumulator.flush_all_member_runs()
         for tool in _deny_pending_approvals(accumulator.content_blocks):
             emit_chat_event(ch, EVENT_TOOL_APPROVAL_RESOLVED, tool=tool)
+        for tool_block in _fail_inflight_tool_calls(accumulator.content_blocks):
+            emit_chat_event(
+                ch,
+                EVENT_TOOL_CALL_COMPLETED,
+                tool={
+                    "id": tool_block.get("id"),
+                    "toolName": tool_block.get("toolName"),
+                    "toolArgs": tool_block.get("toolArgs") or {},
+                    "toolResult": tool_block.get("toolResult"),
+                    "failed": True,
+                },
+            )
+        accumulator.flush_all_member_runs(cancelled=True)
         await _persist_accumulator(save_content, assistant_msg_id, accumulator, final=True)
+        if not ephemeral:
+            await asyncio.to_thread(_mark_message_complete, assistant_msg_id)
         emit_chat_event(ch, EVENT_RUN_CANCELLED)
         if chat_id:
             await broadcaster.update_stream_status(chat_id, "completed")

@@ -8,6 +8,8 @@ _cancelled_messages: set[str] = set()
 _approval_events: dict[str, asyncio.Event] = {}
 _approval_responses: dict[str, dict[str, Any]] = {}
 _cancelled_approvals: set[str] = set()
+# owner_run_id (flow run id) -> set of approval run_ids registered under it
+_approval_owners: dict[str, set[str]] = {}
 
 
 def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> None:
@@ -39,6 +41,7 @@ def reset_state() -> None:
     _approval_events.clear()
     _approval_responses.clear()
     _cancelled_approvals.clear()
+    _approval_owners.clear()
 
 
 def register_active_run(message_id: str, agent: Any) -> None:
@@ -78,8 +81,15 @@ def clear_early_cancel(message_id: str) -> None:
     _cancelled_messages.discard(message_id)
 
 
-def register_approval_waiter(run_id: str, event: asyncio.Event) -> None:
+def register_approval_waiter(
+    run_id: str,
+    event: asyncio.Event,
+    *,
+    owner_run_id: str | None = None,
+) -> None:
     _approval_events[run_id] = event
+    if owner_run_id:
+        _approval_owners.setdefault(owner_run_id, set()).add(run_id)
 
 
 def get_approval_waiter(run_id: str) -> asyncio.Event | None:
@@ -111,16 +121,24 @@ def clear_approval(run_id: str) -> None:
     _approval_events.pop(run_id, None)
     _approval_responses.pop(run_id, None)
     _cancelled_approvals.discard(run_id)
+    for waiters in _approval_owners.values():
+        waiters.discard(run_id)
 
 
 def cancel_approval_waiter(run_id: str) -> bool:
-    """Wake an HITL approval wait with a cancellation intent. Returns True if a waiter was signalled."""
-    event = _approval_events.get(run_id)
-    if event is None:
-        return False
-    _cancelled_approvals.add(run_id)
-    event.set()
-    return True
+    """Wake every HITL approval waiter associated with `run_id` (treating it as either
+    the approval run id itself or the owning flow/team run id). Returns True if at least
+    one waiter was signalled."""
+    targets = {run_id} | _approval_owners.get(run_id, set())
+    woke_any = False
+    for target in targets:
+        event = _approval_events.get(target)
+        if event is None:
+            continue
+        _cancelled_approvals.add(target)
+        event.set()
+        woke_any = True
+    return woke_any
 
 
 def was_approval_cancelled(run_id: str) -> bool:
