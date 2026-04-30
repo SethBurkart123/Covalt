@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { defineConfig, devices } from '@playwright/test';
 import { resolvePlaywrightServerMode } from './tests/playwright/server-mode';
 
@@ -9,8 +12,14 @@ const PLAYWRIGHT_SERVER_MODE = resolvePlaywrightServerMode({
 });
 const SHOULD_REUSE_EXISTING_SERVER = PLAYWRIGHT_SERVER_MODE === 'reuse';
 
+const USER_DATA_DIR =
+  process.env.PLAYWRIGHT_USER_DATA_DIR ??
+  mkdtempSync(join(tmpdir(), 'covalt-e2e-playwright-'));
+process.env.PLAYWRIGHT_USER_DATA_DIR = USER_DATA_DIR;
+
 export default defineConfig({
   globalSetup: './tests/playwright/global-setup.ts',
+  globalTeardown: './tests/playwright/global-teardown.ts',
   testDir: './tests/playwright',
   testMatch: '**/*.e2e.ts',
   fullyParallel: false,
@@ -38,6 +47,7 @@ export default defineConfig({
     {
       command: 'COVALT_BACKEND_PORT=3100 COVALT_DEV_MODE=1 COVALT_GENERATE_TS=0 COVALT_E2E_TESTS=1 uv run main.py',
       url: BACKEND_URL,
+      env: { USER_DATA_DIR },
       reuseExistingServer: SHOULD_REUSE_EXISTING_SERVER,
       timeout: 180_000,
       stdout: 'pipe',

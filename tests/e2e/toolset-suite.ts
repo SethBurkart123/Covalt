@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const BASE_URL = "http://127.0.0.1:8123";
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -187,6 +190,7 @@ async function runTest(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  const userDataDir = mkdtempSync(join(tmpdir(), "covalt-e2e-toolset-"));
   const backend = Bun.spawn(["uv", "run", "main.py"], {
     cwd: process.cwd(),
     env: {
@@ -194,6 +198,7 @@ async function run(): Promise<void> {
       COVALT_BACKEND_PORT: "8123",
       COVALT_E2E_TESTS: "1",
       PYTHONUNBUFFERED: "1",
+      USER_DATA_DIR: userDataDir,
     },
     stdout: "inherit",
     stderr: "inherit",
@@ -304,6 +309,9 @@ async function run(): Promise<void> {
   } finally {
     backend.kill("SIGTERM");
     await backend.exited;
+    try {
+      rmSync(userDataDir, { recursive: true, force: true });
+    } catch {}
     if (!success) {
       process.exitCode = 1;
     }
