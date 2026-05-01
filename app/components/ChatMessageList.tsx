@@ -1,6 +1,12 @@
-import { memo, useEffect, useRef, useCallback, type RefObject } from "react";
+import { memo, Profiler, useEffect, useRef, useCallback, type RefObject } from "react";
 import { useMotionValue, useSpring, type SpringOptions } from "motion/react";
 import ChatMessage from "./ChatMessage";
+import {
+  isProfilingEnabled,
+  mark as profilerMark,
+  recordRender,
+  recordRowCommit,
+} from "@/lib/services/chat-profiler";
 import {
   Message,
   MessageSibling,
@@ -77,6 +83,10 @@ const MessageRow = memo(
       },
       [onNavigate, message.id],
     );
+
+    useEffect(() => {
+      recordRowCommit(message.id);
+    });
 
     return (
       <ChatMessage
@@ -327,7 +337,11 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
     -1,
   );
 
-  return (
+  if (isProfilingEnabled() && filteredMessages.length > 0) {
+    profilerMark(`render(${filteredMessages.length})`);
+  }
+
+  const tree = (
     <>
       {filteredMessages.map((m, index) => {
         const siblings = messageSiblings[m.id] || [];
@@ -379,6 +393,18 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
       })}
       <div ref={endOfMessagesRef} className="h-8" />
     </>
+  );
+
+  if (!isProfilingEnabled()) return tree;
+  return (
+    <Profiler
+      id="ChatMessageList"
+      onRender={(_id, phase, actualMs) =>
+        recordRender(phase === "mount" ? "mount" : "update", actualMs)
+      }
+    >
+      {tree}
+    </Profiler>
   );
 };
 

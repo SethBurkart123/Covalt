@@ -1,4 +1,5 @@
-import { memo, useMemo, Suspense, useState, isValidElement } from 'react';
+import { memo, Profiler, useMemo, Suspense, useState, isValidElement } from 'react';
+import { isProfilingEnabled } from '@/lib/services/chat-profiler';
 import type { ReactElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -136,7 +137,7 @@ function MarkdownRendererInner({
     []
   );
   
-  return (
+  const inner = (
     <div
       className={cn(
         "prose prose-neutral dark:prose-invert max-w-none",
@@ -144,14 +145,30 @@ function MarkdownRendererInner({
       )}
       style={{ fontSize }}
     >
-      <ReactMarkdown 
-        remarkPlugins={[remarkGfm, remarkMath]} 
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={components}
       >
         {content}
       </ReactMarkdown>
     </div>
+  );
+
+  if (!isProfilingEnabled()) return inner;
+  return (
+    <Profiler
+      id="Markdown"
+      onRender={(_id, phase, actualMs) => {
+        if (actualMs > 5) {
+          console.log(
+            `[chat-profiler] Markdown ${phase} ${actualMs.toFixed(1)}ms (len=${content.length})`,
+          );
+        }
+      }}
+    >
+      {inner}
+    </Profiler>
   );
 }
 
