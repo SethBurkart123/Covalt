@@ -11,7 +11,6 @@ import {
   Star,
 } from "lucide-react";
 import clsx from "clsx";
-import { SidebarMenuItem } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,8 +58,7 @@ function ChatItemInner({
   onToggleStar,
 }: ChatItemProps) {
   return (
-    <SidebarMenuItem>
-      <div className="group/chat relative flex w-full items-center">
+    <div className="group/chat relative flex w-full items-center">
         {isEditing ? (
           <input
             type="text"
@@ -162,8 +160,7 @@ function ChatItemInner({
             </div>
           </>
         )}
-      </div>
-    </SidebarMenuItem>
+    </div>
   );
 }
 

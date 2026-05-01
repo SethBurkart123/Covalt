@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import type { ChatContextType, AllChatsData } from "@/lib/types/chat";
+import type { ChatContextType, AllChatsData, ChatData } from "@/lib/types/chat";
+import type { ChatPageCursor } from "@/python/api";
 import { api } from "@/lib/services/api";
 import { subscribeBackendBaseUrl } from "@/lib/services/backend-url";
 import { useChatOperations } from "@/lib/hooks/useChatOperations";
@@ -10,6 +11,16 @@ import { useModels } from "@/lib/hooks/useModels";
 import { useAgents } from "@/lib/hooks/useAgents";
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+const PAGE_SIZE = 50;
+
+function indexChats(list: ChatData[]): Record<string, ChatData> {
+  const out: Record<string, ChatData> = {};
+  for (const c of list) {
+    if (c.id) out[c.id] = c;
+  }
+  return out;
+}
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams();
@@ -39,33 +50,56 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setCurrentChatId: setCurrentChatIdOptimistic,
   });
 
+  const [nextCursor, setNextCursor] = useState<ChatPageCursor | null>(null);
+  const [hasMoreChats, setHasMoreChats] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const loadFirstPage = useCallback(async () => {
+    const page = await api.listChatsPage(PAGE_SIZE, null, true);
+    setAllChatsData({
+      chats: { ...indexChats(page.starred), ...indexChats(page.chats) },
+    });
+    setNextCursor(page.nextCursor ?? null);
+    setHasMoreChats(page.hasMore);
+    setIsLoaded(true);
+  }, []);
+
+  const loadMoreChats = useCallback(async () => {
+    if (isLoadingMore || !nextCursor) return;
+    setIsLoadingMore(true);
+    try {
+      const page = await api.listChatsPage(PAGE_SIZE, nextCursor, false);
+      setAllChatsData((prev) => ({
+        chats: { ...prev.chats, ...indexChats(page.chats) },
+      }));
+      setNextCursor(page.nextCursor ?? null);
+      setHasMoreChats(page.hasMore);
+    } catch (error) {
+      console.error("Failed to load more chats:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [nextCursor, isLoadingMore]);
+
   useEffect(() => {
     let cancelled = false;
-
-    const loadChats = async () => {
+    const run = async () => {
       try {
-        const data = await api.getAllChats();
-        if (!cancelled) {
-          setAllChatsData(data);
-          setIsLoaded(true);
-        }
+        if (!cancelled) await loadFirstPage();
       } catch (error) {
         console.error("Failed to load chats:", error);
       }
     };
-
-    loadChats();
-
+    run();
     const unsubscribe = subscribeBackendBaseUrl(() => {
       if (cancelled) return;
-      loadChats();
+      run();
     });
-
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [loadFirstPage]);
 
   useEffect(() => {
     const chatIdFromUrl = searchParams.get("chatId") || "";
@@ -98,11 +132,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const refreshChats = useCallback(async () => {
     try {
-      setAllChatsData(await api.getAllChats());
+      await loadFirstPage();
     } catch (error) {
       console.error("Failed to refresh chats:", error);
     }
-  }, []);
+  }, [loadFirstPage]);
 
   const value = useMemo<ChatContextType>(() => ({
     chatId: currentChatId,
@@ -116,6 +150,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     renameChat: operations.renameChat,
     toggleStarChat: operations.toggleStarChat,
     refreshChats,
+    loadMoreChats,
+    hasMoreChats,
+    isLoadingMoreChats: isLoadingMore,
     selectedModel,
     setSelectedModel,
     models,
@@ -130,6 +167,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     allChatsData.chats,
     operations,
     refreshChats,
+    loadMoreChats,
+    hasMoreChats,
+    isLoadingMore,
     selectedModel,
     models,
     refreshModels,

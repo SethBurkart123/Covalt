@@ -6,9 +6,11 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
+import type { ChatPageCursor, ChatPageResponse } from "@/python/api";
 import {
   initBridge,
   getAllChats,
+  listChatsPage,
   getChat,
   createChat,
   deleteChat,
@@ -84,6 +86,13 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
 
 export const api = {
   getAllChats: (): Promise<AllChatsData> => getAllChats(),
+
+  listChatsPage: (
+    limit: number,
+    cursor: ChatPageCursor | null,
+    includeStarred: boolean,
+  ): Promise<ChatPageResponse> =>
+    listChatsPage({ body: { limit, cursor: cursor ?? undefined, includeStarred } }),
 
   getChat: (chatId: string): Promise<{ id: string; messages: Message[] }> =>
     getChat({ body: { id: chatId } }) as Promise<{

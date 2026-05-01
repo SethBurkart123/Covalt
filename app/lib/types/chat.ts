@@ -194,6 +194,9 @@ export interface ChatContextType {
   renameChat: (id: string, newTitle: string) => Promise<void>;
   toggleStarChat: (id: string) => Promise<void>;
   refreshChats: () => Promise<void>;
+  loadMoreChats: () => Promise<void>;
+  hasMoreChats: boolean;
+  isLoadingMoreChats: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: ModelInfo[];
