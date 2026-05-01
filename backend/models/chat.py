@@ -100,6 +100,24 @@ class AllChatsData(BaseModel):
     chats: dict[str, ChatData]
 
 
+class ChatPageCursor(BaseModel):
+    updatedAt: str
+    id: str
+
+
+class ListChatsPageInput(BaseModel):
+    limit: int = 50
+    cursor: ChatPageCursor | None = None
+    includeStarred: bool = False
+
+
+class ChatPageResponse(BaseModel):
+    chats: list[ChatData]
+    starred: list[ChatData] = Field(default_factory=list)
+    nextCursor: ChatPageCursor | None = None
+    hasMore: bool = False
+
+
 class AgentConfig(BaseModel):
     provider: str = "openai"
     modelId: str = "gpt-4o-mini"

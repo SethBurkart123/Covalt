@@ -20,6 +20,42 @@ def list_chats(sess: Session) -> list[Chat]:
     return list(sess.scalars(stmt))
 
 
+def list_starred_chats(sess: Session) -> list[Chat]:
+    stmt = (
+        select(Chat)
+        .where(Chat.starred.is_(True))
+        .order_by(Chat.updatedAt.desc().nulls_last(), Chat.id.desc())
+    )
+    return list(sess.scalars(stmt))
+
+
+def list_chats_page(
+    sess: Session,
+    *,
+    limit: int,
+    cursor_updated_at: str | None = None,
+    cursor_id: str | None = None,
+) -> tuple[list[Chat], bool]:
+    """Cursor-paginated, non-starred chats ordered by (updatedAt DESC, id DESC).
+    Returns (rows, has_more)."""
+    stmt = select(Chat).where(Chat.starred.is_(False))
+    if cursor_updated_at is not None and cursor_id is not None:
+        stmt = stmt.where(
+            sqlalchemy.or_(
+                Chat.updatedAt < cursor_updated_at,
+                sqlalchemy.and_(
+                    Chat.updatedAt == cursor_updated_at, Chat.id < cursor_id
+                ),
+            )
+        )
+    stmt = stmt.order_by(
+        Chat.updatedAt.desc().nulls_last(), Chat.id.desc()
+    ).limit(limit + 1)
+    rows = list(sess.scalars(stmt))
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
+
+
 def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.active_leaf_message_id:

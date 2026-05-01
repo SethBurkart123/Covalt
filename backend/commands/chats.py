@@ -16,8 +16,11 @@ from ..models.chat import (
     ChatAgentConfigResponse,
     ChatData,
     ChatId,
+    ChatPageCursor,
+    ChatPageResponse,
     CreateChatInput,
     ExecutionEventItem,
+    ListChatsPageInput,
     MCPToolsetInfo,
     MessageExecutionTraceResponse,
     MessageId,
@@ -33,22 +36,51 @@ from ..services.tools.tool_registry import get_tool_registry
 from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 
 
+def _row_to_chat_data(r: Any) -> ChatData:
+    return ChatData(
+        id=r.id,
+        title=r.title,
+        model=r.model,
+        createdAt=r.createdAt,
+        updatedAt=r.updatedAt,
+        starred=r.starred,
+        messages=[],
+    )
+
+
 @command
 async def get_all_chats() -> AllChatsData:
     with db.db_session() as sess:
-        chats = {
-            r.id: ChatData(
-                id=r.id,
-                title=r.title,
-                model=r.model,
-                createdAt=r.createdAt,
-                updatedAt=r.updatedAt,
-                starred=r.starred,
-                messages=[],
-            )
-            for r in db.list_chats(sess)
-        }
+        chats = {r.id: _row_to_chat_data(r) for r in db.list_chats(sess)}
     return AllChatsData(chats=chats)
+
+
+@command
+async def list_chats_page(body: ListChatsPageInput) -> ChatPageResponse:
+    cursor = body.cursor
+    with db.db_session() as sess:
+        rows, has_more = db.list_chats_page(
+            sess,
+            limit=max(1, min(body.limit, 200)),
+            cursor_updated_at=cursor.updatedAt if cursor else None,
+            cursor_id=cursor.id if cursor else None,
+        )
+        starred = (
+            [_row_to_chat_data(r) for r in db.list_starred_chats(sess)]
+            if body.includeStarred
+            else []
+        )
+    next_cursor = (
+        ChatPageCursor(updatedAt=rows[-1].updatedAt or "", id=rows[-1].id)
+        if has_more and rows
+        else None
+    )
+    return ChatPageResponse(
+        chats=[_row_to_chat_data(r) for r in rows],
+        starred=starred,
+        nextCursor=next_cursor,
+        hasMore=has_more,
+    )
 
 
 @command
