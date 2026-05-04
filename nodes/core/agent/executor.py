@@ -33,9 +33,9 @@ from backend.runtime import (
     ToolDecision,
     get_adapter,
 )
-from backend.services.streaming import run_control
 from backend.services.models.model_factory import get_model
 from backend.services.models.model_schema_cache import get_cached_model_metadata
+from backend.services.streaming import run_control
 from backend.services.tools.tool_registry import get_original_tool_name
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 
@@ -1093,9 +1093,10 @@ def _pending_tool_payload(tool: Any) -> dict[str, Any]:
 def _tool_payload_from_runtime_call(tool: Any) -> dict[str, Any] | None:
     if tool is None:
         return None
+    tool_name = get_original_tool_name(tool.name)
     return {
         "id": tool.id,
-        "toolName": tool.name,
+        "toolName": tool_name,
         "toolArgs": dict(tool.arguments or {}),
         "isCompleted": False,
         **({"providerData": tool.provider_data} if tool.provider_data else {}),
@@ -1105,9 +1106,10 @@ def _tool_payload_from_runtime_call(tool: Any) -> dict[str, Any] | None:
 def _tool_payload_from_runtime_result(tool: Any) -> dict[str, Any] | None:
     if tool is None:
         return None
+    tool_name = get_original_tool_name(tool.name)
     payload = {
         "id": tool.id,
-        "toolName": tool.name,
+        "toolName": tool_name,
         "toolResult": tool.result,
         "failed": bool(tool.failed),
         **({"providerData": tool.provider_data} if tool.provider_data else {}),
