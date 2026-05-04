@@ -84,6 +84,10 @@
   }
 }
 
+.prose.markdown-content .katex-display {
+  @apply max-w-full overflow-x-auto overflow-y-hidden pb-0.5;
+}
+
 .prose.markdown-content .markdown-code-block {
   @apply relative my-4 text-[#654735];
 }
