@@ -136,7 +136,13 @@ export function useChatInput(
     [selectedModel],
   );
 
-  const { triggerReload, reloadMessages } = useChatSnapshot({
+  const {
+    triggerReload,
+    reloadMessages,
+    loadMoreBefore,
+    hasMoreBefore,
+    isLoadingMoreBefore,
+  } = useChatSnapshot({
     chatId,
     getRunState,
     onPhaseChange,
@@ -194,6 +200,9 @@ export function useChatInput(
     messages,
     canSendMessage,
     triggerReload,
+    loadMoreBefore,
+    hasMoreBefore,
+    isLoadingMoreBefore,
     setMessages,
     handleStop,
     handleContinue,

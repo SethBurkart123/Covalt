@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CHAT_MESSAGES_PAGE_SIZE } from "@/lib/chat-constants";
 import { api } from "@/lib/services/api";
 import {
   clearPrefetchedChat,
@@ -17,8 +18,32 @@ import type {
   UseChatInputState,
 } from "@/lib/hooks/use-chat-input.types";
 
+type PageInfo = { hasMoreBefore?: boolean; nextBeforeCursor?: string | null };
+
+function syncPrefetchCache(
+  chatId: string,
+  messages: Message[],
+  siblings: Record<string, MessageSibling[]>,
+  page: PageInfo,
+) {
+  const cached = getPrefetchedChat(chatId);
+  setPrefetchedChat(chatId, {
+    ...(cached ?? { fetchedAt: 0 }),
+    messages,
+    siblings: { ...(cached?.siblings || {}), ...siblings },
+    hasMoreBefore: page.hasMoreBefore ?? false,
+    nextBeforeCursor: page.nextBeforeCursor ?? null,
+    fetchedAt: Date.now(),
+  });
+}
+
+function prependOlderMessages(older: Message[], existing: Message[]): Message[] {
+  const existingIds = new Set(existing.map((m) => m.id));
+  return [...older.filter((m) => !existingIds.has(m.id)), ...existing];
+}
+
 interface UseChatSnapshotParams {
-  chatId: string;
+  chatId: string | null;
   getRunState: (chatId: string) => RunState | undefined;
   onPhaseChange: (
     callback: (chatId: string, phase: RunPhase, prevPhase: RunPhase) => void,
@@ -33,6 +58,9 @@ interface UseChatSnapshotParams {
 interface UseChatSnapshotResult {
   triggerReload: () => void;
   reloadMessages: ReloadMessages;
+  loadMoreBefore: () => Promise<void>;
+  hasMoreBefore: boolean;
+  isLoadingMoreBefore: boolean;
 }
 
 export function useChatSnapshot({
@@ -45,36 +73,43 @@ export function useChatSnapshot({
   const { loadTokenRef, currentChatIdRef, prevChatIdRef } = refs;
   const { setBaseMessages, setMessageSiblings } = state;
   const [reloadTrigger, setReloadTrigger] = useState(0);
+  const [beforeCursor, setBeforeCursor] = useState<string | null>(null);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [isLoadingMoreBefore, setIsLoadingMoreBefore] = useState(false);
 
   const getRunStateRef = useRef(getRunState);
   getRunStateRef.current = getRunState;
 
   const applySnapshot = useCallback(
-    (messages: Message[], siblings: Record<string, MessageSibling[]>) => {
+    (
+      messages: Message[],
+      siblings: Record<string, MessageSibling[]>,
+      page?: { hasMoreBefore?: boolean; nextBeforeCursor?: string | null },
+    ) => {
       setBaseMessages(messages);
       setMessageSiblings(siblings);
+      setHasMoreBefore(page?.hasMoreBefore ?? false);
+      setBeforeCursor(page?.nextBeforeCursor ?? null);
     },
     [setBaseMessages, setMessageSiblings],
   );
 
   const fetchSnapshot = useCallback(async (id: string) => {
-    const fullChat = await api.getChat(id);
-    const messages = fullChat.messages || [];
+    const page = await api.getChatMessagesPage(id, CHAT_MESSAGES_PAGE_SIZE);
+    const messages = (page.messages || []) as Message[];
     const messageIds = Array.from(new Set(messages.map((msg) => msg.id)));
     const siblings: Record<string, MessageSibling[]> =
       messageIds.length > 0
         ? await api.getMessageSiblingsBatch(id, messageIds)
         : {};
 
-    const cached = getPrefetchedChat(id);
-    setPrefetchedChat(id, {
-      ...(cached ?? { fetchedAt: 0 }),
+    syncPrefetchCache(id, messages, siblings, page);
+    return {
       messages,
       siblings,
-      fetchedAt: Date.now(),
-    });
-
-    return { messages, siblings };
+      hasMoreBefore: page.hasMoreBefore,
+      nextBeforeCursor: page.nextBeforeCursor,
+    };
   }, []);
 
   const reloadMessages = useCallback<ReloadMessages>(
@@ -84,99 +119,142 @@ export function useChatSnapshot({
       }
 
       const loadId = ++loadTokenRef.current;
-      const { messages, siblings } = await fetchSnapshot(id);
+      const page = await fetchSnapshot(id);
       if (loadTokenRef.current !== loadId || currentChatIdRef.current !== id)
         return;
-      applySnapshot(messages, siblings);
+      applySnapshot(page.messages, page.siblings, page);
     },
     [applySnapshot, currentChatIdRef, fetchSnapshot, loadTokenRef],
   );
 
+  const loadMoreBefore = useCallback(async () => {
+    if (!chatId || !beforeCursor || isLoadingMoreBefore || !hasMoreBefore) return;
+
+    const requestedChatId = chatId;
+    const isStale = () => currentChatIdRef.current !== requestedChatId;
+    setIsLoadingMoreBefore(true);
+    try {
+      const page = await api.getChatMessagesPage(
+        requestedChatId,
+        CHAT_MESSAGES_PAGE_SIZE,
+        beforeCursor,
+      );
+      const olderMessages = (page.messages || []) as Message[];
+      const messageIds = Array.from(new Set(olderMessages.map((msg) => msg.id)));
+      const olderSiblings: Record<string, MessageSibling[]> =
+        messageIds.length > 0
+          ? await api.getMessageSiblingsBatch(requestedChatId, messageIds)
+          : {};
+
+      if (isStale()) return;
+
+      setBaseMessages((prev) => {
+        const merged = prependOlderMessages(olderMessages, prev);
+        syncPrefetchCache(requestedChatId, merged, olderSiblings, page);
+        return merged;
+      });
+      setMessageSiblings((prev) => ({ ...prev, ...olderSiblings }));
+      setHasMoreBefore(page.hasMoreBefore ?? false);
+      setBeforeCursor(page.nextBeforeCursor ?? null);
+    } catch (error) {
+      if (!isStale()) console.error("Failed to load older messages:", error);
+    } finally {
+      if (!isStale()) setIsLoadingMoreBefore(false);
+    }
+  }, [
+    beforeCursor,
+    chatId,
+    currentChatIdRef,
+    hasMoreBefore,
+    isLoadingMoreBefore,
+    setBaseMessages,
+    setMessageSiblings,
+  ]);
+
   currentChatIdRef.current = chatId;
+
+  type StaleFn = (id: string) => boolean;
+
+  const loadForActiveRun = (id: string, isStale: StaleFn) => {
+    const prefetched = getPrefetchedChat(id);
+    applySnapshot(
+      prefetched?.messages?.length ? prefetched.messages : [],
+      prefetched?.siblings || {},
+      prefetched,
+    );
+    fetchSnapshot(id)
+      .then((page) => {
+        if (isStale(id)) return;
+        applySnapshot(page.messages, page.siblings, page);
+      })
+      .catch((err) => {
+        if (isStale(id)) return;
+        console.error("Failed to load chat messages:", err);
+      });
+  };
+
+  const loadFromFreshPrefetch = (
+    id: string,
+    isStale: StaleFn,
+    prefetched: NonNullable<ReturnType<typeof getPrefetchedChat>>,
+  ) => {
+    applySnapshot(prefetched.messages!, prefetched.siblings || {}, prefetched);
+    if (prefetched.siblings) return;
+
+    const inflightPromise = getInflightPrefetch(id);
+    const settle = inflightPromise ?? fetchSnapshot(id);
+    settle
+      .then((data) => {
+        if (isStale(id)) return;
+        applySnapshot(
+          data.messages || prefetched.messages!,
+          data.siblings || {},
+          data,
+        );
+      })
+      .catch(() => {});
+  };
+
+  const loadWithFetch = (
+    id: string,
+    isStale: StaleFn,
+    prefetched: ReturnType<typeof getPrefetchedChat>,
+  ) => {
+    if (prefetched?.messages?.length) {
+      applySnapshot(prefetched.messages, prefetched.siblings || {}, prefetched);
+    }
+    fetchSnapshot(id)
+      .then((page) => {
+        if (isStale(id)) return;
+        applySnapshot(page.messages, page.siblings, page);
+      })
+      .catch((err) => {
+        if (isStale(id)) return;
+        console.error("Failed to load chat messages:", err);
+        if (!prefetched?.messages?.length) applySnapshot([], {});
+      });
+  };
 
   useEffect(() => {
     prevChatIdRef.current = chatId;
-
     if (!chatId) {
       applySnapshot([], {});
       return;
     }
 
+    setIsLoadingMoreBefore(false);
     const loadId = ++loadTokenRef.current;
     const isStale = (id: string) =>
       loadTokenRef.current !== loadId || currentChatIdRef.current !== id;
 
     const runState = getRunStateRef.current(chatId);
-    const hasActiveRun = runState ? isActivePhase(runState.phase) : false;
-
-    if (hasActiveRun) {
-      const prefetchedForActive = getPrefetchedChat(chatId);
-      if (prefetchedForActive?.messages?.length) {
-        applySnapshot(
-          prefetchedForActive.messages,
-          prefetchedForActive.siblings || {},
-        );
-      } else {
-        applySnapshot([], {});
-      }
-      fetchSnapshot(chatId)
-        .then(({ messages, siblings }) => {
-          if (isStale(chatId)) return;
-          applySnapshot(messages, siblings);
-        })
-        .catch((err) => {
-          if (isStale(chatId)) return;
-          console.error("Failed to load chat messages:", err);
-        });
-      return;
-    }
+    if (runState && isActivePhase(runState.phase)) return loadForActiveRun(chatId, isStale);
 
     const prefetched = getPrefetchedChat(chatId);
-    const isFresh = prefetched
-      ? Date.now() - prefetched.fetchedAt < 5_000
-      : false;
+    const isFresh = prefetched ? Date.now() - prefetched.fetchedAt < 5_000 : false;
 
-    if (isFresh && prefetched?.messages?.length) {
-      applySnapshot(prefetched.messages, prefetched.siblings || {});
-
-      if (prefetched.siblings) return;
-
-      const inflightPromise = getInflightPrefetch(chatId);
-      if (inflightPromise) {
-        inflightPromise
-          .then((data) => {
-            if (isStale(chatId)) return;
-            applySnapshot(
-              data.messages || prefetched.messages!,
-              data.siblings || {},
-            );
-          })
-          .catch(() => {});
-      } else {
-        fetchSnapshot(chatId)
-          .then(({ messages, siblings }) => {
-            if (isStale(chatId)) return;
-            applySnapshot(messages, siblings);
-          })
-          .catch(() => {});
-      }
-      return;
-    }
-
-    if (prefetched?.messages?.length) {
-      applySnapshot(prefetched.messages, prefetched.siblings || {});
-    }
-
-    fetchSnapshot(chatId)
-      .then(({ messages, siblings }) => {
-        if (isStale(chatId)) return;
-        applySnapshot(messages, siblings);
-      })
-      .catch((err) => {
-        if (isStale(chatId)) return;
-        console.error("Failed to load chat messages:", err);
-        if (!prefetched?.messages?.length) applySnapshot([], {});
-      });
+    if (isFresh && prefetched?.messages?.length) return loadFromFreshPrefetch(chatId, isStale, prefetched);
+    loadWithFetch(chatId, isStale, prefetched);
   }, [
     applySnapshot,
     chatId,
@@ -236,5 +314,11 @@ export function useChatSnapshot({
     setReloadTrigger((n) => n + 1);
   }, []);
 
-  return { triggerReload, reloadMessages };
+  return {
+    triggerReload,
+    reloadMessages,
+    loadMoreBefore,
+    hasMoreBefore,
+    isLoadingMoreBefore,
+  };
 }

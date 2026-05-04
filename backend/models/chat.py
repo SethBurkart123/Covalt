@@ -84,6 +84,10 @@ class ChatMessage(BaseModel):
     createdAt: str | None = None
     toolCalls: list[ToolCall] | None = None
     attachments: list[Attachment] | None = None
+    parentMessageId: str | None = None
+    isComplete: bool = True
+    sequence: int = 1
+    modelUsed: str | None = None
 
 
 class ChatData(BaseModel):
@@ -116,6 +120,19 @@ class ChatPageResponse(BaseModel):
     starred: list[ChatData] = Field(default_factory=list)
     nextCursor: ChatPageCursor | None = None
     hasMore: bool = False
+
+
+class ChatMessagesPageInput(BaseModel):
+    chatId: str
+    limit: int = 20
+    beforeMessageId: str | None = None
+
+
+class ChatMessagesPageResponse(BaseModel):
+    id: str
+    messages: list[ChatMessage]
+    nextBeforeCursor: str | None = None
+    hasMoreBefore: bool = False
 
 
 class AgentConfig(BaseModel):

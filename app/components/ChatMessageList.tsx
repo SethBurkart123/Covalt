@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useCallback, type RefObject } from "react";
+import { memo, useEffect, useRef, useCallback, useLayoutEffect, type RefObject } from "react";
 import { useMotionValue, useSpring, type SpringOptions } from "motion/react";
 import ChatMessage from "./ChatMessage";
 import {
@@ -23,6 +23,9 @@ interface ChatMessageListProps {
   onEditSubmit?: () => void;
   onNavigate?: (messageId: string, siblingId: string) => void;
   actionLoading?: string | null;
+  hasMoreBefore?: boolean;
+  isLoadingMoreBefore?: boolean;
+  onLoadMoreBefore?: () => Promise<void> | void;
   editingAttachments?: (Attachment | PendingAttachment)[];
   onAddEditingAttachment?: (file: File) => void;
   onRemoveEditingAttachment?: (id: string) => void;
@@ -134,6 +137,9 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   onEditSubmit,
   onNavigate,
   actionLoading,
+  hasMoreBefore = false,
+  isLoadingMoreBefore = false,
+  onLoadMoreBefore,
   editingAttachments = [],
   onAddEditingAttachment,
   onRemoveEditingAttachment,
@@ -143,6 +149,7 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   onScrollToBottomRef,
   springConfig,
 }) => {
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const userScrolledAwayRef = useRef(false);
@@ -151,6 +158,9 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
   const isDrivingScrollRef = useRef(false);
   const prevChatIdRef = useRef<string | undefined>(chatId);
   const hasDoneInitialScrollRef = useRef(false);
+  const pendingPrependScrollRef = useRef<{ height: number; top: number } | null>(
+    null,
+  );
 
   const scrollTarget = useMotionValue(0);
   const springScroll = useSpring(scrollTarget, {
@@ -210,6 +220,42 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
       onScrollToBottomRef.current = scrollToBottom;
     }
   }, [onScrollToBottomRef, scrollToBottom]);
+
+  useEffect(() => {
+    if (!hasMoreBefore || !onLoadMoreBefore) return;
+
+    const target = loadMoreRef.current;
+    const scrollContainer = getScrollContainer();
+    if (!target || !scrollContainer) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting || isLoadingMoreBefore) return;
+        pendingPrependScrollRef.current = {
+          height: scrollContainer.scrollHeight,
+          top: scrollContainer.scrollTop,
+        };
+        void onLoadMoreBefore();
+      },
+      { root: scrollContainer, rootMargin: "50% 0px 0px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [getScrollContainer, hasMoreBefore, isLoadingMoreBefore, onLoadMoreBefore]);
+
+  useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current;
+    if (!pending || isLoadingMoreBefore) return;
+
+    const sc = getScrollContainer();
+    if (!sc) return;
+
+    const heightDelta = sc.scrollHeight - pending.height;
+    sc.scrollTop = pending.top + heightDelta;
+    springScroll.jump(sc.scrollTop);
+    pendingPrependScrollRef.current = null;
+  }, [messages.length, isLoadingMoreBefore, getScrollContainer, springScroll]);
 
   useEffect(() => {
     const bottomElement = endOfMessagesRef.current;
@@ -285,6 +331,8 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
     prevMessagesLengthRef.current = messages.length;
 
+    if (pendingPrependScrollRef.current) return;
+
     if (chatSwitched) {
       userScrolledAwayRef.current = false;
       isAtBottomRef.current = true;
@@ -329,6 +377,14 @@ const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
   return (
     <>
+      {hasMoreBefore && onLoadMoreBefore && (
+        <div ref={loadMoreRef} className="h-px" />
+      )}
+      {isLoadingMoreBefore && (
+        <div className="py-3 text-center text-xs text-muted-foreground">
+          Loading older messages…
+        </div>
+      )}
       {filteredMessages.map((m, index) => {
         const siblings = messageSiblings[m.id] || [];
         const isStreamingMessage =

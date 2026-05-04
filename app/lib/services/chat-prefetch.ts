@@ -1,5 +1,6 @@
 "use client";
 
+import { CHAT_MESSAGES_PAGE_SIZE } from "@/lib/chat-constants";
 import { api } from "@/lib/services/api";
 import type { Message, MessageSibling } from "@/lib/types/chat";
 import { getChatAgentConfig, type ChatAgentConfigResponse } from "@/python/api";
@@ -8,6 +9,8 @@ interface PrefetchedChatData {
   messages?: Message[];
   siblings?: Record<string, MessageSibling[]>;
   agentConfig?: ChatAgentConfigResponse;
+  hasMoreBefore?: boolean;
+  nextBeforeCursor?: string | null;
   fetchedAt: number;
 }
 
@@ -51,12 +54,16 @@ export async function prefetchChat(chatId: string): Promise<PrefetchedChatData |
   if (existing) return existing;
 
   const promise = (async () => {
-    const chat = await api.getChat(chatId);
-    const messages = chat.messages || [];
+    const page = await api.getChatMessagesPage(chatId, CHAT_MESSAGES_PAGE_SIZE);
+    const messages = (page.messages || []) as Message[];
     const messageIds = Array.from(new Set(messages.map((m) => m.id)));
     const fetchedAt = Date.now();
+    const pageInfo = {
+      hasMoreBefore: page.hasMoreBefore ?? false,
+      nextBeforeCursor: page.nextBeforeCursor ?? null,
+    };
 
-    setCache(chatId, { messages, fetchedAt });
+    setCache(chatId, { messages, ...pageInfo, fetchedAt });
 
     const [siblings, agentConfig] = await Promise.all([
       messageIds.length > 0
@@ -65,7 +72,13 @@ export async function prefetchChat(chatId: string): Promise<PrefetchedChatData |
       getChatAgentConfig({ body: { id: chatId } }).catch(() => undefined),
     ]);
 
-    const fullData: PrefetchedChatData = { messages, siblings, agentConfig, fetchedAt };
+    const fullData: PrefetchedChatData = {
+      messages,
+      siblings,
+      agentConfig,
+      ...pageInfo,
+      fetchedAt,
+    };
     setCache(chatId, fullData);
     return fullData;
   })();

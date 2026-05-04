@@ -59,10 +59,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const loadFirstPage = useCallback(async () => {
     const page = await api.listChatsPage(PAGE_SIZE, null, true);
     setAllChatsData({
-      chats: { ...indexChats(page.starred), ...indexChats(page.chats) },
+      chats: { ...indexChats(page.starred ?? []), ...indexChats(page.chats) },
     });
     setNextCursor(page.nextCursor ?? null);
-    setHasMoreChats(page.hasMore);
+    setHasMoreChats(page.hasMore ?? false);
     setIsLoaded(true);
   }, []);
 
@@ -75,7 +75,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         chats: { ...prev.chats, ...indexChats(page.chats) },
       }));
       setNextCursor(page.nextCursor ?? null);
-      setHasMoreChats(page.hasMore);
+      setHasMoreChats(page.hasMore ?? false);
     } catch (error) {
       console.error("Failed to load more chats:", error);
     } finally {

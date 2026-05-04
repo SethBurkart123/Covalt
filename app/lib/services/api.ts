@@ -6,12 +6,12 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
-import type { ChatPageCursor, ChatPageResponse } from "@/python/api";
+import type { ChatMessagesPageResponse, ChatPageCursor, ChatPageResponse } from "@/python/api";
 import {
   initBridge,
   getAllChats,
   listChatsPage,
-  getChat,
+  getChatMessagesPage,
   createChat,
   deleteChat,
   updateChat,
@@ -94,11 +94,12 @@ export const api = {
   ): Promise<ChatPageResponse> =>
     listChatsPage({ body: { limit, cursor: cursor ?? undefined, includeStarred } }),
 
-  getChat: (chatId: string): Promise<{ id: string; messages: Message[] }> =>
-    getChat({ body: { id: chatId } }) as Promise<{
-      id: string;
-      messages: Message[];
-    }>,
+  getChatMessagesPage: (
+    chatId: string,
+    limit = 20,
+    beforeMessageId?: string,
+  ): Promise<ChatMessagesPageResponse> =>
+    getChatMessagesPage({ body: { chatId, limit, beforeMessageId } }),
 
   createChat: (
     title?: string,

@@ -56,7 +56,32 @@ def list_chats_page(
     return rows[:limit], has_more
 
 
-def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
+def _message_to_dict(r: Message) -> dict[str, Any]:
+    toolCalls = orjson.loads(r.toolCalls) if r.toolCalls else None
+
+    content = decode_message_content(r.content)
+    if isinstance(content, list):
+        _normalize_render_plan_blocks(content)
+
+    msg_data: dict[str, Any] = {
+        "id": r.id,
+        "role": r.role,
+        "content": content,
+        "createdAt": r.createdAt,
+        "toolCalls": toolCalls,
+        "parentMessageId": r.parent_message_id,
+        "isComplete": r.is_complete,
+        "sequence": r.sequence,
+        "modelUsed": r.model_used,
+    }
+
+    if r.attachments:
+        msg_data["attachments"] = orjson.loads(r.attachments)
+
+    return msg_data
+
+
+def get_chat_message_path(sess: Session, chatId: str) -> list[Message]:
     chat = sess.get(Chat, chatId)
     if not chat or not chat.active_leaf_message_id:
         stmt = (
@@ -64,35 +89,40 @@ def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
             .where(Message.chatId == chatId)
             .order_by(Message.createdAt.asc().nulls_last())
         )
-        rows = list(sess.scalars(stmt))
+        return list(sess.scalars(stmt))
+    return get_message_path(sess, chat.active_leaf_message_id)
+
+
+def get_chat_messages(sess: Session, chatId: str) -> list[dict[str, Any]]:
+    return [_message_to_dict(r) for r in get_chat_message_path(sess, chatId)]
+
+
+def get_chat_messages_page(
+    sess: Session,
+    chatId: str,
+    *,
+    limit: int,
+    before_message_id: str | None = None,
+) -> tuple[list[dict[str, Any]], bool, str | None]:
+    chat = sess.get(Chat, chatId)
+    if chat and chat.active_leaf_message_id:
+        rows, has_more = get_message_path_page(
+            sess,
+            chatId,
+            chat.active_leaf_message_id,
+            limit=limit,
+            before_message_id=before_message_id,
+        )
     else:
-        rows = get_message_path(sess, chat.active_leaf_message_id)
+        rows, has_more = get_linear_chat_messages_page(
+            sess,
+            chatId,
+            limit=limit,
+            before_message_id=before_message_id,
+        )
 
-    messages = []
-    for r in rows:
-        toolCalls = orjson.loads(r.toolCalls) if r.toolCalls else None
-
-        content = decode_message_content(r.content)
-        if isinstance(content, list):
-            _normalize_render_plan_blocks(content)
-
-        msg_data: dict[str, Any] = {
-            "id": r.id,
-            "role": r.role,
-            "content": content,
-            "createdAt": r.createdAt,
-            "toolCalls": toolCalls,
-            "parentMessageId": r.parent_message_id,
-            "isComplete": r.is_complete,
-            "sequence": r.sequence,
-            "modelUsed": r.model_used,
-        }
-
-        if r.attachments:
-            msg_data["attachments"] = orjson.loads(r.attachments)
-
-        messages.append(msg_data)
-    return messages
+    next_cursor = rows[0].id if has_more and rows else None
+    return [_message_to_dict(r) for r in rows], has_more, next_cursor
 
 
 def _normalize_render_plan_blocks(blocks: list[dict[str, Any]]) -> None:
@@ -211,32 +241,88 @@ def update_message_content(
 def get_message_path(sess: Session, leaf_id: str) -> list[Message]:
     """Walk from leaf to root in a single recursive CTE query."""
     cte_sql = text("""
-        WITH RECURSIVE ancestors(id) AS (
-            SELECT :leaf_id
+        WITH RECURSIVE ancestors(id, depth) AS (
+            SELECT :leaf_id, 0
             UNION ALL
-            SELECT m.parent_message_id
+            SELECT m.parent_message_id, a.depth + 1
             FROM messages m
             JOIN ancestors a ON m.id = a.id
             WHERE m.parent_message_id IS NOT NULL
         )
-        SELECT id FROM ancestors
+        SELECT id FROM ancestors ORDER BY depth DESC
     """)
-    rows = sess.execute(cte_sql, {"leaf_id": leaf_id}).fetchall()
-    ids = [r[0] for r in rows]
+    ids = [r[0] for r in sess.execute(cte_sql, {"leaf_id": leaf_id}).fetchall()]
+    return _messages_in_id_order(sess, ids)
+
+
+def _messages_in_id_order(sess: Session, ids: list[str]) -> list[Message]:
     if not ids:
         return []
-
     messages_by_id = {
-        m.id: m
-        for m in sess.scalars(select(Message).where(Message.id.in_(ids)))
+        m.id: m for m in sess.scalars(select(Message).where(Message.id.in_(ids)))
     }
+    return [msg for msg_id in ids if (msg := messages_by_id.get(msg_id))]
 
-    path = []
-    for msg_id in reversed(ids):
-        msg = messages_by_id.get(msg_id)
-        if msg:
-            path.append(msg)
-    return path
+
+def get_message_path_page(
+    sess: Session,
+    chatId: str,
+    leaf_id: str,
+    *,
+    limit: int,
+    before_message_id: str | None = None,
+) -> tuple[list[Message], bool]:
+    params = {
+        "chat_id": chatId,
+        "leaf_id": leaf_id,
+        "before_message_id": before_message_id,
+        "limit_plus_one": limit + 1,
+    }
+    cte_sql = text("""
+        WITH RECURSIVE ancestors(id, depth) AS (
+            SELECT :leaf_id, 0
+            UNION ALL
+            SELECT m.parent_message_id, a.depth + 1
+            FROM messages m
+            JOIN ancestors a ON m.id = a.id
+            WHERE m.parent_message_id IS NOT NULL AND m."chatId" = :chat_id
+        ), cursor AS (
+            SELECT COALESCE(
+                (SELECT depth FROM ancestors WHERE id = :before_message_id LIMIT 1),
+                -1
+            ) AS depth
+        )
+        SELECT id FROM ancestors
+        WHERE depth > (SELECT depth FROM cursor)
+        ORDER BY depth ASC
+        LIMIT :limit_plus_one
+    """)
+    ids = [r[0] for r in sess.execute(cte_sql, params).fetchall()]
+    has_more = len(ids) > limit
+    return _messages_in_id_order(sess, list(reversed(ids[:limit]))), has_more
+
+
+def get_linear_chat_messages_page(
+    sess: Session,
+    chatId: str,
+    *,
+    limit: int,
+    before_message_id: str | None = None,
+) -> tuple[list[Message], bool]:
+    cursor_created_at = None
+    if before_message_id:
+        cursor_msg = sess.get(Message, before_message_id)
+        cursor_created_at = cursor_msg.createdAt if cursor_msg else None
+
+    stmt = select(Message).where(Message.chatId == chatId)
+    if before_message_id and cursor_created_at is None:
+        return [], False
+    if cursor_created_at is not None:
+        stmt = stmt.where(Message.createdAt < cursor_created_at)
+    stmt = stmt.order_by(Message.createdAt.desc().nulls_last()).limit(limit + 1)
+    rows = list(sess.scalars(stmt))
+    has_more = len(rows) > limit
+    return list(reversed(rows[:limit])), has_more
 
 
 def get_message_children(

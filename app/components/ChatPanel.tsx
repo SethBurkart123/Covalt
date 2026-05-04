@@ -167,6 +167,9 @@ export default function ChatPanel() {
     handleNavigate,
     messageSiblings,
     triggerReload,
+    loadMoreBefore,
+    hasMoreBefore,
+    isLoadingMoreBefore,
     editingAttachments,
     addEditingAttachment,
     removeEditingAttachment,
@@ -277,6 +280,9 @@ export default function ChatPanel() {
                     onEditSubmit={handleEditSubmit}
                     onNavigate={handleNavigate}
                     actionLoading={null}
+                    hasMoreBefore={hasMoreBefore}
+                    isLoadingMoreBefore={isLoadingMoreBefore}
+                    onLoadMoreBefore={loadMoreBefore}
                     editingAttachments={editingAttachments}
                     onAddEditingAttachment={addEditingAttachment}
                     onRemoveEditingAttachment={removeEditingAttachment}

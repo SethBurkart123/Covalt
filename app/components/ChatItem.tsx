@@ -59,107 +59,107 @@ function ChatItemInner({
 }: ChatItemProps) {
   return (
     <div className="group/chat relative flex w-full items-center">
-        {isEditing ? (
-          <input
-            type="text"
-            value={editTitle}
-            onChange={(e) => onEditTitleChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onEditConfirm();
-              }
-              if (e.key === "Escape") {
-                onEditCancel();
-              }
-            }}
-            onBlur={onEditConfirm}
-            className="flex-1 px-3 py-1.5 rounded-lg bg-background text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-ring h-auto text-sm"
-            autoFocus
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <>
-            <button
-              onClick={onSelect}
-              onMouseEnter={onPrefetch}
-              onFocus={onPrefetch}
-              className={clsx(
-                "hit-area-y-0.5 mb-1 flex-1 overflow-ellipsis w-full py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
-                isActive
-                  ? "bg-sidebar-accent/80 text-sidebar-accent-foreground"
-                  : "hover:bg-muted/50",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+      {isEditing ? (
+        <input
+          type="text"
+          value={editTitle}
+          onChange={(e) => onEditTitleChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onEditConfirm();
+            }
+            if (e.key === "Escape") {
+              onEditCancel();
+            }
+          }}
+          onBlur={onEditConfirm}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-background text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-ring h-auto text-sm"
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <>
+          <button
+            onClick={onSelect}
+            onMouseEnter={onPrefetch}
+            onFocus={onPrefetch}
+            className={clsx(
+              "hit-area-y-0.5 mb-1 flex-1 overflow-ellipsis w-full py-1.5 px-3 rounded-lg text-left text-sm flex items-center gap-2 transition-colors duration-100",
+              isActive
+                ? "bg-sidebar-accent/80 text-sidebar-accent-foreground transition-none"
+                : "hover:bg-muted/50",
+              "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            )}
+            title={title}
+          >
+            {isStreaming && (
+              <Loader2 className="size-3 animate-spin text-primary shrink-0" />
+            )}
+            {isPausedForApproval && (
+              <AlertCircle className="size-3 text-amber-500 shrink-0" />
+            )}
+            {hasError && !isActive && (
+              <AlertCircle className="size-3 text-destructive shrink-0" />
+            )}
+            {hasUnseenUpdate &&
+              !isActive &&
+              !isStreaming &&
+              !isPausedForApproval &&
+              !hasError && (
+                <Circle className="size-2 fill-primary text-primary shrink-0" />
               )}
-              title={title}
-            >
-              {isStreaming && (
-                <Loader2 className="size-3 animate-spin text-primary shrink-0" />
-              )}
-              {isPausedForApproval && (
-                <AlertCircle className="size-3 text-amber-500 shrink-0" />
-              )}
-              {hasError && !isActive && (
-                <AlertCircle className="size-3 text-destructive shrink-0" />
-              )}
-              {hasUnseenUpdate &&
-                !isActive &&
-                !isStreaming &&
-                !isPausedForApproval &&
-                !hasError && (
-                  <Circle className="size-2 fill-primary text-primary shrink-0" />
-                )}
-              <span className="truncate">{title}</span>
-            </button>
-            <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className={clsx(
-                      "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      isActive
-                        ? "text-sidebar-accent-foreground"
-                        : "text-muted-foreground",
-                    )}
-                    aria-label={`Chat options for ${title}`}
-                  >
-                    <MoreVertical className="size-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
+            <span className="truncate">{title}</span>
+          </button>
+          <div className="absolute right-1 top-0 bottom-0 flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity duration-150">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
                   onClick={(e) => e.stopPropagation()}
-                >
-                  {onToggleStar && (
-                    <DropdownMenuItem onClick={onToggleStar}>
-                      <Star
-                        className={clsx(
-                          "mr-2 size-4",
-                          isStarred
-                            ? "fill-yellow-500 text-yellow-500"
-                            : "text-muted-foreground",
-                        )}
-                      />
-                      {isStarred ? "Unstar" : "Star"}
-                    </DropdownMenuItem>
+                  className={clsx(
+                    "p-1 rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    isActive
+                      ? "text-sidebar-accent-foreground"
+                      : "text-muted-foreground",
                   )}
-                  <DropdownMenuItem onClick={onRename}>
-                    <Pencil className="mr-2 size-4" />
-                    Rename
+                  aria-label={`Chat options for ${title}`}
+                >
+                  <MoreVertical className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {onToggleStar && (
+                  <DropdownMenuItem onClick={onToggleStar}>
+                    <Star
+                      className={clsx(
+                        "mr-2 size-4",
+                        isStarred
+                          ? "fill-yellow-500 text-yellow-500"
+                          : "text-muted-foreground",
+                      )}
+                    />
+                    {isStarred ? "Unstar" : "Star"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={onDelete}
-                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                  >
-                    <Trash2 className="mr-2 size-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </>
-        )}
+                )}
+                <DropdownMenuItem onClick={onRename}>
+                  <Pencil className="mr-2 size-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onDelete}
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -16,6 +16,8 @@ from ..models.chat import (
     ChatAgentConfigResponse,
     ChatData,
     ChatId,
+    ChatMessagesPageInput,
+    ChatMessagesPageResponse,
     ChatPageCursor,
     ChatPageResponse,
     CreateChatInput,
@@ -30,8 +32,8 @@ from ..models.chat import (
     UpdateChatModelInput,
 )
 from ..services.chat.chat_config import update_chat_model_provider, update_chat_tool_ids
-from ..services.tools.mcp_manager import ensure_mcp_initialized
 from ..services.streaming.title_generator import generate_title_for_chat
+from ..services.tools.mcp_manager import ensure_mcp_initialized
 from ..services.tools.tool_registry import get_tool_registry
 from ..services.workspace_manager import delete_chat_workspace, get_workspace_manager
 
@@ -180,6 +182,24 @@ async def get_chat(body: ChatId) -> dict[str, Any]:
     with db.db_session() as sess:
         msgs = db.get_chat_messages(sess, chatId=body.id)
     return {"id": body.id, "messages": msgs}
+
+
+@command
+async def get_chat_messages_page(body: ChatMessagesPageInput) -> ChatMessagesPageResponse:
+    limit = max(1, min(body.limit, 50))
+    with db.db_session() as sess:
+        messages, has_more, next_cursor = db.get_chat_messages_page(
+            sess,
+            body.chatId,
+            limit=limit,
+            before_message_id=body.beforeMessageId,
+        )
+    return ChatMessagesPageResponse(
+        id=body.chatId,
+        messages=messages,
+        nextBeforeCursor=next_cursor,
+        hasMoreBefore=has_more,
+    )
 
 
 @command
