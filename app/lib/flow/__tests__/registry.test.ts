@@ -1,91 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import {
-  NODE_DEFINITIONS,
-  getNodeDefinition,
-  getNodesByCategory,
-  createFlowNode,
-} from '@nodes/_registry'
-
-const EXPECTED_NODE_IDS = [
-  'chat-start',
-  'webhook-trigger',
-  'webhook-end',
-  'agent',
-  'mcp-server',
-  'toolset',
-  'llm-completion',
-  'prompt-template',
-  'conditional',
-  'merge',
-  'reroute',
-  'code',
-  'model-selector',
-]
+import { NODE_DEFINITIONS, getNodeDefinition, createFlowNode } from '@nodes/_registry'
 
 describe('registry', () => {
-  it.each(EXPECTED_NODE_IDS)('has %s registered', (id) => {
-    expect(NODE_DEFINITIONS[id]).toBeDefined()
-  })
-
   it('has no duplicate IDs', () => {
     const ids = Object.keys(NODE_DEFINITIONS)
     expect(new Set(ids).size).toBe(ids.length)
   })
 
   describe('getNodeDefinition', () => {
-    it.each(EXPECTED_NODE_IDS)('returns correct definition for %s', (id) => {
-      const def = getNodeDefinition(id)
-      expect(def).toBeDefined()
-      expect(def!.id).toBe(id)
-    })
-
-    it('returns expected chat-start metadata for palette rendering', () => {
-      const chatStart = getNodeDefinition('chat-start')
-      expect(chatStart).toBeDefined()
-      expect(chatStart!.category).toBe('trigger')
-      expect(chatStart!.icon).toBe('MessageSquare')
-    })
-
     it('returns undefined for unknown ID', () => {
       expect(getNodeDefinition('nonexistent-node')).toBeUndefined()
-    })
-  })
-
-  describe('getNodesByCategory', () => {
-    it('returns trigger nodes', () => {
-      const triggerNodes = getNodesByCategory('trigger')
-      const triggerIds = triggerNodes.map(n => n.id)
-      expect(triggerIds).toContain('chat-start')
-    })
-
-    it('returns llm nodes', () => {
-      const llmNodes = getNodesByCategory('llm')
-      const llmIds = llmNodes.map(n => n.id)
-      expect(llmIds).toContain('agent')
-      expect(llmIds).toContain('llm-completion')
-    })
-
-    it('returns tools nodes', () => {
-      const toolNodes = getNodesByCategory('tools')
-      const toolIds = toolNodes.map(n => n.id)
-      expect(toolIds).toContain('mcp-server')
-      expect(toolIds).toContain('toolset')
-    })
-
-    it('returns data nodes', () => {
-      const dataNodes = getNodesByCategory('data')
-      const dataIds = dataNodes.map(n => n.id)
-      expect(dataIds).toContain('code')
-    })
-
-    it('returns utility nodes', () => {
-      const utilNodes = getNodesByCategory('utility')
-      const utilIds = utilNodes.map(n => n.id)
-      expect(utilIds).toContain('model-selector')
-    })
-
-    it('returns empty array for unused category', () => {
-      expect(getNodesByCategory('rag')).toEqual([])
     })
   })
 

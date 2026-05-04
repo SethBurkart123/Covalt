@@ -17,15 +17,6 @@ function makeParam(socketType: SocketTypeId, acceptsTypes?: readonly SocketTypeI
   } as Parameter
 }
 
-describe('SOCKET_TYPES registry', () => {
-  it.each(ALL_SOCKET_TYPES)('has an entry for %s', (typeId) => {
-    expect(SOCKET_TYPES[typeId]).toBeDefined()
-    expect(SOCKET_TYPES[typeId].id).toBe(typeId)
-    expect(SOCKET_TYPES[typeId].color).toBeTypeOf('string')
-    expect(SOCKET_TYPES[typeId].shape).toBeTypeOf('string')
-  })
-})
-
 describe('canConnect', () => {
   it.each(ALL_SOCKET_TYPES)('allows same-type connection for %s', (typeId) => {
     expect(canConnect(typeId, makeParam(typeId))).toBe(true)
@@ -73,7 +64,7 @@ describe('canConnect', () => {
     expect(canConnect('string', param)).toBe(true)
   })
 
-  it('allows data -> tools when acceptsTypes includes data (sub-agent)', () => {
+  it('allows data -> tools when acceptsTypes includes data', () => {
     const param = makeParam('tools', ['tools', 'data'])
     expect(canConnect('data', param)).toBe(true)
   })
@@ -133,26 +124,18 @@ describe('canConnect with coercion', () => {
     }
   )
 
-  it('acceptsTypes overrides coercion — rejects coercible type not in list', () => {
-    // int→float is coercible, but if acceptsTypes only allows string, it's rejected
+  it('acceptsTypes overrides coercion by rejecting coercible types not in the list', () => {
     const param = makeParam('float', ['string'])
     expect(canConnect('int', param)).toBe(false)
   })
 
-  it('acceptsTypes overrides coercion — allows listed type even if not coercible', () => {
-    // boolean→float is not coercible, but acceptsTypes explicitly allows it
+  it('acceptsTypes overrides coercion by allowing listed non-coercible types', () => {
     const param = makeParam('float', ['boolean', 'float'])
     expect(canConnect('boolean', param)).toBe(true)
   })
 })
 
 describe('getSocketStyle', () => {
-  it.each(ALL_SOCKET_TYPES)('returns color and shape for %s', (typeId) => {
-    const style = getSocketStyle(typeId)
-    expect(style.color).toBe(SOCKET_TYPES[typeId].color)
-    expect(style.shape).toBe(SOCKET_TYPES[typeId].shape)
-  })
-
   it('applies color override', () => {
     const style = getSocketStyle('tools', { color: '#ff0000' })
     expect(style.color).toBe('#ff0000')

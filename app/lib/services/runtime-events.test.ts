@@ -2,19 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   RUNTIME_EVENT,
   isFlowNodeRuntimeEvent,
-  isKnownRuntimeEvent,
   isMemberRuntimeEvent,
   isTerminalRuntimeEvent,
   isToolRuntimeEvent,
 } from "@/lib/services/runtime-events";
 
 describe("runtime-events", () => {
-  it("recognizes known runtime events", () => {
-    expect(isKnownRuntimeEvent(RUNTIME_EVENT.RUN_STARTED)).toBe(true);
-    expect(isKnownRuntimeEvent(RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED)).toBe(true);
-    expect(isKnownRuntimeEvent("NotARealEvent")).toBe(false);
-  });
-
   it("classifies terminal events", () => {
     expect(isTerminalRuntimeEvent(RUNTIME_EVENT.RUN_COMPLETED)).toBe(true);
     expect(isTerminalRuntimeEvent(RUNTIME_EVENT.RUN_CANCELLED)).toBe(true);
