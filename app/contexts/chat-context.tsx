@@ -25,7 +25,9 @@ function indexChats(list: ChatData[]): Record<string, ChatData> {
 export function ChatProvider({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams();
   const [allChatsData, setAllChatsData] = useState<AllChatsData>({ chats: {} });
-  const [currentChatId, setCurrentChatId] = useState("");
+  const [currentChatId, setCurrentChatId] = useState<string | null>(() =>
+    searchParams.has("chatId") ? searchParams.get("chatId") || "" : null,
+  );
   const [isLoaded, setIsLoaded] = useState(false);
 
   const currentChatIdRef = useRef(currentChatId);
@@ -33,7 +35,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const pendingUrlSyncsRef = useRef(0);
 
-  const setCurrentChatIdOptimistic = useCallback((id: string) => {
+  const setCurrentChatIdOptimistic = useCallback((id: string | null) => {
     if (id !== currentChatIdRef.current) {
       pendingUrlSyncsRef.current += 1;
     }
@@ -102,7 +104,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [loadFirstPage]);
 
   useEffect(() => {
-    const chatIdFromUrl = searchParams.get("chatId") || "";
+    const chatIdFromUrl = searchParams.has("chatId")
+      ? searchParams.get("chatId") || ""
+      : null;
     if (chatIdFromUrl === currentChatIdRef.current) {
       if (pendingUrlSyncsRef.current > 0) pendingUrlSyncsRef.current -= 1;
       return;

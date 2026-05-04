@@ -183,7 +183,7 @@ export interface AllChatsData {
 }
 
 export interface ChatContextType {
-  chatId: string;
+  chatId: string | null;
   chatTitle: string;
   chatIds: string[];
   chatsLoaded: boolean;

@@ -7,8 +7,8 @@ import { prefetchChat } from "@/lib/services/chat-prefetch";
 interface UseChatOperationsProps {
   allChatsData: AllChatsData;
   setAllChatsData: Dispatch<SetStateAction<AllChatsData>>;
-  currentChatId: string;
-  setCurrentChatId: (id: string) => void;
+  currentChatId: string | null;
+  setCurrentChatId: (id: string | null) => void;
 }
 
 export function useChatOperations({
@@ -20,7 +20,7 @@ export function useChatOperations({
   const router = useRouter();
 
   const startNewChat = useCallback(() => {
-    setCurrentChatId("");
+    setCurrentChatId(null);
     router.push("/");
 
     setTimeout(() => {

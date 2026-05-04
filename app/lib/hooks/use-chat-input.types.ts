@@ -30,7 +30,7 @@ export interface UseChatInputRefs {
 }
 
 export interface UseChatInputContext {
-  chatId: string;
+  chatId: string | null;
   selectedModel: string;
   refreshChats: () => Promise<void>;
   activeToolIds: string[];
