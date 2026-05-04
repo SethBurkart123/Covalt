@@ -27,6 +27,7 @@ from backend.services.flows.flow_executor import (
     run_flow,
     topological_sort,
 )
+from nodes import _expressions
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from tests.conftest import make_edge, make_graph, make_node
 
@@ -190,14 +191,7 @@ def _flow_ctx(user_message: str = "hello") -> Any:
 
 
 class TestE2EFullPipeline:
-    """
-    Graph:
-      Model Selector (mock:gpt-test) ──[model]──────────────┐
-                                                              │
-      Chat Start ──[string]──→ Passthrough ──[string]──→ LLM Completion ──[string]──→ Conditional
-                                                              ↑ model                       ├─ true → UpperCase
-                                                                                            └─ false → Passthrough (dead)
-    """
+    """Full pipeline graph with model fanout, LLM completion, and conditional routing."""
 
     def _build_graph(self):
         return make_graph(
@@ -306,6 +300,7 @@ class TestE2EFullPipeline:
 
 
 
+@pytest.mark.skipif(_expressions.quickjs is None, reason="quickjs is not installed")
 class TestE2EExpressions:
     @pytest.mark.asyncio
     async def test_expression_resolves_from_general_input(self):

@@ -1,7 +1,7 @@
-import json
 import re
 from pathlib import Path
 
+from backend.services.streaming.runtime_event_contract import RUNTIME_EVENT_BY_KEY
 from backend.services.streaming.runtime_events import (
     KNOWN_RUNTIME_EVENTS,
     RUNTIME_EVENT_CONTRACT_VERSION,
@@ -14,18 +14,12 @@ _RUNTIME_EVENT_OBJECT_PATTERN = re.compile(
 _RUNTIME_EVENT_ENTRY_PATTERN = re.compile(
     r"(?P<key>[A-Z0-9_]+)\s*:\s*\"(?P<name>[^\"]+)\"",
 )
+_CONTRACT_VERSION_PATTERN = re.compile(
+    r"export\s+const\s+RUNTIME_EVENT_CONTRACT_VERSION\s*=\s*\"(?P<version>[^\"]+)\"\s+as\s+const;",
+)
 
 
-def _load_runtime_event_contract() -> dict:
-    contract_path = (
-        Path(__file__).resolve().parents[1]
-        / "contracts"
-        / "runtime-events.v1.json"
-    )
-    return json.loads(contract_path.read_text(encoding="utf-8"))
-
-
-def _parse_frontend_runtime_event_map() -> dict[str, str]:
+def _frontend_runtime_events_source() -> str:
     frontend_runtime_events_path = (
         Path(__file__).resolve().parents[1]
         / "app"
@@ -33,7 +27,11 @@ def _parse_frontend_runtime_event_map() -> dict[str, str]:
         / "services"
         / "runtime-events.ts"
     )
-    runtime_events_source = frontend_runtime_events_path.read_text(encoding="utf-8")
+    return frontend_runtime_events_path.read_text(encoding="utf-8")
+
+
+def _parse_frontend_runtime_event_map() -> dict[str, str]:
+    runtime_events_source = _frontend_runtime_events_source()
 
     object_match = _RUNTIME_EVENT_OBJECT_PATTERN.search(runtime_events_source)
     assert object_match is not None, "Failed to locate RUNTIME_EVENT object in runtime-events.ts"
@@ -46,22 +44,18 @@ def _parse_frontend_runtime_event_map() -> dict[str, str]:
     return frontend_map
 
 
-def test_backend_runtime_event_contract_version_matches_contract_file() -> None:
-    contract = _load_runtime_event_contract()
-    assert RUNTIME_EVENT_CONTRACT_VERSION == contract["version"]
+def _parse_frontend_runtime_event_contract_version() -> str:
+    version_match = _CONTRACT_VERSION_PATTERN.search(_frontend_runtime_events_source())
+    assert version_match is not None, "Failed to locate RUNTIME_EVENT_CONTRACT_VERSION in runtime-events.ts"
+    return version_match.group("version")
 
 
-def test_backend_known_runtime_events_match_canonical_contract() -> None:
-    contract = _load_runtime_event_contract()
-    contract_events = [event["name"] for event in contract["events"]]
-
-    assert sorted(KNOWN_RUNTIME_EVENTS) == sorted(contract_events)
+def test_backend_and_frontend_runtime_event_versions_match() -> None:
+    assert RUNTIME_EVENT_CONTRACT_VERSION == _parse_frontend_runtime_event_contract_version()
 
 
 def test_backend_and_frontend_runtime_event_contract_are_identical() -> None:
-    contract = _load_runtime_event_contract()
-    contract_map = {event["key"]: event["name"] for event in contract["events"]}
     frontend_map = _parse_frontend_runtime_event_map()
 
-    assert frontend_map == contract_map
+    assert frontend_map == RUNTIME_EVENT_BY_KEY
     assert sorted(frontend_map.values()) == sorted(KNOWN_RUNTIME_EVENTS)

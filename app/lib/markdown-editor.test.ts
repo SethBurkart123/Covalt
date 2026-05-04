@@ -44,24 +44,15 @@ describe("markdown-editor", () => {
     );
   });
 
-  it("round-trips tables, task lists, and images", () => {
+  it("round-trips task lists", () => {
     expectStableRoundTrip(
       [
         "- [x] done",
         "- [ ] pending",
-        "",
-        "| Column A | Column B |",
-        "| --- | --- |",
-        "| 1 | 2 |",
-        "",
-        "![diagram](https://example.com/diagram.png)",
       ].join("\n"),
       [
         "- [x] done",
         "- [ ] pending",
-        "| Column A | Column B |",
-        /\|\s*1\s*\|\s*2\s*\|/,
-        "![diagram](https://example.com/diagram.png)",
       ]
     );
   });

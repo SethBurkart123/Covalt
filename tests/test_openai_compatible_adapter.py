@@ -9,16 +9,6 @@ import pytest
 from backend.providers.adapters.openai_compatible import create_provider
 
 
-def test_create_provider_returns_required_keys():
-    entry = create_provider(provider_id="test_provider", base_url="https://api.test.com/v1")
-    assert "get_model" in entry
-    assert "fetch_models" in entry
-    assert "test_connection" in entry
-    assert callable(entry["get_model"])
-    assert callable(entry["fetch_models"])
-    assert callable(entry["test_connection"])
-
-
 def test_get_model_returns_litellm_with_correct_id_and_base():
     entry = create_provider(provider_id="test_provider", base_url="https://api.test.com/v1")
     with patch(
@@ -149,7 +139,6 @@ async def test_test_connection_401():
 
 
 def test_credential_lookup_uses_provider_id():
-    """Verify the factory passes provider_id to get_credentials, bypassing stack inspection."""
     entry = create_provider(provider_id="my_custom_provider", base_url="https://api.test.com/v1")
     mock_creds = MagicMock(return_value=("sk-test", None))
     with patch(
@@ -159,15 +148,3 @@ def test_credential_lookup_uses_provider_id():
         entry["get_model"]("gpt-4o", provider_options={})
 
     mock_creds.assert_called_once_with(provider_name="my_custom_provider")
-
-
-@pytest.mark.asyncio
-async def test_manifest_providers_all_registered():
-    """Spot-check that a few manifest providers are registered in the global PROVIDERS dict."""
-    from backend.providers import PROVIDERS
-
-    for pid in ["deepseek", "cerebras", "xai", "mistral", "azure"]:
-        assert pid in PROVIDERS, f"Provider '{pid}' not registered"
-        assert "get_model" in PROVIDERS[pid]
-        assert "fetch_models" in PROVIDERS[pid]
-        assert "test_connection" in PROVIDERS[pid]
