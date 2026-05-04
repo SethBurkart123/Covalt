@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/services/api";
-import { beginChatOpen, mark } from "@/lib/services/chat-profiler";
 import {
   clearPrefetchedChat,
   getInflightPrefetch,
@@ -52,7 +51,6 @@ export function useChatSnapshot({
 
   const applySnapshot = useCallback(
     (messages: Message[], siblings: Record<string, MessageSibling[]>) => {
-      mark(`applySnapshot(${messages.length})`);
       setBaseMessages(messages);
       setMessageSiblings(siblings);
     },
@@ -60,17 +58,13 @@ export function useChatSnapshot({
   );
 
   const fetchSnapshot = useCallback(async (id: string) => {
-    mark("getChat:start");
     const fullChat = await api.getChat(id);
-    mark("getChat:done");
     const messages = fullChat.messages || [];
     const messageIds = Array.from(new Set(messages.map((msg) => msg.id)));
-    mark("siblingsBatch:start");
     const siblings: Record<string, MessageSibling[]> =
       messageIds.length > 0
         ? await api.getMessageSiblingsBatch(id, messageIds)
         : {};
-    mark("siblingsBatch:done");
 
     const cached = getPrefetchedChat(id);
     setPrefetchedChat(id, {
@@ -107,8 +101,6 @@ export function useChatSnapshot({
       applySnapshot([], {});
       return;
     }
-
-    beginChatOpen(chatId);
 
     const loadId = ++loadTokenRef.current;
     const isStale = (id: string) =>

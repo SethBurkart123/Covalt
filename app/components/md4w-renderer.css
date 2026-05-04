@@ -1,0 +1,253 @@
+@reference "../globals.css";
+
+.prose.markdown-content.markdown-trim-last > *:last-child {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.prose.markdown-content {
+  h1 {
+    @apply scroll-m-20 text-[2.25em] tracking-tight lg:text-[2.5em];
+  }
+
+  h2 {
+    @apply scroll-m-20 text-[1.875em] tracking-tight first:mt-0;
+  }
+
+  h3 {
+    @apply scroll-m-20 text-[1.5em] font-semibold tracking-tight;
+  }
+
+  h4 {
+    @apply scroll-m-20 text-[1.25em] font-semibold tracking-tight;
+  }
+
+  blockquote {
+    @apply mt-6 border-l-2 border-border pl-6 italic;
+  }
+
+  ul {
+    @apply list-disc pl-[1.625em];
+  }
+
+  ol {
+    @apply list-decimal pl-[1.625em] [&>li]:mt-2;
+  }
+
+  li::marker {
+    @apply text-[color-mix(in_oklab,var(--tw-prose-body)_45%,transparent)];
+  }
+
+  li:has(> input[type="checkbox"]) {
+    @apply list-none;
+  }
+
+  input[type="checkbox"] {
+    @apply relative mr-2 inline-flex size-4.5 shrink-0 appearance-none items-center justify-center rounded-[.25rem] border border-input bg-background align-middle outline-none transition-shadow checked:border-primary checked:bg-primary disabled:cursor-not-allowed disabled:opacity-70 sm:size-4;
+    vertical-align: -0.18em;
+  }
+
+  input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5.252 12.7 10.2 18.63 18.748 5.37'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 70% 70%;
+  }
+
+  table {
+    @apply w-full overflow-hidden rounded-lg border-separate border-spacing-0 border border-[#f0c9b1]/50 dark:border-card;
+    margin: 0 !important;
+  }
+
+  thead {
+    background-color: var(--tw-prose-pre-bg);
+  }
+
+  th {
+    @apply border-r border-[#f0c9b1]/50 px-4 py-2 text-left font-bold last:border-r-0 dark:border-card [[align=center]]:text-center [[align=right]]:text-right;
+  }
+
+  td {
+    @apply border-t border-r border-[#f0c9b1]/50 px-4 py-2 text-left last:border-r-0 dark:border-card [[align=center]]:text-center [[align=right]]:text-right;
+  }
+
+  a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+
+  img {
+    @apply h-auto max-h-[500px] w-full rounded-lg object-contain;
+  }
+
+  hr {
+    @apply my-8!;
+  }
+}
+
+.prose.markdown-content .markdown-code-block {
+  @apply relative my-4 text-[#654735];
+}
+
+.dark .prose.markdown-content .markdown-code-block {
+  @apply text-[#ebdbb2];
+}
+
+.prose.markdown-content .markdown-code-block pre {
+  @apply rounded-lg p-4 text-[#654735];
+  font-size: 0.875em;
+  margin: 0 !important;
+}
+
+.dark .prose.markdown-content .markdown-code-block pre {
+  @apply text-[#ebdbb2];
+}
+
+.prose.markdown-content .markdown-code-block code {
+  @apply bg-transparent p-0 font-mono text-sm font-normal text-inherit;
+}
+
+.prose.markdown-content .markdown-code-block .markdown-code-copy-overlay {
+  @apply pointer-events-none absolute right-2 top-2 z-10;
+  height: calc(100% - 1rem);
+}
+
+.prose.markdown-content .markdown-code-copy {
+  @apply pointer-events-auto sticky top-2 flex items-center justify-center gap-2 rounded-md bg-muted p-1.5 text-sm opacity-0 backdrop-blur-md transition hover:bg-muted/80;
+}
+
+.dark .prose.markdown-content .markdown-code-copy {
+  @apply bg-white/5 hover:bg-white/4;
+}
+
+.prose.markdown-content .markdown-code-block:hover .markdown-code-copy {
+  @apply opacity-100;
+}
+
+.prose.markdown-content .markdown-code-copy [data-check-icon] {
+  @apply hidden;
+}
+
+.prose.markdown-content
+  .markdown-code-copy[data-copied="true"]
+  [data-copy-icon] {
+  @apply hidden;
+}
+
+.prose.markdown-content
+  .markdown-code-copy[data-copied="true"]
+  [data-check-icon] {
+  @apply block;
+}
+
+/* gruvboxMaterialLight (matches prism-react-renderer themes.gruvboxMaterialLight) */
+.prose.markdown-content .markdown-code-block .token.delimiter,
+.prose.markdown-content .markdown-code-block .token.boolean,
+.prose.markdown-content .markdown-code-block .token.keyword,
+.prose.markdown-content .markdown-code-block .token.selector,
+.prose.markdown-content .markdown-code-block .token.important,
+.prose.markdown-content .markdown-code-block .token.atrule,
+.prose.markdown-content .markdown-code-block .token.property,
+.prose.markdown-content .markdown-code-block .token.variable,
+.prose.markdown-content .markdown-code-block .token.deleted {
+  @apply text-[#af2528];
+}
+
+.prose.markdown-content .markdown-code-block .token.imports,
+.prose.markdown-content .markdown-code-block .token.class-name,
+.prose.markdown-content .markdown-code-block .token.maybe-class-name,
+.prose.markdown-content .markdown-code-block .token.constant,
+.prose.markdown-content .markdown-code-block .token.doctype,
+.prose.markdown-content .markdown-code-block .token.builtin {
+  @apply text-[#b4730e];
+}
+
+.prose.markdown-content .markdown-code-block .token.string,
+.prose.markdown-content .markdown-code-block .token.attr-value {
+  @apply text-[#477a5b];
+}
+
+.prose.markdown-content .markdown-code-block .token.property-access {
+  @apply text-[#266b79];
+}
+
+.prose.markdown-content .markdown-code-block .token.function,
+.prose.markdown-content .markdown-code-block .token.attr-name,
+.prose.markdown-content .markdown-code-block .token.char,
+.prose.markdown-content .markdown-code-block .token.url {
+  @apply text-[#72761e];
+}
+
+.prose.markdown-content .markdown-code-block .token.tag {
+  @apply text-[#b94c07];
+}
+
+.prose.markdown-content .markdown-code-block .token.comment,
+.prose.markdown-content .markdown-code-block .token.prolog,
+.prose.markdown-content .markdown-code-block .token.cdata,
+.prose.markdown-content .markdown-code-block .token.operator,
+.prose.markdown-content .markdown-code-block .token.inserted {
+  @apply text-[#a89984];
+}
+
+.prose.markdown-content .markdown-code-block .token.entity,
+.prose.markdown-content .markdown-code-block .token.number,
+.prose.markdown-content .markdown-code-block .token.symbol {
+  @apply text-[#924f79];
+}
+
+/* gruvboxMaterialDark (matches prism-react-renderer themes.gruvboxMaterialDark) */
+.dark .prose.markdown-content .markdown-code-block .token.imports,
+.dark .prose.markdown-content .markdown-code-block .token.class-name,
+.dark .prose.markdown-content .markdown-code-block .token.maybe-class-name,
+.dark .prose.markdown-content .markdown-code-block .token.constant,
+.dark .prose.markdown-content .markdown-code-block .token.doctype,
+.dark .prose.markdown-content .markdown-code-block .token.builtin,
+.dark .prose.markdown-content .markdown-code-block .token.function {
+  @apply text-[#d8a657];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.property-access {
+  @apply text-[#7daea3];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.tag {
+  @apply text-[#e78a4e];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.attr-name,
+.dark .prose.markdown-content .markdown-code-block .token.char,
+.dark .prose.markdown-content .markdown-code-block .token.url,
+.dark .prose.markdown-content .markdown-code-block .token.regex {
+  @apply text-[#a9b665];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.attr-value,
+.dark .prose.markdown-content .markdown-code-block .token.string {
+  @apply text-[#89b482];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.comment,
+.dark .prose.markdown-content .markdown-code-block .token.prolog,
+.dark .prose.markdown-content .markdown-code-block .token.cdata,
+.dark .prose.markdown-content .markdown-code-block .token.operator,
+.dark .prose.markdown-content .markdown-code-block .token.inserted {
+  @apply text-[#a89984];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.delimiter,
+.dark .prose.markdown-content .markdown-code-block .token.boolean,
+.dark .prose.markdown-content .markdown-code-block .token.keyword,
+.dark .prose.markdown-content .markdown-code-block .token.selector,
+.dark .prose.markdown-content .markdown-code-block .token.important,
+.dark .prose.markdown-content .markdown-code-block .token.atrule,
+.dark .prose.markdown-content .markdown-code-block .token.property,
+.dark .prose.markdown-content .markdown-code-block .token.variable,
+.dark .prose.markdown-content .markdown-code-block .token.deleted {
+  @apply text-[#ea6962];
+}
+
+.dark .prose.markdown-content .markdown-code-block .token.entity,
+.dark .prose.markdown-content .markdown-code-block .token.number,
+.dark .prose.markdown-content .markdown-code-block .token.symbol {
+  @apply text-[#d3869b];
+}

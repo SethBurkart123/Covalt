@@ -1,175 +1,239 @@
-import { memo, Profiler, useMemo, Suspense, useState, isValidElement } from 'react';
-import { isProfilingEnabled } from '@/lib/services/chat-profiler';
-import type { ReactElement } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import { useResolvedTheme } from '@/hooks/use-resolved-theme';
-import { Check, Copy } from 'lucide-react';
-import { Highlight, themes } from 'prism-react-renderer';
-import { Checkbox } from '@/components/ui/checkbox';
-import type { Components, ExtraProps } from 'react-markdown';
+"use client";
+
+import { memo, use, useEffect, useLayoutEffect, useRef } from 'react';
+import { Idiomorph } from 'idiomorph';
+import katex from 'katex';
+import { init as initMd4w, mdToHtml, setCodeHighlighter } from 'md4w';
+import { Prism } from 'prism-react-renderer';
 import { cn } from '@/lib/utils';
+import './md4w-renderer.css';
 
-type MdProps<T extends keyof React.JSX.IntrinsicElements> = React.ComponentPropsWithoutRef<T> & ExtraProps;
+const MD4W_WASM_URL = '/vendor/md4w-fast.wasm';
+const MD4W_EQUATION_OPEN = '<x-equation';
+const MD4W_EQUATION_CLOSE = '</x-equation>';
+const MD4W_PARSE_FLAGS = [
+  'TABLES',
+  'STRIKETHROUGH',
+  'TASKLISTS',
+  'LATEX_MATH_SPANS',
+  'PERMISSIVE_URL_AUTO_LINKS',
+  'PERMISSIVE_ATX_HEADERS',
+  'COLLAPSE_WHITESPACE',
+  'NO_HTML_BLOCKS',
+  'NO_HTML_SPANS',
+] as const;
 
-const MemoizedComponents: Partial<Components> = {
-  h1: ({ ...props }: MdProps<'h1'>) => <h1 className="scroll-m-20 text-[2.25em] font-extrabold tracking-tight lg:text-[2.5em]" {...props} />,
-  h2: ({ ...props }: MdProps<'h2'>) => <h2 className="scroll-m-20 text-[1.875em] font-semibold tracking-tight first:mt-0" {...props} />,
-  h3: ({ ...props }: MdProps<'h3'>) => <h3 className="scroll-m-20 text-[1.5em] font-semibold tracking-tight" {...props} />,
-  h4: ({ ...props }: MdProps<'h4'>) => <h4 className="scroll-m-20 text-[1.25em] font-semibold tracking-tight" {...props} />,
-  p: ({ ...props }: MdProps<'p'>) => <p className="leading-7 not-first:mt-6" {...props} />,
-  blockquote: ({ ...props }: MdProps<'blockquote'>) => <blockquote className="mt-6 border-l-2 pl-6 italic" {...props} />,
-  ul: ({ ...props }: MdProps<'ul'>) => <ul className="my-1! list-disc pl-[1.625em]" {...props} />,
-  ol: ({ ...props }: MdProps<'ol'>) => <ol className="my-6 list-decimal [&>li]:mt-2 pl-[1.625em]" {...props} />,
-  table: ({ ...props }: MdProps<'table'>) => <div className="my-6 w-full overflow-y-auto"><table className="w-full rounded-lg" {...props} /></div>,
-  th: ({ ...props }: MdProps<'th'>) => <th className="border px-4 py-2 text-left font-bold [[align=center]]:text-center [[align=right]]:text-right" {...props} />,
-  td: ({ ...props }: MdProps<'td'>) => <td className="border px-4 py-2 text-left [[align=center]]:text-center [[align=right]]:text-right" {...props} />,
-  a: ({ ...props }: MdProps<'a'>) => <a className="font-medium text-primary underline underline-offset-4" target="_blank" {...props} />,
-  pre: ({ ...props }: MdProps<'pre'>) => <pre {...props} />,
-  img: ({ alt = "", ...props }: MdProps<'img'>) => (
-    <img
-      alt={alt}
-      className="w-full h-auto rounded-lg max-h-[500px] object-contain"
-      {...props}
-    />
-  ),
-  hr: ({ ...props }: MdProps<'hr'>) => <hr className="my-8!" {...props} />,
-  input: ({ type, checked, className, ...props }: MdProps<'input'>) => {
-    if (type === 'checkbox') {
-      return <Checkbox checked={!!checked} className={`mr-2 ${className}`} disabled />;
-    }
-    return <input type={type} className={className} {...props} />;
-  },
-};
+let md4wReady = false;
+let md4wInitPromise: Promise<void> | null = null;
+let highlighterConfigured = false;
 
-interface HighlightRenderProps {
-  className: string;
-  style: React.CSSProperties;
-  tokens: Array<Array<{ types: string[]; content: string; empty?: boolean }>>;
-  getLineProps: (props: { line: Array<{ types: string[]; content: string }> }) => React.HTMLAttributes<HTMLDivElement>;
-  getTokenProps: (props: { token: { types: string[]; content: string } }) => React.HTMLAttributes<HTMLSpanElement>;
+if (typeof window !== 'undefined') {
+  void ensureMd4w();
 }
 
-const CodeBlock = memo(function CodeBlock({ children }: MdProps<'pre'>) {
-  const [copied, setCopied] = useState(false);
-  const resolvedTheme = useResolvedTheme();
-  
-  if (!isValidElement(children)) return <pre>{children}</pre>;
-  
-  const codeElement = children as ReactElement<{ children?: string; className?: string }>;
-  const codeString = String(codeElement.props.children || '').replace(/\n$/, '');
-  const language = /language-(\w+)/.exec(codeElement.props.className || '')?.[1] ?? 'text';
-  
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(codeString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(?:#(\d+)|#x([\da-fA-F]+)|amp|lt|gt|quot|apos);/g, (entity, dec, hex) => {
+    if (dec) return String.fromCodePoint(Number(dec));
+    if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+    if (entity === '&amp;') return '&';
+    if (entity === '&lt;') return '<';
+    if (entity === '&gt;') return '>';
+    if (entity === '&quot;') return '"';
+    if (entity === '&apos;') return "'";
+    return entity;
+  });
+}
+
+const COPY_ICON = /* html */'<svg class="markdown-code-copy-icon" data-copy-icon viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+const CHECK_ICON = /* html */'<svg class="markdown-code-check-icon" data-check-icon viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+
+function highlightCode(language: string, code: string): string {
+  const safeLanguage = language.replace(/[^\w-]/g, '') || 'text';
+  const grammar = Prism.languages[safeLanguage] ?? Prism.languages.text;
+  const codeString = code.replace(/\n$/, '');
+  const highlighted = grammar ? Prism.highlight(codeString, grammar, safeLanguage) : escapeHtml(codeString);
+
+  return /* html */`<div class="markdown-code-block group/code"><div class="markdown-code-copy-overlay"><button type="button" class="markdown-code-copy" title="Copy code">${COPY_ICON}${CHECK_ICON}</button></div><pre><code class="language-${safeLanguage}">${highlighted}</code></pre></div>`;
+}
+
+function configureHighlighter(): void {
+  if (highlighterConfigured) return;
+  setCodeHighlighter((language, code) => highlightCode(language, code));
+  highlighterConfigured = true;
+}
+
+function ensureMd4w(): Promise<void> {
+  configureHighlighter();
+  if (md4wReady) return Promise.resolve();
+  md4wInitPromise ??= initMd4w(MD4W_WASM_URL).then(() => {
+    md4wReady = true;
+  }).catch(error => {
+    md4wInitPromise = null;
+    throw error;
+  });
+  return md4wInitPromise;
+}
+
+function renderMd4wMath(html: string): string {
+  let cursor = 0;
+  const chunks: string[] = [];
+
+  while (true) {
+    const openStart = html.indexOf(MD4W_EQUATION_OPEN, cursor);
+    if (openStart === -1) break;
+
+    const openEnd = html.indexOf('>', openStart + MD4W_EQUATION_OPEN.length);
+    if (openEnd === -1) break;
+
+    const closeStart = html.indexOf(MD4W_EQUATION_CLOSE, openEnd + 1);
+    if (closeStart === -1) break;
+
+    chunks.push(html.slice(cursor, openStart));
+    const openTag = html.slice(openStart, openEnd + 1);
+    const body = html.slice(openEnd + 1, closeStart);
+    const latex = body.includes('&') ? decodeHtmlEntities(body) : body;
+    const displayMode = openTag.includes('type="display"') || openTag.includes("type='display'");
+    chunks.push(katex.renderToString(latex.trim(), { displayMode, throwOnError: false }));
+    cursor = closeStart + MD4W_EQUATION_CLOSE.length;
+  }
+
+  if (chunks.length === 0) return html;
+  chunks.push(html.slice(cursor));
+  return chunks.join('');
+}
+
+function restoreSafeDetails(html: string): string {
+  return html
+    .split('<p>&lt;details&gt;\n&lt;summary&gt;').join('<details><summary>')
+    .split('&lt;/summary&gt;</p>').join('</summary>')
+    .split('<p>&lt;/details&gt;</p>').join('</details>')
+    .split('&lt;strong&gt;').join('<strong>')
+    .split('&lt;/strong&gt;').join('</strong>');
+}
+
+function isSafeGeneratedUrl(value: string): boolean {
+  const decoded = decodeHtmlEntities(value).trim().replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+  if (decoded.startsWith('#') || decoded.startsWith('/') || decoded.startsWith('./') || decoded.startsWith('../')) return true;
+  if (decoded.startsWith('http://') || decoded.startsWith('https://') || decoded.startsWith('mailto:')) return true;
+  return decoded.startsWith('data:image/png;') || decoded.startsWith('data:image/jpeg;') || decoded.startsWith('data:image/gif;') || decoded.startsWith('data:image/webp;');
+}
+
+function scrubGeneratedUrls(html: string): string {
+  return html.replace(/\s(href|src)="([^"]*)"/g, (match, attr: string, value: string) => {
+    if (!isSafeGeneratedUrl(value)) return ` ${attr}="#"`;
+    if (attr === 'href') return ` href="${value}" target="_blank" rel="noreferrer"`;
+    return match;
+  });
+}
+
+function renderMarkdown(content: string): string {
+  const rawHtml = mdToHtml(content, { parseFlags: [...MD4W_PARSE_FLAGS] });
+  return scrubGeneratedUrls(restoreSafeDetails(renderMd4wMath(rawHtml)));
+}
+
+function SuspendingMarkdown({
+  content,
+  fontSize,
+  trimLast,
+}: {
+  content: string;
+  fontSize: string;
+  trimLast: boolean;
+}) {
+  if (!md4wReady) use(ensureMd4w());
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const lastContentRef = useRef<string | null>(null);
+  const lastHtmlRef = useRef<string | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    if (content === lastContentRef.current) return;
+
+    const applyContent = () => {
+      const html = renderMarkdown(content);
+      if (html !== lastHtmlRef.current) {
+        if (lastHtmlRef.current === null) {
+          root.innerHTML = html;
+        } else {
+          Idiomorph.morph(root, html, { morphStyle: 'innerHTML' });
+        }
+        lastHtmlRef.current = html;
+      }
+      lastContentRef.current = content;
+      frameRef.current = null;
+    };
+
+    if (lastHtmlRef.current === null) {
+      applyContent();
+      return;
+    }
+
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(applyContent);
+
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [content]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLButtonElement>('.markdown-code-copy');
+      if (!button || !root.contains(button)) return;
+
+      const code = button.closest('.markdown-code-block')?.querySelector('code')?.textContent ?? '';
+      void navigator.clipboard.writeText(code);
+      button.dataset.copied = 'true';
+      window.setTimeout(() => {
+        delete button.dataset.copied;
+      }, 2000);
+    };
+
+    root.addEventListener('click', handleClick);
+    return () => root.removeEventListener('click', handleClick);
+  }, []);
 
   return (
-    <div className="relative group/code not-prose">
-      <div className="h-[calc(100%-1rem)] absolute top-2 right-2 pointer-events-none">
-        <button
-          onClick={copyToClipboard}
-          className="sticky right-2 top-4 backdrop-blur-md p-1.5 pointer-events-auto rounded-md flex justify-center text-sm items-center gap-2 bg-muted hover:bg-muted/80 dark:bg-white/5 dark:hover:bg-white/4 transition opacity-0 group-hover/code:opacity-100 z-10"
-          title="Copy code"
-        >
-          {copied ? (<Check size={16} />) : (<Copy size={16} />)}
-        </button>
-      </div>
-      <Suspense fallback={
-        <pre style={{
-          color: 'var(--tw-prose-code)',
-          background: 'var(--tw-prose-pre-bg)',
-          margin: '0px',
-          padding: '1rem',
-          borderRadius: '0.5rem',
-          fontSize: '0.875rem',
-        }}>
-          <code>{codeString}</code>
-        </pre>
-      }>
-        <Highlight
-          theme={resolvedTheme === 'dark' ? themes.gruvboxMaterialDark : themes.gruvboxMaterialLight}
-          code={codeString}
-          language={language}
-        >
-          {({ className, style, tokens, getLineProps, getTokenProps }: HighlightRenderProps) => (
-            <pre className={className} style={{
-              ...style,
-              margin: 0,
-              padding: '1rem',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem'
-            }}>
-              {tokens.map((line, i) => (
-                <div key={i} {...getLineProps({ line })}>
-                  {line.map((token, key) => (
-                    <span key={key} {...getTokenProps({ token })} />
-                  ))}
-                </div>
-              ))}
-            </pre>
-          )}
-        </Highlight>
-      </Suspense>
-    </div>
+    <div
+      ref={containerRef}
+      className={cn(
+        'markdown-content prose prose-neutral dark:prose-invert max-w-none',
+        trimLast && 'markdown-trim-last'
+      )}
+      style={{ fontSize }}
+    />
   );
-});
-
-const InlineCode = memo(function InlineCode({ children, ...props }: MdProps<'code'>) {
-  return <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-[0.875em] font-semibold" {...props}>{children}</code>;
-});
+}
 
 function MarkdownRendererInner({
   content,
-  fontSize = "1rem",
+  fontSize = '1rem',
   trimLast = false,
 }: {
   content: string;
   fontSize?: string;
   trimLast?: boolean;
 }) {
-  const components: Partial<Components> = useMemo(
-    () => ({ ...MemoizedComponents, pre: CodeBlock, code: InlineCode }),
-    []
-  );
-  
-  const inner = (
-    <div
-      className={cn(
-        "prose prose-neutral dark:prose-invert max-w-none",
-        trimLast && "[&>*:last-child]:mb-0! [&>*:last-child]:pb-0!"
-      )}
-      style={{ fontSize }}
-    >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={components}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-
-  if (!isProfilingEnabled()) return inner;
-  return (
-    <Profiler
-      id="Markdown"
-      onRender={(_id, phase, actualMs) => {
-        if (actualMs > 5) {
-          console.log(
-            `[chat-profiler] Markdown ${phase} ${actualMs.toFixed(1)}ms (len=${content.length})`,
-          );
-        }
-      }}
-    >
-      {inner}
-    </Profiler>
-  );
+  return <SuspendingMarkdown content={content} fontSize={fontSize} trimLast={trimLast} />;
 }
 
 export const MarkdownRenderer = memo(MarkdownRendererInner);
