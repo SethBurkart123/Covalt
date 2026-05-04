@@ -188,6 +188,8 @@ export default function ChatPanel() {
     });
   }, [rawMessages, modelSettings, selectedModel]);
 
+  const showExistingChatLayout = chatId != null || messages.length > 0;
+
   const handleAcceptThinkingPrompt = useCallback(async () => {
     const parsedModel = parseSelectedModel(selectedModel);
     if (!parsedModel) return;
@@ -250,7 +252,7 @@ export default function ChatPanel() {
       <div className="flex flex-row min-h-full">
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
-          {!(messages.length === 0 && !chatId) ? (
+          {showExistingChatLayout ? (
             <>
               <div
                 ref={scrollContainerRef as React.RefObject<HTMLDivElement>}
