@@ -165,31 +165,6 @@ class MessageId(BaseModel):
     id: str
 
 
-class ExecutionEventItem(BaseModel):
-    seq: int
-    ts: str
-    eventType: str
-    nodeId: str | None = None
-    nodeType: str | None = None
-    runId: str | None = None
-    payload: Any | None = None
-
-
-class MessageExecutionTraceResponse(BaseModel):
-    executionId: str | None = None
-    kind: str | None = None
-    status: str | None = None
-    rootRunId: str | None = None
-    startedAt: str | None = None
-    endedAt: str | None = None
-    events: list[ExecutionEventItem] = Field(default_factory=list)
-
-
-class ChatStreamRequest(BaseModel):
-    messages: list[ChatMessage]
-    modelId: str
-    chatId: str | None = None
-    toolIds: list[str] = Field(default_factory=list)
 
 
 class ChatEvent(BaseModel):
@@ -209,11 +184,6 @@ class ChatEvent(BaseModel):
     nodeType: str | None = None
     outputs: dict[str, Any] | None = None
 
-
-class ToolApprovalResponse(BaseModel):
-    approvalId: str
-    approved: bool
-    editedArgs: dict[str, Any] | None = None
 
 
 class ToggleChatToolsInput(BaseModel):

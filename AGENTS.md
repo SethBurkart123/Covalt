@@ -70,6 +70,7 @@ This codebase values **clarity, composability, and satisfaction**. Take inspirat
 - Solve issues at their source, not downstream where they manifest
 - Don't add workarounds that mask the real problem
 - Understand WHY before fixing WHERE
+- Never keep production code solely because a test depends on it; update or remove the test to match the intended runtime architecture.
 
 ### Conventions
 

@@ -10,10 +10,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import {
-  connectStream as apiConnectStream,
-  getActiveStreams as apiGetActiveStreams,
-} from "@/python/api";
+import { connectStream as apiConnectStream } from "@/python/api";
 import {
   processEvent,
   createInitialState,
@@ -183,56 +180,15 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     if (isInitializedRef.current) return;
     isInitializedRef.current = true;
 
-    let cancelled = false;
-
-    const loadActiveStreams = async () => {
-      const response = await apiGetActiveStreams();
-      if (cancelled) return;
-
-      const newStates = new Map<string, RunState>();
-      const toSubscribe: string[] = [];
-
-      for (const stream of response.streams) {
-        const isActive = stream.status === "streaming" || stream.status === "paused_hitl";
-
-        const phase: RunPhase = stream.status === "streaming"
-          ? "streaming"
-          : stream.status === "paused_hitl"
-            ? "paused_hitl"
-            : stream.status === "error"
-              ? "error"
-              : "completed";
-
-        newStates.set(stream.chatId, {
-          phase,
-          chatId: stream.chatId,
-          messageId: stream.messageId,
-          content: [],
-          errorMessage: stream.errorMessage || null,
-          hasUnseenUpdate: !isActive,
-        });
-
-        if (isActive) {
-          toSubscribe.push(stream.chatId);
-        }
-      }
-
-      setRunStates(newStates);
-      toSubscribe.forEach(connectToStream);
-    };
-
-    loadActiveStreams();
-
     const subs = subscriptionsRef.current;
     const pStates = processorStatesRef.current;
     return () => {
-      cancelled = true;
       isInitializedRef.current = false;
       subs.forEach(({ unsubscribe }) => unsubscribe());
       subs.clear();
       pStates.clear();
     };
-  }, [connectToStream]);
+  }, []);
 
   const getRunState = useCallback((chatId: string) =>
     runStates.get(chatId),

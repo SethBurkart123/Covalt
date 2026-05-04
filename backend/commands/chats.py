@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from zynk import command
 
 from .. import db
-from ..models import format_mcp_toolset_id
 from ..models.chat import (
     AllChatsData,
     AvailableToolsResponse,
@@ -21,11 +20,7 @@ from ..models.chat import (
     ChatPageCursor,
     ChatPageResponse,
     CreateChatInput,
-    ExecutionEventItem,
     ListChatsPageInput,
-    MCPToolsetInfo,
-    MessageExecutionTraceResponse,
-    MessageId,
     ToggleChatToolsInput,
     ToolInfo,
     UpdateChatInput,
@@ -202,25 +197,6 @@ async def get_chat_messages_page(body: ChatMessagesPageInput) -> ChatMessagesPag
     )
 
 
-@command
-async def get_message_execution_trace(body: MessageId) -> MessageExecutionTraceResponse:
-    with db.db_session() as sess:
-        run = db.get_latest_execution_run_for_message(sess, message_id=body.id)
-        if run is None:
-            return MessageExecutionTraceResponse()
-
-        events = db.get_execution_events(sess, execution_id=run.id)
-
-    return MessageExecutionTraceResponse(
-        executionId=run.id,
-        kind=run.kind,
-        status=run.status,
-        rootRunId=run.root_run_id,
-        startedAt=run.started_at,
-        endedAt=run.ended_at,
-        events=[ExecutionEventItem(**event) for event in events],
-    )
-
 
 @command
 async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
@@ -237,7 +213,6 @@ async def get_available_tools() -> AvailableToolsResponse:
     tool_registry = get_tool_registry()
     mcp = await ensure_mcp_initialized()
 
-    builtin_data = tool_registry.list_builtin_tools()
     builtin_tools = [
         ToolInfo(
             id=tool["id"],
@@ -249,10 +224,9 @@ async def get_available_tools() -> AvailableToolsResponse:
             toolsetId="builtin",
             toolsetName="Built-in",
         )
-        for tool in builtin_data
+        for tool in tool_registry.list_builtin_tools()
     ]
 
-    mcp_toolsets = []
     all_mcp_tools: list[ToolInfo] = []
 
     for server in mcp.get_servers():
@@ -274,20 +248,9 @@ async def get_available_tools() -> AvailableToolsResponse:
             for t in mcp.get_server_tools(server_id)
         ]
 
-        mcp_toolsets.append(
-            MCPToolsetInfo(
-                id=format_mcp_toolset_id(server_id),
-                name=server_id,
-                status=server["status"],
-                error=server.get("error"),
-                tools=tools,
-            )
-        )
-
         if server["status"] == "connected":
             all_mcp_tools.extend(tools)
 
-    toolset_data = tool_registry.list_toolset_tools()
     toolset_tools = [
         ToolInfo(
             id=tool["id"],
@@ -297,12 +260,10 @@ async def get_available_tools() -> AvailableToolsResponse:
             toolsetId=tool.get("toolset_id"),
             toolsetName=tool.get("toolset_name") or tool.get("toolset_id"),
         )
-        for tool in toolset_data
+        for tool in tool_registry.list_toolset_tools()
     ]
 
-    all_tools = builtin_tools + all_mcp_tools + toolset_tools
-
-    return AvailableToolsResponse(tools=all_tools)
+    return AvailableToolsResponse(tools=builtin_tools + all_mcp_tools + toolset_tools)
 
 
 @command

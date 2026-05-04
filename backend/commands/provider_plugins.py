@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
-from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from .. import db
@@ -35,9 +33,6 @@ logger = logging.getLogger(__name__)
 MAX_PROVIDER_PLUGIN_SIZE = "20MB"
 ALLOWED_PROVIDER_PLUGIN_TYPES = ["application/zip", "application/x-zip-compressed"]
 
-
-class InstallProviderPluginFromDirectoryInput(BaseModel):
-    path: str
 
 
 def _ensure_provider_settings_initialized(provider: str, *, base_url: str | None) -> None:
@@ -325,22 +320,6 @@ async def import_provider_plugin(file: UploadFile) -> ImportProviderPluginRespon
     logger.info("Imported provider plugin '%s' from %s", plugin_id, file.filename)
     return _to_import_response(plugin_id)
 
-
-@command
-async def import_provider_plugin_from_directory(
-    body: InstallProviderPluginFromDirectoryInput,
-) -> ImportProviderPluginResponse:
-    _ensure_community_installs_allowed("community")
-    manager = get_provider_plugin_manager()
-    plugin_id = manager.import_from_directory(
-        Path(body.path),
-        source_type="local",
-        source_ref=body.path,
-        source_class="community",
-    )
-
-    logger.info("Imported provider plugin '%s' from directory %s", plugin_id, body.path)
-    return _to_import_response(plugin_id)
 
 
 @command

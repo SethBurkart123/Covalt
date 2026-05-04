@@ -17,7 +17,6 @@ import ChatMessageList from "@/components/ChatMessageList";
 import ChatInputForm from "@/components/ChatInputForm";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { cn } from "@/lib/utils";
-import "@/components/tool-renderers";
 
 export const TEST_CHAT_PANEL_TRANSITION = {
   type: "spring" as const,

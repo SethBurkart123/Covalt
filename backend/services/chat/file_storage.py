@@ -67,10 +67,6 @@ def save_pending_attachment(
     return path
 
 
-def pending_attachment_exists(attachment_id: str, extension: str) -> bool:
-    return get_pending_attachment_path(attachment_id, extension).exists()
-
-
 def delete_pending_attachment(attachment_id: str, extension: str) -> bool:
     path = get_pending_attachment_path(attachment_id, extension)
     if path.exists():

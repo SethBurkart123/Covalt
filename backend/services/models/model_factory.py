@@ -36,10 +36,6 @@ def get_model(
     return get_provider_model(provider, model_id, provider_options=provider_options)
 
 
-def list_supported_providers() -> list[str]:
-    return list_providers()
-
-
 def get_enabled_providers() -> list[str]:
     return list(_get_configured_providers().keys())
 

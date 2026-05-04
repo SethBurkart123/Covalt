@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Dict
+from typing import Any
 
 ADAPTER_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {}
 

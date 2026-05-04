@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from ..services.chat.file_storage import (
-    cleanup_pending_uploads,
     delete_pending_attachment,
     get_extension_from_mime,
     get_media_type,
@@ -57,9 +56,3 @@ async def delete_pending_upload(body: DeletePendingRequest) -> dict:
     )
     return {"success": True}
 
-
-@command
-async def cleanup_pending_uploads_command() -> dict:
-    count = cleanup_pending_uploads()
-    logger.info(f"[upload] Cleaned up {count} pending uploads")
-    return {"cleaned": count}

@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from zynk import UploadFile, command, upload
 
 from ..models import normalize_override_tool_id, validate_renderer_override
-from ..services.tools.mcp_manager import get_mcp_manager
 from ..services.flows.node_plugin_catalog import list_node_plugins as list_node_plugin_records
+from ..services.tools.mcp_manager import get_mcp_manager
 from ..services.tools.toolset_executor import get_toolset_executor
 from ..services.tools.toolset_manager import get_toolset_manager
 from ..services.workspace_event_broadcaster import broadcast_workspace_files_changed
@@ -96,19 +96,6 @@ class WorkspaceFileResponse(BaseModel):
     content: str
     size: int
 
-
-class WorkspaceManifestRequest(BaseModel):
-    chat_id: str
-    manifest_id: str | None = None
-
-
-class WorkspaceManifestResponse(BaseModel):
-    id: str
-    chat_id: str
-    parent_id: str | None = None
-    files: dict[str, str]
-    created_at: str | None = None
-    source: str
 
 
 class UpdateWorkspaceFileRequest(BaseModel):
@@ -261,28 +248,6 @@ async def get_workspace_file(body: WorkspaceFileRequest) -> WorkspaceFileRespons
         size=len(content),
     )
 
-
-@command
-async def get_workspace_manifest(
-    body: WorkspaceManifestRequest,
-) -> WorkspaceManifestResponse:
-    manager = get_workspace_manager(body.chat_id)
-    manifest_id = body.manifest_id or manager.get_active_manifest_id()
-    if manifest_id is None:
-        raise ValueError("No active manifest for this chat")
-
-    manifest = manager.get_manifest(manifest_id)
-    if manifest is None:
-        raise ValueError(f"Manifest '{manifest_id}' not found")
-
-    return WorkspaceManifestResponse(
-        id=manifest["id"],
-        chat_id=manifest["chat_id"],
-        parent_id=manifest.get("parent_id"),
-        files=manifest["files"],
-        created_at=manifest.get("created_at"),
-        source=manifest["source"],
-    )
 
 
 MAX_EDITABLE_FILE_SIZE = 5 * 1024 * 1024

@@ -143,10 +143,3 @@ def runtime_event_name(key: str) -> str:
         return RUNTIME_EVENT_BY_KEY[key]
     except KeyError as exc:
         raise RuntimeEventContractError(f"Unknown runtime event key: {key}") from exc
-
-
-def runtime_event_group(group: str) -> tuple[str, ...]:
-    if group not in RUNTIME_EVENT_CONTRACT_GROUPS:
-        return tuple()
-    keys = RUNTIME_EVENT_CONTRACT_GROUPS[group]
-    return tuple(runtime_event_name(key) for key in keys)

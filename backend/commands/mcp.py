@@ -13,12 +13,12 @@ from zynk import command
 
 from ..db import db_session
 from ..db.models import Toolset
+from ..services.oauth.oauth_manager import get_oauth_manager
 from ..services.tools.mcp_manager import (
     build_server_key,
     get_mcp_manager,
     split_server_key,
 )
-from ..services.oauth.oauth_manager import get_oauth_manager
 from ..services.tools.toolset_manager import get_toolset_manager
 
 
@@ -486,27 +486,6 @@ async def test_mcp_tool(body: TestMCPToolInput) -> TestMCPToolResult:
             durationMs=int((time.perf_counter() - start) * 1000),
         )
 
-
-class ProbeOAuthInput(BaseModel):
-    url: str
-
-
-class ProbeOAuthResult(BaseModel):
-    requiresOAuth: bool
-    providerName: str | None = None
-    resourceMetadataUrl: str | None = None
-    error: str | None = None
-
-
-@command
-async def probe_mcp_oauth(body: ProbeOAuthInput) -> ProbeOAuthResult:
-    result = await get_oauth_manager().probe_oauth_requirement(body.url)
-    return ProbeOAuthResult(
-        requiresOAuth=result.get("requiresOAuth", False),
-        providerName=result.get("providerName"),
-        resourceMetadataUrl=result.get("resourceMetadataUrl"),
-        error=result.get("error"),
-    )
 
 
 class StartOAuthInput(BaseModel):

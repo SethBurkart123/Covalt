@@ -22,7 +22,6 @@ import { Header } from "./Header";
 import { ArtifactPanel } from "@/components/artifact-panel/ArtifactPanel";
 import { DevPanel } from "@/components/DevPanel";
 import { WorkspaceBrowser } from "@/components/WorkspaceBrowser";
-import "@/components/tool-renderers";
 import type { AllModelSettingsResponse } from "@/python/api";
 import type { Message } from "@/lib/types/chat";
 

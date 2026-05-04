@@ -37,17 +37,8 @@ from ..application.tooling import (
     RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
 )
 from ..models.chat import ChatMessage
-from ..services.streaming import run_control
-from ..services.streaming import stream_broadcaster as broadcaster
-from ..services.flows.agent_manager import get_agent_manager
 from ..services.chat.chat_attachments import prepare_stream_attachments
 from ..services.chat.chat_graph_config import _build_trigger_payload, get_graph_data_for_chat
-from ..services.streaming.chat_stream import FlowRunHandle, run_graph_chat_runtime
-from ..services.streaming.conversation_run_service import (
-    emit_run_start_events,
-    handle_streaming_run_error,
-    validate_model_options,
-)
 from ..services.chat.conversation_store import (
     ensure_chat_initialized,
     get_active_leaf_message_id,
@@ -58,7 +49,16 @@ from ..services.chat.conversation_store import (
 from ..services.chat.conversation_store import (
     save_user_message as save_user_msg,
 )
+from ..services.flows.agent_manager import get_agent_manager
 from ..services.flows.flow_executor import run_flow
+from ..services.streaming import run_control
+from ..services.streaming import stream_broadcaster as broadcaster
+from ..services.streaming.chat_stream import FlowRunHandle, run_graph_chat_runtime
+from ..services.streaming.conversation_run_service import (
+    emit_run_start_events,
+    handle_streaming_run_error,
+    validate_model_options,
+)
 from ..services.streaming.runtime_events import (
     EVENT_ASSISTANT_MESSAGE_ID,
     EVENT_RUN_ERROR,
@@ -382,50 +382,16 @@ async def stream_flow_run(
     )
 
 
-class ActiveStreamInfo(BaseModel):
-    chatId: str
-    messageId: str
-    status: str
-    errorMessage: str | None = None
-
-
-class ActiveStreamsResponse(BaseModel):
-    streams: list[ActiveStreamInfo]
-
 
 class ConnectStreamRequest(BaseModel):
     chatId: str
 
 
-class ConnectStreamResponse(BaseModel):
-    active: bool
-    status: str | None = None
-    messageId: str | None = None
-    errorMessage: str | None = None
-
-
-@command
-async def get_active_streams() -> ActiveStreamsResponse:
-    streams = await broadcaster.get_all_active_streams()
-    return ActiveStreamsResponse(
-        streams=[
-            ActiveStreamInfo(
-                chatId=s["chatId"],
-                messageId=s["messageId"],
-                status=s["status"],
-                errorMessage=s.get("errorMessage"),
-            )
-            for s in streams
-        ]
-    )
 
 
 @command
 async def connect_stream(channel: Channel, body: ConnectStreamRequest) -> None:
-    """Atomically check if a stream exists and subscribe in one call.
-
-    Replaces the old get_active_streams + subscribe_to_stream two-step.
-    """
+    """Atomically check if a stream exists and subscribe in one call."""
     result = await broadcaster.get_or_subscribe(body.chatId)
     if result is None:
         emit_chat_event(channel, EVENT_STREAM_NOT_ACTIVE, content=body.chatId)

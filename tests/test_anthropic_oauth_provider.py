@@ -7,7 +7,7 @@ import pytest
 from agno.media import Image
 from agno.models.message import Message
 
-import backend.providers.anthropic_oauth as anthropic_oauth_provider
+from db.provider_plugins.anthropic_oauth import plugin as anthropic_oauth_provider
 
 
 def test_get_model_options_uses_reasoning_levels_from_metadata() -> None:
@@ -117,8 +117,8 @@ def test_fetch_models_includes_reasoning_metadata_from_listing(monkeypatch) -> N
 
     monkeypatch.setattr(
         anthropic_oauth_provider,
-        "get_provider_oauth_manager",
-        lambda: FakeOauthManager(),
+        "_get_context",
+        lambda: {"oauth_manager": FakeOauthManager()},
     )
     monkeypatch.setattr(
         anthropic_oauth_provider.httpx,

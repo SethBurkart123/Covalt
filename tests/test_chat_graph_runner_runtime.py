@@ -6,10 +6,9 @@ from typing import Any
 import pytest
 
 from backend import db
-from backend.commands import chats as chats_commands
+from backend.models import parse_message_blocks
 from backend.models.chat import Attachment, ChatMessage, ContentBlock
 from backend.services.streaming import run_control
-from backend.models import parse_message_blocks
 from backend.services.streaming.chat_stream import handle_flow_stream, run_graph_chat_runtime
 from backend.services.tools.tool_render import _build_tool_call_completed_payload
 from nodes._types import DataValue, ExecutionResult, NodeEvent
@@ -507,48 +506,6 @@ async def test_handle_flow_stream_persists_ordered_execution_events() -> None:
         "runtime.execution_result",
     ]
     assert events[2]["payload"] == {"event": "CustomGraphEvent", "payload": {"x": 1}}
-
-
-@pytest.mark.asyncio
-async def test_get_message_execution_trace_returns_latest_run_events() -> None:
-    assistant_id = "assistant-trace-api-1"
-
-    async def fake_run_flow(*_args: Any, **_kwargs: Any):
-        yield NodeEvent(
-            node_id="agent",
-            node_type="agent",
-            event_type="started",
-            run_id="runtime-2",
-            data={},
-        )
-        yield ExecutionResult(
-            outputs={"output": DataValue(type="data", value={"response": "ok"})}
-        )
-
-    await handle_flow_stream(
-        _graph(),
-        None,
-        [ChatMessage(id="user-1", role="user", content="hello")],
-        assistant_id,
-        CapturingChannel(),
-        chat_id="chat-trace-api-1",
-        ephemeral=False,
-        run_flow_impl=fake_run_flow,
-        save_content_impl=lambda _msg_id, _content: None,
-        load_initial_content_impl=lambda _msg_id: [],
-    )
-
-    trace = await chats_commands.get_message_execution_trace(
-        chats_commands.MessageId(id=assistant_id)
-    )
-
-    assert trace.executionId
-    assert trace.kind == "workflow"
-    assert trace.status == "completed"
-    assert [event.eventType for event in trace.events] == [
-        "runtime.node.started",
-        "runtime.execution_result",
-    ]
 
 
 @pytest.mark.asyncio

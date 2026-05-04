@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 
@@ -123,49 +122,8 @@ async def get_or_subscribe(chat_id: str) -> SubscribeResult | None:
         )
 
 
-async def subscribe(chat_id: str) -> asyncio.Queue | None:
-    async with _lock:
-        if chat_id not in _active_streams:
-            return None
-
-        state = _active_streams[chat_id]
-        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
-
-        for event in state.recent_events:
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                break
-
-        state.subscribers.add(queue)
-        return queue
-
 
 async def unsubscribe(chat_id: str, queue: asyncio.Queue) -> None:
     async with _lock:
         if chat_id in _active_streams:
             _active_streams[chat_id].subscribers.discard(queue)
-
-
-def get_stream_state(chat_id: str) -> StreamState | None:
-    return _active_streams.get(chat_id)
-
-
-def is_stream_active(chat_id: str) -> bool:
-    state = _active_streams.get(chat_id)
-    return state is not None and state.status in ("streaming", "paused_hitl")
-
-
-async def get_all_active_streams() -> list[dict[str, Any]]:
-    result = []
-    async with _lock:
-        for chat_id, state in _active_streams.items():
-            result.append(
-                {
-                    "chatId": chat_id,
-                    "messageId": state.message_id,
-                    "status": state.status,
-                    "errorMessage": state.error_message,
-                }
-            )
-    return result

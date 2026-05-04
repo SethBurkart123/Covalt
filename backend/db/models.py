@@ -90,20 +90,6 @@ class Model(Base):
     extra: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class ActiveStream(Base):
-    __tablename__ = "active_streams"
-
-    chat_id: Mapped[str] = mapped_column(
-        String, ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
-    )
-    message_id: Mapped[str] = mapped_column(String, nullable=False)
-    run_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, default="streaming", nullable=False)
-    started_at: Mapped[str] = mapped_column(String, nullable=False)
-    updated_at: Mapped[str] = mapped_column(String, nullable=False)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
 class ExecutionRun(Base):
     __tablename__ = "execution_runs"
 
