@@ -27,7 +27,7 @@ jobs:
           path-to-signatures: ".github/signatures/cla.json"
           path-to-document: "https://github.com/${{ github.repository }}/blob/main/CLA.md"
           branch: "main"
-          allowlist: SethBurkart123,dependabot[bot],github-actions[bot]
+          allowlist: dependabot[bot],github-actions[bot]
           custom-notsigned-prcomment: |
             Thank you for your contribution! Before we can merge this PR, you need to sign our [Contributor License Agreement](https://github.com/${{ github.repository }}/blob/main/CLA.md).
 
