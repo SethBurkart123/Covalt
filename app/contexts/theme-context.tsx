@@ -196,8 +196,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(state.customThemes));
 
       if (state.preset !== "default") {
-        const activeStyles = state.styles[state.resolvedMode];
-        localStorage.setItem(STORAGE_ACTIVE_STYLES_KEY, JSON.stringify(activeStyles));
+        localStorage.setItem(STORAGE_ACTIVE_STYLES_KEY, JSON.stringify(state.styles));
       } else {
         localStorage.removeItem(STORAGE_ACTIVE_STYLES_KEY);
       }

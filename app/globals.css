@@ -90,6 +90,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(0.99 0.01 56.32);
   --foreground: oklch(0.34 0.01 2.77);
@@ -161,6 +162,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.26 0.02 352.4);
   --foreground: oklch(0.94 0.01 51.32);
   --card: oklch(0.32 0.02 341.45);
@@ -237,6 +239,7 @@
 
 html {
   scroll-behavior: smooth;
+  background: var(--background);
 }
 
 button {

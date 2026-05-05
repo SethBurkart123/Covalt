@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "katex/dist/katex.min.css";
@@ -28,7 +27,8 @@ const themeScript = `
       mode === "dark" ||
       ((mode === "system" || !mode) && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-    document.documentElement.classList.toggle("dark", isDark);
+    const root = document.documentElement;
+    root.classList.toggle("dark", isDark);
 
     const raw = localStorage.getItem("theme-active-styles");
     if (!raw) return;
@@ -36,12 +36,13 @@ const themeScript = `
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
 
-    const styles = parsed as Record<string, unknown>;
-    const root = document.documentElement;
+    const styles = parsed[isDark ? "dark" : "light"];
+    if (!styles || typeof styles !== "object") return;
+
     for (const key in styles) {
       const value = styles[key];
       if (typeof value === "string" && value) {
-        root.style.setProperty(\`--\${key}\`, value);
+        root.style.setProperty("--" + key, value);
       }
     }
   } catch {}
@@ -56,9 +57,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeScript}
-        </Script>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
