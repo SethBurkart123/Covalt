@@ -49,6 +49,7 @@
         "cmdk": "^1.1.1",
         "covalt-desktop": ".",
         "electrobun": "latest",
+        "fflate": "^0.8.2",
         "frimousse": "^0.3.0",
         "fuse.js": "^7.1.0",
         "hast-util-to-html": "^9.0.5",

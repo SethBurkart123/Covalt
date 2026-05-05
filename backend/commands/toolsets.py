@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
@@ -181,6 +182,39 @@ async def import_toolset(file: UploadFile) -> ImportToolsetResult:
     if new_servers:
         logger.info(f"Started {len(new_servers)} MCP server(s) from toolset")
     logger.info(f"Imported toolset '{toolset_id}' from {file.filename}")
+    get_toolset_executor().clear_cache()
+
+    return ImportToolsetResult(
+        id=toolset["id"],
+        name=toolset["name"],
+        version=toolset["version"],
+        tool_count=len(toolset.get("tools", [])),
+    )
+
+
+class ImportToolsetFromPathRequest(BaseModel):
+    path: str
+
+
+@command
+async def import_toolset_from_path(
+    body: ImportToolsetFromPathRequest,
+) -> ImportToolsetResult:
+    directory = Path(body.path).expanduser().resolve()
+    if not directory.is_dir():
+        raise ValueError(f"Not a directory: {body.path}")
+
+    manager = get_toolset_manager()
+    toolset_id = manager.import_from_directory(directory)
+
+    toolset = manager.get_toolset(toolset_id)
+    if toolset is None:
+        raise RuntimeError(f"Toolset '{toolset_id}' not found after import")
+
+    new_servers = await get_mcp_manager().reload_from_db()
+    if new_servers:
+        logger.info(f"Started {len(new_servers)} MCP server(s) from toolset")
+    logger.info(f"Imported toolset '{toolset_id}' from directory {directory}")
     get_toolset_executor().clear_cache()
 
     return ImportToolsetResult(

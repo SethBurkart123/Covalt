@@ -260,16 +260,16 @@ interface InstalledPanelProps {
     serverName: string,
   ) => void;
   onDeleteServer: (serverKey: string, serverLabel: string) => void;
+  importSignal?: number;
 }
 
 export default function InstalledPanel({
   onEditServer,
   onDeleteServer,
+  importSignal,
 }: InstalledPanelProps) {
-  const { availableTools, mcpServers, isLoadingTools, refreshTools } =
-    useTools();
-  const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
-  const [isLoadingToolsets, setIsLoadingToolsets] = useState(true);
+  const { availableTools, mcpServers, refreshTools } = useTools();
+  const [toolsets, setToolsets] = useState<ToolsetInfo[] | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
   const [uninstallingToolset, setUninstallingToolset] =
@@ -364,14 +364,19 @@ export default function InstalledPanel({
       setToolsets(response.toolsets);
     } catch (err) {
       console.error("Failed to load toolsets:", err);
-    } finally {
-      setIsLoadingToolsets(false);
+      setToolsets([]);
     }
   }, []);
 
   useEffect(() => {
     loadToolsets();
   }, [loadToolsets]);
+
+  useEffect(() => {
+    if (importSignal) {
+      loadToolsets();
+    }
+  }, [importSignal, loadToolsets]);
 
   const handleToggle = async (toolset: ToolsetInfo) => {
     setTogglingId(toolset.id);
@@ -446,10 +451,7 @@ export default function InstalledPanel({
     }
   };
 
-  const isLoading = isLoadingTools || isLoadingToolsets;
-  const hasNoContent = mcpServers.length === 0 && toolsets.length === 0;
-
-  if (isLoading) {
+  if (toolsets === null) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -457,31 +459,42 @@ export default function InstalledPanel({
     );
   }
 
+  const hasNoContent = mcpServers.length === 0 && toolsets.length === 0;
+
   if (hasNoContent) {
     return (
-      <div className="border border-dashed border-border rounded-xl p-12 text-center">
-        <div className="flex justify-center gap-3 mb-4">
-          <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
-            <Plug className="size-6 text-muted-foreground" />
+      <>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".zip"
+          className="hidden"
+        />
+        <div className="border border-dashed border-border rounded-xl p-12 text-center">
+          <div className="flex justify-center gap-3 mb-4">
+            <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
+              <Plug className="size-6 text-muted-foreground" />
+            </div>
+            <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
+              <Package className="size-6 text-muted-foreground" />
+            </div>
           </div>
-          <div className="flex items-center justify-center size-12 rounded-xl bg-muted">
-            <Package className="size-6 text-muted-foreground" />
-          </div>
+          <h3 className="text-lg font-medium mb-2">No tools installed</h3>
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+            Add MCP servers for external integrations, or drop a toolset .zip or
+            folder anywhere on this page to import.
+          </p>
+          <Button onClick={handleImportClick} disabled={isImporting}>
+            {isImporting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Upload className="size-4" />
+            )}
+            Import Toolset
+          </Button>
         </div>
-        <h3 className="text-lg font-medium mb-2">No tools installed</h3>
-        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-          Add MCP servers for external integrations or import toolsets to extend
-          your AI&apos;s capabilities.
-        </p>
-        <Button onClick={handleImportClick} disabled={isImporting}>
-          {isImporting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Upload className="size-4" />
-          )}
-          Import Toolset
-        </Button>
-      </div>
+      </>
     );
   }
 

@@ -275,11 +275,8 @@ class ToolsetManager:
             manifest_data = self._find_and_parse_manifest(zf)
             manifest = ToolsetManifest(manifest_data)
 
-            existing = self.get_toolset(manifest.id)
-            if existing:
-                raise ValueError(
-                    f"Toolset '{manifest.id}' already installed (version {existing['version']})"
-                )
+            if self.get_toolset(manifest.id):
+                self.uninstall(manifest.id)
 
             toolset_dir = get_toolset_directory(manifest.id)
             if toolset_dir.exists():
@@ -328,11 +325,8 @@ class ToolsetManager:
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ToolsetManifest(manifest_data)
 
-        existing = self.get_toolset(manifest.id)
-        if existing:
-            raise ValueError(
-                f"Toolset '{manifest.id}' already installed (version {existing['version']})"
-            )
+        if self.get_toolset(manifest.id):
+            self.uninstall(manifest.id)
 
         toolset_dir = get_toolset_directory(manifest.id)
         if toolset_dir.exists():
