@@ -1,3 +1,12 @@
 {
-  "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "SethBurkart123",
+      "id": 108050083,
+      "comment_id": 4375728356,
+      "created_at": "2026-05-05T00:58:50Z",
+      "repoId": 1086980419,
+      "pullRequestNo": 16
+    }
+  ]
 }
