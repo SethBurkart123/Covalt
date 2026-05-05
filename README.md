@@ -102,6 +102,7 @@ bun run ci:playwright
 
 ## Contributing
 
+- Contributors must sign a [CLA](CONTRIBUTING.md) before PRs can be merged.
 - Run quality checks before PRs.
 - Fix issues at the root cause, not downstream where they manifest.
 - Keep functions small (aim for <30 lines), explicit, and composable.
@@ -109,4 +110,11 @@ bun run ci:playwright
 ## Status
 
 Active development — breaking changes are expected before initial release. No backwards compatibility is guaranteed for toolset schemas, APIs, database schemas, or the Python SDK.
+
+## License
+
+Covalt is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+The Covalt name and branding are trademarked — see [TRADEMARKS.md](TRADEMARKS.md).
+Commercial licensing is available — see [COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md).
 
