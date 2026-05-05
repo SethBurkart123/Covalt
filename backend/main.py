@@ -44,7 +44,8 @@ def main() -> int:
     rebuild_node_route_index()
     reload_node_provider_registry()
 
-    output_dir = Path(__file__).parent.parent / "app" / "python"
+    repo_root = Path(__file__).parent.parent
+    output_dir = repo_root / "app" / "python"
     dev_mode = os.environ.get("COVALT_DEV_MODE") == "1"
     generate_ts = os.environ.get("COVALT_GENERATE_TS") == "1"
     port = int(os.environ.get("COVALT_BACKEND_PORT", "8000"))
@@ -53,13 +54,14 @@ def main() -> int:
         "port": port,
         "debug": False,
         "app_init": "backend.services.flows.http_routes:register_http_routes",
-        "reload_includes": ["backend"],
+        "reload_dirs": [str(repo_root / "backend")],
         "reload_excludes": [
-            ".next",
-            "out",
-            "build",
-            "dist",
-            "app/python",
+            str(repo_root / ".next"),
+            str(repo_root / "out"),
+            str(repo_root / "build"),
+            str(repo_root / "dist"),
+            str(repo_root / "app" / "python"),
+            str(repo_root / "db"),
         ],
     }
     app = Bridge(**bridge_kwargs)
