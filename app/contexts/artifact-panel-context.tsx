@@ -33,6 +33,7 @@ interface ArtifactPanelContextValue {
   artifacts: Artifact[];
   activeId: string | null;
   open: (id: string, title: string, content: ReactNode, filePath?: string) => void;
+  toggle: (id: string, title: string, content: ReactNode, filePath?: string) => void;
   close: () => void;
   setActive: (id: string) => void;
   remove: (id: string) => void;
@@ -229,6 +230,17 @@ export function ArtifactPanelProvider({ children, chatId: chatIdProp }: Artifact
     }
   }, [setSidebarOpen]);
 
+  const toggle = useCallback(
+    (id: string, title: string, content: ReactNode, filePath?: string) => {
+      if (activeId === id) {
+        close();
+      } else {
+        open(id, title, content, filePath);
+      }
+    },
+    [activeId, close, open]
+  );
+
   const setActive = useCallback((id: string) => {
     setActiveId(id);
   }, []);
@@ -269,6 +281,7 @@ export function ArtifactPanelProvider({ children, chatId: chatIdProp }: Artifact
         artifacts,
         activeId,
         open,
+        toggle,
         close,
         setActive,
         remove,

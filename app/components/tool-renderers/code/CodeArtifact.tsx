@@ -24,7 +24,7 @@ export function CodeArtifact({
   renderPlan,
   chatId,
 }: ToolCallRendererProps) {
-  const { open, openFile, getFileState } = useArtifactPanel();
+  const { toggle, activeId, openFile, getFileState } = useArtifactPanel();
 
   const filePath = renderPlan?.config?.file;
   const fileState = filePath ? getFileState(filePath) : undefined;
@@ -50,29 +50,32 @@ export function CodeArtifact({
   const isEditable = renderPlan?.config?.editable && filePath && chatId;
   const toolCallTestId = `tool-call-${toolName}`;
 
+  const artifactId = toolCallId || `${toolName}-${title}`;
+
   const handleClick = () => {
     if (!isCompleted) return;
-    
-    if (filePath) {
+
+    const isClosing = activeId === artifactId;
+    if (filePath && !isClosing) {
       openFile(filePath);
     }
-    
+
     if (isEditable && filePath) {
-      open(
-        toolCallId || `${toolName}-${title}`,
+      toggle(
+        artifactId,
         title,
         <EditableCodeViewer language={language} filePath={filePath} />,
         filePath
       );
     } else if (filePath) {
-      open(
-        toolCallId || `${toolName}-${title}`,
+      toggle(
+        artifactId,
         title,
         <EditableCodeViewer readOnly language={language} filePath={filePath} />,
         filePath
       );
     } else if (code) {
-      open(toolCallId || `${toolName}-${title}`, title, <EditableCodeViewer content={code} language={language} />);
+      toggle(artifactId, title, <EditableCodeViewer content={code} language={language} />);
     }
   };
 

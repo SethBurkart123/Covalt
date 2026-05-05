@@ -39,7 +39,7 @@ export function FileEditorArtifact({
   renderPlan,
   chatId,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { toggle } = useArtifactPanel();
 
   const rootPath = (renderPlan?.config?.path as string) || "";
   const title = getDisplayTitle(toolArgs, toolName, rootPath);
@@ -48,7 +48,7 @@ export function FileEditorArtifact({
 
   const handleClick = () => {
     if (!isCompleted || !chatId) return;
-    open(
+    toggle(
       toolCallId || `${toolName}-${title}`,
       title,
       <FileEditorContent

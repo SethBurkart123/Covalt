@@ -39,6 +39,7 @@
   "exclude": [
     "node_modules",
     "zynk",
+    "vendor",
     "backend/dist",
     "build"
   ],

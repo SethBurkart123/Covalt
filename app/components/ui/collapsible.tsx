@@ -163,6 +163,9 @@ function CollapsibleTrigger({
     }
   };
 
+  const isInteractive = Boolean(onClick) || !disableToggle;
+  const cursorClass = isInteractive ? "cursor-pointer" : "cursor-default";
+
   if (mode === "minimal") {
     const rotation =
       overrideIsOpenPreview !== undefined
@@ -178,7 +181,8 @@ function CollapsibleTrigger({
         onClick={handleClick}
         className={cn(
           "inline-flex items-center gap-1.5 py-1 transition-colors",
-          disableToggle ? "cursor-default" : "cursor-pointer hover:opacity-80",
+          cursorClass,
+          isInteractive && "hover:opacity-80",
           className,
         )}
       >
@@ -220,7 +224,7 @@ function CollapsibleTrigger({
           "w-full px-2 py-2 flex items-center justify-between transition-colors",
           "hover:bg-border/30",
           shimmer && "shimmer",
-          disableToggle ? "cursor-default" : "cursor-pointer",
+          cursorClass,
           className,
         )}
       >
@@ -256,7 +260,7 @@ function CollapsibleTrigger({
         "w-full px-4 py-3 flex items-center justify-between transition-colors",
         isGrouped ? "hover:bg-border/30" : "hover:bg-muted/50",
         shimmer && "shimmer",
-        disableToggle ? "cursor-default" : "cursor-pointer",
+        cursorClass,
         className,
       )}
     >

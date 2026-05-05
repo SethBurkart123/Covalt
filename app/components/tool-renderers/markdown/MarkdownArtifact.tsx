@@ -23,7 +23,7 @@ export function MarkdownArtifact({
   renderPlan,
   chatId,
 }: ToolCallRendererProps) {
-  const { open, openFile, getFileState } = useArtifactPanel();
+  const { toggle, activeId, openFile, getFileState } = useArtifactPanel();
 
   const filePath = renderPlan?.config?.file;
   const hasFile = !!filePath && !!chatId;
@@ -40,12 +40,16 @@ export function MarkdownArtifact({
         : "";
   const toolCallTestId = `tool-call-${toolName}`;
 
+  const artifactId = toolCallId || `${toolName}-${title}`;
+
   const handleClick = () => {
     if (!isCompleted || (!content && !fileState)) return;
-    if (hasFile && filePath) openFile(filePath);
 
-    open(
-      toolCallId || `${toolName}-${title}`,
+    const isClosing = activeId === artifactId;
+    if (hasFile && filePath && !isClosing) openFile(filePath);
+
+    toggle(
+      artifactId,
       title,
       filePath
         ? <EditableMarkdownViewer filePath={filePath} readOnly={!isEditable} />

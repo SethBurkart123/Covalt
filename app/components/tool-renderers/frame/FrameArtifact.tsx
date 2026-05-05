@@ -37,7 +37,7 @@ export function FrameArtifact({
   isLast = false,
   renderPlan,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { toggle } = useArtifactPanel();
 
   const title = (toolArgs.title as string) || toolName;
   const url = buildUrl(renderPlan?.config?.url, renderPlan?.config?.port);
@@ -45,7 +45,7 @@ export function FrameArtifact({
 
   const handleClick = () => {
     if (!isCompleted || !url) return;
-    open(
+    toggle(
       toolCallId || `${toolName}-${title}`,
       title,
       <FrameArtifactContent url={url} title={title} />

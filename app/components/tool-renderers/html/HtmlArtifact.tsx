@@ -22,7 +22,7 @@ export function HtmlArtifact({
   isLast = false,
   renderPlan,
 }: ToolCallRendererProps) {
-  const { open } = useArtifactPanel();
+  const { toggle } = useArtifactPanel();
 
   const title = (toolArgs.title as string) || toolName;
   const html = (renderPlan?.config?.content as string) || (toolResult as string) || (toolArgs.html as string) || "";
@@ -30,7 +30,7 @@ export function HtmlArtifact({
 
   const handleClick = () => {
     if (!isCompleted || !html) return;
-    open(
+    toggle(
       toolCallId || `${toolName}-${title}`,
       title,
       <HtmlArtifactContent html={html} data={renderPlan?.config?.data} />
