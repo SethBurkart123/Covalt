@@ -13,7 +13,6 @@ You will be prompted to sign the CLA when you open your first pull request.
 ## License
 
 All contributions are licensed under the [GNU Affero General Public License v3.0](LICENSE).
-No SPDX headers are required in source files.
 
 ## Code guidelines
 
