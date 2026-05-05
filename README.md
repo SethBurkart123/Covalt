@@ -32,7 +32,7 @@ bun run build           # Build for production
 bun run lint            # Run linting
 ```
 
-> **Note:** `app/python/api.ts` is **auto-generated** — never edit it manually. It regenerates whenever the dev server starts.
+> **Note:** `app/python/api.ts` is **auto-generated** (never edit it manually). It regenerates whenever the dev server starts.
 >
 > To regenerate types without running the full dev server:
 > ```bash
@@ -81,9 +81,9 @@ External plugins can be installed from GitHub repositories or zip packages via t
 To create your own plugin, see: [`docs/creating-plugins.md`](docs/creating-plugins.md)
 
 Key plugin paths:
-- `nodes/` — built-in plugin manifests, node definitions, and executors
-- `backend/services/plugin_registry.py` — backend plugin registration and hook dispatch
-- `app/lib/flow/plugin-registry.ts` — frontend plugin registration and definition lookup
+- `nodes/` (built-in plugin manifests, node definitions, and executors)
+- `backend/services/plugin_registry.py` (backend plugin registration and hook dispatch)
+- `app/lib/flow/plugin-registry.ts` (frontend plugin registration and definition lookup)
 
 ## Validation
 
@@ -109,12 +109,12 @@ bun run ci:playwright
 
 ## Status
 
-Active development — breaking changes are expected before initial release. No backwards compatibility is guaranteed for toolset schemas, APIs, database schemas, or the Python SDK.
+Active development. Breaking changes are expected before initial release. No backwards compatibility is guaranteed for toolset schemas, APIs, database schemas, or the Python SDK.
 
 ## License
 
 Covalt is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
-The Covalt name and branding are trademarked — see [TRADEMARKS.md](TRADEMARKS.md).
-Commercial licensing is available — see [COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md).
+The Covalt name and branding are trademarked (see [TRADEMARKS.md](TRADEMARKS.md)).
+Commercial licensing is available (see [COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md)).
 
