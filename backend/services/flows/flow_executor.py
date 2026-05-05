@@ -27,6 +27,7 @@ import asyncio
 import logging
 import types
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -65,17 +66,19 @@ def topological_sort(nodes: list[dict], edges: list[dict]) -> list[str]:
             adjacency[src].append(tgt)
             in_degree[tgt] += 1
 
-    queue = sorted(nid for nid in node_ids if in_degree[nid] == 0)
+    queue = deque(sorted(nid for nid in node_ids if in_degree[nid] == 0))
     result: list[str] = []
 
     while queue:
-        node = queue.pop(0)
+        node = queue.popleft()
         result.append(node)
-        for neighbor in sorted(adjacency[node]):
+        newly_ready: list[str] = []
+        for neighbor in adjacency[node]:
             in_degree[neighbor] -= 1
             if in_degree[neighbor] == 0:
-                queue.append(neighbor)
-                queue.sort()
+                newly_ready.append(neighbor)
+        newly_ready.sort()
+        queue.extend(newly_ready)
 
     if len(result) != len(node_ids):
         raise ValueError("Cycle detected in flow graph")
@@ -239,10 +242,10 @@ def _reachable_nodes_from_entries(
         adjacency.setdefault(source, []).append(target)
 
     visited: set[str] = set()
-    queue: list[str] = sorted(entry_node_ids)
+    queue: deque[str] = deque(sorted(entry_node_ids))
 
     while queue:
-        node_id = queue.pop(0)
+        node_id = queue.popleft()
         if node_id in visited:
             continue
         visited.add(node_id)
@@ -267,10 +270,10 @@ def _upstream_closure(edges: list[dict], seed_node_ids: set[str]) -> set[str]:
         reverse_adjacency.setdefault(target, []).append(source)
 
     visited: set[str] = set()
-    queue: list[str] = sorted(seed_node_ids)
+    queue: deque[str] = deque(sorted(seed_node_ids))
 
     while queue:
-        node_id = queue.pop(0)
+        node_id = queue.popleft()
         if node_id in visited:
             continue
         visited.add(node_id)

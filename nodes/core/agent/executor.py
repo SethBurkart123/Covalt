@@ -7,6 +7,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from backend.providers import resolve_provider_options
@@ -25,6 +26,7 @@ from backend.runtime import (
     RunError,
     RunStarted,
     RuntimeAdapter,
+    RuntimeAttachment,
     RuntimeEventT,
     RuntimeMessage,
     RuntimeToolCall,
@@ -168,7 +170,6 @@ class AgentExecutor:
             data,
             model=config.model,
             tools=config.tools,
-            sub_agents=linked_agents,
             instructions=config.instructions,
         )
         if run_handle is not None and hasattr(run_handle, "bind_agent"):
@@ -592,10 +593,8 @@ def _build_agent_or_team(
     *,
     model: Any,
     tools: list[Any],
-    sub_agents: list[LinkedAgentArtifact],
     instructions: list[str] | None,
 ) -> AgentHandle:
-    del sub_agents
     config = AgentConfig(
         model=model,
         tools=tools,

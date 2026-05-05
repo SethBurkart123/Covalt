@@ -7,6 +7,16 @@ from typing import Any
 from nodes._types import DataValue, ExecutionResult, FlowContext
 
 
+def _lookup(path: str, payload: Any) -> Any:
+    current = payload
+    for segment in path.split("."):
+        if isinstance(current, dict):
+            current = current.get(segment)
+            continue
+        return None
+    return current
+
+
 def _evaluate(
     field_val: Any, operator: str, compare_val: Any, case_sensitive: bool = True
 ) -> bool:
@@ -86,7 +96,7 @@ class ConditionalExecutor:
 
         field_val = None
         if isinstance(value, dict):
-            field_val = value.get(field)
+            field_val = _lookup(field, value)
         elif hasattr(value, field):
             field_val = getattr(value, field)
 
