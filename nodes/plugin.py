@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from backend.services.plugins.plugin_registry import PluginRegistry
 from nodes._types import HookType, NodeEvent
+
+if TYPE_CHECKING:
+    from backend.services.plugins.plugin_registry import PluginRegistry
 from nodes.ai.llm_completion.executor import executor as llm_completion_executor
 from nodes.ai.prompt_template.executor import executor as prompt_template_executor
 from nodes.core.agent.executor import executor as agent_executor

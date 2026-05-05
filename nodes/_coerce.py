@@ -38,6 +38,14 @@ COERCION_TABLE: dict[tuple[str, str], Callable[[DataValue], DataValue]] = {
 }
 
 
+def register_coercion(
+    source_type: str,
+    target_type: str,
+    converter: Callable[[DataValue], DataValue],
+) -> None:
+    COERCION_TABLE[(source_type, target_type)] = converter
+
+
 def can_coerce(source_type: str, target_type: str) -> bool:
     if source_type == target_type:
         return True

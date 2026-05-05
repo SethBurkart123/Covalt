@@ -3,12 +3,12 @@
  * NO React imports here - this is pure data.
  */
 
-/** Socket type identifier - must match keys in SOCKET_TYPES */
-export type SocketTypeId =
-  | 'data'
-  | 'tools'
-  | 'float' | 'int' | 'string' | 'boolean'
-  | 'json' | 'model';
+/** Socket type identifier — open to plugin extension */
+export type SocketTypeId = string;
+
+export const BUILTIN_SOCKET_TYPE_IDS = [
+  'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'model',
+] as const;
 
 export type SocketShape = 'circle' | 'square' | 'diamond';
 

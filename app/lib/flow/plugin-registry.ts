@@ -8,6 +8,7 @@ import type {
 } from '@nodes/_types';
 import type { NodeEntry, PluginManifest } from '@nodes/_manifest';
 import { deregisterHooks, registerHook, resetHooksForTests } from './plugin-hooks';
+import { registerSocketType, registerCoercion, deregisterPluginSocketTypes } from './sockets';
 
 export interface NodeDefinitionMetadata {
   nodeType: string;
@@ -284,6 +285,13 @@ export function registerPlugin(manifest: PluginManifest): void {
     registerStagedHooks(pluginId, stagedNodeHooks);
     registerStagedHooks(pluginId, stagedManifestHooks);
     plugins.set(pluginId, { nodeTypes: stagedNodes.map((node) => node.entry.type) });
+
+    for (const socketType of manifest.socketTypes ?? []) {
+      registerSocketType(socketType, pluginId);
+    }
+    for (const coercion of manifest.coercions ?? []) {
+      registerCoercion(coercion.from, coercion.to, pluginId);
+    }
   } catch (error) {
     rollbackPluginState(pluginId);
     throw error;
@@ -308,6 +316,7 @@ export function unregisterPlugin(pluginId: string): boolean {
   }
 
   deregisterHooks(normalized);
+  deregisterPluginSocketTypes(normalized);
   plugins.delete(normalized);
   return true;
 }

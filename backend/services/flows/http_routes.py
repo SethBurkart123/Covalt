@@ -12,16 +12,9 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from nodes._types import HookType, NodeEvent
 
-from .agent_manager import get_agent_manager
-from .flow_executor import run_flow
 from ..node_providers.node_provider_registry import get_provider_node_registration
 from ..node_providers.node_provider_runtime import handle_provider_route
 from ..node_providers.node_route_index import rebuild_node_route_index, resolve_node_route, resolve_node_route_by_id
-from .node_route_registry import (
-    NodeRouteContext,
-    NodeRouteResponse,
-    get_node_route_registry,
-)
 from ..plugins.plugin_registry import dispatch_hook
 from ..streaming.runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
@@ -34,6 +27,13 @@ from ..streaming.runtime_events import (
     EVENT_RUN_STARTED,
 )
 from ..tools.tool_registry import get_tool_registry
+from .agent_manager import get_agent_manager
+from .flow_executor import run_flow
+from .node_route_registry import (
+    NodeRouteContext,
+    NodeRouteResponse,
+    get_node_route_registry,
+)
 
 try:
     import jsonschema
@@ -42,7 +42,10 @@ except Exception:  # pragma: no cover - optional during tests
 
 
 def register_http_routes(app: Any) -> None:
-    import nodes  # noqa: F401
+    import nodes  # noqa: PLC0415
+    from backend.services.plugins.plugin_registry import _DEFAULT_PLUGIN_REGISTRY  # noqa: PLC0415
+
+    nodes.init(_DEFAULT_PLUGIN_REGISTRY)
     rebuild_node_route_index()
     register_webhook_routes(app)
     register_node_routes(app)
@@ -136,6 +139,8 @@ def register_webhook_routes(app: Any) -> None:
                                 payload = _node_event_payload(item)
                                 if payload is not None:
                                     yield _sse(payload[0], payload[1])
+                                if (item.data or {}).get("on_error") == "continue":
+                                    continue
                                 yield _sse(
                                     EVENT_RUN_ERROR,
                                     {"error": (item.data or {}).get("error", "Unknown node error")},
@@ -173,7 +178,8 @@ def register_webhook_routes(app: Any) -> None:
                         if response_payload is not None:
                             services.execution.stop_run = True
                     if item.event_type == "error":
-                        had_error = (item.data or {}).get("error", "Unknown node error")
+                        if (item.data or {}).get("on_error") != "continue":
+                            had_error = (item.data or {}).get("error", "Unknown node error")
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 

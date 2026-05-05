@@ -1,7 +1,19 @@
 import type {
   FrontendHookHandlers,
   NodeDefinition,
+  SocketShape,
 } from './_types';
+
+export interface SocketTypeDeclaration {
+  id: string;
+  color: string;
+  shape: SocketShape;
+}
+
+export interface CoercionDeclaration {
+  from: string;
+  to: string;
+}
 
 export interface NodeEntry {
   type: string;
@@ -21,5 +33,7 @@ export interface PluginManifest {
   hooks?: FrontendHookHandlers;
   components?: PluginComponentRegistry;
   definitions?: readonly NodeDefinition[];
+  socketTypes?: readonly SocketTypeDeclaration[];
+  coercions?: readonly CoercionDeclaration[];
 }
 

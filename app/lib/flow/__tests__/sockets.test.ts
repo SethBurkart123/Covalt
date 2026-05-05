@@ -1,10 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { canConnect, canCoerce, getSocketStyle, SOCKET_TYPES } from '../sockets'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { canConnect, canCoerce, getSocketStyle, SOCKET_TYPES, registerSocketType, registerCoercion, resetSocketRegistryForTests } from '../sockets'
 import type { SocketTypeId, Parameter } from '@nodes/_types'
+import { BUILTIN_SOCKET_TYPE_IDS } from '@nodes/_types'
 
-const ALL_SOCKET_TYPES: SocketTypeId[] = [
-  'data', 'tools', 'float', 'int', 'string', 'boolean', 'json', 'model',
-]
+const ALL_SOCKET_TYPES = [...BUILTIN_SOCKET_TYPE_IDS]
 
 function makeParam(socketType: SocketTypeId, acceptsTypes?: readonly SocketTypeId[]): Parameter {
   return {
@@ -152,5 +151,29 @@ describe('getSocketStyle', () => {
     const style = getSocketStyle('float', { color: '#abc', shape: 'square' })
     expect(style.color).toBe('#abc')
     expect(style.shape).toBe('square')
+  })
+})
+
+describe('registerSocketType', () => {
+  beforeEach(() => {
+    resetSocketRegistryForTests()
+  })
+
+  it('registers a custom socket type', () => {
+    registerSocketType({ id: 'audio', color: '#8b5cf6', shape: 'circle' })
+    const style = getSocketStyle('audio')
+    expect(style.color).toBe('#8b5cf6')
+    expect(style.shape).toBe('circle')
+  })
+})
+
+describe('registerCoercion', () => {
+  beforeEach(() => {
+    resetSocketRegistryForTests()
+  })
+
+  it('registers a custom coercion rule', () => {
+    registerCoercion('audio', 'string')
+    expect(canCoerce('audio', 'string')).toBe(true)
   })
 })

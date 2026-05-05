@@ -612,6 +612,7 @@ async def run_flow(
     ) -> None:
         started_emitted = False
         terminal_event: str | None = None
+        last_error_text: str | None = None
         node_context = FlowContext(
             node_id=node_id,
             chat_id=chat_id,
@@ -630,10 +631,22 @@ async def run_flow(
                         started_emitted = True
                     if item.event_type in {"completed", "error", "cancelled"}:
                         terminal_event = item.event_type
+                    if item.event_type == "error":
+                        last_error_text = (item.data or {}).get("error", "Unknown error")
+                        if on_error == "continue":
+                            item = NodeEvent(
+                                node_id=item.node_id,
+                                node_type=item.node_type,
+                                event_type=item.event_type,
+                                run_id=item.run_id,
+                                data={**(item.data or {}), "on_error": on_error},
+                                timestamp=item.timestamp,
+                            )
                 await event_queue.put(("item", node_id, node_type, item))
 
             status = terminal_event or "completed"
-            await event_queue.put(("done", node_id, node_type, status, None, on_error))
+            error_for_done = last_error_text if status == "error" else None
+            await event_queue.put(("done", node_id, node_type, status, error_for_done, on_error))
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -661,7 +674,7 @@ async def run_flow(
                         node_type=node_type,
                         event_type="error",
                         run_id=run_id,
-                        data={"error": str(e)},
+                        data={"error": str(e), "on_error": on_error},
                     ),
                 )
             )

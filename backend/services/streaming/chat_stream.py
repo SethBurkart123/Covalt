@@ -535,6 +535,8 @@ async def handle_flow_stream(
                             "error": str(error_msg),
                         },
                     )
+                    if (item.data or {}).get("on_error") == "continue":
+                        continue
                     trace_status = "error"
                     trace_error = error_text
                     accumulator.flush_text()

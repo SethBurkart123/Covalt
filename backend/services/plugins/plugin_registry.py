@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.services.plugins.plugin_hooks import PluginHooks
+from nodes._coerce import register_coercion as register_runtime_coercion
 from nodes._types import HookType
 
 
@@ -45,6 +46,7 @@ class PluginRegistry:
         executors: dict[str, Any] | None = None,
         hooks: dict[HookType, list[Any]] | None = None,
         metadata: dict[str, Any] | None = None,
+        coercions: dict[tuple[str, str], Any] | None = None,
     ) -> None:
         normalized_id = _normalize_plugin_id(plugin_id)
         if normalized_id in self._plugin_metadata:
@@ -70,6 +72,9 @@ class PluginRegistry:
         for hook_type, handlers in hook_map.items():
             for handler in handlers:
                 self._hooks.register_hook(normalized_id, hook_type, handler)
+
+        for (source_type, target_type), converter in (coercions or {}).items():
+            register_runtime_coercion(source_type, target_type, converter)
 
     def register_plugins(
         self,
@@ -160,12 +165,14 @@ def register_plugin(
     executors: dict[str, Any] | None = None,
     hooks: dict[HookType, list[Any]] | None = None,
     metadata: dict[str, Any] | None = None,
+    coercions: dict[tuple[str, str], Any] | None = None,
 ) -> None:
     _DEFAULT_PLUGIN_REGISTRY.register_plugin(
         plugin_id,
         executors=executors,
         hooks=hooks,
         metadata=metadata,
+        coercions=coercions,
     )
 
 

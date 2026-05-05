@@ -1,87 +1,93 @@
 import type { SocketTypeId, SocketShape, Parameter } from '@nodes/_types';
 
-interface SocketType {
-  id: SocketTypeId;
+export interface SocketType {
+  id: string;
   color: string;
   shape: SocketShape;
 }
 
-// Socket type registry - visual config only
-export const SOCKET_TYPES: Record<SocketTypeId, SocketType> = {
-  data: {
-    id: 'data',
-    color: '#94a3b8',
-    shape: 'circle',
-  },
-  tools: {
-    id: 'tools',
-    color: '#f59e0b',
-    shape: 'square',
-  },
-  float: {
-    id: 'float',
-    color: '#a1a1aa',
-    shape: 'circle',
-  },
-  int: {
-    id: 'int',
-    color: '#71717a',
-    shape: 'circle',
-  },
-  string: {
-    id: 'string',
-    color: '#3b82f6',
-    shape: 'circle',
-  },
-  boolean: {
-    id: 'boolean',
-    color: '#10b981',
-    shape: 'diamond',
-  },
-  json: {
-    id: 'json',
-    color: '#f97316',
-    shape: 'circle',
-  },
-  model: {
-    id: 'model',
-    color: '#06b6d4',
-    shape: 'circle',
-  },
-} as const;
+const socketTypeRegistry = new Map<string, SocketType>();
+const coercionRegistry = new Set<string>();
+const pluginSocketTypes = new Map<string, string[]>();
+const pluginCoercions = new Map<string, string[]>();
 
-// Implicit type coercion table.
-// Each entry means "source can safely connect to target without an explicit converter."
-// The coercion functions live in Python (nodes/_coerce.py) — this table is just for
-// editor-time validation. Keep both in sync.
-const IMPLICIT_COERCIONS = new Set<`${SocketTypeId}:${SocketTypeId}`>([
-  // Numeric widening
+const BUILTIN_SOCKET_TYPES: Record<string, SocketType> = {
+  data: { id: 'data', color: '#94a3b8', shape: 'circle' },
+  tools: { id: 'tools', color: '#f59e0b', shape: 'square' },
+  float: { id: 'float', color: '#a1a1aa', shape: 'circle' },
+  int: { id: 'int', color: '#71717a', shape: 'circle' },
+  string: { id: 'string', color: '#3b82f6', shape: 'circle' },
+  boolean: { id: 'boolean', color: '#10b981', shape: 'diamond' },
+  json: { id: 'json', color: '#f97316', shape: 'circle' },
+  model: { id: 'model', color: '#06b6d4', shape: 'circle' },
+};
+
+const BUILTIN_COERCIONS: string[] = [
   'int:float',
-
-  // Primitives → string (serialize)
   'int:string',
   'float:string',
   'boolean:string',
-
-  // Structured → string (serialize)
   'json:string',
+];
 
-]);
+for (const [id, config] of Object.entries(BUILTIN_SOCKET_TYPES)) {
+  socketTypeRegistry.set(id, config);
+}
+for (const pair of BUILTIN_COERCIONS) {
+  coercionRegistry.add(pair);
+}
+
+export function registerSocketType(socketType: SocketType, pluginId?: string): void {
+  socketTypeRegistry.set(socketType.id, socketType);
+  if (pluginId) {
+    const existing = pluginSocketTypes.get(pluginId) ?? [];
+    existing.push(socketType.id);
+    pluginSocketTypes.set(pluginId, existing);
+  }
+}
+
+export function registerCoercion(source: string, target: string, pluginId?: string): void {
+  const key = `${source}:${target}`;
+  coercionRegistry.add(key);
+  if (pluginId) {
+    const existing = pluginCoercions.get(pluginId) ?? [];
+    existing.push(key);
+    pluginCoercions.set(pluginId, existing);
+  }
+}
+
+export function deregisterPluginSocketTypes(pluginId: string): void {
+  for (const typeId of pluginSocketTypes.get(pluginId) ?? []) {
+    socketTypeRegistry.delete(typeId);
+  }
+  pluginSocketTypes.delete(pluginId);
+
+  for (const key of pluginCoercions.get(pluginId) ?? []) {
+    coercionRegistry.delete(key);
+  }
+  pluginCoercions.delete(pluginId);
+}
+
+export const SOCKET_TYPES: Record<string, SocketType> = new Proxy(
+  {} as Record<string, SocketType>,
+  {
+    get: (_target, prop) =>
+      typeof prop === 'string' ? socketTypeRegistry.get(prop) : undefined,
+    has: (_target, prop) =>
+      typeof prop === 'string' ? socketTypeRegistry.has(prop) : false,
+    ownKeys: () => Array.from(socketTypeRegistry.keys()),
+    getOwnPropertyDescriptor: (_target, prop) => {
+      if (typeof prop !== 'string' || !socketTypeRegistry.has(prop)) return undefined;
+      return { enumerable: true, configurable: true, value: socketTypeRegistry.get(prop), writable: false };
+    },
+  }
+);
 
 export function canCoerce(sourceType: SocketTypeId, targetType: SocketTypeId): boolean {
   if (sourceType === targetType) return true;
-  return IMPLICIT_COERCIONS.has(`${sourceType}:${targetType}`);
+  return coercionRegistry.has(`${sourceType}:${targetType}`);
 }
 
-/**
- * Can a source socket connect to a target parameter?
- *
- * Priority:
- *   1. Data spine: data → data always works
- *   2. Data → non-data: allowed if target's acceptsTypes includes 'data' (e.g. sub-agent composition)
- *   3. Non-data → data: allowed only if acceptsTypes includes the source type
- *   4. Typed sockets: check acceptsTypes or implicit coercion
- */
 export function canConnect(sourceType: SocketTypeId, targetParam: Parameter): boolean {
   const targetType = targetParam.socket?.type ?? (targetParam.type as SocketTypeId);
 
@@ -107,9 +113,22 @@ export function getSocketStyle(
   typeId: SocketTypeId,
   overrides?: { color?: string; shape?: SocketShape }
 ): { color: string; shape: SocketShape } {
-  const base = SOCKET_TYPES[typeId];
+  const base = socketTypeRegistry.get(typeId);
   return {
     color: overrides?.color ?? base?.color ?? '#a1a1aa',
     shape: overrides?.shape ?? base?.shape ?? 'circle',
   };
+}
+
+export function resetSocketRegistryForTests(): void {
+  socketTypeRegistry.clear();
+  coercionRegistry.clear();
+  pluginSocketTypes.clear();
+  pluginCoercions.clear();
+  for (const [id, config] of Object.entries(BUILTIN_SOCKET_TYPES)) {
+    socketTypeRegistry.set(id, config);
+  }
+  for (const pair of BUILTIN_COERCIONS) {
+    coercionRegistry.add(pair);
+  }
 }

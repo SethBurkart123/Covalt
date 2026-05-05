@@ -12,14 +12,17 @@ os.environ["PYTHONPATH"] = os.pathsep.join([p for p in paths if p])
 
 from zynk import Bridge
 
-import nodes  # noqa: F401
+import nodes
+from backend.services.plugins.plugin_registry import _DEFAULT_PLUGIN_REGISTRY
+
+nodes.init(_DEFAULT_PLUGIN_REGISTRY)
 
 from . import commands  # noqa: F401
 from .db import init_database
 from .services.flows.http_routes import register_http_routes
 from .services.node_providers.node_provider_registry import reload_node_provider_registry
-from .services.tools.mcp_manager import shutdown_mcp
 from .services.node_providers.node_route_index import rebuild_node_route_index
+from .services.tools.mcp_manager import shutdown_mcp
 from .services.tools.toolset_manager import get_toolset_manager
 
 logger = logging.getLogger(__name__)

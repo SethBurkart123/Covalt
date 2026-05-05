@@ -1,32 +1,48 @@
-"""Node executor registry backed by plugin registration."""
+"""Node executor registry.
+
+Builtins are resolved directly from nodes.plugin. External plugin
+executors are resolved via an injected registry (set by nodes.init).
+No imports from backend/ — the dependency flows one way.
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
-from backend.services.plugins.plugin_registry import (
-    get_executor as get_plugin_executor,
-)
-from backend.services.plugins.plugin_registry import (
-    get_plugin_metadata,
-    plugin_for_node_type,
-)
-from backend.services.plugins.plugin_registry import (
-    list_node_types as list_plugin_node_types,
-)
 from nodes.plugin import BUILTIN_EXECUTOR_MODULES, BUILTIN_EXECUTORS
 
 
+class PluginRegistryProtocol(Protocol):
+    def get_executor(self, node_type: str) -> Any | None: ...
+    def list_node_types(self) -> list[str]: ...
+    def plugin_for_node_type(self, node_type: str) -> str | None: ...
+    def get_plugin_metadata(self, plugin_id: str) -> dict[str, Any] | None: ...
+
+
+_plugin_registry: PluginRegistryProtocol | None = None
+
+
+def bind_plugin_registry(registry: PluginRegistryProtocol) -> None:
+    global _plugin_registry
+    _plugin_registry = registry
+
+
 def get_executor(node_type: str) -> Any | None:
-    return BUILTIN_EXECUTORS.get(node_type) or get_plugin_executor(node_type)
+    builtin = BUILTIN_EXECUTORS.get(node_type)
+    if builtin is not None:
+        return builtin
+    if _plugin_registry is not None:
+        return _plugin_registry.get_executor(node_type)
+    return None
 
 
 def list_node_types() -> list[str]:
     types = {
         *BUILTIN_EXECUTOR_MODULES.keys(),
         *BUILTIN_EXECUTORS.keys(),
-        *list_plugin_node_types(),
     }
+    if _plugin_registry is not None:
+        types.update(_plugin_registry.list_node_types())
     return sorted(types)
 
 
@@ -50,11 +66,14 @@ def _resolve_module_path(node_type: str) -> str:
     if builtin_module is not None:
         return builtin_module
 
-    plugin_id = plugin_for_node_type(node_type)
+    if _plugin_registry is None:
+        return ""
+
+    plugin_id = _plugin_registry.plugin_for_node_type(node_type)
     if not plugin_id:
         return ""
 
-    plugin_metadata = get_plugin_metadata(plugin_id) or {}
+    plugin_metadata = _plugin_registry.get_plugin_metadata(plugin_id) or {}
     if plugin_metadata.get("source") == "provider":
         return f"provider:{plugin_id}"
 

@@ -208,6 +208,8 @@ async def execute_stream_flow_run(
                     nodeType=item.node_type,
                     error=(item.data or {}).get("error", "Unknown node error"),
                 )
+                if (item.data or {}).get("on_error") == "continue":
+                    continue
                 emit_chat_event(input_data.channel, EVENT_RUN_ERROR, content="Node error")
                 return
 
