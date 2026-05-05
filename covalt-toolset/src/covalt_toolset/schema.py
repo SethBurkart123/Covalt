@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import Any, Callable, Union, get_args, get_origin, get_type_hints
+import types
+from typing import Annotated, Any, Callable, Union, get_args, get_origin, get_type_hints
 
 try:
     from pydantic import BaseModel
@@ -79,10 +80,20 @@ def type_to_json_schema(t: Any) -> dict[str, Any]:
     origin = get_origin(t)
     args = get_args(t)
 
-    if origin is Union:
+    if origin is Annotated:
+        return type_to_json_schema(args[0]) if args else {"type": "string"}
+
+    if origin is Union or isinstance(t, types.UnionType):
         non_none_args = [a for a in args if a is not type(None)]
         if len(non_none_args) == 1:
             return type_to_json_schema(non_none_args[0])
+        all_pydantic = (
+            HAS_PYDANTIC
+            and BaseModel is not None
+            and all(isinstance(a, type) and issubclass(a, BaseModel) for a in non_none_args)
+        )
+        if all_pydantic:
+            return {"anyOf": [_pydantic_to_schema(a) for a in non_none_args]}
         return {"anyOf": [type_to_json_schema(a) for a in args]}
 
     if origin is list:
