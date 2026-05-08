@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import uuid
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -20,10 +22,18 @@ from droid_sdk import (
     ProcessTransport,
     SessionNotFoundError,
     ThinkingTextDelta,
+    TokenUsageUpdate,
     ToolProgress,
     ToolResult,
     ToolUse,
     TurnComplete,
+    WorkingStateChanged,
+)
+from droid_sdk.errors import (
+    ConnectionError as DroidConnectionError,
+)
+from droid_sdk.errors import (
+    TimeoutError as DroidTimeoutError,
 )
 from droid_sdk.schemas.cli import ToolResultNotification
 from droid_sdk.schemas.enums import (
@@ -33,11 +43,23 @@ from droid_sdk.schemas.enums import (
     SessionNotificationType,
 )
 
+from backend.runtime import ApprovalQuestion
+from backend.services.streaming import run_control
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from nodes._variables import variable_id_suffix
+from nodes.core.droid_agent._approval_bridge import (
+    approval_resolved_event,
+    droid_ask_user_response,
+    droid_ask_user_to_approval,
+    droid_permission_response,
+    droid_permission_to_approval,
+)
 from nodes.core.droid_agent._daemon import resolve_droid_executable
 
 logger = logging.getLogger(__name__)
+
+
+_STREAM_DONE = object()
 
 
 _REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"]
@@ -51,6 +73,16 @@ _session_cache: dict[str, str] = {}
 
 class DroidAgentExecutor:
     node_type = "droid-agent"
+
+    default_renderers = {
+        re.compile(r"^execute$", re.IGNORECASE): "terminal",
+        re.compile(r"^edit$", re.IGNORECASE): "file-diff",
+        re.compile(r"^create$", re.IGNORECASE): "file-diff",
+        re.compile(r"^apply.?patch$", re.IGNORECASE): "patch-diff",
+        re.compile(r"^read$", re.IGNORECASE): "file-read",
+        re.compile(r"^web.?search$", re.IGNORECASE): "web-search",
+        re.compile(r"^todo.?write$", re.IGNORECASE): "todo-list",
+    }
 
     def declare_variables(
         self,
@@ -197,7 +229,6 @@ class DroidAgentExecutor:
         content_parts: list[str] = []
         tool_name_by_id: dict[str, str] = {}
         pending_result_ids: deque[str] = deque()
-        reasoning_started = False
 
         def _on_tool_result_notif(notification_dict: dict[str, Any]) -> None:
             try:
@@ -208,12 +239,39 @@ class DroidAgentExecutor:
                 return
             pending_result_ids.append(parsed.tool_use_id)
 
+        # Queue is the bridge between the SDK response stream and the
+        # permission/ask_user handler callbacks: both producers push NodeEvents
+        # here and the generator below drains a single ordered stream.
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+        run_id_for_approvals = context.run_id
+        pending_question_lookup: dict[str, list[ApprovalQuestion]] = {}
+        stream_task: asyncio.Task[None] | None = None
+
+        async def _permission_handler(params: dict[str, Any]) -> str:
+            return await _handle_permission_request(
+                params,
+                run_id=run_id_for_approvals,
+                context=context,
+                queue=event_queue,
+            )
+
+        async def _ask_user_handler(params: dict[str, Any]) -> dict[str, Any]:
+            return await _handle_ask_user_request(
+                params,
+                run_id=run_id_for_approvals,
+                context=context,
+                queue=event_queue,
+                question_lookup=pending_question_lookup,
+            )
+
         try:
             await client.connect()
             unsub_result = client.on_notification(
                 _on_tool_result_notif,
                 notification_type=SessionNotificationType.TOOL_RESULT,
             )
+            client.set_permission_handler(_permission_handler)
+            client.set_ask_user_handler(_ask_user_handler)
 
             session_id = await _resume_or_initialize_session(
                 client,
@@ -235,73 +293,29 @@ class DroidAgentExecutor:
 
             await client.add_user_message(text=message)
 
-            async for msg in client.receive_response():
-                if isinstance(msg, AssistantTextDelta):
-                    content_parts.append(msg.text)
-                    yield NodeEvent(
-                        node_id=context.node_id,
-                        node_type=self.node_type,
-                        event_type="progress",
-                        run_id=context.run_id,
-                        data={"token": msg.text},
-                    )
-                    continue
+            stream_task = asyncio.create_task(
+                _drain_response_stream(
+                    client=client,
+                    context=context,
+                    queue=event_queue,
+                    content_parts=content_parts,
+                    tool_name_by_id=tool_name_by_id,
+                    pending_result_ids=pending_result_ids,
+                )
+            )
 
-                if isinstance(msg, ThinkingTextDelta):
-                    if not reasoning_started:
-                        reasoning_started = True
-                        yield _agent_event(context, "ReasoningStarted")
-                    yield _agent_event(
-                        context,
-                        "ReasoningStep",
-                        reasoningContent=msg.text,
-                    )
-                    continue
-
-                if isinstance(msg, ToolUse):
-                    tool_name_by_id[msg.tool_use_id] = msg.tool_name
-                    yield _agent_event(
-                        context,
-                        "ToolCallStarted",
-                        tool={
-                            "id": msg.tool_use_id,
-                            "toolName": msg.tool_name,
-                            "toolArgs": dict(msg.tool_input or {}),
-                            "isCompleted": False,
-                        },
-                    )
-                    continue
-
-                if isinstance(msg, ToolResult):
-                    tool_id = pending_result_ids.popleft() if pending_result_ids else ""
-                    tool_name = (
-                        msg.tool_name
-                        or (tool_name_by_id.get(tool_id) if tool_id else "")
-                        or ""
-                    )
-                    yield _agent_event(
-                        context,
-                        "ToolCallCompleted",
-                        tool={
-                            "id": tool_id,
-                            "toolName": tool_name,
-                            "toolResult": msg.content,
-                            "failed": bool(msg.is_error),
-                        },
-                    )
-                    continue
-
-                if isinstance(msg, ToolProgress):
-                    continue
-
-                if isinstance(msg, ErrorEvent):
-                    raise RuntimeError(msg.message)
-
-                if isinstance(msg, TurnComplete):
-                    if reasoning_started:
-                        yield _agent_event(context, "ReasoningCompleted")
-                        reasoning_started = False
+            while True:
+                item = await event_queue.get()
+                if item is _STREAM_DONE:
                     break
+                if isinstance(item, Exception):
+                    raise item
+                if isinstance(item, NodeEvent):
+                    yield item
+                    continue
+
+            if stream_task is not None:
+                await stream_task
 
             yield ExecutionResult(
                 outputs={
@@ -336,10 +350,18 @@ class DroidAgentExecutor:
                 outputs={"output": DataValue(type="data", value={"response": ""})}
             )
         finally:
+            if stream_task is not None and not stream_task.done():
+                stream_task.cancel()
+                with _suppress_errors():
+                    await stream_task
             unsub = locals().get("unsub_result")
             if callable(unsub):
                 with _suppress_errors():
                     unsub()
+            with _suppress_errors():
+                client.clear_permission_handler()
+            with _suppress_errors():
+                client.clear_ask_user_handler()
             with _suppress_errors():
                 await client.close()
 
@@ -428,6 +450,374 @@ def _get_run_handle(context: FlowContext) -> Any | None:
     if services is None:
         return None
     return getattr(services, "run_handle", None)
+
+
+def _make_tool_call_progress_event(
+    context: FlowContext,
+    *,
+    tool_call_id: str,
+    tool_name: str | None,
+    detail: str,
+    kind: str,
+    progress: float | None,
+    status: str | None,
+) -> NodeEvent:
+    payload: dict[str, Any] = {
+        "toolCallId": tool_call_id,
+        "kind": kind,
+        "detail": detail,
+    }
+    if tool_name:
+        payload["toolName"] = tool_name
+    if progress is not None:
+        payload["progress"] = progress
+    if status:
+        payload["status"] = status
+    return _agent_event(context, "ToolCallProgress", progress=payload)
+
+
+def _make_working_state_event(context: FlowContext, state: str) -> NodeEvent:
+    return _agent_event(context, "WorkingStateChanged", state=state)
+
+
+def _make_token_usage_event(
+    context: FlowContext,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+    is_message_total: bool = False,
+) -> NodeEvent:
+    return _agent_event(
+        context,
+        "TokenUsage",
+        tokenUsage={
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cacheReadTokens": cache_read_tokens,
+            "cacheWriteTokens": cache_write_tokens,
+            "isMessageTotal": is_message_total,
+        },
+    )
+
+
+def _make_stream_warning_event(
+    context: FlowContext, *, message: str, level: str = "warning"
+) -> NodeEvent:
+    return _agent_event(
+        context,
+        "StreamWarning",
+        warning={"message": message, "level": level},
+    )
+
+
+_RECOVERABLE_DROID_ERRORS = (DroidConnectionError, DroidTimeoutError)
+
+
+async def _drain_response_stream(
+    *,
+    client: DroidClient,
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+    content_parts: list[str],
+    tool_name_by_id: dict[str, str],
+    pending_result_ids: deque[str],
+) -> None:
+    reasoning_open = False
+
+    async def _close_reasoning_if_open() -> None:
+        nonlocal reasoning_open
+        if reasoning_open:
+            await queue.put(_agent_event(context, "ReasoningCompleted"))
+            reasoning_open = False
+
+    while True:
+        try:
+            async for msg in client.receive_response():
+                if isinstance(msg, AssistantTextDelta):
+                    await _close_reasoning_if_open()
+                    content_parts.append(msg.text)
+                    await queue.put(
+                        NodeEvent(
+                            node_id=context.node_id,
+                            node_type=DroidAgentExecutor.node_type,
+                            event_type="progress",
+                            run_id=context.run_id,
+                            data={"token": msg.text},
+                        )
+                    )
+                    continue
+
+                if isinstance(msg, ThinkingTextDelta):
+                    if not reasoning_open:
+                        reasoning_open = True
+                        await queue.put(_agent_event(context, "ReasoningStarted"))
+                    await queue.put(
+                        _agent_event(context, "ReasoningStep", reasoningContent=msg.text)
+                    )
+                    continue
+
+                if isinstance(msg, ToolUse):
+                    # Reasoning auto-close: any non-thinking event finalizes the
+                    # current reasoning block so subsequent tool/text content
+                    # renders in its own UI region.
+                    await _close_reasoning_if_open()
+                    tool_name_by_id[msg.tool_use_id] = msg.tool_name
+                    await queue.put(
+                        _agent_event(
+                            context,
+                            "ToolCallStarted",
+                            tool={
+                                "id": msg.tool_use_id,
+                                "toolName": msg.tool_name,
+                                "toolArgs": dict(msg.tool_input or {}),
+                                "isCompleted": False,
+                            },
+                        )
+                    )
+                    continue
+
+                if isinstance(msg, ToolResult):
+                    await _close_reasoning_if_open()
+                    tool_id = pending_result_ids.popleft() if pending_result_ids else ""
+                    tool_name = (
+                        msg.tool_name
+                        or (tool_name_by_id.get(tool_id) if tool_id else "")
+                        or ""
+                    )
+                    await queue.put(
+                        _agent_event(
+                            context,
+                            "ToolCallCompleted",
+                            tool={
+                                "id": tool_id,
+                                "toolName": tool_name,
+                                "toolResult": msg.content,
+                                "failed": bool(msg.is_error),
+                            },
+                        )
+                    )
+                    continue
+
+                if isinstance(msg, ToolProgress):
+                    tool_id = ""
+                    for tid, tname in tool_name_by_id.items():
+                        if tname == msg.tool_name:
+                            tool_id = tid
+                    await queue.put(
+                        _make_tool_call_progress_event(
+                            context,
+                            tool_call_id=tool_id,
+                            tool_name=msg.tool_name,
+                            detail=msg.content,
+                            kind="status",
+                            progress=None,
+                            status="running",
+                        )
+                    )
+                    continue
+
+                if isinstance(msg, WorkingStateChanged):
+                    state_value = getattr(msg.state, "value", str(msg.state))
+                    await queue.put(_make_working_state_event(context, state_value))
+                    continue
+
+                if isinstance(msg, TokenUsageUpdate):
+                    await queue.put(
+                        _make_token_usage_event(
+                            context,
+                            input_tokens=msg.input_tokens,
+                            output_tokens=msg.output_tokens,
+                            cache_read_tokens=msg.cache_read_tokens,
+                            cache_write_tokens=msg.cache_write_tokens,
+                            is_message_total=False,
+                        )
+                    )
+                    continue
+
+                if isinstance(msg, ErrorEvent):
+                    raise RuntimeError(msg.message)
+
+                if isinstance(msg, TurnComplete):
+                    await _close_reasoning_if_open()
+                    if msg.token_usage is not None:
+                        tu = msg.token_usage
+                        await queue.put(
+                            _make_token_usage_event(
+                                context,
+                                input_tokens=tu.input_tokens,
+                                output_tokens=tu.output_tokens,
+                                cache_read_tokens=tu.cache_read_tokens,
+                                cache_write_tokens=tu.cache_write_tokens,
+                                is_message_total=False,
+                            )
+                        )
+                    await queue.put(_STREAM_DONE)
+                    return
+            await _close_reasoning_if_open()
+            await queue.put(_STREAM_DONE)
+            return
+        except _RECOVERABLE_DROID_ERRORS as exc:
+            logger.warning("recoverable droid error, reconnecting: %s", exc)
+            await queue.put(
+                _make_stream_warning_event(
+                    context,
+                    message=f"Reconnecting after {type(exc).__name__}: {exc}",
+                    level="warning",
+                )
+            )
+            await asyncio.sleep(0.25)
+            try:
+                await client.connect()
+            except Exception:
+                logger.exception("Failed to reconnect after recoverable droid error")
+                raise
+            continue
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await queue.put(exc)
+            return
+
+
+async def _handle_permission_request(
+    params: dict[str, Any],
+    *,
+    run_id: str,
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+) -> str:
+    request_id = uuid.uuid4().hex
+    approval_event = droid_permission_to_approval(
+        params, run_id=run_id, request_id=request_id
+    )
+    await queue.put(_approval_required_node_event(context, approval_event))
+
+    waiter = asyncio.Event()
+    run_control.register_approval_waiter(
+        run_id, request_id, waiter, owner_run_id=run_id
+    )
+    try:
+        await waiter.wait()
+        cancelled = run_control.was_approval_cancelled(run_id, request_id)
+        record = run_control.get_approval_response(run_id, request_id)
+        resolved = approval_resolved_event(
+            run_id=run_id,
+            request_id=request_id,
+            record=record,
+            cancelled=cancelled,
+        )
+        await queue.put(_approval_resolved_node_event(context, resolved))
+        return droid_permission_response(record, cancelled=cancelled)
+    finally:
+        run_control.clear_approval(run_id, request_id)
+
+
+async def _handle_ask_user_request(
+    params: dict[str, Any],
+    *,
+    run_id: str,
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+    question_lookup: dict[str, list[ApprovalQuestion]],
+) -> dict[str, Any]:
+    request_id = uuid.uuid4().hex
+    approval_event = droid_ask_user_to_approval(
+        params, run_id=run_id, request_id=request_id
+    )
+    question_lookup[request_id] = list(approval_event.questions)
+    await queue.put(_approval_required_node_event(context, approval_event))
+
+    waiter = asyncio.Event()
+    run_control.register_approval_waiter(
+        run_id, request_id, waiter, owner_run_id=run_id
+    )
+    try:
+        await waiter.wait()
+        cancelled = run_control.was_approval_cancelled(run_id, request_id)
+        record = run_control.get_approval_response(run_id, request_id)
+        resolved = approval_resolved_event(
+            run_id=run_id,
+            request_id=request_id,
+            record=record,
+            cancelled=cancelled,
+        )
+        await queue.put(_approval_resolved_node_event(context, resolved))
+        return droid_ask_user_response(
+            record,
+            cancelled=cancelled,
+            questions=question_lookup.get(request_id, []),
+        )
+    finally:
+        run_control.clear_approval(run_id, request_id)
+        question_lookup.pop(request_id, None)
+
+
+def _approval_required_node_event(context: FlowContext, event: Any) -> NodeEvent:
+    return _agent_event(
+        context,
+        "ApprovalRequired",
+        approval={
+            "runId": event.run_id,
+            "requestId": event.request_id,
+            "kind": event.kind,
+            "toolUseIds": list(event.tool_use_ids or []),
+            "toolName": event.tool_name,
+            "riskLevel": event.risk_level,
+            "summary": event.summary,
+            "options": [
+                {
+                    "value": opt.value,
+                    "label": opt.label,
+                    "role": opt.role,
+                    "style": opt.style,
+                    "requiresInput": opt.requires_input,
+                }
+                for opt in event.options
+            ],
+            "questions": [
+                {
+                    "index": q.index,
+                    "topic": q.topic,
+                    "question": q.question,
+                    "options": list(q.options),
+                    "placeholder": q.placeholder,
+                    "multiline": q.multiline,
+                    "required": q.required,
+                }
+                for q in event.questions
+            ],
+            "editable": [
+                {
+                    "path": list(e.path),
+                    "schema": dict(e.schema),
+                    "label": e.label,
+                }
+                for e in event.editable
+            ],
+            "renderer": event.renderer,
+            "config": dict(event.config) if isinstance(event.config, dict) else {},
+            "timeoutMs": event.timeout_ms,
+        },
+    )
+
+
+def _approval_resolved_node_event(context: FlowContext, event: Any) -> NodeEvent:
+    return _agent_event(
+        context,
+        "ApprovalResolved",
+        approval={
+            "runId": event.run_id,
+            "requestId": event.request_id,
+            "selectedOption": event.selected_option,
+            "answers": [
+                {"index": a.index, "answer": a.answer} for a in event.answers
+            ],
+            "editedArgs": event.edited_args,
+            "cancelled": bool(event.cancelled),
+        },
+    )
 
 
 async def _resume_or_initialize_session(

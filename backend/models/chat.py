@@ -183,6 +183,10 @@ class ChatEvent(BaseModel):
     nodeId: str | None = None
     nodeType: str | None = None
     outputs: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
+    state: str | None = None
+    tokenUsage: dict[str, Any] | None = None
+    warning: dict[str, Any] | None = None
 
 
 

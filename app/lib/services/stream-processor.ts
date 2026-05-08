@@ -31,8 +31,10 @@ import {
   handleApprovalRequired,
   handleApprovalResolved,
   handleToolCallCompleted,
+  handleToolCallProgress,
   handleToolCallStarted,
 } from "@/lib/services/tool-event-handler";
+import type { TokenUsage } from "@/lib/types/chat";
 
 export { createInitialState };
 export type { StreamState };
@@ -124,6 +126,37 @@ export function processEvent(
 
     case RUNTIME_EVENT.APPROVAL_RESOLVED:
       handleApprovalResolved(state, payload.tool);
+      break;
+
+    case RUNTIME_EVENT.TOOL_CALL_PROGRESS:
+      handleToolCallProgress(state, payload.progress);
+      break;
+
+    case RUNTIME_EVENT.WORKING_STATE_CHANGED:
+      if (typeof payload.state === "string" && payload.state) {
+        state.messageState = payload.state;
+      }
+      break;
+
+    case RUNTIME_EVENT.TOKEN_USAGE:
+      if (payload.tokenUsage && typeof payload.tokenUsage === "object") {
+        state.messageTokenUsage = payload.tokenUsage as TokenUsage;
+      }
+      break;
+
+    case RUNTIME_EVENT.STREAM_WARNING:
+      if (payload.warning && typeof payload.warning === "object") {
+        const warn = payload.warning as Record<string, unknown>;
+        const message = typeof warn.message === "string" ? warn.message : "";
+        if (message) {
+          state.contentBlocks.push({
+            type: "system_event",
+            level: typeof warn.level === "string" ? warn.level : "warning",
+            content: message,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
       break;
 
     case RUNTIME_EVENT.FLOW_NODE_STARTED:

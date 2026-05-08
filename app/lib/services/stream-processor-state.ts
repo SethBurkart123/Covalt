@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContentBlock } from "@/lib/types/chat";
+import type { ContentBlock, TokenUsage } from "@/lib/types/chat";
 
 export interface MemberBuffers {
   currentTextBlock: string;
@@ -22,6 +22,8 @@ export interface StreamState {
   thinkTagDetected: boolean;
   memberStates: Map<string, MemberBuffers>;
   textBlockBoundary: boolean;
+  messageState: string | null;
+  messageTokenUsage: TokenUsage | null;
 }
 
 export type MemberRunBlock = Extract<ContentBlock, { type: "member_run" }>;
@@ -34,6 +36,8 @@ export function createInitialState(): StreamState {
     thinkTagDetected: false,
     memberStates: new Map(),
     textBlockBoundary: false,
+    messageState: null,
+    messageTokenUsage: null,
   };
 }
 

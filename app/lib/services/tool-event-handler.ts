@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContentBlock } from "@/lib/types/chat";
+import type { ContentBlock, ProgressEntry } from "@/lib/types/chat";
 import type { StreamState } from "@/lib/services/stream-processor-state";
 import { flushReasoningBlock, flushTextBlock } from "@/lib/services/stream-processor-state";
 import {
@@ -8,6 +8,44 @@ import {
   coerceApprovalResolvedPayload,
   coerceToolCallPayload,
 } from "@/lib/services/stream-processor-utils";
+
+const PROGRESS_HISTORY_CAP = 200;
+
+export function handleToolCallProgress(state: StreamState, payload: unknown): void {
+  if (!payload || typeof payload !== "object") return;
+  const data = payload as Record<string, unknown>;
+  const toolId = typeof data.toolCallId === "string" ? data.toolCallId : "";
+  if (!toolId) return;
+
+  const findToolBlock = (blocks: ContentBlock[]): ContentBlock | null => {
+    for (const block of blocks) {
+      if (block.type === "tool_call" && block.id === toolId) return block;
+      if (block.type === "member_run") {
+        const inner = findToolBlock(block.content);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  };
+
+  const toolBlock = findToolBlock(state.contentBlocks);
+  if (!toolBlock || toolBlock.type !== "tool_call") return;
+
+  const entry: ProgressEntry = {
+    kind: typeof data.kind === "string" ? data.kind : "other",
+    detail: typeof data.detail === "string" ? data.detail : "",
+    progress: typeof data.progress === "number" ? data.progress : null,
+    timestamp: typeof data.timestamp === "number" ? data.timestamp : Date.now() / 1000,
+  };
+  if (typeof data.status === "string") entry.status = data.status;
+
+  const list = toolBlock.progress ?? [];
+  list.push(entry);
+  if (list.length > PROGRESS_HISTORY_CAP) {
+    list.splice(0, list.length - PROGRESS_HISTORY_CAP);
+  }
+  toolBlock.progress = list;
+}
 
 export function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);

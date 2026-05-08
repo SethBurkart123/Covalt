@@ -36,10 +36,27 @@ function readResultField(result: unknown, key: string): unknown {
   return undefined;
 }
 
+interface ProgressLike {
+  kind?: string;
+  detail?: string;
+}
+
+function joinProgress(
+  progress: ProgressLike[] | undefined,
+  kind: "stdout" | "stderr",
+): string {
+  if (!Array.isArray(progress) || progress.length === 0) return "";
+  return progress
+    .filter((p) => (p?.kind ?? "other") === kind)
+    .map((p) => p?.detail ?? "")
+    .join("");
+}
+
 function resolveFields(
   toolArgs: Record<string, unknown> | undefined,
   result: unknown,
   config: Record<string, unknown> | undefined,
+  progress: ProgressLike[] | undefined,
 ): ResolvedFields {
   const command =
     asString(config?.command) ?? asString(toolArgs?.command) ?? asString(toolArgs?.cmd) ?? null;
@@ -50,13 +67,17 @@ function resolveFields(
   const outputFromResult = asString(readResultField(result, "output"));
   const stringResult = typeof result === "string" ? result : undefined;
 
+  const progressStdout = joinProgress(progress, "stdout");
+  const progressStderr = joinProgress(progress, "stderr");
+
   const stdout =
     cfgOutput ??
     stdoutFromResult ??
     outputFromResult ??
     stringResult ??
+    progressStdout ??
     "";
-  const stderr = stderrFromResult ?? "";
+  const stderr = stderrFromResult || progressStderr || "";
 
   const exitCode =
     asNumber(config?.exitCode) ??
@@ -110,9 +131,10 @@ export function TerminalRenderer({
 }: ToolRendererProps): ReactNode {
   void _chatId;
   const toolArgs = toolCall.toolArgs as Record<string, unknown> | undefined;
+  const progress = (toolCall as { progress?: ProgressLike[] }).progress;
   const fields = useMemo(
-    () => resolveFields(toolArgs, toolCall.toolResult, config),
-    [toolArgs, toolCall.toolResult, config],
+    () => resolveFields(toolArgs, toolCall.toolResult, config, progress),
+    [toolArgs, toolCall.toolResult, config, progress],
   );
 
   const cleanedStdout = useMemo(() => stripAnsi(fields.stdout), [fields.stdout]);

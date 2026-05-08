@@ -108,6 +108,30 @@ class ToolCallCompleted(RuntimeEvent):
 
 
 @dataclass(slots=True)
+class ToolCallProgress(RuntimeEvent):
+    tool_call_id: str = ""
+    tool_name: str | None = None
+    detail: str = ""
+    kind: Literal["stdout", "stderr", "diff", "status", "other"] = "other"
+    progress: float | None = None
+    status: Literal["running", "completed", "failed"] | None = None
+
+
+@dataclass(slots=True)
+class WorkingStateChanged(RuntimeEvent):
+    state: str = ""
+
+
+@dataclass(slots=True)
+class TokenUsage(RuntimeEvent):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    is_message_total: bool = False
+
+
+@dataclass(slots=True)
 class ApprovalOption:
     value: str
     label: str
@@ -201,6 +225,9 @@ RuntimeEventT = (
     | ReasoningCompleted
     | ToolCallStarted
     | ToolCallCompleted
+    | ToolCallProgress
+    | WorkingStateChanged
+    | TokenUsage
     | ApprovalRequired
     | ApprovalResolved
     | ModelUsage

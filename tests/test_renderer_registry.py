@@ -8,6 +8,7 @@ from backend.services.renderers.registry import (
     RendererRegistry,
     all_renderers,
     clear_registry,
+    find_descriptor_by_tool_name,
     get_renderer,
     is_renderer_registered,
     list_renderer_keys,
@@ -100,9 +101,23 @@ def test_is_renderer_registered_handles_aliases() -> None:
 def test_register_builtin_renderers_shape() -> None:
     register_builtin_renderers()
 
-    expected_keys = {"default", "code", "document", "html", "frame", "editor"}
+    expected_keys = {
+        "default",
+        "code",
+        "document",
+        "html",
+        "frame",
+        "editor",
+        "terminal",
+        "file-diff",
+        "patch-diff",
+        "web-search",
+        "todo-list",
+        "file-read",
+        "key-value",
+    }
     assert set(list_renderer_keys()) == expected_keys
-    assert len(all_renderers()) == 6
+    assert len(all_renderers()) == len(expected_keys)
 
     assert resolve_renderer_alias("markdown") == "document"
     assert is_renderer_registered("markdown") is True
@@ -113,7 +128,42 @@ def test_register_builtin_renderers_is_idempotent() -> None:
     register_builtin_renderers()
     register_builtin_renderers()
 
-    assert len(list_renderer_keys()) == 6
+    assert len(list_renderer_keys()) == 13
+
+
+def test_find_descriptor_by_tool_name_terminal_patterns() -> None:
+    register_builtin_renderers()
+
+    for tool in ("bash", "execute", "shell", "run_command", "exec", "BASH"):
+        descriptor = find_descriptor_by_tool_name(tool)
+        assert descriptor is not None
+        assert descriptor.key == "terminal"
+
+
+def test_find_descriptor_by_tool_name_file_diff_patterns() -> None:
+    register_builtin_renderers()
+
+    for tool in ("edit", "str_replace", "replace_in_file", "update_file", "write_file"):
+        descriptor = find_descriptor_by_tool_name(tool)
+        assert descriptor is not None
+        assert descriptor.key == "file-diff"
+
+
+def test_find_descriptor_by_tool_name_patch_diff_patterns() -> None:
+    register_builtin_renderers()
+
+    for tool in ("apply_patch", "applypatch", "patch"):
+        descriptor = find_descriptor_by_tool_name(tool)
+        assert descriptor is not None
+        assert descriptor.key == "patch-diff"
+
+
+def test_find_descriptor_by_tool_name_unknown_or_empty() -> None:
+    register_builtin_renderers()
+
+    assert find_descriptor_by_tool_name(None) is None
+    assert find_descriptor_by_tool_name("") is None
+    assert find_descriptor_by_tool_name("totally-unknown-name") is None
 
 
 def test_registry_instance_independent_of_module_singleton() -> None:

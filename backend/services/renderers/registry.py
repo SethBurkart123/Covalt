@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from threading import RLock
 
@@ -125,12 +126,24 @@ def renderer_config_schema(key: str) -> dict[str, str] | None:
     return _registry.config_schema(key)
 
 
+def find_descriptor_by_tool_name(tool_name: str | None) -> RendererDescriptor | None:
+    if not tool_name:
+        return None
+    for desc in _registry.all():
+        for pattern in desc.tool_name_patterns:
+            if re.match(pattern, tool_name, re.IGNORECASE):
+                return desc
+    return None
+
+
 def clear_registry() -> None:
     _registry.clear()
 
 
 def register_builtin_renderers() -> None:
     # Historical 6 built-ins plus the `markdown -> document` alias retained from RENDERER_ALIAS_MAP.
+    # Wave 4 D3 adds the renderer-mapped builtins (terminal/file-diff/etc.) registered with
+    # tool_name_patterns mirroring the frontend builtin registry.
     descriptors: tuple[RendererDescriptor, ...] = (
         RendererDescriptor(key="default", config_schema={}),
         RendererDescriptor(
@@ -172,6 +185,47 @@ def register_builtin_renderers() -> None:
                 "path": "string",
                 "editable": "bool",
             },
+        ),
+        RendererDescriptor(
+            key="terminal",
+            tool_name_patterns=("^(bash|execute|shell|run_command|exec)$",),
+            has_tool=True,
+            has_approval=True,
+        ),
+        RendererDescriptor(
+            key="file-diff",
+            tool_name_patterns=(
+                "^(edit|str_replace|replace_in_file|update_file|write_file)$",
+            ),
+            has_tool=True,
+            has_approval=True,
+        ),
+        RendererDescriptor(
+            key="patch-diff",
+            tool_name_patterns=("^(apply_patch|applypatch|patch)$",),
+            has_tool=True,
+            has_approval=True,
+        ),
+        RendererDescriptor(
+            key="web-search",
+            tool_name_patterns=(
+                "^(websearch|web_search|search_web|google_search|search)$",
+            ),
+            has_tool=True,
+        ),
+        RendererDescriptor(
+            key="todo-list",
+            tool_name_patterns=("^(todowrite|todo_write|update_todos|todo_list)$",),
+            has_tool=True,
+        ),
+        RendererDescriptor(
+            key="file-read",
+            tool_name_patterns=("^(read|read_file|view|view_file|cat)$",),
+            has_tool=True,
+        ),
+        RendererDescriptor(
+            key="key-value",
+            has_tool=True,
         ),
     )
     _registry.register_many(descriptors)

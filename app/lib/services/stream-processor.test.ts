@@ -423,4 +423,103 @@ describe("stream-processor", () => {
       isCompleted: false,
     });
   });
+
+  it("appends tool call progress entries onto the matching tool block", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.TOOL_CALL_STARTED,
+      { tool: { id: "t-progress", toolName: "exec", toolArgs: { command: "ls" } } },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.TOOL_CALL_PROGRESS,
+      {
+        progress: {
+          toolCallId: "t-progress",
+          kind: "stdout",
+          detail: "line 1\n",
+          progress: 0.25,
+        },
+      },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.TOOL_CALL_PROGRESS,
+      {
+        progress: {
+          toolCallId: "t-progress",
+          kind: "stdout",
+          detail: "line 2\n",
+        },
+      },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    const lastUpdate = updates.at(-1) || [];
+    expect(lastUpdate).toHaveLength(1);
+    const block = lastUpdate[0];
+    if (!block || block.type !== "tool_call") throw new Error("expected tool_call");
+    expect(block.progress).toHaveLength(2);
+    expect(block.progress?.[0]?.detail).toBe("line 1\n");
+    expect(block.progress?.[1]?.detail).toBe("line 2\n");
+  });
+
+  it("records working state and token usage on the stream state", () => {
+    const state = createInitialState();
+    const { callbacks } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.WORKING_STATE_CHANGED,
+      { state: "executing_tool" },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.TOKEN_USAGE,
+      {
+        tokenUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+          cacheReadTokens: 1,
+          cacheWriteTokens: 2,
+        },
+      },
+      state,
+      callbacks,
+    );
+
+    expect(state.messageState).toBe("executing_tool");
+    expect(state.messageTokenUsage).toEqual({
+      inputTokens: 12,
+      outputTokens: 4,
+      cacheReadTokens: 1,
+      cacheWriteTokens: 2,
+    });
+  });
+
+  it("appends a system_event content block for stream warnings", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.STREAM_WARNING,
+      { warning: { message: "reconnecting", level: "warning" } },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    const lastUpdate = updates.at(-1) || [];
+    const systemEvent = lastUpdate.find((b) => b.type === "system_event");
+    expect(systemEvent).toBeDefined();
+    if (!systemEvent || systemEvent.type !== "system_event") throw new Error("expected system_event");
+    expect(systemEvent.content).toBe("reconnecting");
+    expect(systemEvent.level).toBe("warning");
+  });
 });

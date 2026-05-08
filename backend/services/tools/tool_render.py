@@ -5,13 +5,17 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from nodes._registry import get_executor as _get_node_executor
+from nodes._renderers import resolve_default_renderer
+
 from ... import db
 from ...db.models import ToolCall as DbToolCall
 from ...models.chat import ToolCallPayload
+from ..renderers.registry import find_descriptor_by_tool_name
+from ..workspace_manager import get_workspace_manager
 from .render_plan_builder import get_render_plan_builder
 from .tool_registry import get_tool_registry
 from .toolset_executor import get_toolset_executor
-from ..workspace_manager import get_workspace_manager
 
 logger = logging.getLogger(__name__)
 registry = get_tool_registry()
@@ -104,6 +108,7 @@ def _resolve_tool_render_plan(
     chat_id: str | None,
     provided_plan: dict[str, Any] | None = None,
     failed: bool = False,
+    node_type: str | None = None,
 ) -> dict[str, Any] | None:
     if failed:
         return None
@@ -130,6 +135,18 @@ def _resolve_tool_render_plan(
         if renderer:
             render_plan = {"renderer": renderer, "config": {}}
 
+    if render_plan is None and tool_name and node_type:
+        executor = _get_node_executor(node_type)
+        default_map = getattr(executor, "default_renderers", None) if executor else None
+        key = resolve_default_renderer(default_map, tool_name)
+        if key:
+            render_plan = {"renderer": key, "config": {}}
+
+    if render_plan is None and tool_name:
+        descriptor = find_descriptor_by_tool_name(tool_name)
+        if descriptor is not None:
+            render_plan = {"renderer": descriptor.key, "config": {}}
+
     return render_plan
 
 
@@ -143,6 +160,7 @@ def _build_tool_call_completed_payload(
     render_plan: dict[str, Any] | None = None,
     chat_id: str | None = None,
     failed: bool = False,
+    node_type: str | None = None,
 ) -> dict[str, Any]:
     safe_args = tool_args if isinstance(tool_args, dict) else {}
     tool_result_text = str(tool_result) if tool_result is not None else None
@@ -154,6 +172,7 @@ def _build_tool_call_completed_payload(
         chat_id=chat_id,
         provided_plan=render_plan,
         failed=failed,
+        node_type=node_type,
     )
 
     if failed or _is_invalid_render_plan(resolved_plan):
@@ -176,7 +195,7 @@ def _build_tool_call_completed_payload(
 
 
 def _ensure_tool_call_completed_payload(
-    payload: dict[str, Any], chat_id: str | None
+    payload: dict[str, Any], chat_id: str | None, node_type: str | None = None
 ) -> None:
     event_name = str(payload.get("event") or "")
     if event_name != "tool_call_completed":
@@ -209,6 +228,7 @@ def _ensure_tool_call_completed_payload(
         render_plan=tool.get("renderPlan") if isinstance(tool.get("renderPlan"), dict) else None,
         chat_id=chat_id,
         failed=bool(tool.get("failed")) or _did_tool_call_fail(tool_name, tool_id),
+        node_type=node_type,
     )
 
 

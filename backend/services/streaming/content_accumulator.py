@@ -19,9 +19,15 @@ from .runtime_events import (
     EVENT_REASONING_STEP,
     EVENT_RUN_CONTENT,
     EVENT_RUN_ERROR,
+    EVENT_STREAM_WARNING,
+    EVENT_TOKEN_USAGE,
     EVENT_TOOL_CALL_COMPLETED,
+    EVENT_TOOL_CALL_PROGRESS,
     EVENT_TOOL_CALL_STARTED,
+    EVENT_WORKING_STATE_CHANGED,
 )
+
+PROGRESS_HISTORY_CAP = 200
 
 
 @dataclass
@@ -39,6 +45,8 @@ class ContentAccumulator:
         self.current_text = ""
         self.current_reasoning = ""
         self.member_runs: dict[str, MemberRunState] = {}
+        self.message_state: str | None = None
+        self.message_token_usage: dict[str, Any] | None = None
 
     def flush_text(self) -> None:
         if not self.current_text:
@@ -103,6 +111,33 @@ class ContentAccumulator:
             if block.get("type") == "tool_call" and block.get("id") == tool_id:
                 return block
         return None
+
+    def find_tool_block_anywhere(self, tool_id: str) -> dict[str, Any] | None:
+        block = self.find_tool_block(self.content_blocks, tool_id)
+        if block is not None:
+            return block
+        for parent in self.content_blocks:
+            if parent.get("type") != "member_run":
+                continue
+            inner = self.find_tool_block(parent.get("content") or [], tool_id)
+            if inner is not None:
+                return inner
+        return None
+
+    def append_tool_progress(
+        self, tool_id: str, entry: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        tool_block = self.find_tool_block_anywhere(tool_id)
+        if tool_block is None:
+            return None
+        progress_list = tool_block.setdefault("progress", [])
+        if not isinstance(progress_list, list):
+            progress_list = []
+            tool_block["progress"] = progress_list
+        progress_list.append(entry)
+        if len(progress_list) > PROGRESS_HISTORY_CAP:
+            del progress_list[: len(progress_list) - PROGRESS_HISTORY_CAP]
+        return tool_block
 
     def add_tool_block(
         self, blocks: list[dict[str, Any]], payload: dict[str, Any]
@@ -336,6 +371,53 @@ class ContentAccumulator:
         event_name = str(data.get("event") or "")
         if not event_name:
             return False
+
+        if event_name == EVENT_TOOL_CALL_PROGRESS:
+            payload = data.get("progress") or {}
+            tool_id = str(payload.get("toolCallId") or "")
+            if not tool_id:
+                return False
+            entry = {
+                "kind": str(payload.get("kind") or "other"),
+                "detail": str(payload.get("detail") or ""),
+                "progress": payload.get("progress"),
+                "timestamp": payload.get("timestamp")
+                if payload.get("timestamp") is not None
+                else datetime.now(UTC).timestamp(),
+            }
+            status = payload.get("status")
+            if status:
+                entry["status"] = status
+            return self.append_tool_progress(tool_id, entry) is not None
+
+        if event_name == EVENT_WORKING_STATE_CHANGED:
+            new_state = data.get("state")
+            if isinstance(new_state, str) and new_state:
+                self.message_state = new_state
+                return True
+            return False
+
+        if event_name == EVENT_TOKEN_USAGE:
+            usage = data.get("tokenUsage")
+            if isinstance(usage, dict):
+                self.message_token_usage = dict(usage)
+                return True
+            return False
+
+        if event_name == EVENT_STREAM_WARNING:
+            warning = data.get("warning") or {}
+            message = str(warning.get("message") or "")
+            if not message:
+                return False
+            self.content_blocks.append(
+                {
+                    "type": "system_event",
+                    "level": str(warning.get("level") or "warning"),
+                    "content": message,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
+            return True
 
         member_state, _created = self.get_or_create_flow_member_state(data)
         if member_state is not None:

@@ -81,6 +81,22 @@ export interface RenderPlan {
   };
 }
 
+export interface ProgressEntry {
+  kind: string;
+  detail: string;
+  progress?: number | null;
+  timestamp?: number;
+  status?: string;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  isMessageTotal?: boolean;
+}
+
 export interface ToolCallPayload {
   id: string;
   toolName: string;
@@ -102,6 +118,7 @@ export interface ToolCallPayload {
   options?: ApprovalOption[];
   questions?: ApprovalQuestion[];
   editable?: ApprovalEditable[];
+  progress?: ProgressEntry[];
 }
 
 export interface ToolApprovalTool {
@@ -201,6 +218,12 @@ export type ContentBlock =
       summary?: string;
       detail?: Record<string, unknown>;
       durationMs?: number;
+    }
+  | {
+      type: "system_event";
+      level: string;
+      content: string;
+      timestamp?: string;
     };
 
 export interface Message {
@@ -213,6 +236,8 @@ export interface Message {
   sequence: number;
   modelUsed?: string;
   attachments?: Attachment[];
+  state?: string;
+  tokenUsage?: TokenUsage;
 }
 
 export interface MessageSibling {

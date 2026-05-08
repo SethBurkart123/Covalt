@@ -515,7 +515,9 @@ async def handle_flow_stream(
                     if _is_delegation_agent_event(event_data):
                         continue
 
-                    _ensure_tool_call_completed_payload(event_data, chat_id or None)
+                    _ensure_tool_call_completed_payload(
+                        event_data, chat_id or None, item.node_type or None
+                    )
                     chat_event = _chat_event_from_agent_runtime_event(event_data)
                     if chat_event is not None:
                         ch.send_model(chat_event)
