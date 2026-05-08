@@ -16,9 +16,6 @@ _loaders: dict[str, OptionsLoader] = {}
 def register_options_loader(loader_id: str, loader: OptionsLoader) -> None:
     if not loader_id or not isinstance(loader_id, str):
         raise ValueError("Options loader id must be a non-empty string")
-    existing = _loaders.get(loader_id)
-    if existing is not None and existing is not loader:
-        raise ValueError(f"Options loader '{loader_id}' is already registered")
     _loaders[loader_id] = loader
 
 

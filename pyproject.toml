@@ -24,6 +24,7 @@ dependencies = [
     "cryptography>=46.0.3",
     "jsonschema>=4.23.0",
     "orjson>=3.11.7",
+    "droid-sdk>=0.1.0",
 ]
 
 [dependency-groups]

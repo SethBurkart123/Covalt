@@ -12,6 +12,7 @@ from nodes.ai.llm_completion.executor import executor as llm_completion_executor
 from nodes.ai.prompt_template.executor import executor as prompt_template_executor
 from nodes.core.agent.executor import executor as agent_executor
 from nodes.core.chat_start.executor import executor as chat_start_executor
+from nodes.core.droid_agent.executor import executor as droid_agent_executor
 from nodes.core.webhook_end.executor import executor as webhook_end_executor
 from nodes.core.webhook_trigger.executor import executor as webhook_trigger_executor
 from nodes.data.code.executor import executor as code_executor
@@ -27,6 +28,7 @@ BUILTIN_EXECUTOR_MODULES: dict[str, str] = {
     "webhook-trigger": "nodes.core.webhook_trigger.executor",
     "webhook-end": "nodes.core.webhook_end.executor",
     "agent": "nodes.core.agent.executor",
+    "droid-agent": "nodes.core.droid_agent.executor",
     "llm-completion": "nodes.ai.llm_completion.executor",
     "prompt-template": "nodes.ai.prompt_template.executor",
     "conditional": "nodes.flow.conditional.executor",
@@ -43,6 +45,7 @@ BUILTIN_EXECUTORS = {
     webhook_trigger_executor.node_type: webhook_trigger_executor,
     webhook_end_executor.node_type: webhook_end_executor,
     agent_executor.node_type: agent_executor,
+    droid_agent_executor.node_type: droid_agent_executor,
     llm_completion_executor.node_type: llm_completion_executor,
     prompt_template_executor.node_type: prompt_template_executor,
     conditional_executor.node_type: conditional_executor,

@@ -7,6 +7,7 @@ import { chatStart } from './core/chat_start/definition';
 import { webhookTrigger } from './core/webhook_trigger/definition';
 import { webhookEnd } from './core/webhook_end/definition';
 import { agent } from './core/agent/definition';
+import { droidAgent } from './core/droid_agent/definition';
 import { mcpServer } from './tools/mcp_server/definition';
 import { toolset } from './tools/toolset/definition';
 import { llmCompletion } from './ai/llm_completion/definition';
@@ -63,6 +64,11 @@ const BUILTIN_NODE_ENTRIES: readonly NodeEntry[] = [
     executorPath: 'nodes/core/agent/executor.py',
   },
   {
+    type: 'droid-agent',
+    definitionPath: 'nodes/core/droid_agent/definition.ts',
+    executorPath: 'nodes/core/droid_agent/executor.py',
+  },
+  {
     type: 'llm-completion',
     definitionPath: 'nodes/ai/llm_completion/definition.ts',
     executorPath: 'nodes/ai/llm_completion/executor.py',
@@ -117,6 +123,7 @@ const BUILTIN_DEFINITIONS: readonly NodeDefinition[] = [
   webhookTrigger,
   webhookEnd,
   agent,
+  droidAgent,
   llmCompletion,
   promptTemplate,
   conditional,

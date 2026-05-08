@@ -44,9 +44,11 @@ except Exception:  # pragma: no cover - optional during tests
 def register_http_routes(app: Any) -> None:
     import nodes  # noqa: PLC0415
     from backend.services.plugins.plugin_registry import _DEFAULT_PLUGIN_REGISTRY  # noqa: PLC0415
+    from backend.services.variables.builtin_loaders import register_builtin_loaders  # noqa: PLC0415
 
     nodes.init(_DEFAULT_PLUGIN_REGISTRY)
     rebuild_node_route_index()
+    register_builtin_loaders()
     register_webhook_routes(app)
     register_node_routes(app)
 

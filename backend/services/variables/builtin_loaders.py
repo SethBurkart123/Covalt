@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from backend.services.flows.agent_manager import get_agent_manager
 from backend.services.models.model_factory import stream_available_model_batches
 
 from .options_registry import register_options_loader
+
+logger = logging.getLogger(__name__)
 
 
 async def _list_models(_params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -53,6 +56,16 @@ async def _list_agents(_params: dict[str, Any]) -> list[dict[str, Any]]:
     return options
 
 
+async def _list_droid_models(_params: dict[str, Any]) -> list[dict[str, Any]]:
+    from nodes.core.droid_agent._daemon import get_probe  # noqa: PLC0415
+
+    probe = await get_probe()
+    if not probe.options:
+        raise RuntimeError("Droid CLI returned no available models")
+    return list(probe.options)
+
+
 def register_builtin_loaders() -> None:
     register_options_loader("models:list", _list_models)
     register_options_loader("agents:list", _list_agents)
+    register_options_loader("droid:models", _list_droid_models)
