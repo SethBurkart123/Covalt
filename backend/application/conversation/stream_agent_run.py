@@ -17,6 +17,7 @@ class StreamAgentRunInput:
     messages: list[ChatMessage]
     chat_id: str | None = None
     ephemeral: bool = False
+    variables: dict[str, Any] | None = None
 
 
 @dataclass
@@ -66,6 +67,7 @@ async def execute_stream_agent_run(
             chat_id=chat_id,
             ephemeral=input_data.ephemeral,
             agent_id=input_data.agent_id,
+            variables=input_data.variables,
         )
     except Exception as exc:
         await deps.handle_streaming_run_error(

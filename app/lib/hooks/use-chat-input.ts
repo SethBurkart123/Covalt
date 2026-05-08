@@ -21,6 +21,7 @@ import { addRecentModel } from "@/lib/utils";
 export function useChatInput(
   onThinkTagDetected?: () => void,
   getVisibleModelOptions?: () => Record<string, unknown>,
+  getVisibleVariables?: () => Record<string, unknown>,
 ) {
   const { chatId, selectedModel, refreshChats } = useChat();
   const { activeToolIds, setChatToolIds } = useToolsActive();
@@ -61,6 +62,7 @@ export function useChatInput(
   const options: UseChatInputOptions = {
     onThinkTagDetected,
     getVisibleModelOptions,
+    getVisibleVariables,
   };
 
   const refs: UseChatInputRefs = {

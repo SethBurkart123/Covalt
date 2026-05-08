@@ -162,6 +162,9 @@ class GraphRuntime(RuntimeApi):
     def cache_set(self, namespace: str, key: str, value: Any) -> None:
         self._cache.setdefault(namespace, {})[key] = value
 
+    def get_executor(self, node_type: str) -> Any | None:
+        return self._resolve_executor(node_type)
+
     def _resolve_executor(self, node_type: str) -> Any | None:
         if self._executors is not None:
             return self._executors.get(node_type)

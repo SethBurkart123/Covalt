@@ -8,7 +8,10 @@ import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
 import type { Attachment, Message, MessageSibling } from "@/lib/types/chat";
 
-export function useTestChatInput(agentId: string) {
+export function useTestChatInput(
+  agentId: string,
+  getVisibleVariables?: () => Record<string, unknown>,
+) {
   const { clearLastExecution, clearRunningExecution, recordFlowEvent } = useAgentTestChat();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +33,14 @@ export function useTestChatInput(agentId: string) {
     async (allMessages: Message[]) => {
       setIsLoading(true);
       try {
-        const { response, abort } = api.streamAgentChat(agentId, allMessages, undefined, true);
+        const variables = getVisibleVariables?.();
+        const { response, abort } = api.streamAgentChat(
+          agentId,
+          allMessages,
+          undefined,
+          true,
+          variables,
+        );
         streamAbortRef.current = abort;
         if (!response.ok) throw new Error(`Stream failed: ${response.statusText}`);
 
@@ -84,7 +94,7 @@ export function useTestChatInput(agentId: string) {
         }
       }
     },
-    [agentId, clearRunningExecution, recordFlowEvent],
+    [agentId, clearRunningExecution, recordFlowEvent, getVisibleVariables],
   );
 
   const handleSubmit = useCallback(

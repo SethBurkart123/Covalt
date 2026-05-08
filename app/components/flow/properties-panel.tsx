@@ -181,8 +181,12 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
       <div
         className={cn(
           'flex-1 min-h-0',
-          fullPanelParam ? 'flex flex-col' : 'overflow-y-auto space-y-4',
-          showCard ? (fullPanelParam ? 'p-0' : 'p-4') : (fullPanelParam ? 'p-0' : 'pt-0 pr-1')
+          !fullPanelParam && 'overflow-y-auto space-y-4',
+          fullPanelParam && fullPanelParam.type === 'code' && 'flex flex-col overflow-hidden',
+          fullPanelParam && fullPanelParam.type !== 'code' && 'overflow-y-auto',
+          fullPanelParam && 'p-0',
+          !fullPanelParam && showCard && 'p-4',
+          !fullPanelParam && !showCard && 'pt-0 pr-1',
         )}
       >
         {standardParams.length > 0 && (
@@ -201,7 +205,7 @@ export function PropertiesPanel({ nodeId, variant = 'card', className }: Propert
         )}
 
         {fullPanelParam && (
-          <div className="flex-1 min-h-0">
+          <div className={cn('min-h-0', fullPanelParam.type === 'code' && 'flex-1')}>
             <ParameterField
               key={fullPanelParam.id}
               param={fullPanelParam}

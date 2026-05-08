@@ -31,6 +31,12 @@ import { AttachmentPreview } from "@/components/AttachmentPreview";
 import MainModelOptions from "@/components/MainModelOptions";
 import AdvancedOptionsPopover from "@/components/AdvancedOptionsPopover";
 import {
+  VariablesAdvancedPopover,
+  VariablesHeader,
+  type VariablesRuntimeContext,
+} from "@/components/variables/variables-runtime";
+import type { VariableSpec } from "@nodes/_variables";
+import {
   FileDropZone,
   FileDropZoneTrigger,
 } from "@/components/ui/file-drop-zone";
@@ -46,7 +52,6 @@ import {
   hasMentionNodes,
   serializeChatInputMarkdown,
 } from "@/components/chat-input/chat-input-markdown";
-
 const lowlight = createLowlight(common);
 
 interface LeftToolbarProps {
@@ -58,6 +63,9 @@ interface LeftToolbarProps {
   optionValues?: Record<string, unknown>;
   onOptionChange?: (key: string, value: unknown) => void;
   onResetOptions?: () => void;
+  variableSpecs?: VariableSpec[];
+  variableCtx?: VariablesRuntimeContext;
+  onResetVariables?: () => void;
   hideModelSelector?: boolean;
   hideToolSelector?: boolean;
   toolSelectorDisabled?: boolean;
@@ -73,6 +81,9 @@ const LeftToolbar = memo(function LeftToolbar({
   optionValues,
   onOptionChange,
   onResetOptions,
+  variableSpecs,
+  variableCtx,
+  onResetVariables,
   hideModelSelector,
   hideToolSelector,
   toolSelectorDisabled,
@@ -116,6 +127,17 @@ const LeftToolbar = memo(function LeftToolbar({
           onReset={onResetOptions}
           disabled={isLoading}
         />
+      )}
+
+      {variableSpecs && variableSpecs.length > 0 && variableCtx && (
+        <>
+          <VariablesHeader specs={variableSpecs} ctx={variableCtx} />
+          <VariablesAdvancedPopover
+            specs={variableSpecs}
+            ctx={variableCtx}
+            onReset={onResetVariables}
+          />
+        </>
       )}
 
       {!hideToolSelector && (
@@ -193,6 +215,9 @@ interface ChatInputFormProps {
   optionValues?: Record<string, unknown>;
   onOptionChange?: (key: string, value: unknown) => void;
   onResetOptions?: () => void;
+  variableSpecs?: VariableSpec[];
+  variableCtx?: VariablesRuntimeContext;
+  onResetVariables?: () => void;
   canSendMessage?: boolean;
   onStop?: () => void;
   hideModelSelector?: boolean;
@@ -217,6 +242,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     optionValues,
     onOptionChange,
     onResetOptions,
+    variableSpecs,
+    variableCtx,
+    onResetVariables,
     canSendMessage = true,
     onStop,
     hideModelSelector,
@@ -764,6 +792,9 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 optionValues={optionValues}
                 onOptionChange={onOptionChange}
                 onResetOptions={onResetOptions}
+                variableSpecs={variableSpecs}
+                variableCtx={variableCtx}
+                onResetVariables={onResetVariables}
                 hideModelSelector={hideModelSelector}
                 hideToolSelector={hideToolSelector}
                 toolSelectorDisabled={toolSelectorState.disabled}

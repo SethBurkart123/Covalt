@@ -104,6 +104,8 @@ class RuntimeApi(Protocol):
 
     def get_node(self, node_id: str) -> dict[str, Any]: ...
 
+    def get_executor(self, node_type: str) -> Any | None: ...
+
     def incoming_edges(
         self,
         node_id: str,

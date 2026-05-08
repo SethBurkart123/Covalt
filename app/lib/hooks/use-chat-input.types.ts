@@ -12,6 +12,7 @@ import type {
 export interface UseChatInputOptions {
   onThinkTagDetected?: () => void;
   getVisibleModelOptions?: () => Record<string, unknown>;
+  getVisibleVariables?: () => Record<string, unknown>;
 }
 
 export interface UseChatInputState {

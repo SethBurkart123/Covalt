@@ -5,7 +5,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from backend.runtime import runtime_message_to_dict
-
 from nodes import get_executor
 from nodes._types import HookType, RuntimeConfigContext
 from nodes.node_type_ids import AGENT_NODE_TYPE, CHAT_START_NODE_TYPE
@@ -262,6 +261,7 @@ def _build_canonical_chat_graph(
         "name": name,
         "description": description,
         "model": model_ref,
+        "disableModelVariable": True,
     }
     if prompt_sections:
         agent_data["instructions"] = "\n\n".join(prompt_sections)

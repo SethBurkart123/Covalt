@@ -896,6 +896,49 @@ body {
   pointer-events: none;
 }
 
+@layer components {
+  .css-tooltip {
+    @apply relative;
+  }
+
+  .css-tooltip-content {
+    @apply pointer-events-none absolute z-[200] w-max origin-bottom opacity-0;
+    transform: translateY(0.5rem) translateX(-50%) scale(0.95);
+    transition:
+      opacity 150ms ease 0ms,
+      transform 150ms ease 0ms;
+  }
+
+  .css-tooltip:hover .css-tooltip-content {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%) scale(1);
+    transition-delay: 0ms;
+  }
+
+  .css-tooltip [data-state="open"] ~ .css-tooltip-content,
+  .css-tooltip.css-tooltip-closed .css-tooltip-content {
+    opacity: 0;
+    transform: translateY(0.5rem) translateX(-50%) scale(0.95);
+    transition-delay: 0ms;
+  }
+
+  .css-tooltip-label {
+    @apply block rounded-md bg-primary px-3 py-1.5 text-xs text-balance text-primary-foreground;
+  }
+
+  .css-tooltip-arrow {
+    @apply absolute left-1/2 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] bg-primary;
+  }
+
+  .css-tooltip-top .css-tooltip-content {
+    @apply bottom-full left-1/2 mb-[5px];
+  }
+
+  .css-tooltip-top .css-tooltip-arrow {
+    @apply -bottom-[3px];
+  }
+}
+
 /* Force theme color overrides */
 .force-light {
   --background: oklch(0.99 0.01 56.32);

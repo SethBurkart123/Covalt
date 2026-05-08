@@ -7,7 +7,9 @@ import { useChat } from "@/contexts/chat-context";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
+import { useChatVariableSpecs } from "@/lib/hooks/use-chat-variables";
 import { useModelOptions } from "@/lib/hooks/use-model-options";
+import { useVariables } from "@/lib/hooks/use-variables";
 import { api } from "@/lib/services/api";
 import {
   shouldParseThinkTags,
@@ -150,6 +152,22 @@ export default function ChatPanel() {
   } = useModelOptions(selectedModel, availableModels);
 
   const {
+    specs: chatVariableSpecs,
+    optionsContext: chatVariableOptionsContext,
+  } = useChatVariableSpecs({ chatId, modelId: selectedModel });
+
+  const variableStorageKey = useMemo(
+    () => (chatId ? `covalt:variables:${chatId}` : null),
+    [chatId],
+  );
+
+  const variables = useVariables({
+    storageKey: variableStorageKey,
+    specs: chatVariableSpecs,
+    optionsContext: chatVariableOptionsContext,
+  });
+
+  const {
     handleSubmit,
     isLoading,
     messages: rawMessages,
@@ -172,7 +190,11 @@ export default function ChatPanel() {
     editingAttachments,
     addEditingAttachment,
     removeEditingAttachment,
-  } = useChatInput(handleThinkTagDetected, getVisibleModelOptions);
+  } = useChatInput(
+    handleThinkTagDetected,
+    getVisibleModelOptions,
+    variables.getVisibleValues,
+  );
 
   const messages = useMemo(() => {
     if (!modelSettings?.models) return rawMessages;
@@ -232,6 +254,16 @@ export default function ChatPanel() {
     scrollToBottomRef.current?.();
   }, []);
 
+  const variableRuntimeCtx = useMemo(
+    () => ({
+      values: variables.values,
+      setValue: variables.setValue,
+      optionsFor: variables.optionsFor,
+      loadingFor: variables.loadingFor,
+    }),
+    [variables.values, variables.setValue, variables.optionsFor, variables.loadingFor],
+  );
+
   const chatInputForm = (
     <ChatInputForm
       onSubmit={handleSubmit}
@@ -243,7 +275,10 @@ export default function ChatPanel() {
       optionValues={modelOptionValues}
       onOptionChange={setModelOptionValue}
       onResetOptions={resetModelOptions}
-      canSendMessage={canSendMessage}
+      variableSpecs={variables.visibleSpecs}
+      variableCtx={variableRuntimeCtx}
+      onResetVariables={variables.reset}
+      canSendMessage={canSendMessage && variables.canSubmit}
       onStop={handleStop}
       hideToolSelector={hideToolSelector}
     />

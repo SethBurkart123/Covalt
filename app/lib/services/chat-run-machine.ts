@@ -1,4 +1,5 @@
 import type { ContentBlock } from "@/lib/types/chat";
+import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
 
 export type RunPhase =
   | "idle"
@@ -115,5 +116,28 @@ export function transition(state: RunState, event: RunEvent): RunState {
 
     case "MARK_SEEN":
       return state.hasUnseenUpdate ? { ...state, hasUnseenUpdate: false } : state;
+  }
+}
+
+export function runtimeEventToRunEvent(
+  eventType: string,
+  payload: Record<string, unknown>,
+): RunEvent | null {
+  switch (eventType) {
+    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
+      return { type: "PAUSED_HITL" };
+    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
+      return { type: "RESUME_HITL" };
+    case RUNTIME_EVENT.RUN_COMPLETED:
+      return { type: "COMPLETED" };
+    case RUNTIME_EVENT.RUN_CANCELLED:
+      return { type: "CANCELLED" };
+    case RUNTIME_EVENT.RUN_ERROR:
+      return {
+        type: "ERROR",
+        message: (payload.content as string) || "Unknown error",
+      };
+    default:
+      return null;
   }
 }

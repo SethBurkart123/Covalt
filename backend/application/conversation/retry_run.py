@@ -17,6 +17,7 @@ class RetryRunInput:
     model_id: str | None = None
     model_options: dict[str, Any] | None = None
     tool_ids: list[str] | None = None
+    variables: dict[str, Any] | None = None
 
 
 @dataclass
@@ -103,6 +104,7 @@ async def execute_retry_run(
             chat_id=input_data.chat_id,
             ephemeral=False,
             extra_tool_ids=input_data.tool_ids or None,
+            variables=input_data.variables,
         )
 
     except Exception as e:

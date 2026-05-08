@@ -51,6 +51,7 @@ class ContinueMessageRequest(BaseModel):
     modelId: str | None = None
     modelOptions: dict[str, Any] | None = None
     toolIds: list[str] = []
+    variables: dict[str, Any] | None = None
 
 
 class RetryMessageRequest(BaseModel):
@@ -59,6 +60,7 @@ class RetryMessageRequest(BaseModel):
     modelId: str | None = None
     modelOptions: dict[str, Any] | None = None
     toolIds: list[str] = []
+    variables: dict[str, Any] | None = None
 
 
 class AttachmentInput(BaseModel):
@@ -87,6 +89,7 @@ class EditUserMessageRequest(BaseModel):
     toolIds: list[str] = []
     existingAttachments: list[ExistingAttachmentInput] = []
     newAttachments: list[AttachmentInput] = []
+    variables: dict[str, Any] | None = None
 
 
 class SwitchToSiblingRequest(BaseModel):
@@ -193,6 +196,7 @@ async def continue_message(
             model_id=body.modelId,
             model_options=body.modelOptions,
             tool_ids=body.toolIds,
+            variables=body.variables,
         ),
         _build_continue_run_dependencies(),
     )
@@ -239,6 +243,7 @@ async def retry_message(
             model_id=body.modelId,
             model_options=body.modelOptions,
             tool_ids=body.toolIds,
+            variables=body.variables,
         ),
         _build_retry_run_dependencies(),
     )
@@ -359,6 +364,7 @@ async def edit_user_message(
                 )
                 for attachment in body.newAttachments
             ],
+            variables=body.variables,
         ),
         _build_edit_user_message_run_dependencies(),
     )

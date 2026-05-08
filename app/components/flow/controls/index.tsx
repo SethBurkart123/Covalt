@@ -15,6 +15,7 @@ import { ToolsetPicker } from './toolset-picker';
 import { NodePicker } from './node-picker';
 import { JsonSchemaControl } from './json-schema';
 import { CollectionControl } from './collection';
+import { VariablesEditor } from './variables-editor';
 
 export interface ControlProps {
   param: Parameter;
@@ -41,6 +42,7 @@ const CONTROL_REGISTRY: Partial<Record<ParameterType, AnyControl>> = {
   'node-ref': NodePicker as AnyControl,
   json: JsonSchemaControl as AnyControl,
   collection: CollectionControl as AnyControl,
+  variables: VariablesEditor as AnyControl,
 };
 
 function getControlComponent(type: ParameterType): AnyControl | null {

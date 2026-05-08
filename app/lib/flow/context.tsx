@@ -79,7 +79,7 @@ function getSocketTypeForHandle(
     return propagatedType;
   }
 
-  const param = resolveParameterForHandle(definition, handleId);
+  const param = resolveParameterForHandle(definition, handleId, node as FlowNode);
   if (!param) {
     return isSource ? 'data' : 'tools';
   }
@@ -98,7 +98,7 @@ function getParameterForHandle(
   const definition = getNodeDefinition(node.type || '');
   if (!definition) return undefined;
 
-  return resolveParameterForHandle(definition, handleId);
+  return resolveParameterForHandle(definition, handleId, node as FlowNode);
 }
 
 function canHandleActAsSource(param: Parameter | undefined): boolean {

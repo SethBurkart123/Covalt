@@ -102,6 +102,7 @@ class StreamChatRequest(BaseModel):
     chatId: str | None = None
     toolIds: list[str] = []
     attachments: list[AttachmentMeta] = []
+    variables: dict[str, Any] | None = None
 
 
 class CancelRunRequest(BaseModel):
@@ -264,6 +265,7 @@ async def stream_chat(
             chat_id=body.chatId,
             tool_ids=body.toolIds,
             attachments=body.attachments,
+            variables=body.variables,
         ),
         _build_start_run_dependencies(),
     )
@@ -274,6 +276,7 @@ class StreamAgentChatRequest(BaseModel):
     messages: list[dict[str, Any]]
     chatId: str | None = None
     ephemeral: bool = False
+    variables: dict[str, Any] | None = None
 
 
 class FlowRunPromptInput(BaseModel):
@@ -335,6 +338,7 @@ async def stream_agent_chat(
             messages=messages,
             chat_id=body.chatId,
             ephemeral=body.ephemeral,
+            variables=body.variables,
         ),
         _build_stream_agent_run_dependencies(),
     )

@@ -28,9 +28,11 @@ from nodes._types import (
     FlowContext,
     NodeEvent,
 )
+from nodes._variables import node_model_variable_id
 from nodes.ai.llm_completion.executor import LlmCompletionExecutor
 from nodes.core.agent.executor import AgentExecutor, LinkedAgentArtifact
 from nodes.core.chat_start.executor import ChatStartExecutor
+from nodes.core.chat_start.variables_runtime import parse_specs, validate_values
 from nodes.flow.conditional.executor import ConditionalExecutor
 from nodes.flow.merge.executor import MergeExecutor
 from nodes.flow.reroute.executor import RerouteExecutor
@@ -70,6 +72,36 @@ def _dv(type_: str, value: Any) -> DataValue:
 
 
 class TestChatStartExecutor:
+    def test_number_variable_without_step_preserves_decimal(self) -> None:
+        specs = parse_specs(
+            [
+                {
+                    "id": "temperature",
+                    "label": "Temperature",
+                    "control": {"kind": "number"},
+                }
+            ]
+        )
+
+        values = validate_values(specs, {"temperature": 0.7}).values
+
+        assert values["temperature"] == 0.7
+
+    def test_required_variable_rejects_empty_value(self) -> None:
+        specs = parse_specs(
+            [
+                {
+                    "id": "topic",
+                    "label": "Topic",
+                    "control": {"kind": "text"},
+                    "required": True,
+                }
+            ]
+        )
+
+        with pytest.raises(ValueError, match=r"Missing required variable value.*Topic"):
+            validate_values(specs, {"topic": " "})
+
     @pytest.mark.asyncio
     async def test_execute_outputs_required_chat_payload_fields(self) -> None:
         executor = ChatStartExecutor()
@@ -92,6 +124,120 @@ class TestChatStartExecutor:
         assert output["runtime_messages"] == chat_input.runtime_messages
         assert output["attachments"] == chat_input.last_user_attachments
         assert output["include_user_tools"] is True
+
+    @pytest.mark.asyncio
+    async def test_contributed_agent_model_variables_are_node_scoped(self) -> None:
+        executor = ChatStartExecutor()
+        agent_executor = AgentExecutor()
+        nodes = {
+            "agent-a": {
+                "id": "agent-a",
+                "type": "agent",
+                "data": {"name": "Alpha", "model": "openai:gpt-4o"},
+            },
+            "agent-b": {
+                "id": "agent-b",
+                "type": "agent",
+                "data": {"name": "Beta", "model": "anthropic:claude-3"},
+            },
+        }
+        outgoing_calls: list[dict[str, Any]] = []
+
+        def outgoing_edges(node_id: str, **kwargs: Any) -> list[dict[str, Any]]:
+            outgoing_calls.append({"node_id": node_id, **kwargs})
+            if node_id == "chat-start":
+                return [
+                    {"target": "agent-a"},
+                    {"target": "agent-b"},
+                ]
+            return []
+
+        runtime = SimpleNamespace(
+            outgoing_edges=outgoing_edges,
+            get_node=lambda node_id: nodes[node_id],
+            get_executor=lambda node_type: agent_executor if node_type == "agent" else None,
+            incoming_edges=lambda *_args, **_kwargs: [],
+        )
+        ctx = _flow_ctx(node_id="chat-start", runtime=runtime)
+
+        result = await executor.execute({}, {}, ctx)
+
+        specs = result.outputs["output"].value["variable_specs"]
+        by_id = {spec["id"]: spec for spec in specs}
+        assert set(by_id) == {
+            node_model_variable_id("agent-a"),
+            node_model_variable_id("agent-b"),
+        }
+        spec_a = by_id[node_model_variable_id("agent-a")]
+        assert spec_a["contributed_by"] == "Alpha"
+        assert spec_a["default"] == "openai:gpt-4o"
+        spec_b = by_id[node_model_variable_id("agent-b")]
+        assert spec_b["contributed_by"] == "Beta"
+        assert spec_b["default"] == "anthropic:claude-3"
+        assert any(
+            call["node_id"] == "chat-start" and call.get("channel") == "flow"
+            for call in outgoing_calls
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_agent_contributor_keeps_model_id(self) -> None:
+        executor = ChatStartExecutor()
+
+        class _Toolset:
+            def declare_variables(
+                self, _data: dict[str, Any], _ctx: Any
+            ) -> list[dict[str, Any]]:
+                return [
+                    {
+                        "id": "model",
+                        "label": "Tool model",
+                        "control": {"kind": "text"},
+                    }
+                ]
+
+        nodes = {
+            "tool-a": {"id": "tool-a", "type": "toolset", "data": {"name": "Toolbox"}},
+        }
+        runtime = SimpleNamespace(
+            outgoing_edges=lambda node_id, **_: (
+                [{"target": "tool-a"}] if node_id == "chat-start" else []
+            ),
+            get_node=lambda node_id: nodes[node_id],
+            get_executor=lambda node_type: _Toolset() if node_type == "toolset" else None,
+            incoming_edges=lambda *_args, **_kwargs: [],
+        )
+        ctx = _flow_ctx(node_id="chat-start", runtime=runtime)
+
+        result = await executor.execute({}, {}, ctx)
+
+        specs = result.outputs["output"].value["variable_specs"]
+        assert [spec["id"] for spec in specs] == ["model"]
+        assert specs[0]["contributed_by"] == "Toolbox"
+
+    @pytest.mark.asyncio
+    async def test_contributor_skipped_when_disable_model_variable_set(self) -> None:
+        executor = ChatStartExecutor()
+        agent_executor = AgentExecutor()
+        nodes = {
+            "agent-a": {
+                "id": "agent-a",
+                "type": "agent",
+                "data": {"name": "Alpha", "disableModelVariable": True},
+            },
+        }
+        runtime = SimpleNamespace(
+            outgoing_edges=lambda node_id, **_: (
+                [{"target": "agent-a"}] if node_id == "chat-start" else []
+            ),
+            get_node=lambda node_id: nodes[node_id],
+            get_executor=lambda node_type: agent_executor if node_type == "agent" else None,
+            incoming_edges=lambda *_args, **_kwargs: [],
+        )
+        ctx = _flow_ctx(node_id="chat-start", runtime=runtime)
+
+        result = await executor.execute({}, {}, ctx)
+
+        assert result.outputs["output"].value["variable_specs"] == []
 
     @pytest.mark.asyncio
     async def test_execute_falls_back_to_state_user_message_when_chat_input_missing(self) -> None:
@@ -413,6 +559,162 @@ class TestAgentExecutor:
         build_args = build_agent.call_args
         assert build_args is not None
         assert build_args.kwargs["instructions"] == ["be concise"]
+
+    @pytest.mark.asyncio
+    async def test_variable_model_overrides_saved_model_without_model_input(self) -> None:
+        executor = AgentExecutor()
+        fake_agent = _FakeStreamingAgent(
+            [
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
+            ]
+        )
+        ctx = _flow_ctx()
+
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ) as resolve_model,
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
+        ):
+            await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv(
+                            "data",
+                            {
+                                "message": "hello",
+                                "variables": {"model": "anthropic:claude-sonnet"},
+                            },
+                        ),
+                    },
+                    ctx,
+                )
+            )
+
+        resolve_model.assert_called_once_with(
+            "anthropic:claude-sonnet",
+            node_params={},
+            model_options={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_node_scoped_variable_model_overrides_saved_model(self) -> None:
+        executor = AgentExecutor()
+        fake_agent = _FakeStreamingAgent(
+            [
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
+            ]
+        )
+        ctx = _flow_ctx(node_id="agent-a")
+
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ) as resolve_model,
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
+        ):
+            await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv(
+                            "data",
+                            {
+                                "message": "hello",
+                                "variables": {
+                                    node_model_variable_id("agent-a"): "anthropic:claude-sonnet"
+                                },
+                            },
+                        ),
+                    },
+                    ctx,
+                )
+            )
+
+        resolve_model.assert_called_once_with(
+            "anthropic:claude-sonnet",
+            node_params={},
+            model_options={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_model_input_overrides_variable_model(self) -> None:
+        executor = AgentExecutor()
+        fake_agent = _FakeStreamingAgent(
+            [
+                ContentDelta(text="ok"),
+                RunCompleted(content=""),
+            ]
+        )
+        ctx = _flow_ctx()
+
+        with (
+            patch(
+                "nodes.core.agent.executor._resolve_model",
+                return_value=MagicMock(),
+            ) as resolve_model,
+            patch(
+                "nodes.core.agent.executor._build_agent_or_team",
+                new=MagicMock(return_value=fake_agent),
+            ),
+        ):
+            await collect_events(
+                executor.execute(
+                    {"model": "openai:gpt-4o"},
+                    {
+                        "input": _dv(
+                            "data",
+                            {
+                                "message": "hello",
+                                "variables": {"model": "anthropic:claude-sonnet"},
+                            },
+                        ),
+                        "model": _dv("model", "google:gemini-2.5-flash"),
+                    },
+                    ctx,
+                )
+            )
+
+        resolve_model.assert_called_once_with(
+            "google:gemini-2.5-flash",
+            node_params={},
+            model_options={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_materialize_uses_chat_variable_model_before_saved_model(self) -> None:
+        executor = AgentExecutor()
+        services = SimpleNamespace(
+            expression_context={"variables": {"model": "anthropic:claude-sonnet"}},
+        )
+        ctx = _flow_ctx(services=services)
+
+        with patch(
+            "nodes.core.agent.executor._resolve_model",
+            return_value=MagicMock(),
+        ) as resolve_model:
+            await executor.materialize(
+                {"model": "openai:gpt-4o"},
+                "output",
+                ctx,
+            )
+
+        resolve_model.assert_called_once_with(
+            "anthropic:claude-sonnet",
+            node_params={},
+            model_options={},
+        )
 
     @pytest.mark.asyncio
     async def test_agent_accepts_openai_tool_calls_from_messages(self) -> None:
@@ -1300,4 +1602,3 @@ class TestRerouteExecutor:
     async def test_materialize_rejects_unknown_output_handle(self) -> None:
         with pytest.raises(ValueError, match="unknown output handle"):
             await RerouteExecutor().materialize({}, "tools", _flow_ctx())
-

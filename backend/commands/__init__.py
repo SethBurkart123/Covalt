@@ -13,6 +13,7 @@ from . import (
     system,
     toolsets,
     uploads,
+    variables,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "system",
     "toolsets",
     "uploads",
+    "variables",
 ]

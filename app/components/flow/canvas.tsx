@@ -32,6 +32,7 @@ import {
   getNodeDefinition,
   getCompatibleNodeSockets,
   type SocketTypeId,
+  type FlowNode,
   useNodePicker,
   resolveParameterForHandle,
   getSocketTypePropagationConfig,
@@ -239,7 +240,9 @@ function CustomConnectionLine({
   toPosition,
 }: ConnectionLineComponentProps) {
   const definition = getNodeDefinition(fromNode.type || '');
-  const param = definition ? resolveParameterForHandle(definition, fromHandle.id) : undefined;
+  const param = definition
+    ? resolveParameterForHandle(definition, fromHandle.id, fromNode as FlowNode)
+    : undefined;
   const socketType = (param?.socket?.type ?? 'tools') as SocketTypeId;
   const { p0, p1, p2, p3 } = getControlPoints(
     fromX,
@@ -468,7 +471,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
       }
     }
 
-    const param = resolveParameterForHandle(definition, handleId);
+    const param = resolveParameterForHandle(definition, handleId, node as FlowNode);
     if (!param || !('socket' in param) || !param.socket) return null;
     return param.socket.type as SocketTypeId;
   }, []);

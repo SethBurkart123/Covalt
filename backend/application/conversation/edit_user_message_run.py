@@ -41,6 +41,7 @@ class EditUserMessageRunInput:
     tool_ids: list[str] | None = None
     existing_attachments: list[ExistingAttachmentInput] | None = None
     new_attachments: list[NewAttachmentInput] | None = None
+    variables: dict[str, Any] | None = None
 
 
 @dataclass
@@ -254,6 +255,7 @@ async def execute_edit_user_message_run(
             chat_id=input_data.chat_id,
             ephemeral=False,
             extra_tool_ids=input_data.tool_ids or None,
+            variables=input_data.variables,
         )
 
     except Exception as e:

@@ -23,6 +23,7 @@ class StartRunInput:
     chat_id: str | None = None
     tool_ids: list[str] = field(default_factory=list)
     attachments: Sequence[AttachmentMetaLike] = field(default_factory=list)
+    variables: dict[str, Any] | None = None
 
 
 @dataclass
@@ -125,6 +126,7 @@ async def execute_start_run(
             chat_id=chat_id,
             ephemeral=False,
             extra_tool_ids=input_data.tool_ids or None,
+            variables=input_data.variables,
         )
     except Exception as e:
         await deps.handle_streaming_run_error(

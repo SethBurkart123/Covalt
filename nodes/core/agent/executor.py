@@ -40,6 +40,7 @@ from backend.services.models.model_schema_cache import get_cached_model_metadata
 from backend.services.streaming import run_control
 from backend.services.tools.tool_registry import get_original_tool_name
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
+from nodes._variables import node_model_variable_id
 
 _runtime_adapter: RuntimeAdapter = get_adapter()
 AGENT_STREAM_IDLE_TIMEOUT_SECONDS = float(
@@ -79,6 +80,27 @@ class _StreamError:
 class AgentExecutor:
     node_type = "agent"
 
+    def declare_variables(
+        self,
+        data: dict[str, Any],
+        context: FlowContext | None = None,
+    ) -> list[dict[str, Any]]:
+        del context
+        if data.get("disableModelVariable") is True:
+            return []
+        agent_name = str(data.get("name") or "Agent")
+        return [
+            {
+                "id": "model",
+                "label": "Model",
+                "section": agent_name,
+                "control": {"kind": "searchable", "grouped": True},
+                "options": {"kind": "callback", "load": "models:list"},
+                "default": data.get("model", ""),
+                "placement": "header",
+            },
+        ]
+
     async def materialize(
         self,
         data: dict[str, Any],
@@ -90,12 +112,7 @@ class AgentExecutor:
                 f"agent node cannot materialize unknown output handle: {output_handle}"
             )
 
-        model_str = str(data.get("model", ""))
-        linked_model = await _resolve_flow_input(context, "model")
-        if linked_model is not None:
-            candidate = _extract_text(linked_model)
-            if candidate:
-                model_str = candidate
+        model_str = await _resolve_agent_model(data, context, input_value=None)
 
         temperature = _coerce_optional_float(data.get("temperature"))
         linked_temperature = await _resolve_flow_input(context, "temperature")
@@ -128,10 +145,12 @@ class AgentExecutor:
         input_value = raw if isinstance(raw, dict) else {"message": str(raw)}
         message = _resolve_agent_message(input_value)
 
-        model_input = inputs.get("model")
-        model_str = _extract_text(model_input.value) if model_input else ""
-        if not model_str:
-            model_str = str(data.get("model", ""))
+        model_str = await _resolve_agent_model(
+            data,
+            context,
+            input_value=input_value,
+            model_input=inputs.get("model"),
+        )
 
         temperature_input = inputs.get("temperature")
         temperature = (
@@ -1261,6 +1280,62 @@ def _should_disable_tools(
     if isinstance(supports_tools, bool):
         return not supports_tools
     return False
+
+
+async def _resolve_agent_model(
+    data: dict[str, Any],
+    context: FlowContext,
+    *,
+    input_value: dict[str, Any] | None,
+    model_input: DataValue | None = None,
+) -> str:
+    model_str = _extract_text(model_input.value) if model_input else ""
+    if model_str:
+        return model_str
+
+    linked_model = await _resolve_flow_input(context, "model")
+    linked_model_str = _extract_text(linked_model) if linked_model is not None else ""
+    if linked_model_str:
+        return linked_model_str
+
+    variable_model = _resolve_variable_model(context, input_value)
+    if variable_model:
+        return variable_model
+
+    return str(data.get("model", ""))
+
+
+def _resolve_variable_model(
+    context: FlowContext,
+    input_value: dict[str, Any] | None,
+) -> str:
+    candidates: list[Any] = []
+    if isinstance(input_value, dict):
+        variables = input_value.get("variables")
+        if isinstance(variables, dict):
+            candidates.extend(_model_variable_candidates(variables, context.node_id))
+
+    services = context.services
+    if services is not None:
+        expression_context = getattr(services, "expression_context", None)
+        if isinstance(expression_context, dict):
+            variables = expression_context.get("variables")
+            if isinstance(variables, dict):
+                candidates.extend(_model_variable_candidates(variables, context.node_id))
+
+    for candidate in candidates:
+        model_str = _extract_text(candidate)
+        if model_str:
+            return model_str
+    return ""
+
+
+def _model_variable_candidates(
+    variables: dict[str, Any],
+    node_id: str,
+) -> list[Any]:
+    node_key = node_model_variable_id(node_id)
+    return [variables.get(node_key), variables.get("model")]
 
 
 async def _resolve_flow_input(context: FlowContext, target_handle: str) -> Any | None:

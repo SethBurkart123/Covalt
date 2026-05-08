@@ -31,7 +31,8 @@ export type ParameterType =
   | 'tools'
   | 'node-ref'
   | 'json'
-  | 'collection';
+  | 'collection'
+  | 'variables';
 
 /** How the parameter behaves */
 export type ParameterMode =
@@ -243,6 +244,12 @@ export interface CollectionParameter extends ParameterBase {
   default?: unknown;
 }
 
+/** Host node auto-derives link sockets for any spec with a wired options source. */
+export interface VariablesParameter extends ParameterBase {
+  type: 'variables';
+  default?: unknown;
+}
+
 /** Union of all parameter types */
 export type Parameter =
   | FloatParameter
@@ -260,7 +267,8 @@ export type Parameter =
   | ToolsParameter
   | JsonParameter
   | DataParameter
-  | CollectionParameter;
+  | CollectionParameter
+  | VariablesParameter;
 
 /** Node category for palette organization */
 export type NodeCategory =

@@ -299,6 +299,7 @@ async def handle_flow_stream(
     ephemeral: bool = False,
     agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
+    variables: dict[str, Any] | None = None,
     run_flow_impl: Callable[..., Any] | None = None,
     save_content_impl: Callable[[str, str], None] | None = None,
     load_initial_content_impl: Callable[[str], list[dict[str, Any]]] | None = None,
@@ -361,6 +362,7 @@ async def handle_flow_stream(
     else:
         normalized_graph_data = graph_data
     entry_node_ids = _build_entry_node_ids(normalized_graph_data)
+    submitted_variables = dict(variables) if isinstance(variables, dict) else {}
     trigger_payload = _build_trigger_payload(
         user_message,
         runtime_messages,
@@ -381,7 +383,10 @@ async def handle_flow_stream(
             last_user_attachments=last_user_attachments,
             runtime_messages=runtime_messages,
         ),
-        expression_context={"trigger": trigger_payload},
+        expression_context={
+            "trigger": trigger_payload,
+            "variables": submitted_variables,
+        },
         execution=execution_ctx,
     )
     _apply_runtime_config(normalized_graph_data, services, mode="chat")
@@ -656,6 +661,7 @@ async def run_graph_chat_runtime(
     ephemeral: bool,
     agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
+    variables: dict[str, Any] | None = None,
     flow_stream_handler: FlowStreamHandler | None = None,
 ) -> None:
     _require_user_message(messages)
@@ -673,6 +679,7 @@ async def run_graph_chat_runtime(
         ephemeral=ephemeral,
         agent_id=agent_id,
         extra_tool_ids=extra_tool_ids,
+        variables=variables,
     )
 
 

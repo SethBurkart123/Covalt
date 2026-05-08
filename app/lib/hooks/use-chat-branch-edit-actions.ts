@@ -8,8 +8,7 @@ import {
   setPrefetchedChat,
 } from "@/lib/services/chat-prefetch";
 import { processMessageStream } from "@/lib/services/stream-processor";
-import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
-import type { RunEvent } from "@/lib/services/chat-run-machine";
+import { runtimeEventToRunEvent } from "@/lib/services/chat-run-machine";
 import {
   createUserMessage,
   isPendingAttachment,
@@ -59,7 +58,7 @@ export function useChatBranchEditActions({
   triggerReload,
 }: UseChatBranchEditActionsParams) {
   const { chatId, activeToolIds, startRun, completeRun, dispatchRunEvent } = context;
-  const { onThinkTagDetected, getVisibleModelOptions } = options;
+  const { onThinkTagDetected, getVisibleModelOptions, getVisibleVariables } = options;
   const { streamAbortRef, selectedModelRef, currentChatIdRef } = refs;
 
   const isStillForeground = useCallback(
@@ -117,6 +116,7 @@ export function useChatBranchEditActions({
     try {
       const currentModel = selectedModelRef.current || undefined;
       const modelOptions = getVisibleModelOptions?.();
+      const variables = getVisibleVariables?.();
       const { response, abort } = api.editUserMessage(
         messageId,
         newContent,
@@ -126,6 +126,7 @@ export function useChatBranchEditActions({
         modelOptions,
         existingAttachments,
         newAttachments.length > 0 ? newAttachments : undefined,
+        variables,
       );
       streamAbortRef.current = abort;
 
@@ -137,12 +138,7 @@ export function useChatBranchEditActions({
           dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
         },
         onEvent: (eventType, payload) => {
-          let runEvent: RunEvent | null = null;
-          if (eventType === RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED) runEvent = { type: "PAUSED_HITL" };
-          else if (eventType === RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) runEvent = { type: "RESUME_HITL" };
-          else if (eventType === RUNTIME_EVENT.RUN_COMPLETED) runEvent = { type: "COMPLETED" };
-          else if (eventType === RUNTIME_EVENT.RUN_CANCELLED) runEvent = { type: "CANCELLED" };
-          else if (eventType === RUNTIME_EVENT.RUN_ERROR) runEvent = { type: "ERROR", message: (payload.content as string) || "Unknown error" };
+          const runEvent = runtimeEventToRunEvent(eventType, payload);
           if (runEvent) dispatchRunEvent(chatId, runEvent);
         },
         onThinkTagDetected,
@@ -167,6 +163,7 @@ export function useChatBranchEditActions({
     dispatchRunEvent,
     editing,
     getVisibleModelOptions,
+    getVisibleVariables,
     isStillForeground,
     onThinkTagDetected,
     preserveStreamingMessage,

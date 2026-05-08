@@ -123,6 +123,7 @@ export const api = {
     toolIds?: string[],
     attachments?: Attachment[],
     modelOptions?: Record<string, unknown>,
+    variables?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("stream_chat", {
       messages: messages.map((m) => ({
@@ -143,6 +144,7 @@ export const api = {
       chatId,
       toolIds,
       modelOptions,
+      variables,
       attachments:
         attachments?.map((a) => ({
           id: a.id,
@@ -158,6 +160,7 @@ export const api = {
     messages: Message[],
     chatId?: string,
     ephemeral?: boolean,
+    variables?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("stream_agent_chat", {
       agentId,
@@ -177,6 +180,7 @@ export const api = {
       })),
       chatId,
       ephemeral: ephemeral ?? false,
+      variables,
     }),
 
   streamFlowRun: (
@@ -197,6 +201,7 @@ export const api = {
     modelId?: string,
     toolIds?: string[],
     modelOptions?: Record<string, unknown>,
+    variables?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("continue_message", {
       messageId,
@@ -204,6 +209,7 @@ export const api = {
       modelId,
       toolIds,
       modelOptions,
+      variables,
     }),
 
   retryMessage: (
@@ -212,6 +218,7 @@ export const api = {
     modelId?: string,
     toolIds?: string[],
     modelOptions?: Record<string, unknown>,
+    variables?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("retry_message", {
       messageId,
@@ -219,6 +226,7 @@ export const api = {
       modelId,
       toolIds,
       modelOptions,
+      variables,
     }),
 
   editUserMessage: (
@@ -230,6 +238,7 @@ export const api = {
     modelOptions?: Record<string, unknown>,
     existingAttachments?: Attachment[],
     newAttachments?: PendingAttachment[],
+    variables?: Record<string, unknown>,
   ): StreamHandle =>
     createStreamingResponse("edit_user_message", {
       messageId,
@@ -238,6 +247,7 @@ export const api = {
       modelId,
       toolIds,
       modelOptions,
+      variables,
       existingAttachments:
         existingAttachments?.map((a) => ({
           id: a.id,

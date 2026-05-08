@@ -24,6 +24,7 @@ from .services.node_providers.node_provider_registry import reload_node_provider
 from .services.node_providers.node_route_index import rebuild_node_route_index
 from .services.tools.mcp_manager import shutdown_mcp
 from .services.tools.toolset_manager import get_toolset_manager
+from .services.variables.builtin_loaders import register_builtin_loaders
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ def main() -> int:
     _ensure_e2e_toolset()
     rebuild_node_route_index()
     reload_node_provider_registry()
+    register_builtin_loaders()
 
     repo_root = Path(__file__).parent.parent
     output_dir = repo_root / "app" / "python"

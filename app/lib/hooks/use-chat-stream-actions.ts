@@ -7,10 +7,9 @@ import {
   setPrefetchedChat,
 } from "@/lib/services/chat-prefetch";
 import { processMessageStream } from "@/lib/services/stream-processor";
-import { RUNTIME_EVENT } from "@/lib/services/runtime-events";
 import { createErrorMessage, createUserMessage } from "@/lib/utils/message";
 import type { Attachment, Message } from "@/lib/types/chat";
-import type { RunEvent } from "@/lib/services/chat-run-machine";
+import { runtimeEventToRunEvent } from "@/lib/services/chat-run-machine";
 import type {
   PreserveStreamingMessage,
   ReloadMessages,
@@ -32,29 +31,6 @@ function seedPrefetchWithLocalHistory(
     messages: localMessages,
     fetchedAt: Date.now(),
   });
-}
-
-function runtimeEventToRunEvent(
-  eventType: string,
-  payload: Record<string, unknown>,
-): RunEvent | null {
-  switch (eventType) {
-    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
-      return { type: "PAUSED_HITL" };
-    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
-      return { type: "RESUME_HITL" };
-    case RUNTIME_EVENT.RUN_COMPLETED:
-      return { type: "COMPLETED" };
-    case RUNTIME_EVENT.RUN_CANCELLED:
-      return { type: "CANCELLED" };
-    case RUNTIME_EVENT.RUN_ERROR:
-      return {
-        type: "ERROR",
-        message: (payload.content as string) || "Unknown error",
-      };
-    default:
-      return null;
-  }
 }
 
 interface UseChatStreamActionsParams {
@@ -104,7 +80,7 @@ export function useChatStreamActions({
     getRunState,
     dispatchRunEvent,
   } = context;
-  const { onThinkTagDetected, getVisibleModelOptions } = options;
+  const { onThinkTagDetected, getVisibleModelOptions, getVisibleVariables } = options;
   const { streamAbortRef, selectedModelRef, currentChatIdRef } = refs;
 
   const isStillForeground = useCallback(
@@ -141,6 +117,7 @@ export function useChatStreamActions({
 
       let sessionId: string | null = null;
       const modelOptions = getVisibleModelOptions?.();
+      const variables = getVisibleVariables?.();
 
       if (chatId) {
         startRun(chatId);
@@ -155,6 +132,7 @@ export function useChatStreamActions({
           mergedToolIds,
           attachments.length > 0 ? attachments : undefined,
           modelOptions,
+          variables,
         );
         streamAbortRef.current = abort;
 
@@ -241,6 +219,7 @@ export function useChatStreamActions({
       currentChatIdRef,
       dispatchRunEvent,
       getVisibleModelOptions,
+      getVisibleVariables,
       isLoading,
       isStillForeground,
       onThinkTagDetected,
@@ -271,12 +250,14 @@ export function useChatStreamActions({
       try {
         const currentModel = selectedModelRef.current || undefined;
         const modelOptions = getVisibleModelOptions?.();
+        const variables = getVisibleVariables?.();
         const { response, abort } = api.continueMessage(
           messageId,
           chatId,
           currentModel,
           activeToolIds,
           modelOptions,
+          variables,
         );
         streamAbortRef.current = abort;
 
@@ -313,6 +294,7 @@ export function useChatStreamActions({
       completeRun,
       dispatchRunEvent,
       getVisibleModelOptions,
+      getVisibleVariables,
       isStillForeground,
       onThinkTagDetected,
       preserveStreamingMessage,
@@ -340,12 +322,14 @@ export function useChatStreamActions({
       try {
         const currentModel = selectedModelRef.current || undefined;
         const modelOptions = getVisibleModelOptions?.();
+        const variables = getVisibleVariables?.();
         const { response, abort } = api.retryMessage(
           messageId,
           chatId,
           currentModel,
           activeToolIds,
           modelOptions,
+          variables,
         );
         streamAbortRef.current = abort;
 
@@ -382,6 +366,7 @@ export function useChatStreamActions({
       completeRun,
       dispatchRunEvent,
       getVisibleModelOptions,
+      getVisibleVariables,
       isStillForeground,
       onThinkTagDetected,
       preserveStreamingMessage,

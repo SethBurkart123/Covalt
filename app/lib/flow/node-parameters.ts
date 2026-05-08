@@ -1,4 +1,9 @@
 import type { FlowEdge, FlowNode, NodeDefinition, Parameter } from '@nodes/_types';
+import {
+  variableLinkHandle,
+  type OptionsSource,
+  type VariableSpec,
+} from '@nodes/_variables';
 
 const DEFAULT_MIN = 1;
 
@@ -33,6 +38,15 @@ export function resolveNodeParameters(
   const resolved: Parameter[] = [];
 
   for (const param of definition.parameters) {
+    if (param.type === 'variables') {
+      resolved.push(param);
+      const specs = readVariableSpecs(node.data?.[param.id]);
+      for (const socketParam of variableLinkSocketParams(specs)) {
+        resolved.push(socketParam);
+      }
+      continue;
+    }
+
     if (!isAutoExpandParam(param)) {
       resolved.push(param);
       continue;
@@ -47,9 +61,47 @@ export function resolveNodeParameters(
   return resolved;
 }
 
+function readVariableSpecs(raw: unknown): VariableSpec[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (entry): entry is VariableSpec =>
+      typeof entry === 'object' && entry !== null && typeof (entry as VariableSpec).id === 'string'
+  );
+}
+
+function variableLinkSocketParams(specs: VariableSpec[]): Parameter[] {
+  const sockets: Parameter[] = [];
+  for (const spec of specs) {
+    const source = spec.options;
+    if (!source || source.kind !== 'link') continue;
+    sockets.push(buildVariableLinkSocket(spec, source));
+  }
+  return sockets;
+}
+
+function buildVariableLinkSocket(
+  spec: VariableSpec,
+  source: Extract<OptionsSource, { kind: 'link' }>,
+): Parameter {
+  const socket: Parameter = {
+    id: variableLinkHandle(spec.id),
+    type: 'data',
+    label: spec.label,
+    mode: 'input',
+    socket: {
+      type: source.socketType || 'data',
+      side: 'left',
+      channel: 'link',
+      shape: 'diamond',
+    },
+  };
+  return socket;
+}
+
 export function resolveParameterForHandle(
   definition: NodeDefinition,
-  handleId: string | null | undefined
+  handleId: string | null | undefined,
+  node?: FlowNode
 ): Parameter | undefined {
   if (!handleId) return undefined;
 
@@ -57,10 +109,18 @@ export function resolveParameterForHandle(
   if (direct) return direct;
 
   for (const param of definition.parameters) {
-    if (!isAutoExpandParam(param)) continue;
-    const index = getAutoExpandHandleIndex(param.id, handleId);
-    if (index === null) continue;
-    return buildAutoExpandParam(param, index);
+    if (isAutoExpandParam(param)) {
+      const index = getAutoExpandHandleIndex(param.id, handleId);
+      if (index === null) continue;
+      return buildAutoExpandParam(param, index);
+    }
+
+    if (param.type === 'variables' && node) {
+      const specs = readVariableSpecs(node.data?.[param.id]);
+      for (const socket of variableLinkSocketParams(specs)) {
+        if (socket.id === handleId) return socket;
+      }
+    }
   }
 
   return undefined;

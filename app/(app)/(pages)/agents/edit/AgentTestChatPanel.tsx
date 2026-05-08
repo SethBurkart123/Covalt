@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect } from "react";
+import { useCallback, useLayoutEffect, useMemo } from "react";
 import { X } from "lucide-react";
 import { motion } from "motion/react";
 import { useAgentTestChat } from "@/contexts/agent-test-chat-context";
@@ -9,7 +9,11 @@ import {
   ArtifactPanelProvider,
   useArtifactPanel,
 } from "@/contexts/artifact-panel-context";
+import { useFlowState } from "@/lib/flow";
+import { flowToGraphData } from "@/lib/flow/serialize-graph";
 import { useTestChatInput } from "@/lib/hooks/use-test-chat-input";
+import { useChatVariableSpecs } from "@/lib/hooks/use-chat-variables";
+import { useVariables } from "@/lib/hooks/use-variables";
 import { useResizePanel } from "@/lib/hooks/use-resize-panel";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { Button } from "@/components/ui/button";
@@ -27,10 +31,38 @@ export const TEST_CHAT_PANEL_TRANSITION = {
 function TestChatInner() {
   const { isOpen, close } = useAgentTestChat();
   const { agentId } = useAgentEditor();
+  const { nodes, edges } = useFlowState();
   const { setRightOffset } = usePageTitle();
-  const chat = useTestChatInput(agentId);
+
+  const liveGraphData = useMemo(() => flowToGraphData(nodes, edges), [nodes, edges]);
+
+  const {
+    specs: chatVariableSpecs,
+    optionsContext: chatVariableOptionsContext,
+  } = useChatVariableSpecs({ agentId, graphData: liveGraphData });
+  const variableStorageKey = useMemo(
+    () => (agentId ? `covalt:variables:test:${agentId}` : null),
+    [agentId],
+  );
+  const variables = useVariables({
+    storageKey: variableStorageKey,
+    specs: chatVariableSpecs,
+    optionsContext: chatVariableOptionsContext,
+  });
+
+  const chat = useTestChatInput(agentId, variables.getVisibleValues);
   const { isOpen: artifactOpen } = useArtifactPanel();
   const { handleSubmit } = chat;
+
+  const variableRuntimeCtx = useMemo(
+    () => ({
+      values: variables.values,
+      setValue: variables.setValue,
+      optionsFor: variables.optionsFor,
+      loadingFor: variables.loadingFor,
+    }),
+    [variables.values, variables.setValue, variables.optionsFor, variables.loadingFor],
+  );
 
   const { containerRef, width, isResizing, handleResizeStart } = useResizePanel(
     {
@@ -146,7 +178,10 @@ function TestChatInner() {
                 selectedModel=""
                 setSelectedModel={() => {}}
                 models={[]}
-                canSendMessage={chat.canSendMessage}
+                variableSpecs={variables.visibleSpecs}
+                variableCtx={variableRuntimeCtx}
+                onResetVariables={variables.reset}
+                canSendMessage={chat.canSendMessage && variables.canSubmit}
                 onStop={chat.handleStop}
                 hideModelSelector
                 hideToolSelector

@@ -7,6 +7,13 @@ from typing import Any
 
 from nodes._types import DataValue, ExecutionResult, FlowContext, RuntimeConfigContext
 
+from .variables_runtime import (
+    collect_specs_from_runtime,
+    filter_visible,
+    specs_to_payload,
+    validate_values,
+)
+
 
 class ChatStartExecutor:
     node_type = "chat-start"
@@ -97,6 +104,12 @@ class ChatStartExecutor:
         runtime_messages = self._get_runtime_messages(context)
         include_user_tools = bool(data.get("includeUserTools", False))
 
+        all_specs = collect_specs_from_runtime(data, context.runtime, context.node_id)
+        submitted = self._get_submitted_variables(context)
+        validated = validate_values(filter_visible(all_specs, submitted), submitted).values
+
+        self._inject_variables_into_services(context, validated)
+
         return ExecutionResult(
             outputs={
                 "output": DataValue(
@@ -107,10 +120,32 @@ class ChatStartExecutor:
                         "runtime_messages": runtime_messages,
                         "attachments": attachments,
                         "include_user_tools": include_user_tools,
+                        "variables": validated,
+                        "variable_specs": specs_to_payload(all_specs),
                     },
                 )
             }
         )
+
+    def _get_submitted_variables(self, context: FlowContext) -> dict[str, Any]:
+        services = context.services
+        if services is None:
+            return {}
+        expression_context = getattr(services, "expression_context", None)
+        if not isinstance(expression_context, dict):
+            return {}
+        submitted = expression_context.get("variables")
+        return submitted if isinstance(submitted, dict) else {}
+
+    def _inject_variables_into_services(
+        self, context: FlowContext, variables: dict[str, Any]
+    ) -> None:
+        services = context.services
+        if services is None:
+            return
+        expression_context = getattr(services, "expression_context", None)
+        if isinstance(expression_context, dict):
+            expression_context["variables"] = dict(variables)
 
 
 executor = ChatStartExecutor()

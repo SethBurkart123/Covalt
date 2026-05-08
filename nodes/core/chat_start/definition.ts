@@ -36,5 +36,13 @@ export const chatStart = {
       mode: 'constant',
       default: false,
     },
+    {
+      id: 'variables',
+      type: 'variables',
+      label: 'Variables',
+      mode: 'constant',
+      renderScope: 'inspector',
+      default: [],
+    },
   ],
 } as const satisfies NodeDefinition;

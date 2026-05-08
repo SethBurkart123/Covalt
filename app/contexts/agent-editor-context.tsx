@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFlowState, useFlowActions } from '@/lib/flow';
+import { flowToGraphData } from '@/lib/flow/serialize-graph';
 import {
   getAgent,
   updateAgent,
@@ -182,18 +183,9 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
     setSaveError(null);
 
     try {
-      const apiNodes = nodes.map((n) => ({
-        id: n.id,
-        type: n.type || 'unknown',
-        position: n.position,
-        data: (n.data as Record<string, unknown>) || {},
-      }));
-      const apiEdges = edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        sourceHandle: e.sourceHandle || undefined,
-        target: e.target,
-        targetHandle: e.targetHandle || undefined,
+      const { nodes: apiNodes, edges: rawEdges } = flowToGraphData(nodes, edges);
+      const apiEdges = rawEdges.map((e) => ({
+        ...e,
         data: normalizeEdgeData(e.data),
       }));
 
