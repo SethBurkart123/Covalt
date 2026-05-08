@@ -53,12 +53,24 @@ PluginHookHandler = (
 
 
 @dataclass(frozen=True)
+class RendererDescriptor:
+    key: str
+    aliases: tuple[str, ...] = ()
+    tool_name_patterns: tuple[str, ...] = ()
+    has_tool: bool = False
+    has_approval: bool = False
+    has_message: bool = False
+    config_schema: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
 class PluginManifest:
     id: str
     name: str
     version: str
     nodes: list[str]
     hooks: dict[HookType, list[PluginHookHandler]] = field(default_factory=dict)
+    renderers: tuple[RendererDescriptor, ...] = field(default_factory=tuple)
 
 
 class PluginManifestProtocol(Protocol):
@@ -67,6 +79,7 @@ class PluginManifestProtocol(Protocol):
     version: str
     nodes: list[str]
     hooks: dict[HookType, list[PluginHookHandler]]
+    renderers: tuple[RendererDescriptor, ...]
 
 
 @dataclass

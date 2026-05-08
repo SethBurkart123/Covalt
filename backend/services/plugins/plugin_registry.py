@@ -5,7 +5,7 @@ from typing import Any
 
 from backend.services.plugins.plugin_hooks import PluginHooks
 from nodes._coerce import register_coercion as register_runtime_coercion
-from nodes._types import HookType
+from nodes._types import HookType, RendererDescriptor
 
 
 class PluginRegistryError(RuntimeError):
@@ -26,6 +26,7 @@ class PluginRegistrationInput:
     executors: dict[str, Any] = field(default_factory=dict)
     hooks: dict[HookType, list[Any]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    renderers: tuple[RendererDescriptor, ...] = field(default_factory=tuple)
 
 
 class PluginRegistry:
@@ -38,6 +39,7 @@ class PluginRegistry:
         self._plugin_node_types: dict[str, set[str]] = {}
         self._executor_by_type: dict[str, Any] = {}
         self._executor_owner: dict[str, str] = {}
+        self._plugin_renderers: dict[str, tuple[RendererDescriptor, ...]] = {}
 
     def register_plugin(
         self,
@@ -47,6 +49,7 @@ class PluginRegistry:
         hooks: dict[HookType, list[Any]] | None = None,
         metadata: dict[str, Any] | None = None,
         coercions: dict[tuple[str, str], Any] | None = None,
+        renderers: tuple[RendererDescriptor, ...] | None = None,
     ) -> None:
         normalized_id = _normalize_plugin_id(plugin_id)
         if normalized_id in self._plugin_metadata:
@@ -63,6 +66,7 @@ class PluginRegistry:
         self._plugin_order.append(normalized_id)
         self._plugin_metadata[normalized_id] = dict(metadata or {})
         self._plugin_node_types[normalized_id] = set()
+        self._plugin_renderers[normalized_id] = tuple(renderers or ())
 
         for node_type, executor in executor_map.items():
             self._executor_by_type[node_type] = executor
@@ -87,6 +91,7 @@ class PluginRegistry:
                 executors=registration.executors,
                 hooks=registration.hooks,
                 metadata=registration.metadata,
+                renderers=registration.renderers,
             )
         return [item.plugin_id for item in ordered]
 
@@ -103,6 +108,7 @@ class PluginRegistry:
 
         self._plugin_node_types.pop(normalized_id, None)
         self._plugin_metadata.pop(normalized_id, None)
+        self._plugin_renderers.pop(normalized_id, None)
         self._plugin_order = [pid for pid in self._plugin_order if pid != normalized_id]
         return True
 
@@ -127,12 +133,25 @@ class PluginRegistry:
             return None
         return dict(metadata)
 
+    def get_plugin_renderers(
+        self, plugin_id: str
+    ) -> tuple[RendererDescriptor, ...]:
+        return self._plugin_renderers.get(plugin_id, ())
+
+    def list_renderers(self) -> list[tuple[str, RendererDescriptor]]:
+        return [
+            (plugin_id, descriptor)
+            for plugin_id in self._plugin_order
+            for descriptor in self._plugin_renderers.get(plugin_id, ())
+        ]
+
     def clear(self) -> None:
         self._plugin_order.clear()
         self._plugin_metadata.clear()
         self._plugin_node_types.clear()
         self._executor_by_type.clear()
         self._executor_owner.clear()
+        self._plugin_renderers.clear()
         self._hooks.clear()
 
     def _validate_executors(self, plugin_id: str, executors: dict[str, Any]) -> None:
@@ -166,6 +185,7 @@ def register_plugin(
     hooks: dict[HookType, list[Any]] | None = None,
     metadata: dict[str, Any] | None = None,
     coercions: dict[tuple[str, str], Any] | None = None,
+    renderers: tuple[RendererDescriptor, ...] | None = None,
 ) -> None:
     _DEFAULT_PLUGIN_REGISTRY.register_plugin(
         plugin_id,
@@ -173,6 +193,7 @@ def register_plugin(
         hooks=hooks,
         metadata=metadata,
         coercions=coercions,
+        renderers=renderers,
     )
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from nodes._types import HookType, NodeEvent
+from nodes._types import HookType, NodeEvent, RendererDescriptor
 
 if TYPE_CHECKING:
     from backend.services.plugins.plugin_registry import PluginRegistry
@@ -109,6 +109,9 @@ def _extract_response_payload(context: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+BUILTIN_RENDERERS: tuple[RendererDescriptor, ...] = ()
+
+
 def register_builtin_plugin(registry: PluginRegistry) -> None:
     registry.register_plugin(
         "builtin",
@@ -119,4 +122,5 @@ def register_builtin_plugin(registry: PluginRegistry) -> None:
             HookType.ON_RESPONSE_EXTRACT: [_extract_response_payload],
         },
         metadata={"is_builtin": True, "name": "Built-in Nodes"},
+        renderers=BUILTIN_RENDERERS,
     )
