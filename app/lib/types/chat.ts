@@ -97,6 +97,11 @@ export interface ToolCallPayload {
   approvalStatus?: "pending" | "approved" | "denied" | "timeout";
   editableArgs?: string[] | boolean;
   isDelegation?: boolean;
+  riskLevel?: "low" | "medium" | "high" | "unknown";
+  summary?: string;
+  options?: ApprovalOption[];
+  questions?: ApprovalQuestion[];
+  editable?: ApprovalEditable[];
 }
 
 export interface ToolApprovalTool {

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Check, X, Wrench } from "lucide-react";
-import { respondToApproval } from "@/python/api";
+import { useState } from "react";
+import { Wrench } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -21,86 +20,17 @@ export function DefaultToolCall({
   toolResult,
   isCompleted,
   failed = false,
-  requiresApproval = false,
-  runId,
-  requestId,
-  toolCallId,
-  approvalStatus: initialApprovalStatus,
-  editableArgs,
+  approvalStatus,
   isGrouped = false,
   isFirst = false,
   isLast = false,
   mode = "regular",
 }: ToolCallRendererProps) {
-  const defaultApprovalStatus = requiresApproval ? "pending" : "approved";
   const failureFromResult =
     typeof toolResult === "string"
     && /^error\s+(executing|calling)\s+tool:/i.test(toolResult.trim());
   const isFailed = failed || failureFromResult;
-  const [approvalStatus, setApprovalStatus] = useState(initialApprovalStatus ?? defaultApprovalStatus);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isOpen, setIsOpen] = useState(requiresApproval && approvalStatus === "pending");
-  const [editedValues, setEditedValues] = useState<Record<string, unknown>>({});
-
-  const prevApprovalStatusRef = useRef(initialApprovalStatus);
-  if (initialApprovalStatus && initialApprovalStatus !== prevApprovalStatusRef.current) {
-    prevApprovalStatusRef.current = initialApprovalStatus;
-    setApprovalStatus(initialApprovalStatus);
-    if (initialApprovalStatus !== "pending") {
-      setIsOpen(false);
-    }
-  }
-
-  const handleValueChange = (key: string, value: unknown) => {
-    setEditedValues((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleApprove = async () => {
-    if (!runId || !requestId || !toolCallId || isProcessing) return;
-    setIsProcessing(true);
-    const editedArgs = Object.keys(editedValues).length > 0
-      ? { ...toolArgs, ...editedValues }
-      : undefined;
-
-    try {
-      await respondToApproval({
-        body: {
-          runId,
-          requestId,
-          selectedOption: "allow_once",
-          answers: [],
-          editedArgs,
-          cancelled: false,
-        },
-      });
-      setApprovalStatus("approved");
-      setTimeout(() => setIsOpen(false), 300);
-    } catch (error) {
-      console.error("Failed to approve tool:", error);
-      setIsProcessing(false);
-    }
-  };
-
-  const handleDeny = async () => {
-    if (!runId || !requestId || !toolCallId || isProcessing) return;
-    setIsProcessing(true);
-    try {
-      await respondToApproval({
-        body: {
-          runId,
-          requestId,
-          selectedOption: "deny",
-          answers: [],
-          cancelled: false,
-        },
-      });
-      setApprovalStatus("denied");
-      setTimeout(() => setIsOpen(false), 300);
-    } catch (error) {
-      console.error("Failed to deny tool:", error);
-      setIsProcessing(false);
-    }
-  };
+  const [isOpen, setIsOpen] = useState(false);
 
   const toolDisplay = parseToolDisplayParts(toolName);
   const toolCallTestId = `tool-call-${toolName}`;
@@ -113,8 +43,7 @@ export function DefaultToolCall({
       isGrouped={isGrouped}
       isFirst={isFirst}
       isLast={isLast}
-      shimmer={!isCompleted && approvalStatus !== "pending"}
-      disableToggle={!(!requiresApproval || approvalStatus !== "pending")}
+      shimmer={!isCompleted}
       mode={mode}
       data-testid={toolCallTestId}
       data-toolcall
@@ -158,35 +87,7 @@ export function DefaultToolCall({
             <div className="text-xs font-medium text-muted-foreground mb-2">
               Arguments
             </div>
-            <ArgumentsDisplay
-              args={toolArgs}
-              editableArgs={requiresApproval && approvalStatus === "pending" ? editableArgs : undefined}
-              editedValues={editedValues}
-              onValueChange={handleValueChange}
-            />
-          </div>
-        )}
-
-        {requiresApproval && approvalStatus === "pending" && (
-          <div className="flex gap-2 pt-2">
-            <button
-              data-testid={`${toolCallTestId}-approve`}
-              onClick={handleApprove}
-              disabled={isProcessing}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground rounded-md transition-colors"
-            >
-              <Check size={14} />
-              Approve
-            </button>
-            <button
-              data-testid={`${toolCallTestId}-deny`}
-              onClick={handleDeny}
-              disabled={isProcessing}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:bg-destructive/50 text-destructive-foreground rounded-md transition-colors"
-            >
-              <X size={14} />
-              Deny
-            </button>
+            <ArgumentsDisplay args={toolArgs} />
           </div>
         )}
 

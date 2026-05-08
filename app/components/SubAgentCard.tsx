@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, X, Loader2, Wrench } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -10,9 +10,10 @@ import {
 } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
-import { respondToApproval } from "@/python/api";
 import { parseToolDisplayParts } from "@/lib/tooling";
-import { ArgumentsDisplay } from "./tool-renderers/default/ArgumentsDisplay";
+import { ApprovalRouter } from "./approvals/ApprovalRouter";
+import { buildLegacyApprovalRequest } from "@/lib/services/approval-request-builder";
+import { useResolveApproval } from "@/lib/services/use-resolve-approval";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -373,40 +374,29 @@ function getPreviewText(
   return hasContent ? "Working..." : "Starting...";
 }
 
-function InlineApprovalToolEntry({
+function PendingApprovalEntry({
   tool,
-  editedValues,
-  onEditedChange,
+  onResolved,
 }: {
   tool: PendingApproval;
-  editedValues: Record<string, unknown>;
-  onEditedChange: (key: string, value: unknown) => void;
+  onResolved?: () => void;
 }) {
-  const hasArgs = Object.keys(tool.toolArgs || {}).length > 0;
-  const { label, namespace } = parseToolDisplayParts(tool.toolName);
+  const request = useMemo(
+    () => buildLegacyApprovalRequest(tool, tool.runId),
+    [tool],
+  );
+  const requestId = tool.requestId ?? tool.toolCallId;
+  const resolve = useResolveApproval(tool.runId, requestId);
+  const handleResolve = useCallback(
+    async (outcome: Parameters<typeof resolve>[0]) => {
+      onResolved?.();
+      await resolve(outcome);
+    },
+    [resolve, onResolved],
+  );
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
-        <Wrench size={12} className="text-muted-foreground shrink-0" />
-        <span className="text-xs font-mono text-foreground">
-          {label}
-          {namespace && (
-            <span className="px-1.5 italic text-muted-foreground">
-              {namespace}
-            </span>
-          )}
-        </span>
-      </div>
-      {hasArgs && (
-        <ArgumentsDisplay
-          args={tool.toolArgs}
-          editableArgs={tool.editableArgs}
-          editedValues={editedValues}
-          onValueChange={onEditedChange}
-        />
-      )}
-    </div>
+    <ApprovalRouter request={request} isPending={true} onResolve={handleResolve} />
   );
 }
 
@@ -417,90 +407,15 @@ function InlineApproval({
   tools: PendingApproval[];
   onResolved?: () => void;
 }) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [editedValuesMap, setEditedValuesMap] = useState<
-    Record<string, Record<string, unknown>>
-  >({});
-  const runId = tools[0]?.runId;
-
-  const updateEditedValue = (
-    toolCallId: string,
-    key: string,
-    value: unknown,
-  ) => {
-    setEditedValuesMap((prev) => ({
-      ...prev,
-      [toolCallId]: { ...prev[toolCallId], [key]: value },
-    }));
-  };
-
-  const submitApproval = async (approved: boolean) => {
-    if (!runId || isProcessing) return;
-    const requestId = tools[0]?.requestId;
-    if (!requestId) return;
-    setIsProcessing(true);
-    onResolved?.();
-
-    const mergedEdits: Record<string, unknown> = {};
-    let hasEdits = false;
-    for (const tool of tools) {
-      const edits = editedValuesMap[tool.toolCallId];
-      if (edits && Object.keys(edits).length > 0) {
-        Object.assign(mergedEdits, tool.toolArgs, edits);
-        hasEdits = true;
-      }
-    }
-
-    try {
-      await respondToApproval({
-        body: {
-          runId,
-          requestId,
-          selectedOption: approved ? "allow_once" : "deny",
-          answers: [],
-          editedArgs: hasEdits && approved ? mergedEdits : undefined,
-          cancelled: false,
-        },
-      });
-    } catch (error) {
-      console.error(`Failed to ${approved ? "approve" : "deny"} tools:`, error);
-      setIsProcessing(false);
-    }
-  };
-
   return (
     <div className="px-4 pb-4 space-y-3">
-      {tools.map((tool, idx) => (
-        <div key={tool.toolCallId}>
-          {idx > 0 && <div className="border-t border-border/40 pt-3" />}
-          <InlineApprovalToolEntry
-            tool={tool}
-            editedValues={editedValuesMap[tool.toolCallId] ?? {}}
-            onEditedChange={(key, value) =>
-              updateEditedValue(tool.toolCallId, key, value)
-            }
-          />
-        </div>
+      {tools.map((tool) => (
+        <PendingApprovalEntry
+          key={tool.toolCallId}
+          tool={tool}
+          onResolved={onResolved}
+        />
       ))}
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => submitApproval(true)}
-          disabled={isProcessing}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground rounded-md transition-colors"
-        >
-          <Check size={14} />
-          Approve{tools.length > 1 && ` All (${tools.length})`}
-        </button>
-        <button
-          onClick={() => submitApproval(false)}
-          disabled={isProcessing}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:bg-destructive/50 text-destructive-foreground rounded-md transition-colors"
-        >
-          <X size={14} />
-          Deny
-        </button>
-      </div>
     </div>
   );
 }
