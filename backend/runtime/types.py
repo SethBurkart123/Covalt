@@ -108,16 +108,61 @@ class ToolCallCompleted(RuntimeEvent):
 
 
 @dataclass(slots=True)
+class ApprovalOption:
+    value: str
+    label: str
+    role: Literal["allow_once", "allow_session", "allow_always", "deny", "abort", "custom"]
+    style: Literal["default", "primary", "destructive"] = "default"
+    requires_input: bool = False
+
+
+@dataclass(slots=True)
+class ApprovalQuestion:
+    index: int
+    topic: str
+    question: str
+    options: list[str] = field(default_factory=list)
+    placeholder: str | None = None
+    multiline: bool = False
+    required: bool = True
+
+
+@dataclass(slots=True)
+class ApprovalEditable:
+    path: list[str]
+    schema: dict[str, Any]
+    label: str | None = None
+
+
+@dataclass(slots=True)
+class ApprovalAnswer:
+    index: int
+    answer: str
+
+
+@dataclass(slots=True)
 class ApprovalRequired(RuntimeEvent):
-    tools: list[PendingApproval] = field(default_factory=list)
+    request_id: str = ""
+    kind: Literal["tool_approval", "user_input"] = "tool_approval"
+    tool_use_ids: list[str] | None = None
+    tool_name: str | None = None
+    risk_level: Literal["low", "medium", "high", "unknown"] | None = None
+    summary: str | None = None
+    options: list[ApprovalOption] = field(default_factory=list)
+    questions: list[ApprovalQuestion] = field(default_factory=list)
+    editable: list[ApprovalEditable] = field(default_factory=list)
+    renderer: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+    timeout_ms: int | None = None
 
 
 @dataclass(slots=True)
 class ApprovalResolved(RuntimeEvent):
-    tool_call_id: str = ""
-    tool_name: str = ""
-    approval_status: Literal["approved", "denied", "timeout"] = "approved"
-    tool_args: dict[str, Any] = field(default_factory=dict)
+    request_id: str = ""
+    selected_option: str = ""
+    answers: list[ApprovalAnswer] = field(default_factory=list)
+    edited_args: dict[str, Any] | None = None
+    cancelled: bool = False
 
 
 @dataclass(slots=True)

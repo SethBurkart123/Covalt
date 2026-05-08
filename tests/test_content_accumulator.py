@@ -3,9 +3,9 @@ from __future__ import annotations
 from backend.services.streaming.chat_stream import _fail_inflight_tool_calls
 from backend.services.streaming.content_accumulator import ContentAccumulator
 from backend.services.streaming.runtime_events import (
+    EVENT_APPROVAL_REQUIRED,
     EVENT_REASONING_STARTED,
     EVENT_REASONING_STEP,
-    EVENT_TOOL_APPROVAL_REQUIRED,
     EVENT_TOOL_CALL_STARTED,
 )
 
@@ -24,7 +24,7 @@ def test_member_run_creation_flushes_pending_parent_reasoning_in_order() -> None
     # Sub-agent emits a HITL approval before parent reasoning has finished
     acc.apply_agent_event(
         {
-            "event": EVENT_TOOL_APPROVAL_REQUIRED,
+            "event": EVENT_APPROVAL_REQUIRED,
             "memberRunId": "sub-1",
             "memberName": "Researcher",
             "tool": {
@@ -69,7 +69,7 @@ def test_fail_inflight_tool_calls_marks_running_tools_failed_with_message() -> N
     # Pending HITL approvals should NOT be touched by this helper.
     acc.apply_agent_event(
         {
-            "event": EVENT_TOOL_APPROVAL_REQUIRED,
+            "event": EVENT_APPROVAL_REQUIRED,
             "tool": {
                 "runId": "run-x",
                 "tools": [{"id": "tool-3", "toolName": "exec", "toolArgs": {}}],

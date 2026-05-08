@@ -7,6 +7,10 @@ from .chat_conversion import (
 from .protocol import AgentHandle, RuntimeAdapter
 from .types import (
     AgentConfig,
+    ApprovalAnswer,
+    ApprovalEditable,
+    ApprovalOption,
+    ApprovalQuestion,
     ApprovalRequired,
     ApprovalResolved,
     ApprovalResponse,
@@ -45,6 +49,10 @@ __all__ = [
     "runtime_message_from_chat_message",
     "runtime_message_to_dict",
     "runtime_messages_from_chat_messages",
+    "ApprovalAnswer",
+    "ApprovalEditable",
+    "ApprovalOption",
+    "ApprovalQuestion",
     "ApprovalRequired",
     "ApprovalResolved",
     "ApprovalResponse",

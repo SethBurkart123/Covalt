@@ -10,7 +10,7 @@ import {
 } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useArtifactPanel } from "@/contexts/artifact-panel-context";
-import { respondToToolApproval } from "@/python/api";
+import { respondToApproval } from "@/python/api";
 import { parseToolDisplayParts } from "@/lib/tooling";
 import { ArgumentsDisplay } from "./tool-renderers/default/ArgumentsDisplay";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -436,29 +436,30 @@ function InlineApproval({
 
   const submitApproval = async (approved: boolean) => {
     if (!runId || isProcessing) return;
+    const requestId = tools[0]?.requestId;
+    if (!requestId) return;
     setIsProcessing(true);
     onResolved?.();
 
-    const toolDecisions: Record<string, boolean> = {};
-    const editedArgs: Record<string, Record<string, unknown>> = {};
+    const mergedEdits: Record<string, unknown> = {};
     let hasEdits = false;
-
     for (const tool of tools) {
-      toolDecisions[tool.toolCallId] = approved;
       const edits = editedValuesMap[tool.toolCallId];
       if (edits && Object.keys(edits).length > 0) {
-        editedArgs[tool.toolCallId] = { ...tool.toolArgs, ...edits };
+        Object.assign(mergedEdits, tool.toolArgs, edits);
         hasEdits = true;
       }
     }
 
     try {
-      await respondToToolApproval({
+      await respondToApproval({
         body: {
           runId,
-          approved,
-          toolDecisions,
-          editedArgs: hasEdits ? editedArgs : undefined,
+          requestId,
+          selectedOption: approved ? "allow_once" : "deny",
+          answers: [],
+          editedArgs: hasEdits && approved ? mergedEdits : undefined,
+          cancelled: false,
         },
       });
     } catch (error) {

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 import orjson
 
 from .runtime_events import (
+    EVENT_APPROVAL_REQUIRED,
+    EVENT_APPROVAL_RESOLVED,
     EVENT_MEMBER_RUN_COMPLETED,
     EVENT_MEMBER_RUN_ERROR,
     EVENT_MEMBER_RUN_STARTED,
@@ -16,8 +19,6 @@ from .runtime_events import (
     EVENT_REASONING_STEP,
     EVENT_RUN_CONTENT,
     EVENT_RUN_ERROR,
-    EVENT_TOOL_APPROVAL_REQUIRED,
-    EVENT_TOOL_APPROVAL_RESOLVED,
     EVENT_TOOL_CALL_COMPLETED,
     EVENT_TOOL_CALL_STARTED,
 )
@@ -407,13 +408,14 @@ class ContentAccumulator:
                     tool_block["renderPlan"] = tool.get("renderPlan")
                 return True
 
-            if event_name == EVENT_TOOL_APPROVAL_REQUIRED:
+            if event_name == EVENT_APPROVAL_REQUIRED:
                 tool_payload = data.get("tool") or {}
                 tools = tool_payload.get("tools")
                 if not isinstance(tools, list) or not tools:
                     return False
                 self.flush_member_text(member_state)
                 self.flush_member_reasoning(member_state)
+                request_id = tool_payload.get("requestId")
                 for tool in tools:
                     if not isinstance(tool, dict):
                         continue
@@ -426,6 +428,7 @@ class ContentAccumulator:
                             "isCompleted": False,
                             "requiresApproval": True,
                             "runId": tool_payload.get("runId"),
+                            "requestId": request_id,
                             "toolCallId": tool.get("id"),
                             "approvalStatus": "pending",
                             "editableArgs": tool.get("editableArgs"),
@@ -433,21 +436,29 @@ class ContentAccumulator:
                     )
                 return True
 
-            if event_name == EVENT_TOOL_APPROVAL_RESOLVED:
-                tool = data.get("tool") or {}
-                tool_id = str(tool.get("id") or "")
-                if not tool_id:
+            if event_name == EVENT_APPROVAL_RESOLVED:
+                tool_payload = data.get("tool") or {}
+                tools = tool_payload.get("tools")
+                if not isinstance(tools, list) or not tools:
                     return False
-                tool_block = self.find_tool_block(member_content, tool_id)
-                if tool_block is None:
-                    return False
-                status = tool.get("approvalStatus")
-                tool_block["approvalStatus"] = status
-                if "toolArgs" in tool:
-                    tool_block["toolArgs"] = tool.get("toolArgs")
-                if status in ("denied", "timeout"):
-                    tool_block["isCompleted"] = True
-                return True
+                changed = False
+                for tool in tools:
+                    if not isinstance(tool, dict):
+                        continue
+                    tool_id = str(tool.get("id") or "")
+                    if not tool_id:
+                        continue
+                    tool_block = self.find_tool_block(member_content, tool_id)
+                    if tool_block is None:
+                        continue
+                    status = tool.get("approvalStatus")
+                    tool_block["approvalStatus"] = status
+                    if "toolArgs" in tool:
+                        tool_block["toolArgs"] = tool.get("toolArgs")
+                    if status in ("denied", "timeout"):
+                        tool_block["isCompleted"] = True
+                    changed = True
+                return changed
 
             if event_name == EVENT_MEMBER_RUN_COMPLETED:
                 self.complete_member_run(member_state)
@@ -521,13 +532,14 @@ class ContentAccumulator:
                 tool_block["providerData"] = provider_data
             return True
 
-        if event_name == EVENT_TOOL_APPROVAL_REQUIRED:
+        if event_name == EVENT_APPROVAL_REQUIRED:
             tool_payload = data.get("tool") or {}
             tools = tool_payload.get("tools")
             if not isinstance(tools, list) or not tools:
                 return False
             self.flush_text()
             self.flush_reasoning()
+            request_id = tool_payload.get("requestId")
             for tool in tools:
                 if not isinstance(tool, dict):
                     continue
@@ -540,6 +552,7 @@ class ContentAccumulator:
                         "isCompleted": False,
                         "requiresApproval": True,
                         "runId": tool_payload.get("runId"),
+                        "requestId": request_id,
                         "toolCallId": tool.get("id"),
                         "approvalStatus": "pending",
                         "editableArgs": tool.get("editableArgs"),
@@ -547,20 +560,28 @@ class ContentAccumulator:
                 )
             return True
 
-        if event_name == EVENT_TOOL_APPROVAL_RESOLVED:
-            tool = data.get("tool") or {}
-            tool_id = str(tool.get("id") or "")
-            if not tool_id:
+        if event_name == EVENT_APPROVAL_RESOLVED:
+            tool_payload = data.get("tool") or {}
+            tools = tool_payload.get("tools")
+            if not isinstance(tools, list) or not tools:
                 return False
-            tool_block = self.find_tool_block(self.content_blocks, tool_id)
-            if tool_block is None:
-                return False
-            status = tool.get("approvalStatus")
-            tool_block["approvalStatus"] = status
-            if "toolArgs" in tool:
-                tool_block["toolArgs"] = tool.get("toolArgs")
-            if status in ("denied", "timeout"):
-                tool_block["isCompleted"] = True
-            return True
+            changed = False
+            for tool in tools:
+                if not isinstance(tool, dict):
+                    continue
+                tool_id = str(tool.get("id") or "")
+                if not tool_id:
+                    continue
+                tool_block = self.find_tool_block(self.content_blocks, tool_id)
+                if tool_block is None:
+                    continue
+                status = tool.get("approvalStatus")
+                tool_block["approvalStatus"] = status
+                if "toolArgs" in tool:
+                    tool_block["toolArgs"] = tool.get("toolArgs")
+                if status in ("denied", "timeout"):
+                    tool_block["isCompleted"] = True
+                changed = True
+            return changed
 
         return False

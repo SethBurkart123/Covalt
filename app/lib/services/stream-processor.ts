@@ -28,8 +28,8 @@ import {
   handleTerminalRunEvent,
 } from "@/lib/services/text-stream-handler";
 import {
-  handleToolApprovalRequired,
-  handleToolApprovalResolved,
+  handleApprovalRequired,
+  handleApprovalResolved,
   handleToolCallCompleted,
   handleToolCallStarted,
 } from "@/lib/services/tool-event-handler";
@@ -114,16 +114,16 @@ export function processEvent(
       handleToolCallStarted(state, payload.tool);
       break;
 
-    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
-      handleToolApprovalRequired(state, payload.tool);
+    case RUNTIME_EVENT.APPROVAL_REQUIRED:
+      handleApprovalRequired(state, payload.tool);
       break;
 
     case RUNTIME_EVENT.TOOL_CALL_COMPLETED:
       handleToolCallCompleted(state, payload.tool);
       break;
 
-    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
-      handleToolApprovalResolved(state, payload.tool);
+    case RUNTIME_EVENT.APPROVAL_RESOLVED:
+      handleApprovalResolved(state, payload.tool);
       break;
 
     case RUNTIME_EVENT.FLOW_NODE_STARTED:

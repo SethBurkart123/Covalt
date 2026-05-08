@@ -92,6 +92,7 @@ export interface ToolCallPayload {
   failed?: boolean;
   requiresApproval?: boolean;
   runId?: string;
+  requestId?: string;
   toolCallId?: string;
   approvalStatus?: "pending" | "approved" | "denied" | "timeout";
   editableArgs?: string[] | boolean;
@@ -105,9 +106,67 @@ export interface ToolApprovalTool {
   editableArgs?: string[] | boolean;
 }
 
-export interface ToolApprovalRequiredPayload {
+export interface ApprovalOption {
+  value: string;
+  label: string;
+  role: "allow_once" | "allow_session" | "allow_always" | "deny" | "abort" | "custom";
+  style?: "default" | "primary" | "destructive";
+  requiresInput?: boolean;
+}
+
+export interface ApprovalQuestion {
+  index: number;
+  topic: string;
+  question: string;
+  options?: string[];
+  placeholder?: string;
+  multiline?: boolean;
+  required?: boolean;
+}
+
+export interface ApprovalEditable {
+  path: string[];
+  schema: Record<string, unknown>;
+  label?: string;
+}
+
+export interface ApprovalAnswer {
+  index: number;
+  answer: string;
+}
+
+export interface ApprovalRequiredPayload {
   runId?: string;
+  requestId: string;
+  kind: "tool_approval" | "user_input";
+  toolUseIds?: string[];
+  toolName?: string;
+  riskLevel?: "low" | "medium" | "high" | "unknown";
+  summary?: string;
+  options?: ApprovalOption[];
+  questions?: ApprovalQuestion[];
+  editable?: ApprovalEditable[];
+  renderer?: string;
+  config?: Record<string, unknown>;
+  timeoutMs?: number;
   tools: ToolApprovalTool[];
+}
+
+export interface ApprovalResolvedTool {
+  id: string;
+  toolName?: string;
+  approvalStatus?: "pending" | "approved" | "denied" | "timeout";
+  toolArgs?: Record<string, unknown>;
+}
+
+export interface ApprovalResolvedPayload {
+  runId?: string;
+  requestId: string;
+  selectedOption: string;
+  answers?: ApprovalAnswer[];
+  editedArgs?: Record<string, unknown> | null;
+  cancelled?: boolean;
+  tools: ApprovalResolvedTool[];
 }
 
 export type ContentBlock =

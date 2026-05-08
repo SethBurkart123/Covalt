@@ -54,24 +54,28 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_respond_to_tool_approval_sets_response_and_signals_waiter() -> None:
+async def test_respond_to_approval_sets_response_and_signals_waiter() -> None:
     event = asyncio.Event()
-    run_control.register_approval_waiter("run-1", event)
+    run_control.register_approval_waiter("run-1", "req-1", event)
 
-    result = await streaming.respond_to_tool_approval(
-        streaming.RespondToToolApprovalInput(
+    result = await streaming.respond_to_approval(
+        streaming.RespondToApprovalInput(
             runId="run-1",
-            approved=True,
-            toolDecisions={"tool-1": True},
-            editedArgs={"tool-1": {"query": "covalt"}},
+            requestId="req-1",
+            selectedOption="allow_once",
+            answers=[],
+            editedArgs={"query": "covalt"},
+            cancelled=False,
         )
     )
 
     assert result == {"success": True}
     assert event.is_set() is True
-    response = run_control.get_approval_response("run-1")
-    assert response["approved"] is True
-    assert response["tool_decisions"] == {"tool-1": True}
+    record = run_control.get_approval_response("run-1", "req-1")
+    assert record is not None
+    assert record.selected_option == "allow_once"
+    assert record.edited_args == {"query": "covalt"}
+    assert record.cancelled is False
 
 
 @pytest.mark.asyncio
@@ -164,7 +168,7 @@ async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
     run_control.set_active_run_id("msg-hitl", "run-hitl")
 
     waiter = asyncio.Event()
-    run_control.register_approval_waiter("run-hitl", waiter)
+    run_control.register_approval_waiter("run-hitl", "req-hitl", waiter)
 
     result = await streaming.cancel_run(
         streaming.CancelRunRequest(messageId="msg-hitl")
@@ -172,7 +176,7 @@ async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
 
     assert result == {"cancelled": True}
     assert waiter.is_set() is True
-    assert run_control.was_approval_cancelled("run-hitl") is True
+    assert run_control.was_approval_cancelled("run-hitl", "req-hitl") is True
     # Stream handler is responsible for finalizing once it wakes up.
     assert run_control.get_active_run("msg-hitl") == ("run-hitl", fake_agent)
     assert not hasattr(fake_db, "last_marked_id")

@@ -67,6 +67,14 @@ def _flow_ctx(
     )
 
 
+async def _wait_for_approval_key(run_id: str) -> tuple[str, str]:
+    while True:
+        for key in list(run_control._approval_events.keys()):
+            if key[0] == run_id:
+                return key
+        await asyncio.sleep(0.005)
+
+
 def _dv(type_: str, value: Any) -> DataValue:
     return DataValue(type=type_, value=value)
 
@@ -501,7 +509,12 @@ class _ApprovalStreamingAgent:
             )
             for tool in self._paused_tools
         ]
-        yield ApprovalRequired(run_id="run-approval", tools=pending)
+        yield ApprovalRequired(
+            run_id="run-approval",
+            request_id="req-approval",
+            tool_use_ids=[p.tool_call_id for p in pending],
+            config={"pending_tools": pending},
+        )
 
     async def continue_run(self, approval: Any):
         self.continue_calls.append(approval)
@@ -1070,13 +1083,12 @@ class TestAgentExecutor:
         ctx = _flow_ctx()
 
         async def _auto_approve() -> None:
-            while run_control.get_approval_waiter("run-approval") is None:
-                await asyncio.sleep(0)
+            key = await _wait_for_approval_key("run-approval")
             run_control.set_approval_response(
-                "run-approval",
-                approved=True,
-                tool_decisions={"tool-1": True},
-                edited_args={"tool-1": {"query": "updated"}},
+                key[0],
+                key[1],
+                selected_option="approve",
+                edited_args={"query": "updated"},
             )
 
         with (
@@ -1110,8 +1122,8 @@ class TestAgentExecutor:
             if isinstance(e, NodeEvent) and e.event_type == "agent_event" and isinstance(e.data, dict)
         ]
 
-        assert "ToolApprovalRequired" in agent_events
-        assert "ToolApprovalResolved" in agent_events
+        assert "ApprovalRequired" in agent_events
+        assert "ApprovalResolved" in agent_events
         assert isinstance(final, ExecutionResult)
         assert final.outputs["output"].value["response"] == "ok"
 
@@ -1142,8 +1154,7 @@ class TestAgentExecutor:
         ctx = _flow_ctx()
 
         async def _auto_cancel() -> None:
-            while run_control.get_approval_waiter("run-approval") is None:
-                await asyncio.sleep(0)
+            await _wait_for_approval_key("run-approval")
             run_control.cancel_approval_waiter("run-approval")
 
         with (
@@ -1186,12 +1197,9 @@ class TestAgentExecutor:
             if isinstance(e, NodeEvent)
             and e.event_type == "agent_event"
             and isinstance(e.data, dict)
-            and e.data.get("event") == "ToolApprovalResolved"
+            and e.data.get("event") == "ApprovalResolved"
         ]
         assert len(resolved_events) == 1
-        resolved_tool = resolved_events[0].data.get("tool") if isinstance(resolved_events[0].data, dict) else None
-        assert isinstance(resolved_tool, dict)
-        assert resolved_tool.get("approvalStatus") == "denied"
 
         assert len(fake_agent.continue_calls) == 0
 

@@ -28,13 +28,13 @@ from ..application.tooling import (
     CancelFlowRunInput,
     CancelRunDependencies,
     CancelRunInput,
-    RespondToToolApprovalDependencies,
+    RespondToApprovalDependencies,
     execute_cancel_flow_run,
     execute_cancel_run,
-    execute_respond_to_tool_approval,
+    execute_respond_to_approval,
 )
 from ..application.tooling import (
-    RespondToToolApprovalInput as RespondToToolApprovalInputDTO,
+    RespondToApprovalInput as RespondToApprovalInputDTO,
 )
 from ..models.chat import ChatMessage
 from ..services.chat.chat_attachments import prepare_stream_attachments
@@ -109,24 +109,36 @@ class CancelRunRequest(BaseModel):
     messageId: str
 
 
-class RespondToToolApprovalInput(BaseModel):
+class AnswerEntry(BaseModel):
+    index: int
+    answer: str
+
+
+class RespondToApprovalInput(BaseModel):
     runId: str
-    approved: bool
-    toolDecisions: dict[str, bool] | None = None
-    editedArgs: dict[str, dict[str, Any]] | None = None
+    requestId: str
+    selectedOption: str
+    answers: list[AnswerEntry] = []
+    editedArgs: dict[str, Any] | None = None
+    cancelled: bool = False
 
 
 def _set_approval_response(
     run_id: str,
-    approved: bool,
-    tool_decisions: dict[str, bool],
-    edited_args: dict[str, dict[str, Any]],
+    request_id: str,
+    *,
+    selected_option: str,
+    answers: list[tuple[int, str]],
+    edited_args: dict[str, Any] | None,
+    cancelled: bool,
 ) -> None:
     run_control.set_approval_response(
         run_id,
-        approved=approved,
-        tool_decisions=tool_decisions,
+        request_id,
+        selected_option=selected_option,
+        answers=answers,
         edited_args=edited_args,
+        cancelled=cancelled,
     )
 
 
@@ -135,8 +147,8 @@ def _mark_message_complete(message_id: str) -> None:
         db.mark_message_complete(sess, message_id)
 
 
-def _build_respond_to_tool_approval_dependencies() -> RespondToToolApprovalDependencies:
-    return RespondToToolApprovalDependencies(set_approval_response=_set_approval_response)
+def _build_respond_to_approval_dependencies() -> RespondToApprovalDependencies:
+    return RespondToApprovalDependencies(set_approval_response=_set_approval_response)
 
 
 def _build_cancel_run_dependencies() -> CancelRunDependencies:
@@ -161,15 +173,17 @@ def _build_cancel_flow_run_dependencies() -> CancelFlowRunDependencies:
 
 
 @command
-async def respond_to_tool_approval(body: RespondToToolApprovalInput) -> dict:
-    return execute_respond_to_tool_approval(
-        RespondToToolApprovalInputDTO(
+async def respond_to_approval(body: RespondToApprovalInput) -> dict:
+    return execute_respond_to_approval(
+        RespondToApprovalInputDTO(
             run_id=body.runId,
-            approved=body.approved,
-            tool_decisions=body.toolDecisions,
+            request_id=body.requestId,
+            selected_option=body.selectedOption,
+            answers=[(a.index, a.answer) for a in body.answers],
             edited_args=body.editedArgs,
+            cancelled=body.cancelled,
         ),
-        _build_respond_to_tool_approval_dependencies(),
+        _build_respond_to_approval_dependencies(),
     )
 
 

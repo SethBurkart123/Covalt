@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from typing import Any
+
+ApprovalKey = tuple[str, str]
+
+
+@dataclass(slots=True)
+class ApprovalResponseRecord:
+    selected_option: str
+    answers: list[tuple[int, str]] = field(default_factory=list)
+    edited_args: dict[str, Any] | None = None
+    cancelled: bool = False
+
 
 _active_runs: dict[str, tuple[str | None, Any]] = {}
 _cancelled_messages: set[str] = set()
-_approval_events: dict[str, asyncio.Event] = {}
-_approval_responses: dict[str, dict[str, Any]] = {}
-_cancelled_approvals: set[str] = set()
-# owner_run_id (flow run id) -> set of approval run_ids registered under it
-_approval_owners: dict[str, set[str]] = {}
+_approval_events: dict[ApprovalKey, asyncio.Event] = {}
+_approval_responses: dict[ApprovalKey, ApprovalResponseRecord] = {}
+_cancelled_approvals: set[ApprovalKey] = set()
+_approval_owners: dict[str, set[ApprovalKey]] = {}
 
 
 def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> None:
@@ -83,63 +94,69 @@ def clear_early_cancel(message_id: str) -> None:
 
 def register_approval_waiter(
     run_id: str,
+    request_id: str,
     event: asyncio.Event,
     *,
     owner_run_id: str | None = None,
 ) -> None:
-    _approval_events[run_id] = event
+    key: ApprovalKey = (run_id, request_id)
+    _approval_events[key] = event
     if owner_run_id:
-        _approval_owners.setdefault(owner_run_id, set()).add(run_id)
+        _approval_owners.setdefault(owner_run_id, set()).add(key)
 
 
-def get_approval_waiter(run_id: str) -> asyncio.Event | None:
-    return _approval_events.get(run_id)
+def get_approval_waiter(run_id: str, request_id: str) -> asyncio.Event | None:
+    return _approval_events.get((run_id, request_id))
 
 
 def set_approval_response(
     run_id: str,
+    request_id: str,
     *,
-    approved: bool,
-    tool_decisions: dict[str, bool],
-    edited_args: dict[str, dict[str, Any]],
+    selected_option: str,
+    answers: list[tuple[int, str]] | None = None,
+    edited_args: dict[str, Any] | None = None,
+    cancelled: bool = False,
 ) -> None:
-    _approval_responses[run_id] = {
-        "approved": approved,
-        "tool_decisions": tool_decisions,
-        "edited_args": edited_args,
-    }
-    event = _approval_events.get(run_id)
+    key: ApprovalKey = (run_id, request_id)
+    _approval_responses[key] = ApprovalResponseRecord(
+        selected_option=selected_option,
+        answers=list(answers) if answers else [],
+        edited_args=edited_args,
+        cancelled=cancelled,
+    )
+    event = _approval_events.get(key)
     if event is not None:
         event.set()
 
 
-def get_approval_response(run_id: str) -> dict[str, Any]:
-    return _approval_responses.get(run_id, {})
+def get_approval_response(run_id: str, request_id: str) -> ApprovalResponseRecord | None:
+    return _approval_responses.get((run_id, request_id))
 
 
-def clear_approval(run_id: str) -> None:
-    _approval_events.pop(run_id, None)
-    _approval_responses.pop(run_id, None)
-    _cancelled_approvals.discard(run_id)
+def clear_approval(run_id: str, request_id: str) -> None:
+    key: ApprovalKey = (run_id, request_id)
+    _approval_events.pop(key, None)
+    _approval_responses.pop(key, None)
+    _cancelled_approvals.discard(key)
     for waiters in _approval_owners.values():
-        waiters.discard(run_id)
+        waiters.discard(key)
 
 
 def cancel_approval_waiter(run_id: str) -> bool:
-    """Wake every HITL approval waiter associated with `run_id` (treating it as either
-    the approval run id itself or the owning flow/team run id). Returns True if at least
-    one waiter was signalled."""
-    targets = {run_id} | _approval_owners.get(run_id, set())
+    targets: set[ApprovalKey] = set(_approval_owners.get(run_id, set()))
+    targets.update(key for key in _approval_events if key[0] == run_id)
+
     woke_any = False
-    for target in targets:
-        event = _approval_events.get(target)
+    for key in targets:
+        event = _approval_events.get(key)
         if event is None:
             continue
-        _cancelled_approvals.add(target)
+        _cancelled_approvals.add(key)
         event.set()
         woke_any = True
     return woke_any
 
 
-def was_approval_cancelled(run_id: str) -> bool:
-    return run_id in _cancelled_approvals
+def was_approval_cancelled(run_id: str, request_id: str) -> bool:
+    return (run_id, request_id) in _cancelled_approvals

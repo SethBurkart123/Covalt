@@ -147,10 +147,10 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       });
 
       switch (eventType) {
-        case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
+        case RUNTIME_EVENT.APPROVAL_REQUIRED:
           dispatch(chatId, { type: "PAUSED_HITL" });
           break;
-        case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
+        case RUNTIME_EVENT.APPROVAL_RESOLVED:
           dispatch(chatId, { type: "RESUME_HITL" });
           break;
         case RUNTIME_EVENT.RUN_COMPLETED:

@@ -17,7 +17,7 @@ describe("runtime-events", () => {
 
   it("classifies tool, member and flow-node events", () => {
     expect(isToolRuntimeEvent(RUNTIME_EVENT.TOOL_CALL_STARTED)).toBe(true);
-    expect(isToolRuntimeEvent(RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED)).toBe(true);
+    expect(isToolRuntimeEvent(RUNTIME_EVENT.APPROVAL_RESOLVED)).toBe(true);
     expect(isToolRuntimeEvent(RUNTIME_EVENT.RUN_STARTED)).toBe(false);
 
     expect(isMemberRuntimeEvent(RUNTIME_EVENT.MEMBER_RUN_STARTED)).toBe(true);

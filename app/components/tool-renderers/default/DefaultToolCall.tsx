@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Check, X, Wrench } from "lucide-react";
-import { respondToToolApproval } from "@/python/api";
+import { respondToApproval } from "@/python/api";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -23,6 +23,7 @@ export function DefaultToolCall({
   failed = false,
   requiresApproval = false,
   runId,
+  requestId,
   toolCallId,
   approvalStatus: initialApprovalStatus,
   editableArgs,
@@ -55,19 +56,21 @@ export function DefaultToolCall({
   };
 
   const handleApprove = async () => {
-    if (!runId || !toolCallId || isProcessing) return;
+    if (!runId || !requestId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
-    const editedArgs = Object.keys(editedValues).length > 0 
-      ? { [toolCallId]: { ...toolArgs, ...editedValues } }
+    const editedArgs = Object.keys(editedValues).length > 0
+      ? { ...toolArgs, ...editedValues }
       : undefined;
 
     try {
-      await respondToToolApproval({
+      await respondToApproval({
         body: {
           runId,
-          approved: true,
-          toolDecisions: { [toolCallId]: true },
+          requestId,
+          selectedOption: "allow_once",
+          answers: [],
           editedArgs,
+          cancelled: false,
         },
       });
       setApprovalStatus("approved");
@@ -79,14 +82,16 @@ export function DefaultToolCall({
   };
 
   const handleDeny = async () => {
-    if (!runId || !toolCallId || isProcessing) return;
+    if (!runId || !requestId || !toolCallId || isProcessing) return;
     setIsProcessing(true);
     try {
-      await respondToToolApproval({
+      await respondToApproval({
         body: {
           runId,
-          approved: false,
-          toolDecisions: { [toolCallId]: false },
+          requestId,
+          selectedOption: "deny",
+          answers: [],
+          cancelled: false,
         },
       });
       setApprovalStatus("denied");

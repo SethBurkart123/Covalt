@@ -6,35 +6,31 @@ from typing import Any
 
 
 @dataclass
-class RespondToToolApprovalInput:
+class RespondToApprovalInput:
     run_id: str
-    approved: bool
-    tool_decisions: dict[str, bool] | None = None
-    edited_args: dict[str, dict[str, Any]] | None = None
+    request_id: str
+    selected_option: str
+    answers: list[tuple[int, str]] | None = None
+    edited_args: dict[str, Any] | None = None
+    cancelled: bool = False
 
 
 @dataclass
-class RespondToToolApprovalDependencies:
-    set_approval_response: Callable[
-        [
-            str,
-            bool,
-            dict[str, bool],
-            dict[str, dict[str, Any]],
-        ],
-        None,
-    ]
+class RespondToApprovalDependencies:
+    set_approval_response: Callable[..., None]
 
 
-def execute_respond_to_tool_approval(
-    input_data: RespondToToolApprovalInput,
-    deps: RespondToToolApprovalDependencies,
+def execute_respond_to_approval(
+    input_data: RespondToApprovalInput,
+    deps: RespondToApprovalDependencies,
 ) -> dict:
     deps.set_approval_response(
         input_data.run_id,
-        input_data.approved,
-        input_data.tool_decisions or {},
-        input_data.edited_args or {},
+        input_data.request_id,
+        selected_option=input_data.selected_option,
+        answers=list(input_data.answers) if input_data.answers else [],
+        edited_args=input_data.edited_args,
+        cancelled=input_data.cancelled,
     )
     return {"success": True}
 

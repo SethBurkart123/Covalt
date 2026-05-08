@@ -3,7 +3,11 @@
 import type { ContentBlock } from "@/lib/types/chat";
 import type { StreamState } from "@/lib/services/stream-processor-state";
 import { flushReasoningBlock, flushTextBlock } from "@/lib/services/stream-processor-state";
-import { coerceToolApprovalPayload, coerceToolCallPayload } from "@/lib/services/stream-processor-utils";
+import {
+  coerceApprovalRequiredPayload,
+  coerceApprovalResolvedPayload,
+  coerceToolCallPayload,
+} from "@/lib/services/stream-processor-utils";
 
 export function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);
@@ -30,11 +34,11 @@ export function handleToolCallStarted(state: StreamState, tool: unknown): void {
   });
 }
 
-export function handleToolApprovalRequired(state: StreamState, toolData: unknown): void {
+export function handleApprovalRequired(state: StreamState, toolData: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
 
-  const payload = coerceToolApprovalPayload(toolData, "ToolApprovalRequired");
+  const payload = coerceApprovalRequiredPayload(toolData, "ApprovalRequired");
   if (!payload) return;
 
   for (const tool of payload.tools) {
@@ -46,6 +50,7 @@ export function handleToolApprovalRequired(state: StreamState, toolData: unknown
       isCompleted: false,
       requiresApproval: true,
       runId: payload.runId,
+      requestId: payload.requestId,
       toolCallId: tool.id,
       approvalStatus: "pending",
       editableArgs: tool.editableArgs,
@@ -76,36 +81,33 @@ export function handleToolCallCompleted(state: StreamState, tool: unknown): void
   }
 }
 
-export function handleToolApprovalResolved(state: StreamState, tool: unknown): void {
-  const payload = coerceToolCallPayload(tool, "ToolApprovalResolved");
+export function handleApprovalResolved(state: StreamState, toolData: unknown): void {
+  const payload = coerceApprovalResolvedPayload(toolData, "ApprovalResolved");
   if (!payload) return;
 
-  const toolBlock = state.contentBlocks.find(
-    (block) => block.type === "tool_call" && block.id === payload.id,
-  );
-  if (!toolBlock || toolBlock.type !== "tool_call") return;
+  for (const tool of payload.tools) {
+    const toolBlock = state.contentBlocks.find(
+      (block) => block.type === "tool_call" && block.id === tool.id,
+    );
+    if (!toolBlock || toolBlock.type !== "tool_call") continue;
 
-  toolBlock.approvalStatus = payload.approvalStatus as
-    | "pending"
-    | "approved"
-    | "denied"
-    | "timeout"
-    | undefined;
+    toolBlock.approvalStatus = tool.approvalStatus;
 
-  if (payload.toolArgs) {
-    toolBlock.toolArgs = payload.toolArgs;
-  }
-  if (
-    payload.approvalStatus === "approved"
-    || payload.approvalStatus === "denied"
-    || payload.approvalStatus === "timeout"
-  ) {
-    toolBlock.isCompleted = true;
+    if (tool.toolArgs) {
+      toolBlock.toolArgs = tool.toolArgs;
+    }
+    if (
+      tool.approvalStatus === "approved"
+      || tool.approvalStatus === "denied"
+      || tool.approvalStatus === "timeout"
+    ) {
+      toolBlock.isCompleted = true;
+    }
   }
 }
 
 export function removeTopLevelToolBlock(state: StreamState, tool: unknown): void {
-  const toolId = coerceToolCallPayload(tool, "Member.ToolApprovalResolvedCleanup")?.id;
+  const toolId = coerceToolCallPayload(tool, "Member.ApprovalResolvedCleanup")?.id;
   if (!toolId) return;
 
   const index = state.contentBlocks.findIndex(

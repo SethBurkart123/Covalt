@@ -1,54 +1,40 @@
-import type { RendererDefinition, ToolCallRenderer } from "./types";
-import { defaultRenderer } from "@/components/tool-renderers/default";
-import { codeRenderer } from "@/components/tool-renderers/code";
-import { markdownRenderer } from "@/components/tool-renderers/markdown";
-import { htmlRenderer } from "@/components/tool-renderers/html";
-import { frameRenderer } from "@/components/tool-renderers/frame";
-import { editorRenderer } from "@/components/tool-renderers/editor";
+import { getToolRenderer } from "@/lib/renderers";
+import type { ToolCallRenderer } from "./types";
+import { registerBuiltinToolRenderers } from "./builtin";
 
 const DEFAULT_RENDERER_KEY = "default";
 
-const RENDERERS: RendererDefinition[] = [
-  defaultRenderer,
-  codeRenderer,
-  markdownRenderer,
-  htmlRenderer,
-  frameRenderer,
-  editorRenderer,
-];
-
-const rendererByAlias = new Map<string, RendererDefinition>();
-for (const renderer of RENDERERS) {
-  for (const alias of renderer.aliases) {
-    rendererByAlias.set(alias, renderer);
-  }
-}
+registerBuiltinToolRenderers();
 
 const loadCache = new Map<string, Promise<ToolCallRenderer>>();
 
-function getDefinitionByName(name?: string): RendererDefinition {
+function resolveDefinitionKey(name?: string): string {
   if (name) {
-    const byName = rendererByAlias.get(name);
-    if (byName) {
-      return byName;
-    }
+    const def = getToolRenderer(name);
+    if (def) return def.key;
   }
-  return rendererByAlias.get(DEFAULT_RENDERER_KEY)!;
+  return DEFAULT_RENDERER_KEY;
 }
 
-function cacheLoad(definition: RendererDefinition): Promise<ToolCallRenderer> {
-  const cached = loadCache.get(definition.key);
-  if (cached) {
-    return cached;
+function loadDefinition(key: string): Promise<ToolCallRenderer> {
+  const cached = loadCache.get(key);
+  if (cached) return cached;
+
+  const def = getToolRenderer(key);
+  if (!def?.tool) {
+    if (key !== DEFAULT_RENDERER_KEY) {
+      return getToolCallRenderer(DEFAULT_RENDERER_KEY);
+    }
+    return Promise.reject(new Error("Default tool renderer is not registered"));
   }
 
-  const promise = definition
-    .load()
-    .then((module) => module.default)
+  const promise = def
+    .tool()
+    .then((module) => module.default as unknown as ToolCallRenderer)
     .catch(async (error) => {
-      if (definition.key !== DEFAULT_RENDERER_KEY) {
+      if (key !== DEFAULT_RENDERER_KEY) {
         console.error(
-          `[ToolRenderers] Failed to load '${definition.key}' renderer, falling back to default`,
+          `[ToolRenderers] Failed to load '${key}' renderer, falling back to default`,
           error,
         );
         return getToolCallRenderer(DEFAULT_RENDERER_KEY);
@@ -56,16 +42,14 @@ function cacheLoad(definition: RendererDefinition): Promise<ToolCallRenderer> {
       throw error;
     });
 
-  loadCache.set(definition.key, promise);
+  loadCache.set(key, promise);
   return promise;
 }
 
 export function getToolCallRenderer(name?: string): Promise<ToolCallRenderer> {
-  const definition = getDefinitionByName(name);
-  return cacheLoad(definition);
+  return loadDefinition(resolveDefinitionKey(name));
 }
 
 export function preloadToolCallRenderer(name?: string): Promise<void> {
   return getToolCallRenderer(name).then(() => undefined);
 }
-

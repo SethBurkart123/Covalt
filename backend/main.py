@@ -22,6 +22,7 @@ from .db import init_database
 from .services.flows.http_routes import register_http_routes
 from .services.node_providers.node_provider_registry import reload_node_provider_registry
 from .services.node_providers.node_route_index import rebuild_node_route_index
+from .services.renderers.registry import register_builtin_renderers
 from .services.tools.mcp_manager import shutdown_mcp
 from .services.tools.toolset_manager import get_toolset_manager
 from .services.variables.builtin_loaders import register_builtin_loaders
@@ -48,6 +49,7 @@ def main() -> int:
     rebuild_node_route_index()
     reload_node_provider_registry()
     register_builtin_loaders()
+    register_builtin_renderers()
 
     repo_root = Path(__file__).parent.parent
     output_dir = repo_root / "app" / "python"

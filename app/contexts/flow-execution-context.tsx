@@ -309,7 +309,7 @@ export function FlowExecutionProvider({
       let status: FlowNodeExecutionSnapshot["status"] | null = null;
       let error: string | undefined;
 
-      if (event === RUNTIME_EVENT.TOOL_CALL_STARTED || event === RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED) {
+      if (event === RUNTIME_EVENT.TOOL_CALL_STARTED || event === RUNTIME_EVENT.APPROVAL_REQUIRED) {
         status = "running";
       } else if (event === RUNTIME_EVENT.TOOL_CALL_COMPLETED) {
         status = "completed";
@@ -322,12 +322,24 @@ export function FlowExecutionProvider({
         if (isRecord(toolPayload) && typeof toolPayload.error === "string") {
           error = toolPayload.error;
         }
-      } else if (event === RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED) {
+      } else if (event === RUNTIME_EVENT.APPROVAL_RESOLVED) {
         if (isRecord(toolPayload)) {
-          const approvalStatus = toolPayload.approvalStatus;
-          if (approvalStatus === "denied" || approvalStatus === "timeout") {
+          const cancelled = toolPayload.cancelled;
+          const tools = toolPayload.tools;
+          if (cancelled === true) {
             status = "error";
-            error = typeof approvalStatus === "string" ? `Approval ${approvalStatus}` : undefined;
+            error = "Approval cancelled";
+          } else if (Array.isArray(tools)) {
+            const failed = tools.find(
+              (t) =>
+                isRecord(t)
+                && (t.approvalStatus === "denied" || t.approvalStatus === "timeout"),
+            );
+            if (isRecord(failed)) {
+              status = "error";
+              const approvalStatus = failed.approvalStatus;
+              error = typeof approvalStatus === "string" ? `Approval ${approvalStatus}` : undefined;
+            }
           }
         }
       }

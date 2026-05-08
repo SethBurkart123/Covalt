@@ -40,6 +40,8 @@ from . import stream_broadcaster as broadcaster
 from .content_accumulator import ContentAccumulator
 from .execution_trace import ExecutionTraceRecorder
 from .runtime_events import (
+    EVENT_APPROVAL_REQUIRED,
+    EVENT_APPROVAL_RESOLVED,
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
     EVENT_FLOW_NODE_RESULT,
@@ -48,8 +50,6 @@ from .runtime_events import (
     EVENT_RUN_COMPLETED,
     EVENT_RUN_CONTENT,
     EVENT_RUN_ERROR,
-    EVENT_TOOL_APPROVAL_REQUIRED,
-    EVENT_TOOL_APPROVAL_RESOLVED,
     EVENT_TOOL_CALL_COMPLETED,
     EVENT_TOOL_CALL_STARTED,
     emit_chat_event,
@@ -232,32 +232,52 @@ def _mark_message_complete(assistant_msg_id: str) -> None:
 
 
 def _deny_pending_approvals(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Mark every pending HITL tool block (recursing into member_runs) as denied."""
-    denied: list[dict[str, Any]] = []
-    for block in blocks:
-        block_type = block.get("type")
-        if block_type == "tool_call":
-            tool_id = str(block.get("id") or "")
-            if (
-                tool_id
-                and bool(block.get("requiresApproval"))
-                and block.get("approvalStatus") == "pending"
-            ):
-                block["approvalStatus"] = "denied"
-                block["isCompleted"] = True
-                tool_args = block.get("toolArgs")
-                denied.append(
-                    {
-                        "id": tool_id,
-                        "approvalStatus": "denied",
-                        "toolArgs": tool_args if isinstance(tool_args, dict) else {},
-                    }
-                )
-        elif block_type == "member_run":
-            member_content = block.get("content")
-            if isinstance(member_content, list):
-                denied.extend(_deny_pending_approvals(member_content))
-    return denied
+    """Mark every pending HITL tool block (recursing into member_runs) as denied
+    and return one approval-resolved payload per (runId, requestId) group."""
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def _walk(items: list[dict[str, Any]]) -> None:
+        for block in items:
+            block_type = block.get("type")
+            if block_type == "tool_call":
+                tool_id = str(block.get("id") or "")
+                if (
+                    tool_id
+                    and bool(block.get("requiresApproval"))
+                    and block.get("approvalStatus") == "pending"
+                ):
+                    block["approvalStatus"] = "denied"
+                    block["isCompleted"] = True
+                    tool_args = block.get("toolArgs")
+                    run_id = str(block.get("runId") or "")
+                    request_id = str(block.get("requestId") or "")
+                    key = (run_id, request_id)
+                    bucket = grouped.setdefault(
+                        key,
+                        {
+                            "runId": run_id or None,
+                            "requestId": request_id or None,
+                            "selectedOption": "deny",
+                            "answers": [],
+                            "editedArgs": None,
+                            "cancelled": True,
+                            "tools": [],
+                        },
+                    )
+                    bucket["tools"].append(
+                        {
+                            "id": tool_id,
+                            "approvalStatus": "denied",
+                            "toolArgs": tool_args if isinstance(tool_args, dict) else {},
+                        }
+                    )
+            elif block_type == "member_run":
+                member_content = block.get("content")
+                if isinstance(member_content, list):
+                    _walk(member_content)
+
+    _walk(blocks)
+    return list(grouped.values())
 
 
 def _fail_inflight_tool_calls(
@@ -430,7 +450,7 @@ async def handle_flow_stream(
         accumulator.flush_text()
         accumulator.flush_reasoning()
         for tool in _deny_pending_approvals(accumulator.content_blocks):
-            emit_chat_event(ch, EVENT_TOOL_APPROVAL_RESOLVED, tool=tool)
+            emit_chat_event(ch, EVENT_APPROVAL_RESOLVED, tool=tool)
         for tool_block in _fail_inflight_tool_calls(accumulator.content_blocks):
             emit_chat_event(
                 ch,
@@ -504,9 +524,9 @@ async def handle_flow_stream(
                         await _persist_accumulator(save_content, assistant_msg_id, accumulator)
 
                     event_name = str(event_data.get("event") or "")
-                    if event_name == EVENT_TOOL_APPROVAL_REQUIRED and chat_id:
+                    if event_name == EVENT_APPROVAL_REQUIRED and chat_id:
                         await broadcaster.update_stream_status(chat_id, "paused_hitl")
-                    elif event_name == EVENT_TOOL_APPROVAL_RESOLVED and chat_id:
+                    elif event_name == EVENT_APPROVAL_RESOLVED and chat_id:
                         await broadcaster.update_stream_status(chat_id, "streaming")
                 elif item.event_type == "cancelled":
                     await _finalize_cancelled()

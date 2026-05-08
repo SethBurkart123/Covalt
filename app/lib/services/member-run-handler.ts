@@ -14,7 +14,11 @@ import {
   flushTextBlock,
   getMemberState,
 } from "@/lib/services/stream-processor-state";
-import { coerceToolApprovalPayload, coerceToolCallPayload } from "@/lib/services/stream-processor-utils";
+import {
+  coerceApprovalRequiredPayload,
+  coerceApprovalResolvedPayload,
+  coerceToolCallPayload,
+} from "@/lib/services/stream-processor-utils";
 
 function getOrCreateMemberBlock(
   state: StreamState,
@@ -199,12 +203,12 @@ export function processMemberEvent(
       break;
     }
 
-    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED: {
+    case RUNTIME_EVENT.APPROVAL_REQUIRED: {
       flushMemberText(block, memberState);
       flushMemberReasoning(block, memberState);
-      const approvalPayload = coerceToolApprovalPayload(
+      const approvalPayload = coerceApprovalRequiredPayload(
         payload.tool,
-        "Member.ToolApprovalRequired",
+        "Member.ApprovalRequired",
       );
       if (!approvalPayload) break;
 
@@ -217,6 +221,7 @@ export function processMemberEvent(
           isCompleted: false,
           requiresApproval: true,
           runId: approvalPayload.runId,
+          requestId: approvalPayload.requestId,
           toolCallId: tool.id,
           approvalStatus: "pending",
           editableArgs: tool.editableArgs,
@@ -225,32 +230,32 @@ export function processMemberEvent(
       break;
     }
 
-    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED: {
-      const tool = coerceToolCallPayload(payload.tool, "Member.ToolApprovalResolved");
-      if (!tool) break;
-
-      const toolCall = block.content.find(
-        (item): item is Extract<ContentBlock, { type: "tool_call" }> =>
-          item.type === "tool_call" && item.id === tool.id,
+    case RUNTIME_EVENT.APPROVAL_RESOLVED: {
+      const resolvedPayload = coerceApprovalResolvedPayload(
+        payload.tool,
+        "Member.ApprovalResolved",
       );
-      if (!toolCall) break;
+      if (!resolvedPayload) break;
 
-      toolCall.approvalStatus = tool.approvalStatus as
-        | "pending"
-        | "approved"
-        | "denied"
-        | "timeout"
-        | undefined;
+      for (const tool of resolvedPayload.tools) {
+        const toolCall = block.content.find(
+          (item): item is Extract<ContentBlock, { type: "tool_call" }> =>
+            item.type === "tool_call" && item.id === tool.id,
+        );
+        if (!toolCall) continue;
 
-      if (tool.toolArgs) {
-        toolCall.toolArgs = tool.toolArgs;
-      }
-      if (
-        tool.approvalStatus === "approved"
-        || tool.approvalStatus === "denied"
-        || tool.approvalStatus === "timeout"
-      ) {
-        toolCall.isCompleted = true;
+        toolCall.approvalStatus = tool.approvalStatus;
+
+        if (tool.toolArgs) {
+          toolCall.toolArgs = tool.toolArgs;
+        }
+        if (
+          tool.approvalStatus === "approved"
+          || tool.approvalStatus === "denied"
+          || tool.approvalStatus === "timeout"
+        ) {
+          toolCall.isCompleted = true;
+        }
       }
       break;
     }

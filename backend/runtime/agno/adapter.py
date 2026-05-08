@@ -15,6 +15,7 @@ from agno.tools.function import Function
 from ..protocol import AgentHandle
 from ..types import (
     AgentConfig,
+    ApprovalOption,
     ApprovalRequired,
     ApprovalResponse,
     ContentDelta,
@@ -234,12 +235,20 @@ class AgnoAgentHandle(AgentHandle):
             }
             pending = [_pending_approval(tool) for tool in tools]
             pending = [tool for tool in pending if tool is not None]
+            request_id = run_id or ""
+            tool_use_ids = [t.tool_call_id for t in pending if t.tool_call_id]
+            primary_tool_name = pending[0].tool_name if pending else None
             return ApprovalRequired(
                 run_id=run_id,
                 member_run_id=member_run_id,
                 member_name=member_name,
                 task=self._task,
-                tools=pending,
+                request_id=request_id,
+                kind="tool_approval",
+                tool_use_ids=tool_use_ids or None,
+                tool_name=primary_tool_name,
+                options=_default_approval_options(),
+                config={"pending_tools": [_pending_to_dict(t) for t in pending]},
             )
 
         if event_name == RunEvent.model_request_completed.value:
@@ -463,6 +472,38 @@ def _runtime_tool_result(tool: Any) -> RuntimeToolResult | None:
         provider_data=call.provider_data,
         failed=error is not None,
     )
+
+
+def _default_approval_options() -> list[ApprovalOption]:
+    return [
+        ApprovalOption(
+            value="allow_once",
+            label="Allow",
+            role="allow_once",
+            style="primary",
+        ),
+        ApprovalOption(
+            value="deny",
+            label="Deny",
+            role="deny",
+            style="destructive",
+        ),
+    ]
+
+
+def _pending_to_dict(tool: PendingApproval) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": tool.tool_call_id,
+        "toolName": tool.tool_name,
+        "toolArgs": dict(tool.tool_args or {}),
+    }
+    if tool.editable_args is not None:
+        payload["editableArgs"] = tool.editable_args
+    if tool.requires_user_input:
+        payload["requiresUserInput"] = True
+    if tool.user_input_schema is not None:
+        payload["userInputSchema"] = tool.user_input_schema
+    return payload
 
 
 def _pending_approval(tool: Any) -> PendingApproval | None:

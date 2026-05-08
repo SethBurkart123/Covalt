@@ -248,11 +248,12 @@ describe("stream-processor", () => {
       callbacks,
     );
     processEvent(
-      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      RUNTIME_EVENT.APPROVAL_REQUIRED,
       {
         memberRunId: "m1",
         tool: {
           runId: "run-1",
+          requestId: "req-1",
           tools: [{ id: "tool-1", toolName: "search", toolArgs: { q: "a" } }],
         },
       },
@@ -287,14 +288,21 @@ describe("stream-processor", () => {
     });
 
     processEvent(
-      RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED,
+      RUNTIME_EVENT.APPROVAL_RESOLVED,
       {
         memberRunId: "m1",
         tool: {
-          id: "tool-1",
-          toolName: "search",
-          toolArgs: { q: "a" },
-          approvalStatus: "denied",
+          runId: "run-1",
+          requestId: "req-1",
+          selectedOption: "deny",
+          tools: [
+            {
+              id: "tool-1",
+              toolName: "search",
+              toolArgs: { q: "a" },
+              approvalStatus: "denied",
+            },
+          ],
         },
       },
       state,
@@ -353,11 +361,12 @@ describe("stream-processor", () => {
     expect(initialSub2.content).toHaveLength(0);
 
     processEvent(
-      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      RUNTIME_EVENT.APPROVAL_REQUIRED,
       {
         memberRunId: "sub-1",
         tool: {
           runId: "sub-1",
+          requestId: "req-sub-1",
           tools: [{ id: "tool-a", toolName: "search", toolArgs: { q: "agno" } }],
         },
       },
@@ -365,11 +374,12 @@ describe("stream-processor", () => {
       callbacks,
     );
     processEvent(
-      RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED,
+      RUNTIME_EVENT.APPROVAL_REQUIRED,
       {
         memberRunId: "sub-2",
         tool: {
           runId: "sub-2",
+          requestId: "req-sub-2",
           tools: [{ id: "tool-b", toolName: "search", toolArgs: { q: "teams" } }],
         },
       },

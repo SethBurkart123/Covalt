@@ -14,9 +14,11 @@ from agno.models.response import ModelResponse
 
 import nodes
 from backend.services.plugins.plugin_registry import _DEFAULT_PLUGIN_REGISTRY
+from backend.services.renderers.registry import register_builtin_renderers
 from backend.services.streaming import run_control
 
 nodes.init(_DEFAULT_PLUGIN_REGISTRY)
+register_builtin_renderers()
 
 
 @dataclass

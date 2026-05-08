@@ -124,9 +124,9 @@ export function runtimeEventToRunEvent(
   payload: Record<string, unknown>,
 ): RunEvent | null {
   switch (eventType) {
-    case RUNTIME_EVENT.TOOL_APPROVAL_REQUIRED:
+    case RUNTIME_EVENT.APPROVAL_REQUIRED:
       return { type: "PAUSED_HITL" };
-    case RUNTIME_EVENT.TOOL_APPROVAL_RESOLVED:
+    case RUNTIME_EVENT.APPROVAL_RESOLVED:
       return { type: "RESUME_HITL" };
     case RUNTIME_EVENT.RUN_COMPLETED:
       return { type: "COMPLETED" };

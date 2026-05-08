@@ -3,54 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-RENDERER_ALIAS_MAP: dict[str, str] = {
-    "markdown": "document",
-}
-
-SUPPORTED_RENDERERS: set[str] = {
-    "default",
-    "code",
-    "document",
-    "html",
-    "frame",
-    "editor",
-}
-
 RendererConfigType = Literal["string", "bool", "port", "any"]
-
-RENDERER_CONFIG_SCHEMAS: dict[str, dict[str, RendererConfigType]] = {
-    "default": {},
-    "code": {
-        "file": "string",
-        "content": "string",
-        "language": "string",
-        "editable": "bool",
-    },
-    "document": {
-        "file": "string",
-        "content": "string",
-        "editable": "bool",
-    },
-    "html": {
-        "content": "string",
-        "artifact": "string",
-        "data": "any",
-    },
-    "frame": {
-        "url": "string",
-        "port": "port",
-    },
-    "editor": {
-        "path": "string",
-        "editable": "bool",
-    },
-}
 
 
 def normalize_renderer_alias(renderer: str | None) -> str | None:
     if not renderer:
         return renderer
-    return RENDERER_ALIAS_MAP.get(renderer, renderer)
+    from backend.services.renderers.registry import resolve_renderer_alias  # noqa: PLC0415
+
+    return resolve_renderer_alias(renderer)
 
 
 def validate_renderer_manifest_entry(
@@ -91,9 +52,14 @@ def validate_renderer_override(
     if not isinstance(renderer, str) or not renderer.strip():
         raise ValueError(f"{context} renderer must be a non-empty string")
 
+    from backend.services.renderers.registry import (  # noqa: PLC0415
+        is_renderer_registered,
+        list_renderer_keys,
+    )
+
     normalized_renderer = normalize_renderer_alias(renderer.strip())
-    if normalized_renderer not in SUPPORTED_RENDERERS:
-        allowed = ", ".join(sorted(SUPPORTED_RENDERERS))
+    if normalized_renderer is None or not is_renderer_registered(normalized_renderer):
+        allowed = ", ".join(sorted(list_renderer_keys()))
         raise ValueError(
             f"{context} renderer '{renderer}' is unsupported (allowed: {allowed})"
         )
@@ -126,7 +92,9 @@ def _validate_renderer_config_shape(
     *,
     context: str,
 ) -> None:
-    schema = RENDERER_CONFIG_SCHEMAS.get(renderer, {})
+    from backend.services.renderers.registry import renderer_config_schema  # noqa: PLC0415
+
+    schema = renderer_config_schema(renderer) or {}
 
     unknown_keys = sorted(set(config) - set(schema))
     if unknown_keys:

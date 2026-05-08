@@ -1,6 +1,10 @@
 "use client";
 
-import type { ToolApprovalRequiredPayload, ToolCallPayload } from "@/lib/types/chat";
+import type {
+  ApprovalRequiredPayload,
+  ApprovalResolvedPayload,
+  ToolCallPayload,
+} from "@/lib/types/chat";
 
 const warnedPayloads = new Set<string>();
 const warnedUnknownEvents = new Set<string>();
@@ -43,16 +47,33 @@ export function coerceToolCallPayload(tool: unknown, context: string): ToolCallP
   return payload;
 }
 
-export function coerceToolApprovalPayload(
+export function coerceApprovalRequiredPayload(
   tool: unknown,
   context: string,
-): ToolApprovalRequiredPayload | null {
+): ApprovalRequiredPayload | null {
   if (!tool || typeof tool !== "object") {
     warnInvalidPayload(context, tool);
     return null;
   }
 
-  const payload = tool as ToolApprovalRequiredPayload;
+  const payload = tool as ApprovalRequiredPayload;
+  if (!Array.isArray(payload.tools)) {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+  return payload;
+}
+
+export function coerceApprovalResolvedPayload(
+  tool: unknown,
+  context: string,
+): ApprovalResolvedPayload | null {
+  if (!tool || typeof tool !== "object") {
+    warnInvalidPayload(context, tool);
+    return null;
+  }
+
+  const payload = tool as ApprovalResolvedPayload;
   if (!Array.isArray(payload.tools)) {
     warnInvalidPayload(context, tool);
     return null;
