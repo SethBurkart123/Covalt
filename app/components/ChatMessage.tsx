@@ -11,6 +11,8 @@ import { MessageActions } from "./MessageActions";
 
 import "katex/dist/katex.min.css";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MessageSegmentView } from "./MessageSegmentView";
+import { parseMessageSegments } from "@/lib/renderers/parse-message-segments";
 import { AttachmentPreview } from "./AttachmentPreview";
 import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
 
@@ -177,12 +179,16 @@ function ChatMessage({
                           if (block.type === "text") {
                             const text = block.content;
                             if (text && text.trim() !== "") {
-                              rendered.push(
-                                <MarkdownRenderer
-                                  key={`text-${i}`}
-                                  content={text}
-                                />,
-                              );
+                              const segments = parseMessageSegments(text);
+                              segments.forEach((segment, segIdx) => {
+                                rendered.push(
+                                  <MessageSegmentView
+                                    key={`text-${i}-${segIdx}`}
+                                    segment={segment}
+                                    chatId={chatId}
+                                  />,
+                                );
+                              });
                             }
                             continue;
                           }
