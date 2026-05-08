@@ -1,6 +1,6 @@
 import { registerRenderer, type RendererDefinition } from "../registry";
 import { matchSystemReminder } from "./system-reminder";
-import { matchJsonRender } from "./json-render-stub";
+import { matchJsonRender } from "./json-render";
 
 let registered = false;
 
@@ -13,7 +13,7 @@ const BUILTIN_MESSAGE_DEFINITIONS: RendererDefinition[] = [
   {
     key: "json-render",
     matchMessage: matchJsonRender,
-    message: () => import("./json-render-stub"),
+    message: () => import("../json-render/JsonRenderMessage"),
   },
 ];
 

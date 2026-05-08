@@ -104,6 +104,7 @@
     "prismjs": "^1.30.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
+    "react-diff-viewer-continued": "^4.2.2",
     "react-dom": "^19.0.0",
     "react-resizable-panels": "^4.5.4",
     "rehype-katex": "^7.0.1",
