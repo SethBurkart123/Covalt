@@ -35,6 +35,7 @@ export function DefaultToolCall({
   const toolDisplay = parseToolDisplayParts(toolName);
   const toolCallTestId = `tool-call-${toolName}`;
   const hasArgs = Object.keys(toolArgs || {}).length > 0;
+  const hasResult = Boolean(isCompleted && toolResult);
 
   return (
     <Collapsible
@@ -84,14 +85,16 @@ export function DefaultToolCall({
       <CollapsibleContent>
         {hasArgs && (
           <div>
-            <div className="text-xs font-medium text-muted-foreground mb-2">
-              Arguments
-            </div>
+            {hasResult && (
+              <div className="text-xs font-medium text-muted-foreground mb-2">
+                Arguments
+              </div>
+            )}
             <ArgumentsDisplay args={toolArgs} />
           </div>
         )}
 
-        {isCompleted && toolResult && (
+        {hasResult && toolResult !== undefined && (
           <div className={!hasArgs ? "pt-0" : undefined}>
             {hasArgs && (
               <div className="text-xs font-medium text-muted-foreground mb-2">

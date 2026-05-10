@@ -53,7 +53,13 @@ export interface DefaultApprovalRenderContext {
   disabled: boolean;
 }
 
-function RiskPill({ level }: { level: ApprovalRequest["riskLevel"] }): ReactNode {
+function RiskPill({
+  level,
+  summary,
+}: {
+  level: ApprovalRequest["riskLevel"];
+  summary?: string;
+}): ReactNode {
   if (!level || level === "unknown") return null;
   const label = RISK_LABELS[level] ?? level;
   const cls =
@@ -62,14 +68,27 @@ function RiskPill({ level }: { level: ApprovalRequest["riskLevel"] }): ReactNode
       : level === "medium"
         ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
         : "bg-muted text-muted-foreground";
-  return (
+  const pill = (
     <span
       data-testid="approval-risk-pill"
       data-risk-level={level}
-      className={cn("text-xs px-2 py-0.5 rounded font-medium", cls)}
+      className={cn(
+        "text-xs px-2 py-0.5 rounded font-medium",
+        cls,
+        summary && "cursor-help",
+      )}
     >
       {label}
     </span>
+  );
+  if (!summary) return pill;
+  return (
+    <Tooltip delayDuration={150}>
+      <TooltipTrigger asChild>{pill}</TooltipTrigger>
+      <TooltipContent side="top" align="end">
+        {summary}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -230,49 +249,28 @@ export function DefaultApproval({
       data-testid="default-approval"
       data-approval-test-id={toolCallTestId}
     >
-      <CollapsibleTrigger rightContent={<RiskPill level={request.riskLevel} />}>
+      <CollapsibleTrigger
+        rightContent={
+          <RiskPill level={request.riskLevel} summary={request.summary} />
+        }
+      >
         <CollapsibleHeader>
           <CollapsibleIcon icon={Wrench} />
-          {request.summary ? (
-            <Tooltip delayDuration={150}>
-              <TooltipTrigger asChild>
-                <span
-                  className="text-sm font-mono text-foreground cursor-help"
-                  data-testid="approval-tool-name"
-                >
-                  {toolDisplay.namespace ? (
-                    <>
-                      <span>{toolDisplay.label}</span>
-                      <span className="px-2 italic text-muted-foreground align-middle">
-                        {toolDisplay.namespace}
-                      </span>
-                    </>
-                  ) : (
-                    toolDisplay.label
-                  )}
+          <span
+            className="text-sm font-mono text-foreground"
+            data-testid="approval-tool-name"
+          >
+            {toolDisplay.namespace ? (
+              <>
+                <span>{toolDisplay.label}</span>
+                <span className="px-2 italic text-muted-foreground align-middle">
+                  {toolDisplay.namespace}
                 </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="start">
-                {request.summary}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <span
-              className="text-sm font-mono text-foreground"
-              data-testid="approval-tool-name"
-            >
-              {toolDisplay.namespace ? (
-                <>
-                  <span>{toolDisplay.label}</span>
-                  <span className="px-2 italic text-muted-foreground align-middle">
-                    {toolDisplay.namespace}
-                  </span>
-                </>
-              ) : (
-                toolDisplay.label
-              )}
-            </span>
-          )}
+              </>
+            ) : (
+              toolDisplay.label
+            )}
+          </span>
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
@@ -283,9 +281,11 @@ export function DefaultApproval({
 
         {showArguments && (
           <div data-testid="approval-tool-args">
-            <div className="text-xs font-medium text-muted-foreground mb-2">
-              Arguments
-            </div>
+            {Boolean(renderBody) && (
+              <div className="text-xs font-medium text-muted-foreground mb-2">
+                Arguments
+              </div>
+            )}
             <ArgumentsDisplay
               args={seedArgs}
               editableArgs={editableKeys.length > 0 ? editableKeys : undefined}
