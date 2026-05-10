@@ -258,7 +258,7 @@ export function DefaultApproval({
     [request, seedArgs, edits, disabled, setEditedField],
   );
 
-  const renderActionButtons = (size: "default" | "sm") => {
+  const renderActionButtons = () => {
     const ordered = orderOptionsForFooter(request.options);
     const primaryIdx = indexOfPromotedPrimary(ordered);
     return ordered.map((option, idx) => {
@@ -275,7 +275,6 @@ export function DefaultApproval({
           key={option.value}
           data-testid={`approval-option-${option.value}`}
           data-role={option.role}
-          size={size}
           variant={variant}
           disabled={disabled || blockedByInput}
           loading={submittingValue === option.value}
@@ -306,7 +305,7 @@ export function DefaultApproval({
                 data-testid="approval-inline-actions"
                 onClick={(e) => e.stopPropagation()}
               >
-                {renderActionButtons("sm")}
+                {renderActionButtons()}
               </div>
             )}
           </div>
@@ -369,7 +368,7 @@ export function DefaultApproval({
           )}
 
           <div className="flex flex-wrap justify-end gap-2 pt-3">
-            {renderActionButtons("default")}
+            {renderActionButtons()}
           </div>
         </CollapsibleContent>
       )}
