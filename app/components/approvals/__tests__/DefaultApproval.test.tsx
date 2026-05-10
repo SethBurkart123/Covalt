@@ -58,6 +58,7 @@ function walkChildren(node: unknown, visit: (node: AnyElement) => void): void {
   visit(node);
   const props = (node.props ?? {}) as Record<string, unknown>;
   walkChildren(props.children, visit);
+  walkChildren(props.rightContent, visit);
   if (typeof node.type === "function") {
     const name = (node.type as { name?: string }).name;
     if (name && EXPANDABLE_FN_NAMES.has(name)) {

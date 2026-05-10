@@ -15,6 +15,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArgumentsDisplay } from "@/components/tool-renderers/default/ArgumentsDisplay";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { parseToolDisplayParts } from "@/lib/tooling";
 import { cn } from "@/lib/utils";
 import type {
@@ -137,6 +142,20 @@ function buildSeedArgs(request: ApprovalRequest): Record<string, unknown> {
   return base;
 }
 
+function optionPrecedence(option: ApprovalOption): number {
+  if (option.role === "deny" || option.role === "abort" || option.style === "destructive") {
+    return 0;
+  }
+  if (option.role === "allow_session" || option.role === "allow_always") return 1;
+  if (option.role === "allow_once") return 2;
+  if (option.style === "primary") return 3;
+  return 1;
+}
+
+function orderOptionsForFooter(options: readonly ApprovalOption[]): ApprovalOption[] {
+  return [...options].sort((a, b) => optionPrecedence(a) - optionPrecedence(b));
+}
+
 export function DefaultApproval({
   request,
   isPending,
@@ -211,25 +230,47 @@ export function DefaultApproval({
       data-testid="default-approval"
       data-approval-test-id={toolCallTestId}
     >
-      <CollapsibleTrigger>
+      <CollapsibleTrigger rightContent={<RiskPill level={request.riskLevel} />}>
         <CollapsibleHeader>
           <CollapsibleIcon icon={Wrench} />
-          <span className="text-sm font-mono text-foreground">
-            {toolDisplay.namespace ? (
-              <>
-                <span>{toolDisplay.label}</span>
-                <span className="px-2 italic text-muted-foreground align-middle">
-                  {toolDisplay.namespace}
+          {request.summary ? (
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span
+                  className="text-sm font-mono text-foreground cursor-help"
+                  data-testid="approval-tool-name"
+                >
+                  {toolDisplay.namespace ? (
+                    <>
+                      <span>{toolDisplay.label}</span>
+                      <span className="px-2 italic text-muted-foreground align-middle">
+                        {toolDisplay.namespace}
+                      </span>
+                    </>
+                  ) : (
+                    toolDisplay.label
+                  )}
                 </span>
-              </>
-            ) : (
-              toolDisplay.label
-            )}
-          </span>
-          <RiskPill level={request.riskLevel} />
-          {request.summary && (
-            <span className="text-xs text-muted-foreground truncate">
-              {request.summary}
+              </TooltipTrigger>
+              <TooltipContent side="top" align="start">
+                {request.summary}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span
+              className="text-sm font-mono text-foreground"
+              data-testid="approval-tool-name"
+            >
+              {toolDisplay.namespace ? (
+                <>
+                  <span>{toolDisplay.label}</span>
+                  <span className="px-2 italic text-muted-foreground align-middle">
+                    {toolDisplay.namespace}
+                  </span>
+                </>
+              ) : (
+                toolDisplay.label
+              )}
             </span>
           )}
         </CollapsibleHeader>
@@ -268,15 +309,14 @@ export function DefaultApproval({
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-2">
-          {request.options.map((option) => {
+        <div className="flex flex-wrap justify-end gap-2 pt-3">
+          {orderOptionsForFooter(request.options).map((option) => {
             const blockedByInput = Boolean(option.requiresInput) && !inputValid;
             return (
               <Button
                 key={option.value}
                 data-testid={`approval-option-${option.value}`}
                 data-role={option.role}
-                size="sm"
                 variant={buttonVariantFor(option)}
                 disabled={disabled || blockedByInput}
                 loading={submitting}
