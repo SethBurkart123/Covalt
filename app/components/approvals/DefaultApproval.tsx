@@ -239,6 +239,8 @@ export function DefaultApproval({
 
   const disabled = submitting || !isPending;
   const showArguments = !hideArguments && Object.keys(seedArgs).length > 0;
+  const hasBody =
+    Boolean(renderBody) || showArguments || request.questions.length > 0;
   const isUserInput = request.kind === "user_input";
   const toolNameForDisplay =
     request.toolName ?? fallbackToolName ?? (isUserInput ? ASK_USER_TOOL_LABEL : "tool");
@@ -256,6 +258,35 @@ export function DefaultApproval({
     [request, seedArgs, edits, disabled, setEditedField],
   );
 
+  const renderActionButtons = (size: "default" | "sm") => {
+    const ordered = orderOptionsForFooter(request.options);
+    const primaryIdx = indexOfPromotedPrimary(ordered);
+    return ordered.map((option, idx) => {
+      const blockedByInput = Boolean(option.requiresInput) && !inputValid;
+      const intrinsic = buttonVariantFor(option);
+      const variant =
+        intrinsic === "destructive" || idx === primaryIdx
+          ? intrinsic === "destructive"
+            ? "destructive"
+            : "default"
+          : "outline";
+      return (
+        <Button
+          key={option.value}
+          data-testid={`approval-option-${option.value}`}
+          data-role={option.role}
+          size={size}
+          variant={variant}
+          disabled={disabled || blockedByInput}
+          loading={submittingValue === option.value}
+          onClick={() => handleSelect(option)}
+        >
+          {option.label}
+        </Button>
+      );
+    });
+  };
+
   return (
     <Collapsible
       open
@@ -267,7 +298,18 @@ export function DefaultApproval({
     >
       <CollapsibleTrigger
         rightContent={
-          <RiskPill level={request.riskLevel} summary={request.summary} />
+          <div className="flex items-center gap-2">
+            <RiskPill level={request.riskLevel} summary={request.summary} />
+            {!hasBody && (
+              <div
+                className="flex items-center gap-2"
+                data-testid="approval-inline-actions"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {renderActionButtons("sm")}
+              </div>
+            )}
+          </div>
         }
       >
         <CollapsibleHeader>
@@ -290,71 +332,47 @@ export function DefaultApproval({
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
-      <CollapsibleContent>
-        {renderBody && (
-          <div data-testid="approval-body">{renderBody(renderContext)}</div>
-        )}
+      {hasBody && (
+        <CollapsibleContent>
+          {renderBody && (
+            <div data-testid="approval-body">{renderBody(renderContext)}</div>
+          )}
 
-        {showArguments && (
-          <div data-testid="approval-tool-args">
-            {Boolean(renderBody) && (
-              <div className="text-xs font-medium text-muted-foreground mb-2">
-                Arguments
-              </div>
-            )}
-            <ArgumentsDisplay
-              args={seedArgs}
-              editableArgs={editableKeys.length > 0 ? editableKeys : undefined}
-              editedValues={editedFields}
-              onValueChange={setEditedField}
-            />
-          </div>
-        )}
-
-        {request.questions.length > 0 && (
-          <div className="space-y-3" data-testid="approval-questions">
-            {request.questions.map((q) => (
-              <QuestionField
-                key={q.index}
-                question={q}
-                value={answers[q.index] ?? ""}
-                disabled={disabled}
-                onChange={(v) => setAnswers((prev) => ({ ...prev, [q.index]: v }))}
+          {showArguments && (
+            <div data-testid="approval-tool-args">
+              {Boolean(renderBody) && (
+                <div className="text-xs font-medium text-muted-foreground mb-2">
+                  Arguments
+                </div>
+              )}
+              <ArgumentsDisplay
+                args={seedArgs}
+                editableArgs={editableKeys.length > 0 ? editableKeys : undefined}
+                editedValues={editedFields}
+                onValueChange={setEditedField}
               />
-            ))}
-          </div>
-        )}
+            </div>
+          )}
 
-        <div className="flex flex-wrap justify-end gap-2 pt-3">
-          {(() => {
-            const ordered = orderOptionsForFooter(request.options);
-            const primaryIdx = indexOfPromotedPrimary(ordered);
-            return ordered.map((option, idx) => {
-              const blockedByInput = Boolean(option.requiresInput) && !inputValid;
-              const intrinsic = buttonVariantFor(option);
-              const variant =
-                intrinsic === "destructive" || idx === primaryIdx
-                  ? intrinsic === "destructive"
-                    ? "destructive"
-                    : "default"
-                  : "outline";
-              return (
-                <Button
-                  key={option.value}
-                  data-testid={`approval-option-${option.value}`}
-                  data-role={option.role}
-                  variant={variant}
-                  disabled={disabled || blockedByInput}
-                  loading={submittingValue === option.value}
-                  onClick={() => handleSelect(option)}
-                >
-                  {option.label}
-                </Button>
-              );
-            });
-          })()}
-        </div>
-      </CollapsibleContent>
+          {request.questions.length > 0 && (
+            <div className="space-y-3" data-testid="approval-questions">
+              {request.questions.map((q) => (
+                <QuestionField
+                  key={q.index}
+                  question={q}
+                  value={answers[q.index] ?? ""}
+                  disabled={disabled}
+                  onChange={(v) => setAnswers((prev) => ({ ...prev, [q.index]: v }))}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-3">
+            {renderActionButtons("default")}
+          </div>
+        </CollapsibleContent>
+      )}
     </Collapsible>
   );
 }
