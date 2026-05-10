@@ -64,7 +64,13 @@ function isElement(value: unknown): value is AnyElement {
   );
 }
 
-const EXPANDABLE_FN_NAMES = new Set(["RiskPill", "ExitPill"]);
+const EXPANDABLE_FN_NAMES = new Set([
+  "RiskPill",
+  "ExitPill",
+  "DefaultApproval",
+  "ArgumentsDisplay",
+  "QuestionField",
+]);
 
 function walkChildren(node: unknown, visit: (node: AnyElement) => void): void {
   if (Array.isArray(node)) {
@@ -134,7 +140,9 @@ function makeRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest 
       { value: "deny", label: "Deny", role: "deny" },
     ],
     questions: [],
-    editable: [],
+    editable: [
+      { path: ["command"], schema: { type: "string", format: "multiline" }, label: "Command" },
+    ],
     config: { toolArgs: { command: "ls -la" } },
     ...overrides,
   };
@@ -235,7 +243,7 @@ describe("TerminalRenderer - copy output", () => {
 describe("TerminalApproval - command field", () => {
   it("renders editable command field pre-filled from request.config.toolArgs.command", () => {
     const tree = renderApproval();
-    const field = findByTestId(tree, "terminal-approval-command");
+    const field = findByTestId(tree, "arg-input-command");
     expect(field).not.toBeNull();
     expect((field?.props as Record<string, unknown>).value).toBe("ls -la");
   });
@@ -256,7 +264,7 @@ describe("TerminalApproval - approve outcome", () => {
     const onResolve = mockResolve();
     await beginRender();
     const tree = renderApproval({ onResolve });
-    const field = findByTestId(tree, "terminal-approval-command");
+    const field = findByTestId(tree, "arg-input-command");
     const onChange = (field?.props as Record<string, unknown>).onChange as (
       e: { target: { value: string } },
     ) => void;

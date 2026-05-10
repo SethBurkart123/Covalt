@@ -42,7 +42,12 @@ function isElement(value: unknown): value is AnyElement {
   );
 }
 
-const EXPANDABLE_FN_NAMES = new Set(["RiskPill", "ToolArgsPreview"]);
+const EXPANDABLE_FN_NAMES = new Set([
+  "RiskPill",
+  "ToolArgsPreview",
+  "ArgumentsDisplay",
+  "QuestionField",
+]);
 
 function walkChildren(node: unknown, visit: (node: AnyElement) => void): void {
   if (Array.isArray(node)) {
@@ -216,9 +221,9 @@ describe("DefaultApproval - editable form", () => {
     config: { toolArgs: { target: "old", keep: 7 } },
   });
 
-  it("renders editable section", () => {
+  it("renders inline editable input via ArgumentsDisplay", () => {
     const tree = render({ request });
-    expect(findByTestId(tree, "approval-editables")).not.toBeNull();
+    expect(findByTestId(tree, "arg-input-target")).not.toBeNull();
   });
 
   it("approve outcome carries unchanged editedArgs as undefined", async () => {

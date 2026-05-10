@@ -130,6 +130,7 @@ export default function RenderersDemoPage() {
           <DefaultApproval
             request={{
               ...baseApproval,
+              toolName: "read",
               riskLevel: "low",
               summary: "Read file: README.md",
               options: [opts.approve, opts.approveSession, opts.deny],
@@ -161,6 +162,7 @@ export default function RenderersDemoPage() {
           <DefaultApproval
             request={{
               ...baseApproval,
+              toolName: "ask_user",
               kind: "user_input",
               riskLevel: undefined,
               summary: "Need additional details",
@@ -180,6 +182,7 @@ export default function RenderersDemoPage() {
           <DefaultApproval
             request={{
               ...baseApproval,
+              toolName: "exit_spec_mode",
               summary: "Spec mode — confirm scope",
               options: [
                 { value: "allow_once", label: "Approve", role: "allow_once", style: "primary", requiresInput: true },
@@ -247,14 +250,18 @@ export default function RenderersDemoPage() {
           />
         </Demo>
 
-        <Demo label="Approval (would apply this diff)">
+        <Demo label="Approval (would apply this diff, editable new_str)">
           <FileDiffApproval
             request={{
               ...baseApproval,
+              toolName: "edit",
               riskLevel: "medium",
               summary: "Edit src/math.ts",
               renderer: "file-diff",
               options: [opts.approve, opts.deny],
+              editable: [
+                { path: ["new_str"], schema: { type: "string", format: "multiline" }, label: "New content" },
+              ],
               config: { filePath: "src/math.ts", oldContent: FILE_OLD, newContent: FILE_NEW, toolArgs: { path: "src/math.ts", new_str: FILE_NEW } },
             }}
             isPending={true}
@@ -275,6 +282,7 @@ export default function RenderersDemoPage() {
           <PatchDiffApproval
             request={{
               ...baseApproval,
+              toolName: "apply_patch",
               riskLevel: "high",
               summary: "Apply patch to 2 files",
               renderer: "patch-diff",

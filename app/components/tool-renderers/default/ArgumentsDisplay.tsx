@@ -34,12 +34,14 @@ export function ArgumentsDisplay({
             {editable && onValueChange ? (
               isMultiline ? (
                 <textarea
+                  data-testid={`arg-input-${key}`}
                   className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[80px]"
                   value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue, null, 2)}
                   onChange={(e) => onValueChange(key, e.target.value)}
                 />
               ) : (
                 <input
+                  data-testid={`arg-input-${key}`}
                   type="text"
                   className="w-full text-sm bg-background/15 px-3 py-2 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary"
                   value={typeof displayValue === "string" ? displayValue : JSON.stringify(displayValue)}

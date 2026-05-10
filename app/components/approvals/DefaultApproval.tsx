@@ -1,21 +1,23 @@
 "use client";
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { Wrench } from "lucide-react";
 import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleIcon,
+  CollapsibleHeader,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ArgumentsDisplay } from "@/components/tool-renderers/default/ArgumentsDisplay";
+import { parseToolDisplayParts } from "@/lib/tooling";
 import { cn } from "@/lib/utils";
 import type {
-  ApprovalEditable,
   ApprovalOption,
   ApprovalQuestion,
   ApprovalRendererProps,
@@ -23,22 +25,30 @@ import type {
 } from "@/lib/renderers";
 import {
   RISK_LABELS,
-  buildInitialEdits,
   buildOutcome,
   buttonVariantFor,
   isInputValid,
-  pathKey,
-  schemaRequired,
-  schemaType,
   type AnswerMap,
   type EditMap,
 } from "./approval-logic";
 
-interface RiskPillProps {
-  level: ApprovalRequest["riskLevel"];
+const ASK_USER_TOOL_LABEL = "ask_user";
+
+export interface DefaultApprovalProps extends ApprovalRendererProps {
+  renderBody?: (ctx: DefaultApprovalRenderContext) => ReactNode;
+  hideArguments?: boolean;
+  fallbackToolName?: string;
 }
 
-function RiskPill({ level }: RiskPillProps): ReactNode {
+export interface DefaultApprovalRenderContext {
+  request: ApprovalRequest;
+  toolArgs: Record<string, unknown> | undefined;
+  edits: EditMap;
+  setEdit: (key: string, value: unknown) => void;
+  disabled: boolean;
+}
+
+function RiskPill({ level }: { level: ApprovalRequest["riskLevel"] }): ReactNode {
   if (!level || level === "unknown") return null;
   const label = RISK_LABELS[level] ?? level;
   const cls =
@@ -114,91 +124,45 @@ function QuestionField({ question, value, disabled, onChange }: QuestionFieldPro
   );
 }
 
-interface EditableFieldProps {
-  field: ApprovalEditable;
-  value: unknown;
-  disabled: boolean;
-  onChange: (value: unknown) => void;
-}
-
-function EditableField({ field, value, disabled, onChange }: EditableFieldProps): ReactNode {
-  const fieldId = `approval-editable-${pathKey(field.path)}`;
-  const label = field.label ?? field.path.join(".");
-  const labelText = schemaRequired(field.schema) ? `${label} *` : label;
-  const type = schemaType(field.schema);
-
-  if (type === "boolean") {
-    return (
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id={fieldId}
-          checked={Boolean(value)}
-          disabled={disabled}
-          onCheckedChange={(checked) => onChange(Boolean(checked))}
-        />
-        <Label htmlFor={fieldId}>{labelText}</Label>
-      </div>
-    );
+function topLevelEditableKeys(request: ApprovalRequest): string[] {
+  const keys: string[] = [];
+  for (const f of request.editable) {
+    if (f.path.length === 1 && !keys.includes(f.path[0])) keys.push(f.path[0]);
   }
-
-  const stringValue = value == null ? "" : String(value);
-
-  if (field.schema.format === "multiline" || type === "text") {
-    return (
-      <div className="space-y-2">
-        <Label htmlFor={fieldId}>{labelText}</Label>
-        <Textarea
-          id={fieldId}
-          value={stringValue}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={fieldId}>{labelText}</Label>
-      <Input
-        id={fieldId}
-        type={type === "number" || type === "integer" ? "number" : "text"}
-        value={stringValue}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
+  return keys;
 }
 
-interface ToolArgsPreviewProps {
-  args: Record<string, unknown>;
-}
-
-function ToolArgsPreview({ args }: ToolArgsPreviewProps): ReactNode {
-  return (
-    <details className="rounded-md border border-border bg-muted/30">
-      <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground select-none">
-        Tool arguments
-      </summary>
-      <pre
-        data-testid="approval-tool-args"
-        className="px-3 pb-3 pt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words"
-      >
-        {JSON.stringify(args, null, 2)}
-      </pre>
-    </details>
-  );
+function buildSeedArgs(request: ApprovalRequest): Record<string, unknown> {
+  const base = (request.config?.toolArgs as Record<string, unknown> | undefined) ?? {};
+  return base;
 }
 
 export function DefaultApproval({
   request,
   isPending,
   onResolve,
-}: ApprovalRendererProps): ReactNode {
+  renderBody,
+  hideArguments,
+  fallbackToolName,
+}: DefaultApprovalProps): ReactNode {
+  const seedArgs = useMemo(() => buildSeedArgs(request), [request]);
+  const editableKeys = useMemo(() => topLevelEditableKeys(request), [request]);
+
   const [answers, setAnswers] = useState<AnswerMap>({});
-  const [edits, setEdits] = useState<EditMap>(() => buildInitialEdits(request));
+  const [editedFields, setEditedFields] = useState<EditMap>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const edits = useMemo<EditMap>(() => {
+    const out: EditMap = { ...editedFields };
+    for (const key of editableKeys) {
+      if (!(key in out)) out[key] = seedArgs[key];
+    }
+    return out;
+  }, [editableKeys, editedFields, seedArgs]);
+
+  const setEditedField = useCallback((key: string, value: unknown) => {
+    setEditedFields((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const inputValid = useMemo(
     () => isInputValid(request, answers, edits),
@@ -220,75 +184,112 @@ export function DefaultApproval({
   );
 
   const disabled = submitting || !isPending;
-  const toolArgs = request.config?.toolArgs as Record<string, unknown> | undefined;
-  const hasBody =
-    request.questions.length > 0 || request.editable.length > 0 || Boolean(toolArgs);
+  const showArguments = !hideArguments && Object.keys(seedArgs).length > 0;
+  const isUserInput = request.kind === "user_input";
+  const toolNameForDisplay =
+    request.toolName ?? fallbackToolName ?? (isUserInput ? ASK_USER_TOOL_LABEL : "tool");
+  const toolDisplay = parseToolDisplayParts(toolNameForDisplay);
+  const toolCallTestId = `approval-${toolNameForDisplay}`;
+
+  const renderContext: DefaultApprovalRenderContext = useMemo(
+    () => ({
+      request,
+      toolArgs: seedArgs,
+      edits,
+      setEdit: setEditedField,
+      disabled,
+    }),
+    [request, seedArgs, edits, disabled, setEditedField],
+  );
 
   return (
-    <Card data-testid="default-approval" className="my-3 not-prose">
-      {(request.summary || request.riskLevel) && (
-        <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
-          <div className="text-sm text-foreground">{request.summary}</div>
+    <Collapsible
+      open
+      onOpenChange={() => undefined}
+      disableToggle
+      shimmer={false}
+      data-testid="default-approval"
+      data-approval-test-id={toolCallTestId}
+    >
+      <CollapsibleTrigger>
+        <CollapsibleHeader>
+          <CollapsibleIcon icon={Wrench} />
+          <span className="text-sm font-mono text-foreground">
+            {toolDisplay.namespace ? (
+              <>
+                <span>{toolDisplay.label}</span>
+                <span className="px-2 italic text-muted-foreground align-middle">
+                  {toolDisplay.namespace}
+                </span>
+              </>
+            ) : (
+              toolDisplay.label
+            )}
+          </span>
           <RiskPill level={request.riskLevel} />
-        </CardHeader>
-      )}
+          {request.summary && (
+            <span className="text-xs text-muted-foreground truncate">
+              {request.summary}
+            </span>
+          )}
+        </CollapsibleHeader>
+      </CollapsibleTrigger>
 
-      {hasBody && (
-        <CardContent className="space-y-4">
-          {request.questions.length > 0 && (
-            <div className="space-y-3" data-testid="approval-questions">
-              {request.questions.map((q) => (
-                <QuestionField
-                  key={q.index}
-                  question={q}
-                  value={answers[q.index] ?? ""}
-                  disabled={disabled}
-                  onChange={(v) => setAnswers((prev) => ({ ...prev, [q.index]: v }))}
-                />
-              ))}
+      <CollapsibleContent>
+        {renderBody && (
+          <div data-testid="approval-body">{renderBody(renderContext)}</div>
+        )}
+
+        {showArguments && (
+          <div data-testid="approval-tool-args">
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Arguments
             </div>
-          )}
+            <ArgumentsDisplay
+              args={seedArgs}
+              editableArgs={editableKeys.length > 0 ? editableKeys : undefined}
+              editedValues={editedFields}
+              onValueChange={setEditedField}
+            />
+          </div>
+        )}
 
-          {request.editable.length > 0 && (
-            <div className="space-y-3" data-testid="approval-editables">
-              {request.editable.map((field) => (
-                <EditableField
-                  key={pathKey(field.path)}
-                  field={field}
-                  value={edits[pathKey(field.path)]}
-                  disabled={disabled}
-                  onChange={(v) =>
-                    setEdits((prev) => ({ ...prev, [pathKey(field.path)]: v }))
-                  }
-                />
-              ))}
-            </div>
-          )}
+        {request.questions.length > 0 && (
+          <div className="space-y-3" data-testid="approval-questions">
+            {request.questions.map((q) => (
+              <QuestionField
+                key={q.index}
+                question={q}
+                value={answers[q.index] ?? ""}
+                disabled={disabled}
+                onChange={(v) => setAnswers((prev) => ({ ...prev, [q.index]: v }))}
+              />
+            ))}
+          </div>
+        )}
 
-          {toolArgs && Object.keys(toolArgs).length > 0 && (
-            <ToolArgsPreview args={toolArgs} />
-          )}
-        </CardContent>
-      )}
-
-      <CardFooter className="flex flex-wrap justify-end gap-2 pt-3">
-        {request.options.map((option) => {
-          const blockedByInput = Boolean(option.requiresInput) && !inputValid;
-          return (
-            <Button
-              key={option.value}
-              data-testid={`approval-option-${option.value}`}
-              data-role={option.role}
-              variant={buttonVariantFor(option)}
-              disabled={disabled || blockedByInput}
-              loading={submitting}
-              onClick={() => handleSelect(option)}
-            >
-              {option.label}
-            </Button>
-          );
-        })}
-      </CardFooter>
-    </Card>
+        <div className="flex flex-wrap gap-2 pt-2">
+          {request.options.map((option) => {
+            const blockedByInput = Boolean(option.requiresInput) && !inputValid;
+            return (
+              <Button
+                key={option.value}
+                data-testid={`approval-option-${option.value}`}
+                data-role={option.role}
+                size="sm"
+                variant={buttonVariantFor(option)}
+                disabled={disabled || blockedByInput}
+                loading={submitting}
+                onClick={() => handleSelect(option)}
+              >
+                {option.label}
+              </Button>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
+
+export default DefaultApproval;
