@@ -175,6 +175,21 @@ function orderOptionsForFooter(options: readonly ApprovalOption[]): ApprovalOpti
   return [...options].sort((a, b) => optionPrecedence(a) - optionPrecedence(b));
 }
 
+function isDestructive(option: ApprovalOption): boolean {
+  return (
+    option.style === "destructive"
+    || option.role === "deny"
+    || option.role === "abort"
+  );
+}
+
+function indexOfPromotedPrimary(ordered: readonly ApprovalOption[]): number {
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    if (!isDestructive(ordered[i])) return i;
+  }
+  return -1;
+}
+
 export function DefaultApproval({
   request,
   isPending,
@@ -188,7 +203,8 @@ export function DefaultApproval({
 
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [editedFields, setEditedFields] = useState<EditMap>({});
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingValue, setSubmittingValue] = useState<string | null>(null);
+  const submitting = submittingValue !== null;
 
   const edits = useMemo<EditMap>(() => {
     const out: EditMap = { ...editedFields };
@@ -210,12 +226,12 @@ export function DefaultApproval({
   const handleSelect = useCallback(
     async (option: ApprovalOption) => {
       if (submitting || !isPending) return;
-      setSubmitting(true);
+      setSubmittingValue(option.value);
       try {
         await onResolve(buildOutcome(request, option, answers, edits));
       } catch (error) {
         console.error("[DefaultApproval] onResolve failed", error);
-        setSubmitting(false);
+        setSubmittingValue(null);
       }
     },
     [submitting, isPending, onResolve, request, answers, edits],
@@ -310,22 +326,33 @@ export function DefaultApproval({
         )}
 
         <div className="flex flex-wrap justify-end gap-2 pt-3">
-          {orderOptionsForFooter(request.options).map((option) => {
-            const blockedByInput = Boolean(option.requiresInput) && !inputValid;
-            return (
-              <Button
-                key={option.value}
-                data-testid={`approval-option-${option.value}`}
-                data-role={option.role}
-                variant={buttonVariantFor(option)}
-                disabled={disabled || blockedByInput}
-                loading={submitting}
-                onClick={() => handleSelect(option)}
-              >
-                {option.label}
-              </Button>
-            );
-          })}
+          {(() => {
+            const ordered = orderOptionsForFooter(request.options);
+            const primaryIdx = indexOfPromotedPrimary(ordered);
+            return ordered.map((option, idx) => {
+              const blockedByInput = Boolean(option.requiresInput) && !inputValid;
+              const intrinsic = buttonVariantFor(option);
+              const variant =
+                intrinsic === "destructive" || idx === primaryIdx
+                  ? intrinsic === "destructive"
+                    ? "destructive"
+                    : "default"
+                  : "outline";
+              return (
+                <Button
+                  key={option.value}
+                  data-testid={`approval-option-${option.value}`}
+                  data-role={option.role}
+                  variant={variant}
+                  disabled={disabled || blockedByInput}
+                  loading={submittingValue === option.value}
+                  onClick={() => handleSelect(option)}
+                >
+                  {option.label}
+                </Button>
+              );
+            });
+          })()}
         </div>
       </CollapsibleContent>
     </Collapsible>
