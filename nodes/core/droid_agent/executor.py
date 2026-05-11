@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import posixpath
 import re
 import shutil
 import uuid
@@ -73,6 +74,15 @@ _INTERACTION_MODES = ["auto", "spec"]
 # Process-local cache for sessions already resolved in this process. Durable
 # branch lookup comes from execution traces keyed by message path.
 _session_cache: dict[str, str] = {}
+_DISPLAY_PATH_KEYS = {
+    "path",
+    "file",
+    "filepath",
+    "file_path",
+    "filename",
+    "target",
+    "directory_path",
+}
 
 
 @dataclass
@@ -114,6 +124,7 @@ class DroidAgentExecutor:
         re.compile(r"^create$", re.IGNORECASE): "file-diff",
         re.compile(r"^apply.?patch$", re.IGNORECASE): "patch-diff",
         re.compile(r"^read$", re.IGNORECASE): "file-read",
+        re.compile(r"^ls$", re.IGNORECASE): "directory-list",
         re.compile(r"^web.?search$", re.IGNORECASE): "web-search",
         re.compile(r"^todo.?write$", re.IGNORECASE): "todo-list",
     }
@@ -639,6 +650,50 @@ def _tool_key(tool_name: str, tool_args: dict[str, Any]) -> str:
     return f"{tool_name.lower()}:{args}"
 
 
+def _display_path(path: str, cwd: str) -> str:
+    if "://" in path or not path.startswith("/") or not cwd.startswith("/"):
+        return path
+    normalized_path = posixpath.normpath(path)
+    normalized_cwd = posixpath.normpath(cwd)
+    relative = posixpath.relpath(normalized_path, normalized_cwd)
+    if relative == "../.." or relative.startswith("../../"):
+        return normalized_path
+    return relative
+
+
+def _display_tool_args(tool_args: dict[str, Any], cwd: str) -> dict[str, Any]:
+    display_args = dict(tool_args)
+    for key, value in tool_args.items():
+        if key.lower() not in _DISPLAY_PATH_KEYS or not isinstance(value, str):
+            continue
+        display_args[key] = _display_path(value, cwd)
+    return display_args
+
+
+def _droid_tool_payload(
+    *,
+    tool_id: str,
+    tool_name: str | None,
+    tool_args: dict[str, Any],
+    cwd: str,
+    is_completed: bool | None = None,
+    tool_result: Any = None,
+    failed: bool | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": tool_id,
+        "toolName": tool_name or "tool",
+        "toolArgs": _display_tool_args(tool_args, cwd),
+    }
+    if is_completed is not None:
+        payload["isCompleted"] = is_completed
+    if tool_result is not None:
+        payload["toolResult"] = tool_result
+    if failed is not None:
+        payload["failed"] = failed
+    return payload
+
+
 def _clean_task_text(text: str) -> str:
     lines: list[str] = []
     for line in text.splitlines():
@@ -723,12 +778,13 @@ async def _emit_task_progress(
             _agent_event(
                 context,
                 "ToolCallStarted",
-                tool={
-                    "id": child_id,
-                    "toolName": update.tool_name or "tool",
-                    "toolArgs": tool_args,
-                    "isCompleted": False,
-                },
+                tool=_droid_tool_payload(
+                    tool_id=child_id,
+                    tool_name=update.tool_name,
+                    tool_args=tool_args,
+                    cwd=task_run.cwd,
+                    is_completed=False,
+                ),
                 **fields,
             )
         )
@@ -744,13 +800,14 @@ async def _emit_task_progress(
             _agent_event(
                 context,
                 "ToolCallCompleted",
-                tool={
-                    "id": child_id,
-                    "toolName": update.tool_name or "tool",
-                    "toolArgs": task_run.tool_args_by_id.get(child_id, {}),
-                    "toolResult": update.text or update.details or update.value_snippet or "",
-                    "failed": False,
-                },
+                tool=_droid_tool_payload(
+                    tool_id=child_id,
+                    tool_name=update.tool_name,
+                    tool_args=task_run.tool_args_by_id.get(child_id, {}),
+                    cwd=task_run.cwd,
+                    tool_result=update.text or update.details or update.value_snippet or "",
+                    failed=False,
+                ),
                 **fields,
             )
         )
@@ -856,13 +913,14 @@ async def _backfill_task_session_tools(
             _agent_event(
                 context,
                 "ToolCallCompleted",
-                tool={
-                    "id": child_id,
-                    "toolName": tool["toolName"],
-                    "toolArgs": task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
-                    "toolResult": tool["toolResult"],
-                    "failed": tool["failed"],
-                },
+                tool=_droid_tool_payload(
+                    tool_id=child_id,
+                    tool_name=tool["toolName"],
+                    tool_args=task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
+                    cwd=task_run.cwd,
+                    tool_result=tool["toolResult"],
+                    failed=tool["failed"],
+                ),
                 **fields,
             )
         )
@@ -887,12 +945,13 @@ async def _backfill_task_session_tools(
                 _agent_event(
                     context,
                     "ToolCallStarted",
-                    tool={
-                        "id": child_id,
-                        "toolName": tool["toolName"],
-                        "toolArgs": tool["toolArgs"],
-                        "isCompleted": False,
-                    },
+                    tool=_droid_tool_payload(
+                        tool_id=child_id,
+                        tool_name=tool["toolName"],
+                        tool_args=tool["toolArgs"],
+                        cwd=task_run.cwd,
+                        is_completed=False,
+                    ),
                     **fields,
                 )
             )
@@ -900,13 +959,14 @@ async def _backfill_task_session_tools(
             _agent_event(
                 context,
                 "ToolCallCompleted",
-                tool={
-                    "id": child_id,
-                    "toolName": tool["toolName"],
-                    "toolArgs": task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
-                    "toolResult": tool["toolResult"],
-                    "failed": tool["failed"],
-                },
+                tool=_droid_tool_payload(
+                    tool_id=child_id,
+                    tool_name=tool["toolName"],
+                    tool_args=task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
+                    cwd=task_run.cwd,
+                    tool_result=tool["toolResult"],
+                    failed=tool["failed"],
+                ),
                 **fields,
             )
         )
@@ -985,12 +1045,13 @@ async def _drain_response_stream(
                         _agent_event(
                             context,
                             "ToolCallStarted",
-                            tool={
-                                "id": msg.tool_use_id,
-                                "toolName": msg.tool_name,
-                                "toolArgs": dict(msg.tool_input or {}),
-                                "isCompleted": False,
-                            },
+                            tool=_droid_tool_payload(
+                                tool_id=msg.tool_use_id,
+                                tool_name=msg.tool_name,
+                                tool_args=dict(msg.tool_input or {}),
+                                cwd=cwd,
+                                is_completed=False,
+                            ),
                         )
                     )
                     continue
@@ -1042,13 +1103,14 @@ async def _drain_response_stream(
                         _agent_event(
                             context,
                             "ToolCallCompleted",
-                            tool={
-                                "id": tool_id,
-                                "toolName": tool_name,
-                                "toolArgs": tool_args_by_id.get(tool_id, {}),
-                                "toolResult": msg.content,
-                                "failed": bool(msg.is_error),
-                            },
+                            tool=_droid_tool_payload(
+                                tool_id=tool_id,
+                                tool_name=tool_name,
+                                tool_args=tool_args_by_id.get(tool_id, {}),
+                                cwd=cwd,
+                                tool_result=msg.content,
+                                failed=bool(msg.is_error),
+                            ),
                         )
                     )
                     continue

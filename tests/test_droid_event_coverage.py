@@ -35,7 +35,9 @@ from backend.services.streaming.runtime_events import (
 from nodes.core.droid_agent.executor import (
     _STREAM_DONE,
     _build_session_plan,
+    _display_path,
     _drain_response_stream,
+    _droid_tool_payload,
     _DroidSessionCheckpoint,
     _DroidSessionPlan,
     _fork_droid_session,
@@ -49,6 +51,31 @@ from nodes.core.droid_agent.executor import (
 
 def _make_context() -> SimpleNamespace:
     return SimpleNamespace(node_id="droid-1", run_id="run-1", chat_id=None, services=None)
+
+
+def test_droid_display_path_uses_relative_path_only_near_cwd() -> None:
+    assert _display_path("/repo/current/file.py", "/repo/current") == "file.py"
+    assert _display_path("/repo/other/file.py", "/repo/current") == "../other/file.py"
+    assert _display_path("/repo/file.py", "/repo/current/deep") == "/repo/file.py"
+    assert _display_path("../already-relative.py", "/repo/current") == "../already-relative.py"
+
+
+def test_droid_tool_payload_formats_display_path_args_only() -> None:
+    payload = _droid_tool_payload(
+        tool_id="read-1",
+        tool_name="Read",
+        tool_args={
+            "file_path": "/repo/other/file.py",
+            "command": "cat /repo/current/file.py",
+        },
+        cwd="/repo/current",
+        is_completed=False,
+    )
+
+    assert payload["toolArgs"] == {
+        "file_path": "../other/file.py",
+        "command": "cat /repo/current/file.py",
+    }
 
 
 def _make_chat_context(
