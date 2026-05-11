@@ -8,9 +8,12 @@ advanced popover, scoped per-node so multiple Droid nodes coexist.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
+import shutil
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,8 +70,8 @@ _REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"]
 _AUTONOMY_LEVELS = ["off", "low", "medium", "high"]
 _INTERACTION_MODES = ["auto", "spec"]
 
-# Process-local session cache so we resume the same droid session across turns
-# in the same chat. Keyed by `chat_id:node_id`; lost on backend restart.
+# Process-local cache for sessions already resolved in this process. Durable
+# branch lookup comes from execution traces keyed by message path.
 _session_cache: dict[str, str] = {}
 
 
@@ -86,6 +89,20 @@ class _DroidTaskRun:
     tool_counter: int = 0
     completed_child_count: int = 0
     last_text: str = ""
+
+
+@dataclass(frozen=True)
+class _DroidSessionPlan:
+    cache_key: str
+    current_session_id: str | None = None
+    source_session_id: str | None = None
+    source_line_count: int | None = None
+
+
+@dataclass(frozen=True)
+class _DroidSessionCheckpoint:
+    session_id: str
+    line_count: int | None = None
 
 
 class DroidAgentExecutor:
@@ -351,6 +368,16 @@ class DroidAgentExecutor:
 
             if stream_task is not None:
                 await stream_task
+
+            if session_id:
+                checkpoint = _droid_session_checkpoint_event(
+                    context,
+                    self.node_type,
+                    cwd,
+                    session_id,
+                )
+                if checkpoint is not None:
+                    yield checkpoint
 
             yield ExecutionResult(
                 outputs={
@@ -1265,19 +1292,43 @@ async def _resume_or_initialize_session(
     reasoning: ReasoningEffort | None,
     interaction_mode: DroidInteractionMode | None,
 ) -> str | None:
-    session_key = f"{context.chat_id or ''}:{context.node_id}"
-    stored = _session_cache.get(session_key)
+    plan = _build_session_plan(context)
+    stored = plan.current_session_id or _session_cache.get(plan.cache_key)
 
     if stored:
         try:
             await client.load_session(session_id=stored)
-            await _apply_settings(client, model_id, autonomy, reasoning, interaction_mode)
+            await _apply_settings(
+                client,
+                model_id,
+                autonomy,
+                reasoning,
+                interaction_mode,
+            )
             return stored
         except SessionNotFoundError:
-            _session_cache.pop(session_key, None)
+            _session_cache.pop(plan.cache_key, None)
         except Exception:
             logger.exception("Failed to resume droid session %s", stored)
-            _session_cache.pop(session_key, None)
+            _session_cache.pop(plan.cache_key, None)
+
+    if plan.source_session_id and _conversation_run_mode(context) == "branch":
+        forked = _fork_droid_session(
+            cwd,
+            plan.source_session_id,
+            line_count=plan.source_line_count,
+        )
+        if forked:
+            await client.load_session(session_id=forked)
+            await _apply_settings(
+                client,
+                model_id,
+                autonomy,
+                reasoning,
+                interaction_mode,
+            )
+            _session_cache[plan.cache_key] = forked
+            return forked
 
     init_kwargs: dict[str, Any] = {"machine_id": "covalt", "cwd": cwd}
     if model_id:
@@ -1292,8 +1343,242 @@ async def _resume_or_initialize_session(
     result = await client.initialize_session(**init_kwargs)
     session_id = getattr(result, "session_id", None)
     if isinstance(session_id, str) and session_id:
-        _session_cache[session_key] = session_id
+        _session_cache[plan.cache_key] = session_id
         return session_id
+    return None
+
+
+def _build_session_plan(context: FlowContext) -> _DroidSessionPlan:
+    current_message_id = _assistant_message_id(context)
+    cache_key = _session_cache_key(context, current_message_id)
+    current_session_id: str | None = None
+    branch_mode = _conversation_run_mode(context) == "branch"
+
+    if current_message_id:
+        current_checkpoint = _latest_droid_checkpoint_for_message(
+            current_message_id,
+            node_id=context.node_id,
+            node_type=DroidAgentExecutor.node_type,
+        )
+        current_session_id = (
+            current_checkpoint.session_id if current_checkpoint is not None else None
+        )
+
+    for message_id in reversed(_message_path_ids(context)):
+        if message_id == current_message_id:
+            continue
+        source_checkpoint = _latest_droid_checkpoint_for_message(
+            message_id,
+            node_id=context.node_id,
+            node_type=DroidAgentExecutor.node_type,
+        )
+        if source_checkpoint is not None:
+            if not branch_mode and current_session_id is None:
+                return _DroidSessionPlan(
+                    cache_key=cache_key,
+                    current_session_id=source_checkpoint.session_id,
+                    source_session_id=source_checkpoint.session_id,
+                    source_line_count=source_checkpoint.line_count,
+                )
+            return _DroidSessionPlan(
+                cache_key=cache_key,
+                current_session_id=current_session_id,
+                source_session_id=source_checkpoint.session_id,
+                source_line_count=source_checkpoint.line_count,
+            )
+
+    return _DroidSessionPlan(
+        cache_key=cache_key,
+        current_session_id=current_session_id,
+    )
+
+
+def _assistant_message_id(context: FlowContext) -> str:
+    chat_input = _chat_input(context)
+    value = getattr(chat_input, "assistant_message_id", "") if chat_input else ""
+    return value if isinstance(value, str) else ""
+
+
+def _message_path_ids(context: FlowContext) -> list[str]:
+    chat_input = _chat_input(context)
+    value = getattr(chat_input, "message_path_ids", None) if chat_input else None
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _conversation_run_mode(context: FlowContext) -> str:
+    chat_input = _chat_input(context)
+    value = getattr(chat_input, "conversation_run_mode", "") if chat_input else ""
+    return value if value in {"branch", "continue"} else "continue"
+
+
+def _droid_session_checkpoint_event(
+    context: FlowContext,
+    node_type: str,
+    cwd: str,
+    session_id: str,
+) -> NodeEvent | None:
+    line_count = _session_jsonl_line_count(cwd, session_id)
+    data: dict[str, Any] = {"run_id": session_id}
+    if line_count is not None:
+        data["session_line_count"] = line_count
+    return NodeEvent(
+        node_id=context.node_id,
+        node_type=node_type,
+        event_type="agent_checkpoint",
+        run_id=context.run_id,
+        data=data,
+    )
+
+
+def _fork_droid_session(
+    cwd: str,
+    source_session_id: str,
+    *,
+    line_count: int | None = None,
+) -> str | None:
+    source_path = _session_jsonl_path(cwd, source_session_id)
+    if source_path is None or not source_path.exists():
+        return None
+
+    forked_session_id = str(uuid.uuid4())
+    forked_path = source_path.with_name(f"{forked_session_id}.jsonl")
+    _copy_session_jsonl(
+        source_path,
+        forked_path,
+        forked_session_id,
+        line_count=line_count,
+    )
+
+    source_settings_path = source_path.with_name(f"{source_session_id}.settings.json")
+    if source_settings_path.exists():
+        shutil.copy2(
+            source_settings_path,
+            source_path.with_name(f"{forked_session_id}.settings.json"),
+        )
+
+    return forked_session_id
+
+
+def _copy_session_jsonl(
+    source_path: Path,
+    forked_path: Path,
+    forked_session_id: str,
+    *,
+    line_count: int | None = None,
+) -> None:
+    with source_path.open("r", encoding="utf-8") as source:
+        with forked_path.open("w", encoding="utf-8") as target:
+            for index, line in enumerate(source):
+                if line_count is not None and index >= line_count:
+                    break
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    target.write(line)
+                    continue
+                if item.get("type") == "session_start":
+                    item["id"] = forked_session_id
+                    target.write(json.dumps(item, separators=(",", ":")) + "\n")
+                    continue
+                target.write(line)
+
+
+def _session_jsonl_line_count(cwd: str, session_id: str) -> int | None:
+    path = _session_jsonl_path(cwd, session_id)
+    if path is None or not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return sum(1 for _line in handle)
+    except OSError:
+        return None
+
+
+def _chat_input(context: FlowContext) -> Any | None:
+    services = context.services
+    if services is None:
+        return None
+    return getattr(services, "chat_input", None)
+
+
+def _session_cache_key(context: FlowContext, current_message_id: str) -> str:
+    if current_message_id:
+        branch_key = current_message_id
+    else:
+        raw_path = "\0".join(_message_path_ids(context))
+        branch_key = hashlib.sha256(raw_path.encode()).hexdigest()
+    return f"{context.chat_id or ''}:{context.node_id}:{branch_key}"
+
+
+def _latest_droid_session_for_message(
+    message_id: str,
+    *,
+    node_id: str,
+    node_type: str,
+) -> str | None:
+    if not message_id:
+        return None
+    try:
+        from backend import db  # noqa: PLC0415
+
+        with db.db_session() as sess:
+            return db.get_latest_node_run_id_for_message(
+                sess,
+                message_id=message_id,
+                node_id=node_id,
+                node_type=node_type,
+            )
+    except Exception:
+        logger.debug(
+            "Failed to resolve droid session for message %s", message_id, exc_info=True
+        )
+    return None
+
+
+def _latest_droid_checkpoint_for_message(
+    message_id: str,
+    *,
+    node_id: str,
+    node_type: str,
+) -> _DroidSessionCheckpoint | None:
+    if not message_id:
+        return None
+    try:
+        from backend import db  # noqa: PLC0415
+
+        with db.db_session() as sess:
+            payload = db.get_latest_node_event_payload_for_message(
+                sess,
+                message_id=message_id,
+                node_id=node_id,
+                node_type=node_type,
+                event_type="runtime.node.agent_checkpoint",
+            )
+            if isinstance(payload, dict):
+                session_id = payload.get("run_id")
+                line_count = payload.get("session_line_count")
+                if isinstance(session_id, str) and session_id:
+                    return _DroidSessionCheckpoint(
+                        session_id=session_id,
+                        line_count=line_count if isinstance(line_count, int) else None,
+                    )
+
+    except Exception:
+        logger.debug(
+            "Failed to resolve droid checkpoint for message %s",
+            message_id,
+            exc_info=True,
+        )
+
+    session_id = _latest_droid_session_for_message(
+        message_id,
+        node_id=node_id,
+        node_type=node_type,
+    )
+    if session_id:
+        return _DroidSessionCheckpoint(session_id=session_id)
     return None
 
 

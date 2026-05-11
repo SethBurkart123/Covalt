@@ -34,16 +34,266 @@ from backend.services.streaming.runtime_events import (
 )
 from nodes.core.droid_agent.executor import (
     _STREAM_DONE,
+    _build_session_plan,
     _drain_response_stream,
+    _DroidSessionCheckpoint,
+    _DroidSessionPlan,
+    _fork_droid_session,
     _make_stream_warning_event,
     _make_token_usage_event,
     _make_tool_call_progress_event,
     _make_working_state_event,
+    _resume_or_initialize_session,
 )
 
 
 def _make_context() -> SimpleNamespace:
     return SimpleNamespace(node_id="droid-1", run_id="run-1", chat_id=None, services=None)
+
+
+def _make_chat_context(
+    *,
+    message_path_ids: list[str],
+    assistant_message_id: str,
+    conversation_run_mode: str = "branch",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        node_id="droid-1",
+        run_id="run-1",
+        chat_id="chat-1",
+        services=SimpleNamespace(
+            chat_input=SimpleNamespace(
+                message_path_ids=message_path_ids,
+                assistant_message_id=assistant_message_id,
+                conversation_run_mode=conversation_run_mode,
+            )
+        ),
+    )
+
+
+def test_droid_session_plan_uses_selected_branch_path(monkeypatch) -> None:
+    sessions = {
+        "assistant-before-edit": _DroidSessionCheckpoint("session-before-edit", 4),
+        "assistant-old-sibling": _DroidSessionCheckpoint("session-old-sibling", 9),
+    }
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._latest_droid_checkpoint_for_message",
+        lambda message_id, **_kwargs: sessions.get(message_id),
+    )
+
+    context = _make_chat_context(
+        message_path_ids=["user-1", "assistant-before-edit", "user-edited"],
+        assistant_message_id="assistant-new-branch",
+    )
+
+    plan = _build_session_plan(context)
+
+    assert plan.current_session_id is None
+    assert plan.source_session_id == "session-before-edit"
+    assert plan.source_line_count == 4
+
+
+def test_droid_session_plan_prefers_current_assistant_session(monkeypatch) -> None:
+    sessions = {
+        "assistant-parent": "session-parent",
+        "assistant-current": "session-current",
+    }
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._latest_droid_session_for_message",
+        lambda message_id, **_kwargs: sessions.get(message_id),
+    )
+
+    context = _make_chat_context(
+        message_path_ids=["user-1", "assistant-parent", "user-2"],
+        assistant_message_id="assistant-current",
+    )
+
+    plan = _build_session_plan(context)
+
+    assert plan.current_session_id == "session-current"
+    assert plan.source_session_id == "session-parent"
+
+
+def test_droid_session_plan_continues_source_session_for_linear_turn(monkeypatch) -> None:
+    sessions = {"assistant-parent": "session-parent"}
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._latest_droid_session_for_message",
+        lambda message_id, **_kwargs: sessions.get(message_id),
+    )
+
+    context = _make_chat_context(
+        message_path_ids=["user-1", "assistant-parent", "user-2"],
+        assistant_message_id="assistant-current",
+        conversation_run_mode="continue",
+    )
+
+    plan = _build_session_plan(context)
+
+    assert plan.current_session_id == "session-parent"
+    assert plan.source_session_id == "session-parent"
+
+
+@pytest.mark.asyncio
+async def test_resume_or_initialize_loads_storage_fork_for_branch(monkeypatch) -> None:
+    class FakeInitResult:
+        session_id = "session-child"
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.loaded: list[str] = []
+            self.initialized: list[dict[str, Any]] = []
+            self.settings: list[dict[str, Any]] = []
+
+        async def load_session(self, *, session_id: str) -> None:
+            self.loaded.append(session_id)
+
+        async def initialize_session(self, **kwargs: Any) -> FakeInitResult:
+            self.initialized.append(kwargs)
+            return FakeInitResult()
+
+        async def update_session_settings(self, **kwargs: Any) -> None:
+            self.settings.append(kwargs)
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._build_session_plan",
+        lambda _context: _DroidSessionPlan(
+            cache_key="chat-1:droid-1:assistant-new",
+            source_session_id="session-parent",
+        ),
+    )
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._fork_droid_session",
+        lambda _cwd, _source_session_id, *, line_count=None: "session-fork",
+    )
+
+    context = _make_chat_context(
+        message_path_ids=["user-1", "assistant-parent", "user-2"],
+        assistant_message_id="assistant-new",
+    )
+    client = FakeClient()
+
+    session_id = await _resume_or_initialize_session(
+        client,
+        context=context,
+        cwd="/repo",
+        model_id="",
+        autonomy=None,
+        reasoning=None,
+        interaction_mode=None,
+    )
+
+    assert session_id == "session-fork"
+    assert client.loaded == ["session-fork"]
+    assert client.initialized == []
+
+
+@pytest.mark.asyncio
+async def test_resume_or_initialize_uses_minimal_initialize_when_no_source(monkeypatch) -> None:
+    class FakeInitResult:
+        session_id = "session-child"
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.loaded: list[str] = []
+            self.initialized: list[dict[str, Any]] = []
+
+        async def load_session(self, *, session_id: str) -> None:
+            self.loaded.append(session_id)
+
+        async def initialize_session(self, **kwargs: Any) -> FakeInitResult:
+            self.initialized.append(kwargs)
+            return FakeInitResult()
+
+        async def update_session_settings(self, **kwargs: Any) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._build_session_plan",
+        lambda _context: _DroidSessionPlan(
+            cache_key="chat-1:droid-1:assistant-new-without-source",
+        ),
+    )
+
+    client = FakeClient()
+    session_id = await _resume_or_initialize_session(
+        client,
+        context=_make_chat_context(
+            message_path_ids=[],
+            assistant_message_id="assistant-new",
+        ),
+        cwd="/repo",
+        model_id="",
+        autonomy=None,
+        reasoning=None,
+        interaction_mode=None,
+    )
+
+    assert session_id == "session-child"
+    assert client.initialized == [{"machine_id": "covalt", "cwd": "/repo"}]
+
+
+def test_fork_droid_session_copies_jsonl_and_settings(tmp_path, monkeypatch) -> None:
+    cwd = "/repo"
+    session_id = "source-session"
+    session_dir = tmp_path / ".factory" / "sessions" / cwd.replace("/", "-")
+    session_dir.mkdir(parents=True)
+    source_path = session_dir / f"{session_id}.jsonl"
+    source_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "session_start", "id": session_id, "cwd": cwd}),
+                json.dumps({"type": "message", "message": {"content": "hello"}}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    settings_path = session_dir / f"{session_id}.settings.json"
+    settings_path.write_text('{"model":"gpt-5.5"}', encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    forked_id = _fork_droid_session(cwd, session_id)
+
+    assert forked_id is not None
+    forked_path = session_dir / f"{forked_id}.jsonl"
+    assert forked_path.exists()
+    rows = [json.loads(line) for line in forked_path.read_text().splitlines()]
+    assert rows[0]["id"] == forked_id
+    assert rows[1]["message"]["content"] == "hello"
+    copied_settings = session_dir / f"{forked_id}.settings.json"
+    assert copied_settings.read_text() == '{"model":"gpt-5.5"}'
+
+
+def test_fork_droid_session_truncates_to_checkpoint(tmp_path, monkeypatch) -> None:
+    cwd = "/repo"
+    session_id = "source-session"
+    session_dir = tmp_path / ".factory" / "sessions" / cwd.replace("/", "-")
+    session_dir.mkdir(parents=True)
+    source_path = session_dir / f"{session_id}.jsonl"
+    source_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "session_start", "id": session_id, "cwd": cwd}),
+                json.dumps({"type": "message", "message": {"content": "prior"}}),
+                json.dumps({"type": "message", "message": {"content": "cats"}}),
+                json.dumps({"type": "message", "message": {"content": "cats reply"}}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    forked_id = _fork_droid_session(cwd, session_id, line_count=2)
+
+    assert forked_id is not None
+    forked_path = session_dir / f"{forked_id}.jsonl"
+    rows = [json.loads(line) for line in forked_path.read_text().splitlines()]
+    assert [row.get("message", {}).get("content") for row in rows] == [None, "prior"]
+    assert rows[0]["id"] == forked_id
 
 
 def test_tool_call_progress_appends_progress_entry() -> None:

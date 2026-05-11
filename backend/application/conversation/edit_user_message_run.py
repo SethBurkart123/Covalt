@@ -256,6 +256,7 @@ async def execute_edit_user_message_run(
             ephemeral=False,
             extra_tool_ids=input_data.tool_ids or None,
             variables=input_data.variables,
+            conversation_run_mode="branch",
         )
 
     except Exception as e:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 import pytest
@@ -95,6 +96,106 @@ def test_parse_message_blocks_strips_trailing_errors() -> None:
         strip_trailing_errors=True,
     )
     assert blocks == [{"type": "text", "content": "ok"}]
+
+
+def test_get_latest_node_run_id_for_message_filters_by_node() -> None:
+    suffix = uuid.uuid4().hex
+    message_id = f"assistant-droid-session-filter-{suffix}"
+    execution_id = f"exec-droid-session-{suffix}"
+
+    with db.db_session() as sess:
+        db.create_execution_run(
+            sess,
+            id=execution_id,
+            chat_id="chat-droid-session",
+            message_id=message_id,
+            kind="workflow",
+            status="completed",
+            root_run_id=None,
+        )
+        db.append_execution_events(
+            sess,
+            execution_id=execution_id,
+            events=[
+                {
+                    "seq": 1,
+                    "ts": "2026-01-01T00:00:00+00:00",
+                    "event_type": "runtime.node.agent_run_id",
+                    "node_id": "other-node",
+                    "node_type": "droid-agent",
+                    "run_id": "runtime-old",
+                    "payload": {"run_id": "wrong-session"},
+                },
+                {
+                    "seq": 2,
+                    "ts": "2026-01-01T00:00:01+00:00",
+                    "event_type": "runtime.node.agent_run_id",
+                    "node_id": "droid-1",
+                    "node_type": "droid-agent",
+                    "run_id": "runtime-new",
+                    "payload": {"run_id": "right-session"},
+                },
+            ],
+        )
+
+        assert (
+            db.get_latest_node_run_id_for_message(
+                sess,
+                message_id=message_id,
+                node_id="droid-1",
+                node_type="droid-agent",
+            )
+            == "right-session"
+        )
+
+
+def test_get_latest_node_event_payload_for_message_filters_by_node_and_event() -> None:
+    suffix = uuid.uuid4().hex
+    message_id = f"assistant-droid-checkpoint-filter-{suffix}"
+    execution_id = f"exec-droid-checkpoint-{suffix}"
+
+    with db.db_session() as sess:
+        db.create_execution_run(
+            sess,
+            id=execution_id,
+            chat_id="chat-droid-checkpoint",
+            message_id=message_id,
+            kind="workflow",
+            status="completed",
+            root_run_id=None,
+        )
+        db.append_execution_events(
+            sess,
+            execution_id=execution_id,
+            events=[
+                {
+                    "seq": 1,
+                    "ts": "2026-01-01T00:00:00+00:00",
+                    "event_type": "runtime.node.agent_checkpoint",
+                    "node_id": "other-node",
+                    "node_type": "droid-agent",
+                    "run_id": "runtime-old",
+                    "payload": {"run_id": "wrong-session", "session_line_count": 9},
+                },
+                {
+                    "seq": 2,
+                    "ts": "2026-01-01T00:00:01+00:00",
+                    "event_type": "runtime.node.agent_checkpoint",
+                    "node_id": "droid-1",
+                    "node_type": "droid-agent",
+                    "run_id": "runtime-new",
+                    "payload": {"run_id": "right-session", "session_line_count": 4},
+                },
+            ],
+        )
+
+        assert db.get_latest_node_event_payload_for_message(
+            sess,
+            message_id=message_id,
+            node_id="droid-1",
+            node_type="droid-agent",
+            event_type="runtime.node.agent_checkpoint",
+        ) == {"run_id": "right-session", "session_line_count": 4}
 
 
 def test_build_tool_call_completed_payload_marks_unresolved_render_refs_as_failed() -> None:
@@ -312,6 +413,9 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         chat_input = context.services.chat_input
         captured["runtime_messages_len"] = len(chat_input.runtime_messages)
         captured["last_user_message"] = chat_input.last_user_message
+        captured["message_path_ids"] = list(chat_input.message_path_ids)
+        captured["assistant_message_id"] = chat_input.assistant_message_id
+        captured["conversation_run_mode"] = chat_input.conversation_run_mode
         captured["message_roles"] = [
             str(message.role) for message in chat_input.runtime_messages
         ]
@@ -336,12 +440,16 @@ async def test_handle_flow_stream_passes_extra_tool_ids_into_runtime_context() -
         CapturingChannel(),
         ephemeral=True,
         extra_tool_ids=["mcp:github"],
+        conversation_run_mode="branch",
         run_flow_impl=fake_run_flow,
     )
 
     assert captured["extra_tool_ids"] == ["mcp:github"]
     assert captured["runtime_messages_len"] == 3
     assert captured["last_user_message"] == "final"
+    assert captured["message_path_ids"] == ["user-1", "assistant-0", "user-2"]
+    assert captured["assistant_message_id"] == "assistant-1"
+    assert captured["conversation_run_mode"] == "branch"
     assert captured["message_roles"] == ["user", "assistant", "user"]
     assert captured["entry_scope"] == ["cs"]
 

@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import orjson
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -117,6 +116,54 @@ def get_latest_execution_run_for_message(
         .limit(1)
     )
     return sess.scalar(stmt)
+
+
+def get_latest_node_run_id_for_message(
+    sess: Session,
+    *,
+    message_id: str,
+    node_id: str,
+    node_type: str,
+) -> str | None:
+    payload = get_latest_node_event_payload_for_message(
+        sess,
+        message_id=message_id,
+        node_id=node_id,
+        node_type=node_type,
+        event_type="runtime.node.agent_run_id",
+    )
+    run_id = payload.get("run_id") if isinstance(payload, dict) else None
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+def get_latest_node_event_payload_for_message(
+    sess: Session,
+    *,
+    message_id: str,
+    node_id: str,
+    node_type: str,
+    event_type: str,
+) -> dict[str, Any] | None:
+    stmt = (
+        select(ExecutionEvent.payload_json)
+        .join(ExecutionRun, ExecutionEvent.execution_id == ExecutionRun.id)
+        .where(ExecutionRun.message_id == message_id)
+        .where(ExecutionEvent.event_type == event_type)
+        .where(ExecutionEvent.node_id == node_id)
+        .where(ExecutionEvent.node_type == node_type)
+        .order_by(ExecutionRun.started_at.desc(), ExecutionEvent.seq.desc())
+    )
+
+    for payload_json in sess.scalars(stmt):
+        if not payload_json:
+            continue
+        try:
+            payload = orjson.loads(payload_json)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
 
 
 def get_execution_events(

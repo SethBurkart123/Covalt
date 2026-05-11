@@ -36,6 +36,8 @@ from .executions import (
     create_execution_run,
     get_execution_events,
     get_latest_execution_run_for_message,
+    get_latest_node_event_payload_for_message,
+    get_latest_node_run_id_for_message,
     update_execution_run,
 )
 from .model_ops import (
@@ -155,5 +157,7 @@ __all__ = [
     "update_execution_run",
     "append_execution_events",
     "get_latest_execution_run_for_message",
+    "get_latest_node_event_payload_for_message",
+    "get_latest_node_run_id_for_message",
     "get_execution_events",
 ]

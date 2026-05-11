@@ -317,6 +317,7 @@ async def handle_flow_stream(
     agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
     variables: dict[str, Any] | None = None,
+    conversation_run_mode: str = "continue",
     run_flow_impl: Callable[..., Any] | None = None,
     save_content_impl: Callable[[str, str], None] | None = None,
     load_initial_content_impl: Callable[[str], list[dict[str, Any]]] | None = None,
@@ -399,6 +400,13 @@ async def handle_flow_stream(
             last_user_message=user_message,
             last_user_attachments=last_user_attachments,
             runtime_messages=runtime_messages,
+            message_path_ids=[
+                message.id
+                for message in messages
+                if isinstance(message.id, str) and message.id
+            ],
+            assistant_message_id=assistant_msg_id,
+            conversation_run_mode=conversation_run_mode,
         ),
         expression_context={
             "trigger": trigger_payload,
@@ -681,6 +689,7 @@ async def run_graph_chat_runtime(
     agent_id: str | None = None,
     extra_tool_ids: list[str] | None = None,
     variables: dict[str, Any] | None = None,
+    conversation_run_mode: str = "continue",
     flow_stream_handler: FlowStreamHandler | None = None,
 ) -> None:
     _require_user_message(messages)
@@ -699,6 +708,7 @@ async def run_graph_chat_runtime(
         agent_id=agent_id,
         extra_tool_ids=extra_tool_ids,
         variables=variables,
+        conversation_run_mode=conversation_run_mode,
     )
 
 

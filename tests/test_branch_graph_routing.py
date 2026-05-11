@@ -102,6 +102,7 @@ async def test_continue_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["blocks"] == [{"type": "text", "content": "partial"}]
 
     graph_runtime.assert_awaited_once()
+    assert graph_runtime.await_args.kwargs["conversation_run_mode"] == "branch"
 
 
 @pytest.mark.asyncio
@@ -155,6 +156,7 @@ async def test_retry_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["content"] == "assistant-retry"
 
     graph_runtime.assert_awaited_once()
+    assert graph_runtime.await_args.kwargs["conversation_run_mode"] == "branch"
 
 
 @pytest.mark.asyncio
@@ -210,3 +212,4 @@ async def test_edit_message_agent_model_routes_to_graph_runtime() -> None:
     assert events[1]["content"] == "assistant-new"
 
     graph_runtime.assert_awaited_once()
+    assert graph_runtime.await_args.kwargs["conversation_run_mode"] == "branch"
