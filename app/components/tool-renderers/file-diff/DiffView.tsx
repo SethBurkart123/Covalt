@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
+import {
+  useMemo,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
-import ReactDiffViewer, {
-  DiffMethod,
-  type ReactDiffViewerStylesOverride,
-} from "react-diff-viewer-continued";
+import { diffLines } from "diff/lib/diff/line.js";
+import type { ChangeObject } from "diff/lib/types.js";
 import { Prism } from "prism-react-renderer";
 import { FileCode2, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +23,8 @@ export interface DiffCounts {
 const MAX_HIGHLIGHT_CHARS = 250_000;
 const MAX_HIGHLIGHT_LINES = 2_500;
 const MAX_HIGHLIGHT_CACHE_ENTRIES = 2_000;
+const DIFF_TIMEOUT_MS = 16;
+const DIFF_MAX_EDIT_LENGTH = 4_000;
 
 const PRISM_SANITIZE_CONFIG: DOMPurifyConfig = {
   ALLOWED_TAGS: ["span"],
@@ -58,6 +63,15 @@ export function countDiffLines(oldText: string, newText: string): DiffCounts {
     deletions += count - matched;
   }
   return { additions, deletions };
+}
+
+export type DiffRowKind = "context" | "add" | "delete";
+
+export interface DiffRow {
+  kind: DiffRowKind;
+  oldLineNumber?: number;
+  newLineNumber?: number;
+  content: string;
 }
 
 function DiffStats({ additions, deletions }: DiffCounts): ReactNode {
@@ -109,94 +123,131 @@ function highlightLine(text: string, language: string): ReactElement {
   );
 }
 
-const DIFF_VIEWER_STYLES: ReactDiffViewerStylesOverride = {
-  variables: {
-    light: {
-      diffViewerBackground: "transparent",
-      diffViewerColor: "var(--foreground)",
-      addedBackground: "color-mix(in oklab, var(--success) 10%, transparent)",
-      addedColor: "var(--foreground)",
-      removedBackground: "color-mix(in oklab, var(--destructive) 10%, transparent)",
-      removedColor: "var(--foreground)",
-      wordAddedBackground: "color-mix(in oklab, var(--success) 30%, transparent)",
-      wordRemovedBackground: "color-mix(in oklab, var(--destructive) 30%, transparent)",
-      addedGutterBackground: "color-mix(in oklab, var(--success) 10%, transparent)",
-      removedGutterBackground: "color-mix(in oklab, var(--destructive) 10%, transparent)",
-      gutterBackground: "transparent",
-      gutterBackgroundDark: "var(--muted)",
-      gutterColor: "color-mix(in oklab, var(--muted-foreground) 60%, transparent)",
-      addedGutterColor: "var(--success)",
-      removedGutterColor: "var(--destructive)",
-      emptyLineBackground: "transparent",
-      codeFoldBackground: "var(--muted)",
-      codeFoldGutterBackground: "var(--muted)",
-      codeFoldContentColor: "var(--muted-foreground)",
-    },
-    dark: {
-      diffViewerBackground: "transparent",
-      diffViewerColor: "var(--foreground)",
-      addedBackground: "color-mix(in oklab, var(--success) 10%, transparent)",
-      addedColor: "var(--foreground)",
-      removedBackground: "color-mix(in oklab, var(--destructive) 10%, transparent)",
-      removedColor: "var(--foreground)",
-      wordAddedBackground: "color-mix(in oklab, var(--success) 30%, transparent)",
-      wordRemovedBackground: "color-mix(in oklab, var(--destructive) 30%, transparent)",
-      addedGutterBackground: "color-mix(in oklab, var(--success) 10%, transparent)",
-      removedGutterBackground: "color-mix(in oklab, var(--destructive) 10%, transparent)",
-      gutterBackground: "transparent",
-      gutterBackgroundDark: "var(--muted)",
-      gutterColor: "color-mix(in oklab, var(--muted-foreground) 60%, transparent)",
-      addedGutterColor: "var(--success)",
-      removedGutterColor: "var(--destructive)",
-      emptyLineBackground: "transparent",
-      codeFoldBackground: "var(--muted)",
-      codeFoldGutterBackground: "var(--muted)",
-      codeFoldContentColor: "var(--muted-foreground)",
-    },
-  },
-  diffContainer: {
-    minWidth: "unset",
-    fontSize: "0.75rem",
-    tableLayout: "auto",
-  },
-  gutter: {
-    minWidth: "3.25rem",
-    width: "3.25rem",
-    padding: "0 0.5rem",
-  },
-  lineNumber: {
-    fontFamily: "var(--font-mono)",
-    fontSize: "0.75rem",
-    lineHeight: "1.25rem",
-    textAlign: "right",
-  },
-  marker: {
-    width: "1.25rem",
-    paddingLeft: 0,
-    paddingRight: 0,
-    textAlign: "center",
-  },
-  content: {
-    width: "100%",
-  },
-  contentText: {
-    color: "var(--foreground)",
-    fontFamily: "var(--font-mono)",
-    fontSize: "0.75rem",
-    lineHeight: "1.25rem",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-all",
-  },
-  wordAdded: {
-    borderRadius: "0.125rem",
-  },
-  wordRemoved: {
-    borderRadius: "0.125rem",
-  },
-  codeFold: {
-    fontWeight: 400,
-  },
-};
+function splitChangeLines(value: string): string[] {
+  if (value.length === 0) return [];
+
+  const lines: string[] = [];
+  let start = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] !== "\n") continue;
+    lines.push(stripCarriageReturn(value.slice(start, i)));
+    start = i + 1;
+  }
+  if (start < value.length) lines.push(stripCarriageReturn(value.slice(start)));
+  return lines;
+}
+
+function stripCarriageReturn(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+function rowsFromChanges(changes: ChangeObject<string>[]): DiffRow[] {
+  const rows: DiffRow[] = [];
+  let oldLineNumber = 1;
+  let newLineNumber = 1;
+
+  for (const change of changes) {
+    const lines = splitChangeLines(change.value);
+    if (change.added) {
+      for (const content of lines) {
+        rows.push({ kind: "add", newLineNumber, content });
+        newLineNumber += 1;
+      }
+      continue;
+    }
+
+    if (change.removed) {
+      for (const content of lines) {
+        rows.push({ kind: "delete", oldLineNumber, content });
+        oldLineNumber += 1;
+      }
+      continue;
+    }
+
+    for (const content of lines) {
+      rows.push({ kind: "context", oldLineNumber, newLineNumber, content });
+      oldLineNumber += 1;
+      newLineNumber += 1;
+    }
+  }
+
+  return rows;
+}
+
+function splitTextLines(value: string): string[] {
+  return splitChangeLines(value);
+}
+
+function buildFallbackRows(oldText: string, newText: string): DiffRow[] {
+  const oldLines = splitTextLines(oldText);
+  const newLines = splitTextLines(newText);
+  const rows: DiffRow[] = [];
+
+  let prefix = 0;
+  while (
+    prefix < oldLines.length &&
+    prefix < newLines.length &&
+    oldLines[prefix] === newLines[prefix]
+  ) {
+    rows.push({
+      kind: "context",
+      oldLineNumber: prefix + 1,
+      newLineNumber: prefix + 1,
+      content: oldLines[prefix],
+    });
+    prefix += 1;
+  }
+
+  let suffix = 0;
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    oldLines[oldLines.length - suffix - 1] === newLines[newLines.length - suffix - 1]
+  ) {
+    suffix += 1;
+  }
+
+  for (let i = prefix; i < oldLines.length - suffix; i += 1) {
+    rows.push({ kind: "delete", oldLineNumber: i + 1, content: oldLines[i] });
+  }
+
+  for (let i = prefix; i < newLines.length - suffix; i += 1) {
+    rows.push({ kind: "add", newLineNumber: i + 1, content: newLines[i] });
+  }
+
+  for (let i = oldLines.length - suffix; i < oldLines.length; i += 1) {
+    const newLineNumber = newLines.length - oldLines.length + i + 1;
+    rows.push({
+      kind: "context",
+      oldLineNumber: i + 1,
+      newLineNumber,
+      content: oldLines[i],
+    });
+  }
+
+  return rows;
+}
+
+export function buildDiffRows(oldText: string, newText: string): DiffRow[] {
+  const changes = diffLines(oldText, newText, {
+    timeout: DIFF_TIMEOUT_MS,
+    maxEditLength: DIFF_MAX_EDIT_LENGTH,
+  });
+  if (!changes) return buildFallbackRows(oldText, newText);
+  return rowsFromChanges(changes);
+}
+
+function rowClassName(kind: DiffRowKind): string {
+  if (kind === "add") return "bg-success/10";
+  if (kind === "delete") return "bg-destructive/10";
+  return "bg-transparent";
+}
+
+function markerForKind(kind: DiffRowKind): string {
+  if (kind === "add") return "+";
+  if (kind === "delete") return "-";
+  return "";
+}
 
 interface DiffBodyProps {
   oldContent: string;
@@ -211,22 +262,55 @@ function DiffBody({
   language,
   highlight,
 }: DiffBodyProps): ReactNode {
-  const renderContent = useCallback(
-    (source: string) => highlightLine(source, language),
-    [language],
+  const rows = useMemo(
+    () => buildDiffRows(oldContent, newContent),
+    [oldContent, newContent],
   );
+  const maxLineNumber = Math.max(
+    rows.at(-1)?.oldLineNumber ?? 0,
+    rows.at(-1)?.newLineNumber ?? 0,
+    splitTextLines(oldContent).length,
+    splitTextLines(newContent).length,
+    1,
+  );
+  const gutterWidth = `${String(maxLineNumber).length + 2}ch`;
+  const style = { "--diff-gutter-width": gutterWidth } as CSSProperties;
 
   return (
-    <ReactDiffViewer
-      oldValue={oldContent}
-      newValue={newContent}
-      splitView={false}
-      showDiffOnly={false}
-      compareMethod={DiffMethod.WORDS_WITH_SPACE}
-      renderContent={highlight ? renderContent : undefined}
-      hideSummary
-      styles={DIFF_VIEWER_STYLES}
-    />
+    <div className="code-tokens min-w-full font-mono text-xs leading-5" style={style}>
+      {rows.map((row, index) => (
+        <div
+          key={`${row.kind}-${row.oldLineNumber ?? ""}-${row.newLineNumber ?? ""}-${index}`}
+          className={cn(
+            "grid min-w-full grid-cols-[var(--diff-gutter-width)_var(--diff-gutter-width)_1.25rem_minmax(0,1fr)] items-start",
+            rowClassName(row.kind),
+          )}
+        >
+          <span className="select-none border-r border-border/60 px-2 text-right text-muted-foreground/60 tabular-nums">
+            {row.oldLineNumber ?? ""}
+          </span>
+          <span className="select-none border-r border-border/60 px-2 text-right text-muted-foreground/60 tabular-nums">
+            {row.newLineNumber ?? ""}
+          </span>
+          <span
+            className={cn(
+              "select-none text-center",
+              row.kind === "add" && "text-success",
+              row.kind === "delete" && "text-destructive",
+              row.kind === "context" && "text-muted-foreground/50",
+            )}
+            aria-hidden="true"
+          >
+            {markerForKind(row.kind)}
+          </span>
+          <span className="min-w-0 whitespace-pre-wrap break-all px-3 text-foreground">
+            {highlight
+              ? highlightLine(row.content, language)
+              : row.content || <span>&nbsp;</span>}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -278,7 +362,10 @@ export function DiffView({
         className={className}
       >
         {hasContent ? (
-          <div data-testid="diff-body" className="max-h-[32rem] overflow-auto">
+          <div
+            data-testid="diff-body"
+            className="max-h-[32rem] overflow-auto bg-background/5"
+          >
             <DiffBody
               oldContent={oldContent}
               newContent={newContent}
@@ -312,7 +399,10 @@ export function DiffView({
         </div>
       </div>
       {hasContent ? (
-        <div data-testid="diff-body" className="max-h-[32rem] overflow-auto">
+        <div
+          data-testid="diff-body"
+          className="max-h-[32rem] overflow-auto bg-background/5"
+        >
           <DiffBody
             oldContent={oldContent}
             newContent={newContent}
