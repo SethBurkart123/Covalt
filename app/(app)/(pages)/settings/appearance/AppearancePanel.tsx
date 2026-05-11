@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useTheme, type ThemeMode } from "@/contexts/theme-context";
 import { ThemeCard } from "./ThemeCard";
 import { ImportThemeDialog } from "./ImportThemeDialog";
+import OutputSmoothingPanel from "./OutputSmoothingPanel";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,8 @@ export function AppearancePanel() {
           ))}
         </RadioGroup>
       </section>
+
+      <OutputSmoothingPanel />
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">

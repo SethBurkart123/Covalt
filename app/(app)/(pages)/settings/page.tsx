@@ -8,7 +8,6 @@ import ProviderStorePanel from "./providers/ProviderStorePanel";
 import { ProviderPluginSettingsPanel } from "./providers/ProviderPluginSettingsPanel";
 import AutoTitlePanel from "./AutoTitlePanel";
 import ModelSettingsPanel from "./ModelSettingsPanel";
-import OutputSmoothingPanel from "./OutputSmoothingPanel";
 import SystemPromptPanel from "./SystemPromptPanel";
 import { AppearancePanel } from "./appearance/AppearancePanel";
 
@@ -28,7 +27,6 @@ export default function SettingsPage() {
           {activeTab === "general" ? (
             <div className="space-y-10 py-6">
               <SystemPromptPanel />
-              <OutputSmoothingPanel />
               <AutoTitlePanel />
               <ModelSettingsPanel />
             </div>
