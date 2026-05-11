@@ -1,14 +1,8 @@
+# ruff: noqa: E402
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any
-
-_local_zynk = Path(__file__).parent.parent / "zynk"
-sys.path.insert(0, str(_local_zynk))
-existing_pythonpath = os.environ.get("PYTHONPATH", "")
-paths = [str(_local_zynk)] + ([existing_pythonpath] if existing_pythonpath else [])
-os.environ["PYTHONPATH"] = os.pathsep.join([p for p in paths if p])
 
 from zynk import Bridge
 
