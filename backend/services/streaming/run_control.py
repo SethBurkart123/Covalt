@@ -1,26 +1,37 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-ApprovalKey = tuple[str, str]
-
 
 @dataclass(slots=True)
-class ApprovalResponseRecord:
+class ToolDecisionRecord:
     selected_option: str
-    answers: list[tuple[int, str]] = field(default_factory=list)
     edited_args: dict[str, Any] | None = None
     cancelled: bool = False
 
 
+@dataclass(slots=True)
+class ApprovalSession:
+    run_id: str
+    session_id: str
+    tool_call_ids: list[str]
+    event: asyncio.Event
+    owner_run_id: str | None = None
+    decisions: dict[str, ToolDecisionRecord] = field(default_factory=dict)
+    cancelled: bool = False
+
+    def is_complete(self) -> bool:
+        return self.cancelled or all(tid in self.decisions for tid in self.tool_call_ids)
+
+
 _active_runs: dict[str, tuple[str | None, Any]] = {}
 _cancelled_messages: set[str] = set()
-_approval_events: dict[ApprovalKey, asyncio.Event] = {}
-_approval_responses: dict[ApprovalKey, ApprovalResponseRecord] = {}
-_cancelled_approvals: set[ApprovalKey] = set()
-_approval_owners: dict[str, set[ApprovalKey]] = {}
+_sessions: dict[str, ApprovalSession] = {}
+_tool_call_to_session: dict[str, str] = {}
+_owner_to_sessions: dict[str, set[str]] = {}
 
 
 def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> None:
@@ -49,10 +60,9 @@ def _apply_cancel_intent(message_id: str, run_id: str | None, agent: Any) -> Non
 def reset_state() -> None:
     _active_runs.clear()
     _cancelled_messages.clear()
-    _approval_events.clear()
-    _approval_responses.clear()
-    _cancelled_approvals.clear()
-    _approval_owners.clear()
+    _sessions.clear()
+    _tool_call_to_session.clear()
+    _owner_to_sessions.clear()
 
 
 def register_active_run(message_id: str, agent: Any) -> None:
@@ -92,71 +102,91 @@ def clear_early_cancel(message_id: str) -> None:
     _cancelled_messages.discard(message_id)
 
 
-def register_approval_waiter(
+def register_approval_session(
     run_id: str,
-    request_id: str,
+    tool_call_ids: list[str],
     event: asyncio.Event,
     *,
     owner_run_id: str | None = None,
-) -> None:
-    key: ApprovalKey = (run_id, request_id)
-    _approval_events[key] = event
+) -> ApprovalSession:
+    session_id = uuid.uuid4().hex
+    session = ApprovalSession(
+        run_id=run_id,
+        session_id=session_id,
+        tool_call_ids=list(tool_call_ids),
+        event=event,
+        owner_run_id=owner_run_id,
+    )
+    _sessions[session_id] = session
+    for tool_id in tool_call_ids:
+        _tool_call_to_session[tool_id] = session_id
     if owner_run_id:
-        _approval_owners.setdefault(owner_run_id, set()).add(key)
+        _owner_to_sessions.setdefault(owner_run_id, set()).add(session_id)
+    return session
 
 
-def get_approval_waiter(run_id: str, request_id: str) -> asyncio.Event | None:
-    return _approval_events.get((run_id, request_id))
+def find_session_by_tool_call_id(tool_call_id: str) -> ApprovalSession | None:
+    session_id = _tool_call_to_session.get(tool_call_id)
+    if session_id is None:
+        return None
+    return _sessions.get(session_id)
 
 
-def set_approval_response(
-    run_id: str,
-    request_id: str,
+def get_session(session_id: str) -> ApprovalSession | None:
+    return _sessions.get(session_id)
+
+
+def record_tool_decision(
+    tool_call_id: str,
     *,
     selected_option: str,
-    answers: list[tuple[int, str]] | None = None,
     edited_args: dict[str, Any] | None = None,
     cancelled: bool = False,
-) -> None:
-    key: ApprovalKey = (run_id, request_id)
-    _approval_responses[key] = ApprovalResponseRecord(
+) -> bool:
+    session = find_session_by_tool_call_id(tool_call_id)
+    if session is None:
+        return False
+    if cancelled:
+        session.cancelled = True
+
+    # A session represents one HITL decision covering a set of tool_call_ids.
+    # Recording a decision for any tool call applies to the whole session.
+    record = ToolDecisionRecord(
         selected_option=selected_option,
-        answers=list(answers) if answers else [],
         edited_args=edited_args,
         cancelled=cancelled,
     )
-    event = _approval_events.get(key)
-    if event is not None:
-        event.set()
+    for tid in session.tool_call_ids:
+        session.decisions[tid] = record
+    if session.is_complete():
+        session.event.set()
+    return True
 
 
-def get_approval_response(run_id: str, request_id: str) -> ApprovalResponseRecord | None:
-    return _approval_responses.get((run_id, request_id))
+def clear_session(session: ApprovalSession) -> None:
+    _sessions.pop(session.session_id, None)
+    for tool_id in session.tool_call_ids:
+        if _tool_call_to_session.get(tool_id) == session.session_id:
+            _tool_call_to_session.pop(tool_id, None)
+    if session.owner_run_id:
+        owners = _owner_to_sessions.get(session.owner_run_id)
+        if owners is not None:
+            owners.discard(session.session_id)
+            if not owners:
+                _owner_to_sessions.pop(session.owner_run_id, None)
 
 
-def clear_approval(run_id: str, request_id: str) -> None:
-    key: ApprovalKey = (run_id, request_id)
-    _approval_events.pop(key, None)
-    _approval_responses.pop(key, None)
-    _cancelled_approvals.discard(key)
-    for waiters in _approval_owners.values():
-        waiters.discard(key)
-
-
-def cancel_approval_waiter(run_id: str) -> bool:
-    targets: set[ApprovalKey] = set(_approval_owners.get(run_id, set()))
-    targets.update(key for key in _approval_events if key[0] == run_id)
-
+def cancel_sessions_for_run(run_id: str) -> bool:
+    target_ids: set[str] = set(_owner_to_sessions.get(run_id, set()))
+    target_ids.update(
+        session_id for session_id, session in _sessions.items() if session.run_id == run_id
+    )
     woke_any = False
-    for key in targets:
-        event = _approval_events.get(key)
-        if event is None:
+    for session_id in target_ids:
+        session = _sessions.get(session_id)
+        if session is None:
             continue
-        _cancelled_approvals.add(key)
-        event.set()
+        session.cancelled = True
+        session.event.set()
         woke_any = True
     return woke_any
-
-
-def was_approval_cancelled(run_id: str, request_id: str) -> bool:
-    return (run_id, request_id) in _cancelled_approvals

@@ -1,8 +1,9 @@
 "use client";
 
-import { CheckCircle2, Circle, ListTodo, Loader2 } from "lucide-react";
+import { useMemo, type ReactNode, type SVGProps } from "react";
+import { CheckCircle2, Circle, ListTodo } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import type { ToolRendererProps } from "@/lib/renderers/types";
+import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
 
 export type TodoStatus = "pending" | "in_progress" | "completed";
@@ -13,6 +14,8 @@ export interface TodoItem {
   status: TodoStatus;
 }
 
+const STATUS_LINE = /^\d+\.\s*\[(completed|in_progress|pending)]\s*(.+)$/;
+
 function isTodoStatus(value: unknown): value is TodoStatus {
   return value === "pending" || value === "in_progress" || value === "completed";
 }
@@ -20,61 +23,93 @@ function isTodoStatus(value: unknown): value is TodoStatus {
 function isTodoLike(value: unknown): value is TodoItem {
   if (!value || typeof value !== "object") return false;
   const obj = value as Record<string, unknown>;
-  return typeof obj.content === "string" && isTodoStatus(obj.status);
+  return (
+    (typeof obj.content === "string" || typeof obj.text === "string")
+    && isTodoStatus(obj.status)
+  );
 }
 
 function coerceTodos(value: unknown): TodoItem[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const filtered = value.filter(isTodoLike);
-  if (filtered.length === 0) return undefined;
-  return filtered;
+  const todos = value.filter(isTodoLike).map((item) => {
+    const obj = item as TodoItem & { text?: string };
+    return { ...obj, content: obj.content ?? obj.text ?? "" };
+  });
+  return todos.length > 0 ? todos : undefined;
 }
 
 function tryParse(text: string): unknown {
+  const match = /^```(?:\w+)?\n([\s\S]*?)```\s*$/m.exec(text.trim());
+  const raw = match ? match[1].trim() : text.trim();
   try {
-    return JSON.parse(text);
+    return JSON.parse(raw);
   } catch {
     return undefined;
   }
 }
 
+function parseTodoText(value: unknown): TodoItem[] | undefined {
+  if (typeof value !== "string") return undefined;
+  const todos: TodoItem[] = [];
+  for (const line of value.split("\n")) {
+    const match = STATUS_LINE.exec(line.trim());
+    if (match) todos.push({ status: match[1] as TodoStatus, content: match[2] });
+  }
+  return todos.length > 0 ? todos : undefined;
+}
+
+function extractFromValue(value: unknown): TodoItem[] | undefined {
+  const direct = coerceTodos(value) ?? parseTodoText(value);
+  if (direct) return direct;
+  if (typeof value !== "string") return undefined;
+  const parsed = tryParse(value);
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const obj = parsed as Record<string, unknown>;
+  return coerceTodos(obj.todos) ?? parseTodoText(obj.todos) ?? coerceTodos(parsed);
+}
+
 function extractTodos(
   config: Record<string, unknown> | undefined,
   toolArgs: Record<string, unknown> | undefined,
-  toolResult: string | undefined,
+  toolResult: unknown,
+  progress: ToolCallRendererProps["progress"],
 ): TodoItem[] | undefined {
-  const fromConfig = coerceTodos(config?.todos);
-  if (fromConfig) return fromConfig;
-  const fromArgs = coerceTodos(toolArgs?.todos);
-  if (fromArgs) return fromArgs;
-  if (!toolResult) return undefined;
-  const parsed = tryParse(toolResult);
-  if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
-    const fromResult = coerceTodos(obj.todos);
-    if (fromResult) return fromResult;
-    const fromTop = coerceTodos(parsed);
-    if (fromTop) return fromTop;
+  for (const entry of [...(progress ?? [])].reverse()) {
+    const fromProgress = extractFromValue(entry.detail);
+    if (fromProgress) return fromProgress;
   }
-  return undefined;
+  return (
+    extractFromValue(config?.todos)
+    ?? extractFromValue(toolArgs?.todos)
+    ?? extractFromValue(toolResult)
+  );
 }
 
-interface CountSummary {
-  done: number;
-  inProgress: number;
-  pending: number;
-}
-
-function summarize(todos: TodoItem[]): CountSummary {
-  let done = 0;
-  let inProgress = 0;
-  let pending = 0;
-  for (const t of todos) {
-    if (t.status === "completed") done += 1;
-    else if (t.status === "in_progress") inProgress += 1;
-    else pending += 1;
-  }
-  return { done, inProgress, pending };
+function InProgressIcon({ className, ...props }: SVGProps<SVGSVGElement>): ReactNode {
+  return (
+    <svg
+      data-testid="todo-icon-in-progress-marker"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-4 w-4", className)}
+      aria-hidden="true"
+      {...props}
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        strokeDasharray="4.2 3.654"
+        strokeLinecap="butt"
+      />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <polyline points="12 8 16 12 12 16" />
+    </svg>
+  );
 }
 
 interface TodoRowProps {
@@ -82,72 +117,56 @@ interface TodoRowProps {
   index: number;
 }
 
-function TodoRow({ todo, index }: TodoRowProps): React.ReactElement {
+function TodoRow({ todo, index }: TodoRowProps): ReactNode {
   const isCompleted = todo.status === "completed";
   const isInProgress = todo.status === "in_progress";
   return (
     <li
-      className="flex items-start gap-2 text-sm"
+      className={cn(
+        "flex items-center gap-2 text-sm",
+        isCompleted && "text-muted-foreground line-through",
+        !isCompleted && !isInProgress && "text-foreground/60",
+        isInProgress && "text-primary",
+      )}
       data-testid={`todo-item-${index}`}
       data-status={todo.status}
     >
-      <span className="mt-0.5 shrink-0">
+      <span className="shrink-0 h-4 w-4 inline-flex items-center justify-center">
         {isCompleted && (
           <CheckCircle2
-            className="h-4 w-4 text-green-600 dark:text-green-400"
+            className="h-4 w-4 text-primary"
             data-testid={`todo-icon-completed-${index}`}
           />
         )}
-        {isInProgress && (
-          <Loader2
-            className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400"
-            data-testid={`todo-icon-in-progress-${index}`}
-          />
-        )}
+        {isInProgress && <InProgressIcon data-testid={`todo-icon-in-progress-${index}`} />}
         {todo.status === "pending" && (
           <Circle
-            className="h-4 w-4 text-muted-foreground"
+            className="h-4 w-4"
             data-testid={`todo-icon-pending-${index}`}
           />
         )}
       </span>
-      <span className="font-mono text-xs text-muted-foreground">
-        {index + 1}.
-      </span>
-      <span
-        className={cn(
-          "flex-1",
-          isCompleted && "line-through text-muted-foreground",
-        )}
-      >
-        {todo.content}
-      </span>
+      <span className="flex-1 min-w-0">{todo.content}</span>
     </li>
   );
 }
 
 export function TodoListRenderer({
-  toolCall,
-  config,
-}: ToolRendererProps): React.ReactElement {
-  const todos = extractTodos(config, toolCall.toolArgs, toolCall.toolResult);
+  toolArgs,
+  toolResult,
+  renderPlan,
+  progress,
+}: ToolCallRendererProps): ReactNode {
+  const todos = useMemo(
+    () => extractTodos(renderPlan?.config, toolArgs, toolResult, progress),
+    [renderPlan?.config, toolArgs, toolResult, progress],
+  );
 
   return (
     <Card className="p-4 gap-3" data-testid="todo-list-renderer">
       <div className="flex items-center gap-2">
         <ListTodo className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">Todos</span>
-        {todos && todos.length > 0 && (
-          <span
-            className="ml-auto text-xs text-muted-foreground"
-            data-testid="todo-list-counts"
-          >
-            {(() => {
-              const s = summarize(todos);
-              return `${s.done} done · ${s.inProgress} in progress · ${s.pending} pending`;
-            })()}
-          </span>
-        )}
       </div>
       {!todos || todos.length === 0 ? (
         <div

@@ -31,6 +31,13 @@ export interface RendererDefinition {
   key: string;
   aliases?: string[];
   toolNamePatterns?: (string | RegExp)[];
+  display?: {
+    title?: string;
+    icon?: string;
+  };
+  layout?: 'default' | 'standalone';
+  surface?: 'tool' | 'member_run';
+  collapseConsecutive?: boolean;
   configSchema?: Record<string, 'string' | 'bool' | 'port' | 'any'>;
   // Lazy loaders must resolve to in-tree module specifiers; npm-distributed plugins are not supported yet.
   tool?: () => Promise<{ default: unknown }>;
@@ -50,4 +57,3 @@ export interface PluginManifest {
   coercions?: readonly CoercionDeclaration[];
   renderers?: RendererDefinition[];
 }
-

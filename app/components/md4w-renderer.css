@@ -199,7 +199,6 @@
   @apply text-[#924f79];
 }
 
-/* gruvboxMaterialDark (matches prism-react-renderer themes.gruvboxMaterialDark) */
 .dark .prose.markdown-content .markdown-code-block .token.imports,
 .dark .prose.markdown-content .markdown-code-block .token.class-name,
 .dark .prose.markdown-content .markdown-code-block .token.maybe-class-name,

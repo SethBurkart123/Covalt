@@ -4,7 +4,6 @@ import { useMemo, type ReactNode } from "react";
 import { DefaultApproval } from "@/components/approvals/DefaultApproval";
 import type { ApprovalRendererProps } from "@/lib/renderers";
 import { parseOpenAIPatch } from "./parse-patch";
-import { PatchSummary } from "./PatchSummary";
 import { PatchFileSection } from "./PatchFileSection";
 import { extractPatchText } from "./extract-patch";
 
@@ -22,8 +21,7 @@ export function PatchDiffApproval(props: ApprovalRendererProps): ReactNode {
       hideArguments
       fallbackToolName={request.toolName ?? "apply_patch"}
       renderBody={() => (
-        <div data-testid="patch-diff-approval-body" className="space-y-3">
-          {files.length > 0 && <PatchSummary files={files} />}
+        <div data-testid="patch-diff-approval-body" className="space-y-1">
           {files.length === 0 ? (
             <div className="text-xs italic text-muted-foreground">
               (no patch to display)

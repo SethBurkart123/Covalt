@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Wrench } from "lucide-react";
+import {
+  FileText,
+  Folder,
+  ListTodo,
+  Search,
+  SquareTerminal,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -14,11 +22,47 @@ import { parseToolDisplayParts } from "@/lib/tooling";
 import { ArgumentsDisplay } from "./ArgumentsDisplay";
 import { ResultRenderer } from "./ResultRenderer";
 
+const ICONS: Record<string, LucideIcon> = {
+  file: FileText,
+  folder: Folder,
+  list: ListTodo,
+  search: Search,
+  terminal: SquareTerminal,
+  wrench: Wrench,
+};
+
+function valueAtPath(source: Record<string, unknown>, path: string): string {
+  let current: unknown = source;
+  for (const part of path.split(".")) {
+    if (!current || typeof current !== "object") return "";
+    current = (current as Record<string, unknown>)[part];
+  }
+  if (typeof current === "string") return current;
+  if (typeof current === "number" || typeof current === "boolean") {
+    return String(current);
+  }
+  return "";
+}
+
+function renderTitleTemplate(
+  template: string | undefined,
+  toolArgs: Record<string, unknown>,
+  config: Record<string, unknown> | undefined,
+): string | null {
+  if (!template) return null;
+  const sources = { ...toolArgs, config: config ?? {} };
+  return template.replace(/\{([^{}]+)\}/g, (_match, key: string) =>
+    valueAtPath(sources, key.trim()),
+  );
+}
+
 export function DefaultToolCall({
   toolName,
   toolArgs,
   toolResult,
   isCompleted,
+  renderPlan,
+  display,
   failed = false,
   approvalStatus,
   isGrouped = false,
@@ -33,6 +77,8 @@ export function DefaultToolCall({
   const [isOpen, setIsOpen] = useState(false);
 
   const toolDisplay = parseToolDisplayParts(toolName);
+  const title = renderTitleTemplate(display?.title, toolArgs, renderPlan?.config);
+  const Icon = ICONS[display?.icon ?? ""] ?? Wrench;
   const toolCallTestId = `tool-call-${toolName}`;
   const hasArgs = Object.keys(toolArgs || {}).length > 0;
   const hasResult = Boolean(isCompleted && toolResult);
@@ -51,9 +97,11 @@ export function DefaultToolCall({
     >
       <CollapsibleTrigger>
         <CollapsibleHeader>
-          <CollapsibleIcon icon={Wrench} />
+          <CollapsibleIcon icon={Icon} />
           <span className="text-sm font-mono text-foreground">
-            {toolDisplay.namespace ? (
+            {title ? (
+              title
+            ) : toolDisplay.namespace ? (
               <>
                 <span>{toolDisplay.label}</span>
                 <span className="px-2 italic text-muted-foreground align-middle">

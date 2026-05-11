@@ -67,11 +67,11 @@ def _flow_ctx(
     )
 
 
-async def _wait_for_approval_key(run_id: str) -> tuple[str, str]:
+async def _wait_for_approval_session(run_id: str) -> Any:
     while True:
-        for key in list(run_control._approval_events.keys()):
-            if key[0] == run_id:
-                return key
+        for session in list(run_control._sessions.values()):
+            if session.run_id == run_id:
+                return session
         await asyncio.sleep(0.005)
 
 
@@ -511,7 +511,6 @@ class _ApprovalStreamingAgent:
         ]
         yield ApprovalRequired(
             run_id="run-approval",
-            request_id="req-approval",
             tool_use_ids=[p.tool_call_id for p in pending],
             config={"pending_tools": pending},
         )
@@ -1083,13 +1082,13 @@ class TestAgentExecutor:
         ctx = _flow_ctx()
 
         async def _auto_approve() -> None:
-            key = await _wait_for_approval_key("run-approval")
-            run_control.set_approval_response(
-                key[0],
-                key[1],
-                selected_option="approve",
-                edited_args={"query": "updated"},
-            )
+            session = await _wait_for_approval_session("run-approval")
+            for tool_id in session.tool_call_ids:
+                run_control.record_tool_decision(
+                    tool_id,
+                    selected_option="approve",
+                    edited_args={"query": "updated"},
+                )
 
         with (
             patch(
@@ -1154,8 +1153,8 @@ class TestAgentExecutor:
         ctx = _flow_ctx()
 
         async def _auto_cancel() -> None:
-            await _wait_for_approval_key("run-approval")
-            run_control.cancel_approval_waiter("run-approval")
+            await _wait_for_approval_session("run-approval")
+            run_control.cancel_sessions_for_run("run-approval")
 
         with (
             patch(

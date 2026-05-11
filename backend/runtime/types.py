@@ -166,7 +166,6 @@ class ApprovalAnswer:
 
 @dataclass(slots=True)
 class ApprovalRequired(RuntimeEvent):
-    request_id: str = ""
     kind: Literal["tool_approval", "user_input"] = "tool_approval"
     tool_use_ids: list[str] | None = None
     tool_name: str | None = None
@@ -182,7 +181,6 @@ class ApprovalRequired(RuntimeEvent):
 
 @dataclass(slots=True)
 class ApprovalResolved(RuntimeEvent):
-    request_id: str = ""
     selected_option: str = ""
     answers: list[ApprovalAnswer] = field(default_factory=list)
     edited_args: dict[str, Any] | None = None

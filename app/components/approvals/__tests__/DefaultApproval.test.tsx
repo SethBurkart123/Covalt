@@ -43,8 +43,6 @@ function isElement(value: unknown): value is AnyElement {
 }
 
 const EXPANDABLE_FN_NAMES = new Set([
-  "RiskPill",
-  "ToolArgsPreview",
   "ArgumentsDisplay",
   "QuestionField",
 ]);
@@ -94,7 +92,7 @@ function findAllByTestIdPrefix(root: unknown, prefix: string): AnyElement[] {
 
 function makeRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
-    requestId: "req-1",
+    toolCallId: "tool-1",
     runId: "run-1",
     kind: "tool_approval",
     options: [
@@ -118,24 +116,13 @@ function render(props: Partial<ApprovalRendererProps> = {}): unknown {
   });
 }
 
-describe("DefaultApproval - basic approve/deny", () => {
-  it("renders Allow and Deny buttons", () => {
-    const tree = render();
-    const allow = findByTestId(tree, "approval-option-allow_once");
-    const deny = findByTestId(tree, "approval-option-deny");
-    expect(allow).not.toBeNull();
-    expect(deny).not.toBeNull();
-  });
-
+describe("DefaultApproval - option resolution", () => {
   it("clicking Allow invokes onResolve with selectedOption=allow_once", async () => {
     const onResolve = mockResolve();
     const tree = render({ onResolve });
     const allow = findByTestId(tree, "approval-option-allow_once");
-    const onClick = (allow?.props as Record<string, unknown> | null)?.onClick as
-      | (() => Promise<void>)
-      | undefined;
-    expect(typeof onClick).toBe("function");
-    await onClick!();
+    const onClick = (allow?.props as Record<string, unknown>).onClick as () => Promise<void>;
+    await onClick();
     expect(onResolve).toHaveBeenCalledTimes(1);
     expect(onResolve.mock.calls[0][0]).toMatchObject({ selectedOption: "allow_once" });
   });
@@ -144,29 +131,10 @@ describe("DefaultApproval - basic approve/deny", () => {
     const onResolve = mockResolve();
     const tree = render({ onResolve });
     const deny = findByTestId(tree, "approval-option-deny");
-    const onClick = (deny?.props as Record<string, unknown> | null)?.onClick as
-      | (() => Promise<void>)
-      | undefined;
-    await onClick!();
+    const onClick = (deny?.props as Record<string, unknown>).onClick as () => Promise<void>;
+    await onClick();
     expect(onResolve).toHaveBeenCalledTimes(1);
     expect(onResolve.mock.calls[0][0]).toMatchObject({ selectedOption: "deny" });
-  });
-});
-
-describe("DefaultApproval - multi-option", () => {
-  it("renders one button per option, regardless of count", () => {
-    const tree = render({
-      request: makeRequest({
-        options: [
-          { value: "allow_once", label: "Once", role: "allow_once" },
-          { value: "allow_session", label: "Session", role: "allow_session" },
-          { value: "allow_always", label: "Always", role: "allow_always" },
-          { value: "deny", label: "Deny", role: "deny" },
-        ],
-      }),
-    });
-    const buttons = findAllByTestIdPrefix(tree, "approval-option-");
-    expect(buttons).toHaveLength(4);
   });
 
   it("each option button submits its own value", async () => {
@@ -202,6 +170,17 @@ describe("DefaultApproval - questions form", () => {
     expect((submit?.props as Record<string, unknown>).disabled).toBe(true);
   });
 
+  it("does not show tool arguments for user input requests", () => {
+    const tree = render({
+      request: makeRequest({
+        ...request,
+        config: { toolArgs: { questions: request.questions } },
+      }),
+    });
+    expect(findByTestId(tree, "approval-tool-args")).toBeNull();
+    expect(findByTestId(tree, "approval-questions")).not.toBeNull();
+  });
+
   it("submits answers in selected outcome", async () => {
     const onResolve = mockResolve();
     const tree = render({ request, onResolve });
@@ -222,11 +201,6 @@ describe("DefaultApproval - editable form", () => {
     config: { toolArgs: { target: "old", keep: 7 } },
   });
 
-  it("renders inline editable input via ArgumentsDisplay", () => {
-    const tree = render({ request });
-    expect(findByTestId(tree, "arg-input-target")).not.toBeNull();
-  });
-
   it("approve outcome carries unchanged editedArgs as undefined", async () => {
     const onResolve = mockResolve();
     const tree = render({ request, onResolve });
@@ -237,21 +211,6 @@ describe("DefaultApproval - editable form", () => {
   });
 });
 
-describe("DefaultApproval - risk level pill", () => {
-  it("renders danger-styled pill for high risk", () => {
-    const tree = render({ request: makeRequest({ riskLevel: "high" }) });
-    const pill = findByTestId(tree, "approval-risk-pill");
-    expect(pill).not.toBeNull();
-    expect((pill?.props as Record<string, unknown>)["data-risk-level"]).toBe("high");
-  });
-
-  it("does not render pill when risk_level missing", () => {
-    const tree = render({ request: makeRequest() });
-    const pill = findByTestId(tree, "approval-risk-pill");
-    expect(pill).toBeNull();
-  });
-});
-
 describe("DefaultApproval - pending state", () => {
   it("disables all option buttons when isPending=false", () => {
     const tree = render({ isPending: false });
@@ -259,19 +218,5 @@ describe("DefaultApproval - pending state", () => {
     for (const b of buttons) {
       expect((b.props as Record<string, unknown>).disabled).toBe(true);
     }
-  });
-});
-
-describe("DefaultApproval - tool args preview", () => {
-  it("renders args preview when toolArgs present", () => {
-    const tree = render({
-      request: makeRequest({ config: { toolArgs: { foo: "bar" } } }),
-    });
-    expect(findByTestId(tree, "approval-tool-args")).not.toBeNull();
-  });
-
-  it("omits args preview when toolArgs absent", () => {
-    const tree = render();
-    expect(findByTestId(tree, "approval-tool-args")).toBeNull();
   });
 });

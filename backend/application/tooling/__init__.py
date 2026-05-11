@@ -3,11 +3,11 @@ from .run_control_use_cases import (
     CancelFlowRunInput,
     CancelRunDependencies,
     CancelRunInput,
-    RespondToApprovalDependencies,
-    RespondToApprovalInput,
+    RespondToToolDecisionDependencies,
+    RespondToToolDecisionInput,
     execute_cancel_flow_run,
     execute_cancel_run,
-    execute_respond_to_approval,
+    execute_respond_to_tool_decision,
 )
 
 __all__ = [
@@ -15,9 +15,9 @@ __all__ = [
     "CancelFlowRunInput",
     "CancelRunDependencies",
     "CancelRunInput",
-    "RespondToApprovalDependencies",
-    "RespondToApprovalInput",
+    "RespondToToolDecisionDependencies",
+    "RespondToToolDecisionInput",
     "execute_cancel_flow_run",
     "execute_cancel_run",
-    "execute_respond_to_approval",
+    "execute_respond_to_tool_decision",
 ]

@@ -11,9 +11,9 @@ export function buildLegacyApprovalRequest(
   runId: string,
 ): ApprovalRequest {
   return {
-    requestId: toolCall.requestId ?? toolCall.toolCallId ?? toolCall.id,
+    toolCallId: toolCall.toolCallId ?? toolCall.id,
     runId,
-    kind: "tool_approval",
+    kind: toolCall.approvalKind ?? "tool_approval",
     toolUseIds: toolCall.toolCallId ? [toolCall.toolCallId] : [],
     toolName: toolCall.toolName,
     riskLevel: toolCall.riskLevel,

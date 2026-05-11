@@ -1,5 +1,5 @@
 import { getToolRenderer } from "@/lib/renderers";
-import type { ToolCallRenderer } from "./types";
+import type { ToolCallDisplayConfig, ToolCallRenderer } from "./types";
 import { registerBuiltinToolRenderers } from "./builtin";
 
 const DEFAULT_RENDERER_KEY = "default";
@@ -8,11 +8,9 @@ registerBuiltinToolRenderers();
 
 const loadCache = new Map<string, Promise<ToolCallRenderer>>();
 
-function resolveDefinitionKey(name?: string): string {
-  if (name) {
-    const def = getToolRenderer(name);
-    if (def) return def.key;
-  }
+function resolveDefinitionKey(renderer?: string, toolName?: string): string {
+  const def = getToolRenderer(renderer, toolName);
+  if (def) return def.key;
   return DEFAULT_RENDERER_KEY;
 }
 
@@ -46,10 +44,23 @@ function loadDefinition(key: string): Promise<ToolCallRenderer> {
   return promise;
 }
 
-export function getToolCallRenderer(name?: string): Promise<ToolCallRenderer> {
-  return loadDefinition(resolveDefinitionKey(name));
+export function getToolCallRenderer(
+  renderer?: string,
+  toolName?: string,
+): Promise<ToolCallRenderer> {
+  return loadDefinition(resolveDefinitionKey(renderer, toolName));
 }
 
-export function preloadToolCallRenderer(name?: string): Promise<void> {
-  return getToolCallRenderer(name).then(() => undefined);
+export function preloadToolCallRenderer(
+  renderer?: string,
+  toolName?: string,
+): Promise<void> {
+  return getToolCallRenderer(renderer, toolName).then(() => undefined);
+}
+
+export function getToolCallRendererDisplay(
+  renderer?: string,
+  toolName?: string,
+): ToolCallDisplayConfig | undefined {
+  return getToolRenderer(renderer, toolName)?.display;
 }

@@ -184,6 +184,33 @@ describe("stream-processor", () => {
     ]);
   });
 
+  it("routes member-scoped working state to the member run", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.MEMBER_RUN_STARTED,
+      { memberRunId: "m1", memberName: "Planner" },
+      state,
+      callbacks,
+    );
+    processEvent(
+      RUNTIME_EVENT.WORKING_STATE_CHANGED,
+      { memberRunId: "m1", memberName: "Planner", state: "executing" },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    const lastUpdate = updates.at(-1) || [];
+    expect(state.messageState).toBeNull();
+    expect(lastUpdate[0]).toMatchObject({
+      type: "member_run",
+      runId: "m1",
+      state: "executing",
+    });
+  });
+
   it("preserves flow-node text boundary separation", () => {
     const state = createInitialState();
     const { callbacks, updates } = makeCallbacks();
@@ -253,7 +280,6 @@ describe("stream-processor", () => {
         memberRunId: "m1",
         tool: {
           runId: "run-1",
-          requestId: "req-1",
           tools: [{ id: "tool-1", toolName: "search", toolArgs: { q: "a" } }],
         },
       },
@@ -293,7 +319,6 @@ describe("stream-processor", () => {
         memberRunId: "m1",
         tool: {
           runId: "run-1",
-          requestId: "req-1",
           selectedOption: "deny",
           tools: [
             {
@@ -326,6 +351,35 @@ describe("stream-processor", () => {
       isCompleted: true,
     });
     expect(animationFrame.pendingCount()).toBe(0);
+  });
+
+  it("keeps ask-user approval fields on the pending tool block", () => {
+    const state = createInitialState();
+    const { callbacks, updates } = makeCallbacks();
+
+    processEvent(
+      RUNTIME_EVENT.APPROVAL_REQUIRED,
+      {
+        tool: {
+          runId: "run-ask",
+          kind: "user_input",
+          questions: [{ index: 0, topic: "Name", question: "What name?", required: true }],
+          options: [{ value: "submit", label: "Submit", role: "custom", requiresInput: true }],
+          tools: [{ id: "ask-1", toolName: "ask_user", toolArgs: { questions: [] } }],
+        },
+      },
+      state,
+      callbacks,
+    );
+
+    animationFrame.flushAll();
+    expect(updates.at(-1)?.[0]).toMatchObject({
+      type: "tool_call",
+      id: "ask-1",
+      approvalKind: "user_input",
+      questions: [{ question: "What name?" }],
+      options: [{ value: "submit", requiresInput: true }],
+    });
   });
 
   it("emits fresh member_run references on each update so React picks up in-place mutations", () => {
@@ -366,7 +420,6 @@ describe("stream-processor", () => {
         memberRunId: "sub-1",
         tool: {
           runId: "sub-1",
-          requestId: "req-sub-1",
           tools: [{ id: "tool-a", toolName: "search", toolArgs: { q: "agno" } }],
         },
       },
@@ -379,7 +432,6 @@ describe("stream-processor", () => {
         memberRunId: "sub-2",
         tool: {
           runId: "sub-2",
-          requestId: "req-sub-2",
           tools: [{ id: "tool-b", toolName: "search", toolArgs: { q: "teams" } }],
         },
       },

@@ -1,17 +1,20 @@
 """Translate droid SDK permission/ask_user request params into our generic
-``ApprovalRequired`` event shape, and translate ``ApprovalResponseRecord``
+``ApprovalRequired`` event shape, and translate the collected tool decisions
 back into the response payload the SDK expects.
 
 The droid daemon dispatches two server→client request methods:
 - ``droid.request_permission`` → list of ``ToolConfirmationInfo`` to approve.
 - ``droid.ask_user`` → questionnaire to fill in.
 
-Both flow through ``set_permission_handler`` / ``set_ask_user_handler``. The
-SDK supplies camelCase params as plain dicts.
+Permission requests carry real tool_call_ids; we surface every tool so the
+unified approval-session machinery (keyed by tool_call_id) can record one
+decision per tool. Ask-user requests normally carry ``toolCallId`` too; when
+older daemon payloads omit it we synthesize a single ``askuser:<uuid>`` id.
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from backend.runtime import (
@@ -21,7 +24,7 @@ from backend.runtime import (
     ApprovalRequired,
     ApprovalResolved,
 )
-from backend.services.streaming.run_control import ApprovalResponseRecord
+from backend.services.streaming.run_control import ApprovalSession, ToolDecisionRecord
 
 RiskLevel = Literal["low", "medium", "high", "unknown"]
 ApprovalRole = Literal[
@@ -68,9 +71,8 @@ def droid_permission_to_approval(
     params: dict[str, Any],
     *,
     run_id: str,
-    request_id: str,
-) -> ApprovalRequired:
-    """Build an ``ApprovalRequired`` event from droid permission params.
+) -> tuple[ApprovalRequired, list[dict[str, Any]]]:
+    """Build an ``ApprovalRequired`` event and the per-tool wire payloads.
 
     Permission requests carry a list of tool uses sharing a single decision.
     We surface every tool, but expose ``confirmation_type`` / ``details`` of
@@ -88,7 +90,7 @@ def droid_permission_to_approval(
 
     for entry in tool_uses:
         tool_use = _coerce_dict(entry.get("toolUse"))
-        tool_id = str(tool_use.get("id") or "")
+        tool_id = str(tool_use.get("id") or "") or f"droid:{uuid.uuid4().hex}"
         tool_name = str(tool_use.get("name") or "")
         tool_input = _coerce_dict(tool_use.get("input"))
         ctype = str(entry.get("confirmationType") or "")
@@ -108,8 +110,7 @@ def droid_permission_to_approval(
                 "details": details,
             }
         )
-        if tool_id:
-            tool_use_ids.append(tool_id)
+        tool_use_ids.append(tool_id)
 
     options = _build_permission_options(options_raw)
     editable = _editable_for_confirmation(confirmation_type, primary_details)
@@ -118,9 +119,8 @@ def droid_permission_to_approval(
         confirmation_type, primary_details, primary_tool_name
     )
 
-    return ApprovalRequired(
+    event = ApprovalRequired(
         run_id=run_id,
-        request_id=request_id,
         kind="tool_approval",
         tool_use_ids=tool_use_ids or None,
         tool_name=primary_tool_name or None,
@@ -137,14 +137,14 @@ def droid_permission_to_approval(
         },
         timeout_ms=None,
     )
+    return event, pending_tools
 
 
 def droid_ask_user_to_approval(
     params: dict[str, Any],
     *,
     run_id: str,
-    request_id: str,
-) -> ApprovalRequired:
+) -> tuple[ApprovalRequired, list[dict[str, Any]]]:
     raw_questions = _coerce_list(params.get("questions"))
     questions: list[ApprovalQuestion] = []
     for idx, entry in enumerate(raw_questions):
@@ -166,93 +166,133 @@ def droid_ask_user_to_approval(
             )
         )
 
-    tool_call_id = str(params.get("toolCallId") or "")
-    tool_use_ids = [tool_call_id] if tool_call_id else None
+    dialog_tool_id = str(params.get("toolCallId") or "") or f"askuser:{uuid.uuid4().hex}"
+    pending_tools = [
+        {
+            "id": dialog_tool_id,
+            "toolName": "ask_user",
+            "toolArgs": {"questions": [
+                {"index": q.index, "topic": q.topic, "question": q.question}
+                for q in questions
+            ]},
+        }
+    ]
 
-    return ApprovalRequired(
+    event = ApprovalRequired(
         run_id=run_id,
-        request_id=request_id,
         kind="user_input",
-        tool_use_ids=tool_use_ids,
-        tool_name=None,
+        tool_use_ids=[dialog_tool_id],
+        tool_name="ask_user",
         risk_level=None,
         summary=None,
         options=[
             ApprovalOption(
-                value="submit", label="Submit", role="custom", style="primary"
+                value="submit",
+                label="Submit",
+                role="custom",
+                style="primary",
+                requires_input=True,
             ),
             ApprovalOption(value="cancel", label="Cancel", role="abort"),
         ],
         questions=questions,
         editable=[],
         renderer=None,
-        config={"tool_call_id": tool_call_id},
+        config={"dialog_tool_id": dialog_tool_id, "pending_tools": pending_tools},
         timeout_ms=None,
     )
+    return event, pending_tools
 
 
-def droid_permission_response(
-    record: ApprovalResponseRecord | None,
-    *,
-    cancelled: bool,
-) -> str:
-    if cancelled or record is None or record.cancelled:
+def droid_permission_response(session: ApprovalSession) -> str:
+    if session.cancelled:
         return "cancel"
-    return record.selected_option or "cancel"
+    for tool_id in session.tool_call_ids:
+        record = session.decisions.get(tool_id)
+        if record is None or record.cancelled:
+            return "cancel"
+        if record.selected_option == "cancel":
+            return "cancel"
+    first = session.decisions.get(session.tool_call_ids[0]) if session.tool_call_ids else None
+    return first.selected_option if first and first.selected_option else "cancel"
 
 
 def droid_ask_user_response(
-    record: ApprovalResponseRecord | None,
+    session: ApprovalSession,
     *,
-    cancelled: bool,
     questions: list[ApprovalQuestion],
 ) -> dict[str, Any]:
-    if cancelled or record is None or record.cancelled:
+    if session.cancelled or not session.tool_call_ids:
+        return {"cancelled": True, "answers": []}
+    record = session.decisions.get(session.tool_call_ids[0])
+    if record is None or record.cancelled or record.selected_option == "cancel":
         return {"cancelled": True, "answers": []}
 
     question_lookup = {q.index: q.question for q in questions}
-    answers: list[dict[str, Any]] = []
-    for index, answer in record.answers:
-        answers.append(
-            {
-                "index": index,
-                "question": question_lookup.get(index, ""),
-                "answer": answer,
-            }
-        )
-    return {"cancelled": False, "answers": answers}
+    answers_payload: list[dict[str, Any]] = []
+    raw_answers = (record.edited_args or {}).get("answers")
+    if isinstance(raw_answers, list):
+        for entry in raw_answers:
+            if not isinstance(entry, dict):
+                continue
+            index = entry.get("index")
+            answer = entry.get("answer")
+            if not isinstance(index, int) or not isinstance(answer, str):
+                continue
+            answers_payload.append(
+                {
+                    "index": index,
+                    "question": question_lookup.get(index, ""),
+                    "answer": answer,
+                }
+            )
+    return {"cancelled": False, "answers": answers_payload}
 
 
 def approval_resolved_event(
     *,
     run_id: str,
-    request_id: str,
-    record: ApprovalResponseRecord | None,
-    cancelled: bool,
-) -> ApprovalResolved:
-    if cancelled or record is None or record.cancelled:
-        return ApprovalResolved(
-            run_id=run_id,
-            request_id=request_id,
-            selected_option="cancel",
-            answers=[],
-            edited_args=None,
-            cancelled=True,
+    session: ApprovalSession,
+    pending_tools: list[dict[str, Any]],
+) -> tuple[ApprovalResolved, list[dict[str, Any]]]:
+    cancelled = session.cancelled
+    selected_option = "cancel"
+    if not cancelled and session.tool_call_ids:
+        first = session.decisions.get(session.tool_call_ids[0])
+        if first is not None:
+            selected_option = first.selected_option or "cancel"
+            cancelled = first.cancelled or selected_option == "cancel"
+    edited_args: dict[str, Any] | None = None
+    for tool_id in session.tool_call_ids:
+        record = session.decisions.get(tool_id)
+        if record and record.edited_args:
+            edited_args = {**(edited_args or {}), **record.edited_args}
+
+    resolved_tools: list[dict[str, Any]] = []
+    for tool in pending_tools:
+        tool_id = str(tool.get("id") or "")
+        record: ToolDecisionRecord | None = session.decisions.get(tool_id)
+        if cancelled or record is None or record.cancelled or record.selected_option == "cancel":
+            status = "denied"
+        else:
+            status = "approved"
+        resolved_tools.append(
+            {
+                "id": tool_id,
+                "toolName": tool.get("toolName"),
+                "approvalStatus": status,
+                "toolArgs": (record.edited_args if record and record.edited_args else tool.get("toolArgs")),
+            }
         )
 
-    from backend.runtime import ApprovalAnswer  # noqa: PLC0415
-
-    return ApprovalResolved(
+    resolved = ApprovalResolved(
         run_id=run_id,
-        request_id=request_id,
-        selected_option=record.selected_option,
-        answers=[
-            ApprovalAnswer(index=index, answer=answer)
-            for index, answer in record.answers
-        ],
-        edited_args=record.edited_args,
-        cancelled=False,
+        selected_option=selected_option,
+        answers=[],
+        edited_args=edited_args,
+        cancelled=cancelled,
     )
+    return resolved, resolved_tools
 
 
 def _build_permission_options(raw_options: list[Any]) -> list[ApprovalOption]:

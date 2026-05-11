@@ -13,7 +13,13 @@ import { useArtifactPanel } from "@/contexts/artifact-panel-context";
 import { parseToolDisplayParts } from "@/lib/tooling";
 import { ApprovalRouter } from "./approvals/ApprovalRouter";
 import { buildLegacyApprovalRequest } from "@/lib/services/approval-request-builder";
-import { useResolveApproval } from "@/lib/services/use-resolve-approval";
+import { useResolveToolDecision } from "@/lib/services/use-resolve-tool-decision";
+import {
+  isMemberRunToolBlock,
+  isStandaloneToolBlock,
+  shouldSkipConsecutiveToolBlock,
+} from "@/lib/tool-renderers/layout";
+import { toolBlockToMemberRun } from "@/lib/tool-renderers/member-run-surface";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import ToolCall from "./ToolCall";
 import ThinkingCall from "./ThinkingCall";
@@ -28,6 +34,7 @@ interface SubAgentCardProps {
   isCompleted?: boolean;
   hasError?: boolean;
   cancelled?: boolean;
+  state?: string;
   chatId?: string;
 }
 
@@ -55,7 +62,10 @@ function ErrorBlock({ content }: { content: string }) {
 }
 
 function isBlockGroupable(block: ContentBlock): boolean {
-  return block.type === "tool_call" || block.type === "reasoning";
+  return (
+    (block.type === "tool_call" && !isStandaloneToolBlock(block))
+    || block.type === "reasoning"
+  );
 }
 
 function isEmptyTextBlock(block: ContentBlock): boolean {
@@ -83,21 +93,10 @@ function BlockItem({
     return (
       <ToolCall
         key={block.id || `tool-${index}`}
-        id={block.id}
-        toolName={block.toolName}
-        toolArgs={block.toolArgs}
-        toolResult={block.toolResult}
-        isCompleted={block.isCompleted}
-        requiresApproval={block.requiresApproval}
-        runId={block.runId}
-        toolCallId={block.toolCallId || block.id}
-        approvalStatus={block.approvalStatus}
-        editableArgs={block.editableArgs}
+        {...block}
         isGrouped={isGrouped}
         isFirst={isFirst}
         isLast={isLast}
-        renderPlan={block.renderPlan}
-        failed={block.failed}
         chatId={chatId}
       />
     );
@@ -286,6 +285,33 @@ function SubAgentContent({
       continue;
     }
 
+    if (shouldSkipConsecutiveToolBlock(content, i)) {
+      i++;
+      continue;
+    }
+
+    if (block.type === "tool_call" && isMemberRunToolBlock(block)) {
+      const member = toolBlockToMemberRun(block);
+      elements.push(
+        <div key={`member-tool-${i}`} className="px-4">
+          <SubAgentCard
+            runId={member.runId}
+            memberName={member.memberName}
+            content={member.content}
+            task={member.task}
+            active={!member.isCompleted && active}
+            isCompleted={member.isCompleted}
+            hasError={member.hasError}
+            cancelled={member.cancelled}
+            state={member.state}
+            chatId={chatId}
+          />
+        </div>,
+      );
+      i++;
+      continue;
+    }
+
     if (isBlockGroupable(block)) {
       const group: ContentBlock[] = [];
       let j = i;
@@ -309,6 +335,16 @@ function SubAgentContent({
         />,
       );
       i = j;
+      continue;
+    }
+
+    if (block.type === "tool_call" && isStandaloneToolBlock(block)) {
+      elements.push(
+        <div key={`tool-${i}`} className="px-4 my-3 not-prose">
+          <ToolCall {...block} chatId={chatId} />
+        </div>,
+      );
+      i++;
       continue;
     }
 
@@ -353,10 +389,12 @@ function getPreviewText(
   isCompleted: boolean,
   hasError: boolean,
   cancelled: boolean = false,
+  state?: string,
 ): string {
   if (hasError) return "Failed";
   if (cancelled) return "Cancelled";
   if (isCompleted) return "Completed";
+  if (state) return formatState(state);
 
   for (let i = content.length - 1; i >= 0; i--) {
     const block = content[i];
@@ -374,6 +412,11 @@ function getPreviewText(
   return hasContent ? "Working..." : "Starting...";
 }
 
+function formatState(state: string): string {
+  const cleaned = state.replace(/[_-]+/g, " ").trim();
+  return cleaned ? cleaned[0].toUpperCase() + cleaned.slice(1) : "Working...";
+}
+
 function PendingApprovalEntry({
   tool,
   onResolved,
@@ -385,12 +428,12 @@ function PendingApprovalEntry({
     () => buildLegacyApprovalRequest(tool, tool.runId),
     [tool],
   );
-  const requestId = tool.requestId ?? tool.toolCallId;
-  const resolve = useResolveApproval(tool.runId, requestId);
+  const toolCallId = tool.toolCallId ?? tool.id;
+  const resolve = useResolveToolDecision(tool.runId, toolCallId);
   const handleResolve = useCallback(
     async (outcome: Parameters<typeof resolve>[0]) => {
-      onResolved?.();
-      await resolve(outcome);
+      const result = await resolve(outcome);
+      if (result.matched) onResolved?.();
     },
     [resolve, onResolved],
   );
@@ -429,6 +472,7 @@ export default function SubAgentCard({
   isCompleted = false,
   hasError = false,
   cancelled = false,
+  state,
   chatId,
 }: SubAgentCardProps) {
   const { open, close, activeId } = useArtifactPanel();
@@ -450,8 +494,8 @@ export default function SubAgentCard({
     [allPendingApprovals, dismissedToolIds],
   );
   const previewText = useMemo(
-    () => getPreviewText(content, isCompleted, hasError, cancelled),
-    [content, isCompleted, hasError, cancelled],
+    () => getPreviewText(content, isCompleted, hasError, cancelled, state),
+    [content, isCompleted, hasError, cancelled, state],
   );
 
   useEffect(() => {

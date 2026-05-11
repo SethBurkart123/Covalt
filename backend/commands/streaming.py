@@ -28,13 +28,13 @@ from ..application.tooling import (
     CancelFlowRunInput,
     CancelRunDependencies,
     CancelRunInput,
-    RespondToApprovalDependencies,
+    RespondToToolDecisionDependencies,
     execute_cancel_flow_run,
     execute_cancel_run,
-    execute_respond_to_approval,
+    execute_respond_to_tool_decision,
 )
 from ..application.tooling import (
-    RespondToApprovalInput as RespondToApprovalInputDTO,
+    RespondToToolDecisionInput as RespondToToolDecisionInputDTO,
 )
 from ..models.chat import ChatMessage
 from ..services.chat.chat_attachments import prepare_stream_attachments
@@ -109,34 +109,24 @@ class CancelRunRequest(BaseModel):
     messageId: str
 
 
-class AnswerEntry(BaseModel):
-    index: int
-    answer: str
-
-
-class RespondToApprovalInput(BaseModel):
+class RespondToToolDecisionInput(BaseModel):
     runId: str
-    requestId: str
+    toolCallId: str
     selectedOption: str
-    answers: list[AnswerEntry] = []
     editedArgs: dict[str, Any] | None = None
     cancelled: bool = False
 
 
-def _set_approval_response(
-    run_id: str,
-    request_id: str,
+def _record_tool_decision(
+    tool_call_id: str,
     *,
     selected_option: str,
-    answers: list[tuple[int, str]],
     edited_args: dict[str, Any] | None,
     cancelled: bool,
-) -> None:
-    run_control.set_approval_response(
-        run_id,
-        request_id,
+) -> bool:
+    return run_control.record_tool_decision(
+        tool_call_id,
         selected_option=selected_option,
-        answers=answers,
         edited_args=edited_args,
         cancelled=cancelled,
     )
@@ -147,8 +137,8 @@ def _mark_message_complete(message_id: str) -> None:
         db.mark_message_complete(sess, message_id)
 
 
-def _build_respond_to_approval_dependencies() -> RespondToApprovalDependencies:
-    return RespondToApprovalDependencies(set_approval_response=_set_approval_response)
+def _build_respond_to_tool_decision_dependencies() -> RespondToToolDecisionDependencies:
+    return RespondToToolDecisionDependencies(record_tool_decision=_record_tool_decision)
 
 
 def _build_cancel_run_dependencies() -> CancelRunDependencies:
@@ -157,7 +147,7 @@ def _build_cancel_run_dependencies() -> CancelRunDependencies:
         mark_early_cancel=run_control.mark_early_cancel,
         mark_message_complete=_mark_message_complete,
         remove_active_run=run_control.remove_active_run,
-        cancel_approval_waiter=run_control.cancel_approval_waiter,
+        cancel_sessions_for_run=run_control.cancel_sessions_for_run,
         logger=logger,
     )
 
@@ -167,23 +157,22 @@ def _build_cancel_flow_run_dependencies() -> CancelFlowRunDependencies:
         get_active_run=run_control.get_active_run,
         mark_early_cancel=run_control.mark_early_cancel,
         remove_active_run=run_control.remove_active_run,
-        cancel_approval_waiter=run_control.cancel_approval_waiter,
+        cancel_sessions_for_run=run_control.cancel_sessions_for_run,
         logger=logger,
     )
 
 
 @command
-async def respond_to_approval(body: RespondToApprovalInput) -> dict:
-    return execute_respond_to_approval(
-        RespondToApprovalInputDTO(
+async def respond_to_tool_decision(body: RespondToToolDecisionInput) -> dict:
+    return execute_respond_to_tool_decision(
+        RespondToToolDecisionInputDTO(
             run_id=body.runId,
-            request_id=body.requestId,
+            tool_call_id=body.toolCallId,
             selected_option=body.selectedOption,
-            answers=[(a.index, a.answer) for a in body.answers],
             edited_args=body.editedArgs,
             cancelled=body.cancelled,
         ),
-        _build_respond_to_approval_dependencies(),
+        _build_respond_to_tool_decision_dependencies(),
     )
 
 

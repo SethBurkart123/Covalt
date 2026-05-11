@@ -27,6 +27,7 @@ import type {
   ApprovalQuestion,
   ApprovalRendererProps,
   ApprovalRequest,
+  ApprovalResolveResult,
 } from "@/lib/renderers";
 import {
   RISK_LABELS,
@@ -197,6 +198,10 @@ export function DefaultApproval({
   renderBody,
   hideArguments,
   fallbackToolName,
+  isGrouped = false,
+  isFirst = false,
+  isLast = false,
+  mode = "regular",
 }: DefaultApprovalProps): ReactNode {
   const seedArgs = useMemo(() => buildSeedArgs(request), [request]);
   const editableKeys = useMemo(() => topLevelEditableKeys(request), [request]);
@@ -228,7 +233,12 @@ export function DefaultApproval({
       if (submitting || !isPending) return;
       setSubmittingValue(option.value);
       try {
-        await onResolve(buildOutcome(request, option, answers, edits));
+        const result = (await onResolve(
+          buildOutcome(request, option, answers, edits),
+        )) as ApprovalResolveResult | void;
+        if (result && result.matched === false) {
+          setSubmittingValue(null);
+        }
       } catch (error) {
         console.error("[DefaultApproval] onResolve failed", error);
         setSubmittingValue(null);
@@ -238,10 +248,8 @@ export function DefaultApproval({
   );
 
   const disabled = submitting || !isPending;
-  const showArguments = !hideArguments && Object.keys(seedArgs).length > 0;
-  const hasBody =
-    Boolean(renderBody) || showArguments || request.questions.length > 0;
   const isUserInput = request.kind === "user_input";
+  const showArguments = !isUserInput && !hideArguments && Object.keys(seedArgs).length > 0;
   const toolNameForDisplay =
     request.toolName ?? fallbackToolName ?? (isUserInput ? ASK_USER_TOOL_LABEL : "tool");
   const toolDisplay = parseToolDisplayParts(toolNameForDisplay);
@@ -257,6 +265,15 @@ export function DefaultApproval({
     }),
     [request, seedArgs, edits, disabled, setEditedField],
   );
+
+  const bodyNode = renderBody ? renderBody(renderContext) : null;
+  const hasBodyNode = bodyNode !== null && bodyNode !== undefined && bodyNode !== false;
+  const sectionCount =
+    (hasBodyNode ? 1 : 0)
+    + (showArguments ? 1 : 0)
+    + (request.questions.length > 0 ? 1 : 0);
+  const showSectionLabels = sectionCount > 1;
+  const hasBody = sectionCount > 0;
 
   const renderActionButtons = () => {
     const ordered = orderOptionsForFooter(request.options);
@@ -288,12 +305,16 @@ export function DefaultApproval({
 
   return (
     <Collapsible
-      open
-      onOpenChange={() => undefined}
+      defaultOpen
       disableToggle
       shimmer={false}
+      isGrouped={isGrouped}
+      isFirst={isFirst}
+      isLast={isLast}
+      mode={mode}
       data-testid="default-approval"
       data-approval-test-id={toolCallTestId}
+      data-toolcall
     >
       <CollapsibleTrigger
         rightContent={
@@ -333,13 +354,13 @@ export function DefaultApproval({
 
       {hasBody && (
         <CollapsibleContent>
-          {renderBody && (
-            <div data-testid="approval-body">{renderBody(renderContext)}</div>
+          {hasBodyNode && (
+            <div data-testid="approval-body">{bodyNode}</div>
           )}
 
           {showArguments && (
             <div data-testid="approval-tool-args">
-              {Boolean(renderBody) && (
+              {showSectionLabels && (
                 <div className="text-xs font-medium text-muted-foreground mb-2">
                   Arguments
                 </div>

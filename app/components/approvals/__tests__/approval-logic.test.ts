@@ -11,7 +11,7 @@ import {
 
 function makeRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
-    requestId: "req-1",
+    toolCallId: "tool-1",
     runId: "run-1",
     kind: "tool_approval",
     options: [

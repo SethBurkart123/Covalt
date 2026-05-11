@@ -235,7 +235,6 @@ class AgnoAgentHandle(AgentHandle):
             }
             pending = [_pending_approval(tool) for tool in tools]
             pending = [tool for tool in pending if tool is not None]
-            request_id = run_id or ""
             tool_use_ids = [t.tool_call_id for t in pending if t.tool_call_id]
             primary_tool_name = pending[0].tool_name if pending else None
             return ApprovalRequired(
@@ -243,7 +242,6 @@ class AgnoAgentHandle(AgentHandle):
                 member_run_id=member_run_id,
                 member_name=member_name,
                 task=self._task,
-                request_id=request_id,
                 kind="tool_approval",
                 tool_use_ids=tool_use_ids or None,
                 tool_name=primary_tool_name,

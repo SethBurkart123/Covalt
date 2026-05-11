@@ -6,33 +6,30 @@ from typing import Any
 
 
 @dataclass
-class RespondToApprovalInput:
+class RespondToToolDecisionInput:
     run_id: str
-    request_id: str
+    tool_call_id: str
     selected_option: str
-    answers: list[tuple[int, str]] | None = None
     edited_args: dict[str, Any] | None = None
     cancelled: bool = False
 
 
 @dataclass
-class RespondToApprovalDependencies:
-    set_approval_response: Callable[..., None]
+class RespondToToolDecisionDependencies:
+    record_tool_decision: Callable[..., bool]
 
 
-def execute_respond_to_approval(
-    input_data: RespondToApprovalInput,
-    deps: RespondToApprovalDependencies,
+def execute_respond_to_tool_decision(
+    input_data: RespondToToolDecisionInput,
+    deps: RespondToToolDecisionDependencies,
 ) -> dict:
-    deps.set_approval_response(
-        input_data.run_id,
-        input_data.request_id,
+    matched = deps.record_tool_decision(
+        input_data.tool_call_id,
         selected_option=input_data.selected_option,
-        answers=list(input_data.answers) if input_data.answers else [],
         edited_args=input_data.edited_args,
         cancelled=input_data.cancelled,
     )
-    return {"success": True}
+    return {"success": True, "matched": matched}
 
 
 @dataclass
@@ -46,7 +43,7 @@ class CancelRunDependencies:
     mark_early_cancel: Callable[[str], None]
     mark_message_complete: Callable[[str], None]
     remove_active_run: Callable[[str], tuple[str | None, Any] | None]
-    cancel_approval_waiter: Callable[[str], bool]
+    cancel_sessions_for_run: Callable[[str], bool]
     logger: Any
 
 
@@ -60,7 +57,7 @@ class CancelFlowRunDependencies:
     get_active_run: Callable[[str], tuple[str | None, Any] | None]
     mark_early_cancel: Callable[[str], None]
     remove_active_run: Callable[[str], tuple[str | None, Any] | None]
-    cancel_approval_waiter: Callable[[str], bool]
+    cancel_sessions_for_run: Callable[[str], bool]
     logger: Any
 
 
@@ -102,7 +99,7 @@ def execute_cancel_run(
                 f"[cancel_run] Cancelling run {run_id} for message {input_data.message_id}"
             )
             _cancel_run(agent, run_id)
-            paused_at_hitl = deps.cancel_approval_waiter(run_id)
+            paused_at_hitl = deps.cancel_sessions_for_run(run_id)
         else:
             deps.logger.info(
                 f"[cancel_run] Flagging early cancel for message {input_data.message_id}"
@@ -145,7 +142,7 @@ def execute_cancel_flow_run(
                 f"[cancel_flow_run] Cancelling run {run_id} for flow run {input_data.run_id}"
             )
             _cancel_run(agent, run_id)
-            paused_at_hitl = deps.cancel_approval_waiter(run_id)
+            paused_at_hitl = deps.cancel_sessions_for_run(run_id)
         else:
             deps.logger.info(
                 f"[cancel_flow_run] Flagging early cancel for flow run {input_data.run_id}"

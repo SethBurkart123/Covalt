@@ -41,7 +41,7 @@ export interface ApprovalEditable {
 }
 
 export interface ApprovalRequest {
-  requestId: string;
+  toolCallId: string;
   runId: string;
   kind: "tool_approval" | "user_input";
   toolUseIds?: string[];
@@ -68,10 +68,18 @@ export interface ApprovalOutcome {
   cancelled?: boolean;
 }
 
+export interface ApprovalResolveResult {
+  matched: boolean;
+}
+
 export interface ApprovalRendererProps {
   request: ApprovalRequest;
   isPending: boolean;
-  onResolve: (outcome: ApprovalOutcome) => Promise<void>;
+  onResolve: (outcome: ApprovalOutcome) => Promise<void | ApprovalResolveResult>;
+  isGrouped?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
+  mode?: import("@/components/ui/collapsible").CollapsibleMode;
 }
 
 export interface MessageRendererProps {

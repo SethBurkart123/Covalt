@@ -1,31 +1,75 @@
 "use client";
 
-import { useCallback, type ReactNode } from "react";
-import { Card } from "@/components/ui/card";
-import type { ToolRendererProps } from "@/lib/renderers";
-import { DiffView } from "./DiffView";
+import { useMemo, useState, type ReactNode } from "react";
+import { FileCode2 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleIcon,
+  CollapsibleHeader,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
+import { DiffView, DiffStats, countDiffLines } from "./DiffView";
 import { extractDiffInputs } from "./extract-diff-inputs";
 
-export function FileDiffRenderer({ toolCall, config }: ToolRendererProps): ReactNode {
-  const inputs = extractDiffInputs(config, toolCall.toolArgs);
-  const handleCopyPath = useCallback(() => {
-    if (!inputs.filePath) return;
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(inputs.filePath);
-  }, [inputs.filePath]);
+export function FileDiffRenderer({
+  toolArgs,
+  renderPlan,
+  isGrouped = false,
+  isFirst = false,
+  isLast = false,
+  mode = "regular",
+}: ToolCallRendererProps): ReactNode {
+  const inputs = useMemo(
+    () => extractDiffInputs(renderPlan?.config, toolArgs),
+    [renderPlan?.config, toolArgs],
+  );
+  const counts = useMemo(
+    () => countDiffLines(inputs.oldContent, inputs.newContent),
+    [inputs.oldContent, inputs.newContent],
+  );
+  const headerLabel =
+    inputs.isPartial && inputs.filePath
+      ? `Edit applied: ${inputs.filePath}`
+      : inputs.filePath ?? "Edit";
 
-  const label = inputs.isPartial && inputs.filePath ? `Edit applied: ${inputs.filePath}` : undefined;
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <Card data-testid="file-diff-tool" className="my-3 not-prose p-0">
-      <DiffView
-        filePath={inputs.filePath}
-        label={label}
-        oldContent={inputs.oldContent}
-        newContent={inputs.newContent}
-        onCopyPath={inputs.filePath ? handleCopyPath : undefined}
-      />
-    </Card>
+    <Collapsible
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      isGrouped={isGrouped}
+      isFirst={isFirst}
+      isLast={isLast}
+      mode={mode}
+      data-testid="file-diff-tool"
+      data-toolcall
+    >
+      <CollapsibleTrigger
+        rightContent={
+          <DiffStats additions={counts.additions} deletions={counts.deletions} />
+        }
+      >
+        <CollapsibleHeader>
+          <CollapsibleIcon icon={FileCode2} />
+          <span className="text-sm font-mono text-foreground truncate min-w-0">
+            {headerLabel}
+          </span>
+        </CollapsibleHeader>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent className="p-0 space-y-0">
+        <DiffView
+          filePath={inputs.filePath}
+          oldContent={inputs.oldContent}
+          newContent={inputs.newContent}
+          precomputedCounts={counts}
+          headless
+        />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

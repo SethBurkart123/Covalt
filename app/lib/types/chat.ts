@@ -68,7 +68,7 @@ export interface UploadingAttachment extends Omit<Attachment, "data"> {
 
 export interface RenderPlan {
   renderer: "code" | "document" | "html" | "frame" | "editor" | string;
-  config: {
+  config: Record<string, unknown> & {
     file?: string;
     content?: string;
     language?: string;
@@ -108,8 +108,8 @@ export interface ToolCallPayload {
   failed?: boolean;
   requiresApproval?: boolean;
   runId?: string;
-  requestId?: string;
   toolCallId?: string;
+  approvalKind?: "tool_approval" | "user_input";
   approvalStatus?: "pending" | "approved" | "denied" | "timeout";
   editableArgs?: string[] | boolean;
   isDelegation?: boolean;
@@ -159,7 +159,6 @@ export interface ApprovalAnswer {
 
 export interface ApprovalRequiredPayload {
   runId?: string;
-  requestId: string;
   kind: "tool_approval" | "user_input";
   toolUseIds?: string[];
   toolName?: string;
@@ -183,7 +182,6 @@ export interface ApprovalResolvedTool {
 
 export interface ApprovalResolvedPayload {
   runId?: string;
-  requestId: string;
   selectedOption: string;
   answers?: ApprovalAnswer[];
   editedArgs?: Record<string, unknown> | null;
@@ -204,6 +202,7 @@ export type ContentBlock =
       task?: string;
       hasError?: boolean;
       cancelled?: boolean;
+      state?: string;
       nodeId?: string;
       nodeType?: string;
       groupByNode?: boolean;

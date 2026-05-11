@@ -18,6 +18,13 @@ from backend.services.streaming import run_control
 from backend.services.streaming.chat_stream import FlowRunHandle
 
 
+@pytest.fixture(autouse=True)
+def _reset_run_control_state():
+    run_control.reset_state()
+    yield
+    run_control.reset_state()
+
+
 class _FakeAgent:
     def __init__(self) -> None:
         self.cancelled_run_ids: list[str] = []
@@ -54,28 +61,40 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_respond_to_approval_sets_response_and_signals_waiter() -> None:
-    event = asyncio.Event()
-    run_control.register_approval_waiter("run-1", "req-1", event)
+async def test_respond_to_tool_decision_records_and_signals_session() -> None:
+    waiter = asyncio.Event()
+    run_control.register_approval_session("run-1", ["tu-1"], waiter)
 
-    result = await streaming.respond_to_approval(
-        streaming.RespondToApprovalInput(
+    result = await streaming.respond_to_tool_decision(
+        streaming.RespondToToolDecisionInput(
             runId="run-1",
-            requestId="req-1",
+            toolCallId="tu-1",
             selectedOption="allow_once",
-            answers=[],
             editedArgs={"query": "covalt"},
             cancelled=False,
         )
     )
 
-    assert result == {"success": True}
-    assert event.is_set() is True
-    record = run_control.get_approval_response("run-1", "req-1")
-    assert record is not None
+    assert result == {"success": True, "matched": True}
+    assert waiter.is_set() is True
+    session = run_control.find_session_by_tool_call_id("tu-1")
+    assert session is not None
+    record = session.decisions["tu-1"]
     assert record.selected_option == "allow_once"
     assert record.edited_args == {"query": "covalt"}
     assert record.cancelled is False
+
+
+@pytest.mark.asyncio
+async def test_respond_to_tool_decision_returns_unmatched_for_unknown_tool_call() -> None:
+    result = await streaming.respond_to_tool_decision(
+        streaming.RespondToToolDecisionInput(
+            runId="run-x",
+            toolCallId="ghost",
+            selectedOption="allow_once",
+        )
+    )
+    assert result == {"success": True, "matched": False}
 
 
 @pytest.mark.asyncio
@@ -157,7 +176,7 @@ async def test_cancel_run_without_active_run_marks_early_cancel(
 
 
 @pytest.mark.asyncio
-async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
+async def test_cancel_run_paused_at_hitl_wakes_session_and_defers_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_agent = _FakeAgent()
@@ -168,7 +187,9 @@ async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
     run_control.set_active_run_id("msg-hitl", "run-hitl")
 
     waiter = asyncio.Event()
-    run_control.register_approval_waiter("run-hitl", "req-hitl", waiter)
+    session = run_control.register_approval_session(
+        "run-hitl", ["tu-h"], waiter
+    )
 
     result = await streaming.cancel_run(
         streaming.CancelRunRequest(messageId="msg-hitl")
@@ -176,7 +197,7 @@ async def test_cancel_run_paused_at_hitl_wakes_waiter_and_defers_cleanup(
 
     assert result == {"cancelled": True}
     assert waiter.is_set() is True
-    assert run_control.was_approval_cancelled("run-hitl", "req-hitl") is True
+    assert session.cancelled is True
     # Stream handler is responsible for finalizing once it wakes up.
     assert run_control.get_active_run("msg-hitl") == ("run-hitl", fake_agent)
     assert not hasattr(fake_db, "last_marked_id")
@@ -209,7 +230,7 @@ def _cancel_flow_dependencies(logger: _CancelFlowLogger) -> CancelFlowRunDepende
         get_active_run=run_control.get_active_run,
         mark_early_cancel=run_control.mark_early_cancel,
         remove_active_run=run_control.remove_active_run,
-        cancel_approval_waiter=run_control.cancel_approval_waiter,
+        cancel_sessions_for_run=run_control.cancel_sessions_for_run,
         logger=logger,
     )
 

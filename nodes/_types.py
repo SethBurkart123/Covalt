@@ -57,6 +57,7 @@ class RendererDescriptor:
     key: str
     aliases: tuple[str, ...] = ()
     tool_name_patterns: tuple[str, ...] = ()
+    layout: str | None = None
     has_tool: bool = False
     has_approval: bool = False
     has_message: bool = False

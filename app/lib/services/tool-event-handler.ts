@@ -1,6 +1,11 @@
 "use client";
 
-import type { ContentBlock, ProgressEntry } from "@/lib/types/chat";
+import type {
+  ApprovalRequiredPayload,
+  ContentBlock,
+  ProgressEntry,
+  ToolApprovalTool,
+} from "@/lib/types/chat";
 import type { StreamState } from "@/lib/services/stream-processor-state";
 import { flushReasoningBlock, flushTextBlock } from "@/lib/services/stream-processor-state";
 import {
@@ -47,6 +52,52 @@ export function handleToolCallProgress(state: StreamState, payload: unknown): vo
   toolBlock.progress = list;
 }
 
+export function upsertToolBlock(
+  blocks: ContentBlock[],
+  patch: Partial<Extract<ContentBlock, { type: "tool_call" }>> & { id: string },
+): Extract<ContentBlock, { type: "tool_call" }> {
+  const existing = blocks.find(
+    (b): b is Extract<ContentBlock, { type: "tool_call" }> =>
+      b.type === "tool_call" && b.id === patch.id,
+  );
+  if (existing) {
+    Object.assign(existing, patch);
+    return existing;
+  }
+  const block: Extract<ContentBlock, { type: "tool_call" }> = {
+    type: "tool_call",
+    toolName: "",
+    toolArgs: {},
+    isCompleted: false,
+    ...patch,
+  };
+  blocks.push(block);
+  return block;
+}
+
+export function approvalToolPatch(
+  payload: ApprovalRequiredPayload,
+  tool: ToolApprovalTool,
+): Partial<Extract<ContentBlock, { type: "tool_call" }>> & { id: string } {
+  return {
+    id: tool.id,
+    toolName: tool.toolName,
+    toolArgs: tool.toolArgs,
+    isCompleted: false,
+    requiresApproval: true,
+    runId: payload.runId,
+    toolCallId: tool.id,
+    approvalKind: payload.kind,
+    approvalStatus: "pending",
+    editableArgs: tool.editableArgs,
+    riskLevel: payload.riskLevel,
+    summary: payload.summary,
+    options: payload.options,
+    questions: payload.questions,
+    editable: payload.editable,
+  };
+}
+
 export function handleToolCallStarted(state: StreamState, tool: unknown): void {
   flushTextBlock(state);
   flushReasoningBlock(state);
@@ -54,17 +105,7 @@ export function handleToolCallStarted(state: StreamState, tool: unknown): void {
   const payload = coerceToolCallPayload(tool, "ToolCallStarted");
   if (!payload) return;
 
-  const existingBlock = state.contentBlocks.find(
-    (block) => block.type === "tool_call" && block.id === payload.id,
-  );
-
-  if (existingBlock && existingBlock.type === "tool_call") {
-    existingBlock.isCompleted = false;
-    return;
-  }
-
-  state.contentBlocks.push({
-    type: "tool_call",
+  upsertToolBlock(state.contentBlocks, {
     id: payload.id,
     toolName: payload.toolName,
     toolArgs: payload.toolArgs,
@@ -80,20 +121,7 @@ export function handleApprovalRequired(state: StreamState, toolData: unknown): v
   if (!payload) return;
 
   for (const tool of payload.tools) {
-    const block: ContentBlock = {
-      type: "tool_call",
-      id: tool.id,
-      toolName: tool.toolName,
-      toolArgs: tool.toolArgs,
-      isCompleted: false,
-      requiresApproval: true,
-      runId: payload.runId,
-      requestId: payload.requestId,
-      toolCallId: tool.id,
-      approvalStatus: "pending",
-      editableArgs: tool.editableArgs,
-    };
-    state.contentBlocks.push(block);
+    upsertToolBlock(state.contentBlocks, approvalToolPatch(payload, tool));
   }
 }
 

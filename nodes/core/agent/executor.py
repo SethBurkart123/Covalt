@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -352,13 +351,11 @@ class AgentExecutor:
                         continue
 
                     if isinstance(event, ApprovalRequired):
-                        request_id = uuid.uuid4().hex
                         required_events = _build_approval_required_events(
                             context=context,
                             runtime_event=event,
                             tool_node_lookup=tool_node_lookup,
                             member_fields=member_fields,
-                            request_id=request_id,
                         )
                         for ev in required_events:
                             yield ev
@@ -368,7 +365,6 @@ class AgentExecutor:
                             runtime_event=event,
                             tool_node_lookup=tool_node_lookup,
                             member_fields=member_fields,
-                            request_id=request_id,
                             owner_run_id=delegation_context.root_run_id or context.run_id,
                         )
                         for ev in resolved_events:
@@ -803,7 +799,6 @@ async def _run_delegated_agent(
                 continue
 
             if isinstance(event, ApprovalRequired):
-                request_id = event.request_id or uuid.uuid4().hex
                 pending_tools = _pending_tools_from_event(event)
                 tool_payloads = [_pending_tool_dict_to_payload(t) for t in pending_tools]
                 await delegation_context.queue.put(
@@ -812,15 +807,13 @@ async def _run_delegated_agent(
                         "ApprovalRequired",
                         tool=_approval_required_wire_payload(
                             event=event,
-                            request_id=request_id,
                             tools=tool_payloads,
                         ),
                         **member_fields,
                     )
                 )
                 approval = await _await_approval_response(
-                    event.run_id or context.run_id,
-                    request_id,
+                    event.run_id,
                     tool_ids=[str(tool.get("id") or "") for tool in tool_payloads],
                     owner_run_id=delegation_context.root_run_id or context.run_id,
                 )
@@ -828,7 +821,6 @@ async def _run_delegated_agent(
                     context=context,
                     approval=approval,
                     runtime_event=event,
-                    request_id=request_id,
                     member_fields=member_fields,
                     queue=delegation_context.queue,
                 )
@@ -894,7 +886,6 @@ def _build_approval_required_events(
     runtime_event: ApprovalRequired,
     tool_node_lookup: dict[str, dict[str, str]],
     member_fields: dict[str, Any],
-    request_id: str,
 ) -> list[NodeEvent]:
     pending_tools = _pending_tools_from_event(runtime_event)
     tools_info = [_pending_tool_dict_to_payload(t) for t in pending_tools]
@@ -913,7 +904,6 @@ def _build_approval_required_events(
             "ApprovalRequired",
             tool=_approval_required_wire_payload(
                 event=runtime_event,
-                request_id=request_id,
                 tools=tools_info,
             ),
             **member_fields,
@@ -927,15 +917,13 @@ async def _await_and_resolve_approval(
     runtime_event: ApprovalRequired,
     tool_node_lookup: dict[str, dict[str, str]],
     member_fields: dict[str, Any],
-    request_id: str,
     owner_run_id: str | None = None,
 ) -> tuple[ApprovalResponse, list[NodeEvent]]:
     pending_tools = _pending_tools_from_event(runtime_event)
     tools_info = [_pending_tool_dict_to_payload(t) for t in pending_tools]
 
     approval = await _await_approval_response(
-        runtime_event.run_id or context.run_id,
-        request_id,
+        runtime_event.run_id,
         tool_ids=[str(tool.get("id") or "") for tool in tools_info],
         owner_run_id=owner_run_id or context.run_id,
     )
@@ -968,7 +956,6 @@ async def _await_and_resolve_approval(
             "ApprovalResolved",
             tool=_approval_resolved_wire_payload(
                 run_id=runtime_event.run_id,
-                request_id=request_id,
                 approval=approval,
                 selected_option=selected_option,
                 resolved_tools=resolved_tools,
@@ -981,42 +968,43 @@ async def _await_and_resolve_approval(
 
 async def _await_approval_response(
     run_id: str,
-    request_id: str,
     *,
     tool_ids: list[str],
     owner_run_id: str | None = None,
 ) -> ApprovalResponse:
     approval_event = asyncio.Event()
-    run_control.register_approval_waiter(
-        run_id, request_id, approval_event, owner_run_id=owner_run_id
+    session = run_control.register_approval_session(
+        run_id, tool_ids, approval_event, owner_run_id=owner_run_id
     )
     try:
         await asyncio.wait_for(approval_event.wait(), timeout=300)
-        if run_control.was_approval_cancelled(run_id, request_id):
+        if session.cancelled:
             return ApprovalResponse(run_id=run_id, default_approved=False, cancelled=True)
 
-        record = run_control.get_approval_response(run_id, request_id)
-        if record is None:
-            return ApprovalResponse(run_id=run_id, default_approved=False)
-        if record.cancelled:
-            return ApprovalResponse(run_id=run_id, default_approved=False, cancelled=True)
-
-        approved = _selected_option_is_approve(record.selected_option)
+        decisions: dict[str, ToolDecision] = {}
+        any_approved = False
+        for tool_id in tool_ids:
+            record = session.decisions.get(tool_id)
+            approved = (
+                _selected_option_is_approve(record.selected_option)
+                if record is not None
+                else False
+            )
+            if approved:
+                any_approved = True
+            decisions[tool_id] = ToolDecision(
+                approved=approved,
+                edited_args=record.edited_args if (record and approved) else None,
+            )
         return ApprovalResponse(
             run_id=run_id,
-            default_approved=approved,
-            decisions={
-                tool_id: ToolDecision(
-                    approved=approved,
-                    edited_args=record.edited_args if approved else None,
-                )
-                for tool_id in tool_ids
-            },
+            default_approved=any_approved,
+            decisions=decisions,
         )
     except TimeoutError:
         return ApprovalResponse(run_id=run_id, default_approved=False)
     finally:
-        run_control.clear_approval(run_id, request_id)
+        run_control.clear_session(session)
 
 
 def _selected_option_is_approve(option: str) -> bool:
@@ -1031,7 +1019,6 @@ async def _emit_approval_resolved_events(
     context: FlowContext,
     approval: ApprovalResponse,
     runtime_event: ApprovalRequired,
-    request_id: str,
     member_fields: dict[str, Any],
     queue: asyncio.Queue[Any],
 ) -> None:
@@ -1065,7 +1052,6 @@ async def _emit_approval_resolved_events(
             "ApprovalResolved",
             tool=_approval_resolved_wire_payload(
                 run_id=runtime_event.run_id,
-                request_id=request_id,
                 approval=approval,
                 selected_option=selected_option,
                 resolved_tools=resolved_tools,
@@ -1184,7 +1170,6 @@ def _pending_tool_dict_to_payload(tool: Any) -> dict[str, Any]:
 def _approval_required_wire_payload(
     *,
     event: ApprovalRequired,
-    request_id: str,
     tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     tool_use_ids = event.tool_use_ids or [
@@ -1192,7 +1177,6 @@ def _approval_required_wire_payload(
     ]
     return {
         "runId": event.run_id,
-        "requestId": request_id,
         "kind": event.kind,
         "toolUseIds": tool_use_ids,
         "toolName": event.tool_name,
@@ -1211,14 +1195,12 @@ def _approval_required_wire_payload(
 def _approval_resolved_wire_payload(
     *,
     run_id: str | None,
-    request_id: str,
     approval: ApprovalResponse,
     selected_option: str,
     resolved_tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "runId": run_id,
-        "requestId": request_id,
         "selectedOption": selected_option,
         "answers": [],
         "editedArgs": _flatten_edited_args(approval),

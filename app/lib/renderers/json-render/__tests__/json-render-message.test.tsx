@@ -34,6 +34,15 @@ function findByTestId(node: unknown, id: string): AnyElement | null {
   return findByTestId(props.children, id);
 }
 
+function flattenText(node: unknown): string {
+  if (node == null || node === false || node === true) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(flattenText).join("");
+  if (!isElement(node)) return "";
+  const props = (node.props ?? {}) as Record<string, unknown>;
+  return flattenText(props.children);
+}
+
 function render(config: Record<string, unknown>): unknown {
   return (JsonRenderMessage as unknown as (p: MessageRendererProps) => unknown)({ config });
 }
@@ -48,18 +57,34 @@ describe("JsonRenderMessage", () => {
     expect(findByTestId(tree, "json-render-root")).not.toBeNull();
   });
 
-  it("renders parse-error pre when JSON is malformed", () => {
+  it("renders a failed state when JSON is malformed", () => {
     const tree = render({ raw: "{not json" });
-    expect(findByTestId(tree, "json-render-parse-error")).not.toBeNull();
+    expect(findByTestId(tree, "json-render-failed")).not.toBeNull();
+    expect(findByTestId(tree, "json-render-failed-detail")).not.toBeNull();
+    expect(flattenText(tree)).toContain("Invalid JSON");
+    expect(flattenText(tree)).toContain("position");
+    expect(flattenText(tree)).toContain("^");
   });
 
-  it("renders spec-error pre when shape is invalid", () => {
+  it("renders a failed state when shape is invalid", () => {
     const tree = render({ raw: JSON.stringify({ no: "root" }) });
-    expect(findByTestId(tree, "json-render-spec-error")).not.toBeNull();
+    expect(findByTestId(tree, "json-render-failed")).not.toBeNull();
+    expect(flattenText(tree)).toContain("Invalid spec");
   });
 
-  it("treats missing raw as empty (parse error)", () => {
+  it("renders a failed state when raw is missing", () => {
     const tree = render({});
-    expect(findByTestId(tree, "json-render-parse-error")).not.toBeNull();
+    expect(findByTestId(tree, "json-render-failed")).not.toBeNull();
+    expect(flattenText(tree)).toContain("Invalid JSON");
+  });
+
+  it("renders a failed state for unknown components", () => {
+    const raw = JSON.stringify({
+      root: "id",
+      elements: { id: { type: "Component", props: {}, children: [] } },
+    });
+    const tree = render({ raw });
+    expect(findByTestId(tree, "json-render-failed")).not.toBeNull();
+    expect(flattenText(tree)).toContain('Unknown component "Component"');
   });
 });

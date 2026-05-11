@@ -18,6 +18,11 @@ class RendererRegistry:
             key = descriptor.key
             if not isinstance(key, str) or not key.strip():
                 raise ValueError("renderer descriptor.key must be a non-empty string")
+            if descriptor.layout is not None and descriptor.layout not in {
+                "default",
+                "standalone",
+            }:
+                raise ValueError("renderer descriptor.layout must be 'default' or 'standalone'")
 
             existing = self._by_key.get(key)
             if existing is not None:
@@ -216,6 +221,13 @@ def register_builtin_renderers() -> None:
         RendererDescriptor(
             key="todo-list",
             tool_name_patterns=("^(todowrite|todo_write|update_todos|todo_list)$",),
+            layout="standalone",
+            has_tool=True,
+        ),
+        RendererDescriptor(
+            key="task",
+            tool_name_patterns=("^task$",),
+            layout="standalone",
             has_tool=True,
         ),
         RendererDescriptor(

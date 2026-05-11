@@ -233,8 +233,8 @@ def _mark_message_complete(assistant_msg_id: str) -> None:
 
 def _deny_pending_approvals(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Mark every pending HITL tool block (recursing into member_runs) as denied
-    and return one approval-resolved payload per (runId, requestId) group."""
-    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    and return one approval-resolved payload per runId group."""
+    grouped: dict[str, dict[str, Any]] = {}
 
     def _walk(items: list[dict[str, Any]]) -> None:
         for block in items:
@@ -250,13 +250,10 @@ def _deny_pending_approvals(blocks: list[dict[str, Any]]) -> list[dict[str, Any]
                     block["isCompleted"] = True
                     tool_args = block.get("toolArgs")
                     run_id = str(block.get("runId") or "")
-                    request_id = str(block.get("requestId") or "")
-                    key = (run_id, request_id)
                     bucket = grouped.setdefault(
-                        key,
+                        run_id,
                         {
                             "runId": run_id or None,
-                            "requestId": request_id or None,
                             "selectedOption": "deny",
                             "answers": [],
                             "editedArgs": None,

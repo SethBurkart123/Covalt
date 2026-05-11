@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as React from "react";
 
 (globalThis as { React?: typeof React }).React = React;
@@ -43,11 +43,9 @@ import type {
   ApprovalOutcome,
   ApprovalRendererProps,
   ApprovalRequest,
-  ToolRendererProps,
 } from "@/lib/renderers";
 import { getRendererByKey } from "@/lib/renderers";
 import "@/lib/tool-renderers/registry";
-import { TerminalRenderer } from "../TerminalRenderer";
 import { TerminalApproval } from "../TerminalApproval";
 
 interface AnyElement {
@@ -65,8 +63,6 @@ function isElement(value: unknown): value is AnyElement {
 }
 
 const EXPANDABLE_FN_NAMES = new Set([
-  "RiskPill",
-  "ExitPill",
   "DefaultApproval",
   "ArgumentsDisplay",
   "QuestionField",
@@ -105,16 +101,6 @@ function findByTestId(root: unknown, testId: string): AnyElement | null {
   return match;
 }
 
-function makeToolCall(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "tc-1",
-    toolName: "bash",
-    toolArgs: {},
-    isCompleted: false,
-    ...overrides,
-  };
-}
-
 async function beginRender() {
   const reactMock = (await import("react")) as unknown as {
     __beginRender?: () => void;
@@ -122,18 +108,9 @@ async function beginRender() {
   reactMock.__beginRender?.();
 }
 
-function renderTool(props: Partial<ToolRendererProps> = {}): unknown {
-  const toolCall = (props.toolCall ?? makeToolCall()) as ToolRendererProps["toolCall"];
-  return (TerminalRenderer as unknown as (p: ToolRendererProps) => unknown)({
-    toolCall,
-    config: props.config,
-    chatId: props.chatId,
-  });
-}
-
 function makeRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
-    requestId: "req-1",
+    toolCallId: "tool-1",
     runId: "run-1",
     kind: "tool_approval",
     options: [
@@ -171,83 +148,6 @@ beforeEach(async () => {
   };
   reactMock.__resetTestState?.();
   reactMock.__beginRender?.();
-});
-
-describe("TerminalRenderer - command resolution", () => {
-  it("renders command from config.command", () => {
-    const tree = renderTool({
-      toolCall: makeToolCall(),
-      config: { command: "echo hi" },
-    });
-    const cmd = findByTestId(tree, "terminal-command");
-    expect(cmd).not.toBeNull();
-    const children = (cmd?.props as Record<string, unknown>).children;
-    expect(String(children).includes("echo hi")).toBe(true);
-  });
-
-  it("falls back to toolArgs.command when config missing", () => {
-    const tree = renderTool({
-      toolCall: makeToolCall({ toolArgs: { command: "pwd" } }),
-    });
-    const cmd = findByTestId(tree, "terminal-command");
-    const children = (cmd?.props as Record<string, unknown>).children;
-    expect(String(children).includes("pwd")).toBe(true);
-  });
-
-  it("shows '(no command)' placeholder when nothing supplied", () => {
-    const tree = renderTool({ toolCall: makeToolCall() });
-    const cmd = findByTestId(tree, "terminal-command");
-    const children = (cmd?.props as Record<string, unknown>).children;
-    expect(String(children)).toBe("(no command)");
-  });
-});
-
-describe("TerminalRenderer - exit pill", () => {
-  it("shows exit pill with exitCode from config", () => {
-    const tree = renderTool({
-      toolCall: makeToolCall({ isCompleted: true }),
-      config: { command: "ls", exitCode: 0 },
-    });
-    const pill = findByTestId(tree, "terminal-exit-pill");
-    expect(pill).not.toBeNull();
-    expect((pill?.props as Record<string, unknown>)["data-exit-state"]).toBe("success");
-  });
-
-  it("shows error-state pill for non-zero exit", () => {
-    const tree = renderTool({
-      toolCall: makeToolCall({ isCompleted: true }),
-      config: { command: "false", exitCode: 1 },
-    });
-    const pill = findByTestId(tree, "terminal-exit-pill");
-    expect((pill?.props as Record<string, unknown>)["data-exit-state"]).toBe("error");
-  });
-});
-
-describe("TerminalRenderer - copy output", () => {
-  it("copy-output button calls navigator.clipboard.writeText", () => {
-    const writeText = vi.fn();
-    Object.defineProperty(globalThis, "navigator", {
-      value: { clipboard: { writeText } },
-      configurable: true,
-    });
-    const tree = renderTool({
-      toolCall: makeToolCall({ isCompleted: true }),
-      config: { command: "echo hello", output: "hello\n", exitCode: 0 },
-    });
-    const btn = findByTestId(tree, "terminal-copy-output");
-    const onClick = (btn?.props as Record<string, unknown>).onClick as () => void;
-    onClick();
-    expect(writeText).toHaveBeenCalledWith("hello\n");
-  });
-});
-
-describe("TerminalApproval - command field", () => {
-  it("renders editable command field pre-filled from request.config.toolArgs.command", () => {
-    const tree = renderApproval();
-    const field = findByTestId(tree, "arg-input-command");
-    expect(field).not.toBeNull();
-    expect((field?.props as Record<string, unknown>).value).toBe("ls -la");
-  });
 });
 
 describe("TerminalApproval - approve outcome", () => {

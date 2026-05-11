@@ -15,6 +15,12 @@ import { MessageSegmentView } from "./MessageSegmentView";
 import { parseMessageSegments } from "@/lib/renderers/parse-message-segments";
 import { AttachmentPreview } from "./AttachmentPreview";
 import type { ContentBlock, Message, MessageSibling } from "@/lib/types/chat";
+import {
+  isMemberRunToolBlock,
+  isStandaloneToolBlock,
+  shouldSkipConsecutiveToolBlock,
+} from "@/lib/tool-renderers/layout";
+import { toolBlockToMemberRun } from "@/lib/tool-renderers/member-run-surface";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -52,11 +58,14 @@ function ChatMessage({
       return;
     }
 
-    const renderers: Array<string | undefined> = [];
+    const renderers: Array<{ renderer?: string; toolName?: string }> = [];
     const queueRenderers = (blocks: ContentBlock[]) => {
       blocks.forEach((block) => {
         if (block.type === "tool_call") {
-          renderers.push(block.renderPlan?.renderer);
+          renderers.push({
+            renderer: block.renderPlan?.renderer,
+            toolName: block.toolName,
+          });
         } else if (block.type === "member_run") {
           queueRenderers(block.content);
         }
@@ -239,6 +248,7 @@ function ChatMessage({
                                 isCompleted={block.isCompleted}
                                 hasError={block.hasError}
                                 cancelled={block.cancelled}
+                                state={block.state}
                                 alwaysOpen
                                 compact
                               />,
@@ -258,6 +268,7 @@ function ChatMessage({
                                 isCompleted={block.isCompleted}
                                 hasError={block.hasError}
                                 cancelled={block.cancelled}
+                                state={block.state}
                                 chatId={chatId}
                               />,
                             );
@@ -268,13 +279,49 @@ function ChatMessage({
                             block.type === "tool_call" ||
                             block.type === "reasoning"
                           ) {
+                            if (shouldSkipConsecutiveToolBlock(blocks, i)) {
+                              continue;
+                            }
+
+                            if (block.type === "tool_call" && isMemberRunToolBlock(block)) {
+                              const member = toolBlockToMemberRun(block);
+                              rendered.push(
+                                <SubAgentCard
+                                  key={member.runId || `member-tool-${i}`}
+                                  runId={member.runId}
+                                  memberName={member.memberName}
+                                  content={member.content}
+                                  task={member.task}
+                                  active={!member.isCompleted && !!isStreaming}
+                                  isCompleted={member.isCompleted}
+                                  hasError={member.hasError}
+                                  cancelled={member.cancelled}
+                                  state={member.state}
+                                  chatId={chatId}
+                                />,
+                              );
+                              continue;
+                            }
+
+                            if (block.type === "tool_call" && isStandaloneToolBlock(block)) {
+                              rendered.push(
+                                <div key={block.id || `tool-${i}`} className="my-3 not-prose">
+                                  <ToolCall {...block} chatId={chatId} />
+                                </div>,
+                              );
+                              continue;
+                            }
+
                             const start = i;
                             const group: ContentBlock[] = [];
                             let j = i;
 
                             while (j < blocks.length) {
                               const b = blocks[j];
-                              if (b.type === "member_run") {
+                              if (
+                                b.type === "member_run"
+                                || isStandaloneToolBlock(b)
+                              ) {
                                 break;
                               }
                               if (
@@ -307,21 +354,10 @@ function ChatMessage({
                                 return (
                                   <ToolCall
                                     key={b.id}
-                                    id={b.id}
-                                    toolName={b.toolName}
-                                    toolArgs={b.toolArgs}
-                                    toolResult={b.toolResult}
-                                    isCompleted={b.isCompleted}
-                                    requiresApproval={b.requiresApproval}
-                                    runId={b.runId}
-                                    toolCallId={b.toolCallId}
-                                    approvalStatus={b.approvalStatus}
-                                    editableArgs={b.editableArgs}
+                                    {...b}
                                     isGrouped={visibleGroup.length > 1}
                                     isFirst={idx === 0}
                                     isLast={idx === visibleGroup.length - 1}
-                                    renderPlan={b.renderPlan}
-                                    failed={b.failed}
                                     chatId={chatId}
                                   />
                                 );

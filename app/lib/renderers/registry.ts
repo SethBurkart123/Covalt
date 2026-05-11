@@ -11,6 +11,13 @@ export interface RendererDefinition {
   key: string;
   aliases?: string[];
   toolNamePatterns?: (string | RegExp)[];
+  display?: {
+    title?: string;
+    icon?: string;
+  };
+  layout?: "default" | "standalone";
+  surface?: "tool" | "member_run";
+  collapseConsecutive?: boolean;
   configSchema?: Record<string, "string" | "bool" | "port" | "any">;
   matchMessage?: (content: string) => MessageRendererMatch[];
   tool?: () => Promise<{ default: ToolRenderer }>;
@@ -32,6 +39,10 @@ function serializeDefinition(def: RendererDefinition): unknown {
     toolNamePatterns: (def.toolNamePatterns ?? []).map((p) =>
       p instanceof RegExp ? `re:${p.source}::${p.flags}` : `s:${p}`,
     ),
+    display: def.display ?? null,
+    layout: def.layout ?? null,
+    surface: def.surface ?? null,
+    collapseConsecutive: def.collapseConsecutive ?? null,
     configSchema: def.configSchema ?? null,
     hasTool: Boolean(def.tool),
     hasApproval: Boolean(def.approval),

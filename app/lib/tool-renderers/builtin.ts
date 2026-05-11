@@ -53,9 +53,24 @@ const BUILTIN_DEFINITIONS: RendererDefinition[] = [
     tool: eager(WebSearchRenderer),
   },
   {
+    key: "directory-list",
+    toolNamePatterns: [/^ls$/i],
+    display: { title: "ls {directory_path}", icon: "folder" },
+    tool: eager(DefaultToolCall),
+  },
+  {
     key: "todo-list",
     toolNamePatterns: [/^(todowrite|todo_write|update_todos|todo_list)$/i],
+    layout: "standalone",
+    collapseConsecutive: true,
     tool: eager(TodoListRenderer),
+  },
+  {
+    key: "task",
+    toolNamePatterns: [/^task$/i],
+    layout: "standalone",
+    surface: "member_run",
+    tool: eager(DefaultToolCall),
   },
   {
     key: "file-read",

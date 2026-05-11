@@ -1,10 +1,17 @@
 "use client";
 
+import { useMemo, useState, type ReactNode } from "react";
 import { Globe, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ToolRendererProps } from "@/lib/renderers/types";
-import { cn } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleIcon,
+  CollapsibleHeader,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 
 export interface WebSearchResult {
   title: string;
@@ -40,19 +47,28 @@ function tryParse(text: string): unknown {
 
 function extractResults(
   config: Record<string, unknown> | undefined,
-  toolResult: string | undefined,
+  toolResult: unknown,
 ): WebSearchResult[] | undefined {
   if (config?.results) {
     const fromConfig = coerceResults(config.results);
     if (fromConfig) return fromConfig;
   }
-  if (!toolResult) return undefined;
-  const parsed = tryParse(toolResult);
-  if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
+  if (typeof toolResult === "string") {
+    const parsed = tryParse(toolResult);
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      const fromResults = coerceResults(obj.results);
+      if (fromResults) return fromResults;
+      const fromTop = coerceResults(parsed);
+      if (fromTop) return fromTop;
+    }
+    return undefined;
+  }
+  if (toolResult && typeof toolResult === "object") {
+    const obj = toolResult as Record<string, unknown>;
     const fromResults = coerceResults(obj.results);
     if (fromResults) return fromResults;
-    const fromTop = coerceResults(parsed);
+    const fromTop = coerceResults(toolResult);
     if (fromTop) return fromTop;
   }
   return undefined;
@@ -84,11 +100,11 @@ interface ResultCardProps {
   index: number;
 }
 
-function ResultCard({ result, index }: ResultCardProps): React.ReactElement {
+function ResultCard({ result, index }: ResultCardProps): ReactNode {
   const domain = deriveDomain(result.url, result.domain);
   return (
     <Card
-      className="px-4 py-3 gap-1.5"
+      className="px-3 py-2 gap-1"
       data-testid={`web-search-result-${index}`}
     >
       <a
@@ -115,10 +131,10 @@ function ResultCard({ result, index }: ResultCardProps): React.ReactElement {
   );
 }
 
-function SkeletonCard({ index }: { index: number }): React.ReactElement {
+function SkeletonCard({ index }: { index: number }): ReactNode {
   return (
     <Card
-      className="px-4 py-3 gap-2"
+      className="px-3 py-2 gap-2"
       data-testid={`web-search-skeleton-${index}`}
     >
       <Skeleton className="h-4 w-3/4" />
@@ -129,60 +145,77 @@ function SkeletonCard({ index }: { index: number }): React.ReactElement {
 }
 
 export function WebSearchRenderer({
-  toolCall,
-  config,
-}: ToolRendererProps): React.ReactElement {
-  const query = extractQuery(config, toolCall.toolArgs);
-  const isCompleted = Boolean(toolCall.isCompleted);
-  const results = extractResults(config, toolCall.toolResult);
+  toolArgs,
+  toolResult,
+  isCompleted,
+  renderPlan,
+  isGrouped = false,
+  isFirst = false,
+  isLast = false,
+  mode = "regular",
+}: ToolCallRendererProps): ReactNode {
+  const config = renderPlan?.config;
+  const query = useMemo(() => extractQuery(config, toolArgs), [config, toolArgs]);
+  const results = useMemo(() => extractResults(config, toolResult), [config, toolResult]);
   const headerLabel = query ? `Web search: ${query}` : "Web search";
 
+  const [isOpen, setIsOpen] = useState(false);
+
+  const rightContent = results ? (
+    <span className="text-xs text-muted-foreground" data-testid="web-search-count">
+      {results.length} {results.length === 1 ? "result" : "results"}
+    </span>
+  ) : null;
+
   return (
-    <Card
-      className={cn("p-4 gap-3")}
+    <Collapsible
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      isGrouped={isGrouped}
+      isFirst={isFirst}
+      isLast={isLast}
+      mode={mode}
+      shimmer={!isCompleted && !results}
       data-testid="web-search-renderer"
       data-completed={isCompleted ? "true" : "false"}
+      data-toolcall
     >
-      <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium text-foreground">
-          {headerLabel}
-        </span>
-        {results && (
-          <span
-            className="ml-auto text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground"
-            data-testid="web-search-count"
-          >
-            {results.length} {results.length === 1 ? "result" : "results"}
+      <CollapsibleTrigger rightContent={rightContent}>
+        <CollapsibleHeader>
+          <CollapsibleIcon icon={Search} />
+          <span className="text-sm font-medium text-foreground truncate min-w-0">
+            {headerLabel}
           </span>
+        </CollapsibleHeader>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        {!isCompleted && !results && (
+          <div className="flex flex-col gap-2" data-testid="web-search-loading">
+            <SkeletonCard index={0} />
+            <SkeletonCard index={1} />
+            <SkeletonCard index={2} />
+          </div>
         )}
-      </div>
 
-      {!isCompleted && !results && (
-        <div className="flex flex-col gap-2" data-testid="web-search-loading">
-          <SkeletonCard index={0} />
-          <SkeletonCard index={1} />
-          <SkeletonCard index={2} />
-        </div>
-      )}
+        {isCompleted && (!results || results.length === 0) && (
+          <div
+            className="text-sm text-muted-foreground"
+            data-testid="web-search-empty"
+          >
+            No results found
+          </div>
+        )}
 
-      {isCompleted && (!results || results.length === 0) && (
-        <div
-          className="text-sm text-muted-foreground"
-          data-testid="web-search-empty"
-        >
-          No results found
-        </div>
-      )}
-
-      {results && results.length > 0 && (
-        <div className="flex flex-col gap-2" data-testid="web-search-results">
-          {results.map((r, i) => (
-            <ResultCard key={`${r.url}-${i}`} result={r} index={i} />
-          ))}
-        </div>
-      )}
-    </Card>
+        {results && results.length > 0 && (
+          <div className="flex flex-col gap-2" data-testid="web-search-results">
+            {results.map((r, i) => (
+              <ResultCard key={`${r.url}-${i}`} result={r} index={i} />
+            ))}
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

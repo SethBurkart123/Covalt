@@ -113,6 +113,7 @@ def test_register_builtin_renderers_shape() -> None:
         "patch-diff",
         "web-search",
         "todo-list",
+        "task",
         "file-read",
         "key-value",
     }
@@ -128,7 +129,20 @@ def test_register_builtin_renderers_is_idempotent() -> None:
     register_builtin_renderers()
     register_builtin_renderers()
 
-    assert len(list_renderer_keys()) == 13
+    assert len(list_renderer_keys()) == 14
+
+
+def test_renderer_layout_metadata() -> None:
+    register_renderer(RendererDescriptor(key="wide", layout="standalone"))
+
+    descriptor = get_renderer("wide")
+    assert descriptor is not None
+    assert descriptor.layout == "standalone"
+
+
+def test_invalid_renderer_layout_raises() -> None:
+    with pytest.raises(ValueError, match="descriptor.layout"):
+        register_renderer(RendererDescriptor(key="bad", layout="floating"))
 
 
 def test_find_descriptor_by_tool_name_terminal_patterns() -> None:

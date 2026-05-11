@@ -19,6 +19,7 @@ import {
   coerceApprovalResolvedPayload,
   coerceToolCallPayload,
 } from "@/lib/services/stream-processor-utils";
+import { approvalToolPatch, upsertToolBlock } from "@/lib/services/tool-event-handler";
 
 function getOrCreateMemberBlock(
   state: StreamState,
@@ -54,6 +55,9 @@ function getOrCreateMemberBlock(
   }
   if (payload.groupByNode && !block.groupByNode) {
     block.groupByNode = true;
+  }
+  if (typeof payload.state === "string" && payload.state) {
+    block.state = payload.state;
   }
 
   return block;
@@ -155,30 +159,24 @@ export function processMemberEvent(
       flushMemberReasoning(block, memberState);
       break;
 
+    case RUNTIME_EVENT.WORKING_STATE_CHANGED:
+      if (typeof payload.state === "string" && payload.state) {
+        block.state = payload.state;
+      }
+      break;
+
     case RUNTIME_EVENT.TOOL_CALL_STARTED: {
       flushMemberText(block, memberState);
       flushMemberReasoning(block, memberState);
       const tool = coerceToolCallPayload(payload.tool, "Member.ToolCallStarted");
       if (!tool) break;
 
-      const existing = block.content.find(
-        (item): item is Extract<ContentBlock, { type: "tool_call" }> =>
-          item.type === "tool_call" && item.id === tool.id,
-      );
-
-      if (existing) {
-        existing.toolName = tool.toolName || existing.toolName;
-        existing.toolArgs = tool.toolArgs || existing.toolArgs;
-        existing.isCompleted = false;
-      } else {
-        block.content.push({
-          type: "tool_call",
-          id: tool.id,
-          toolName: tool.toolName,
-          toolArgs: tool.toolArgs,
-          isCompleted: false,
-        });
-      }
+      upsertToolBlock(block.content, {
+        id: tool.id,
+        toolName: tool.toolName,
+        toolArgs: tool.toolArgs,
+        isCompleted: false,
+      });
       break;
     }
 
@@ -213,19 +211,7 @@ export function processMemberEvent(
       if (!approvalPayload) break;
 
       for (const tool of approvalPayload.tools) {
-        block.content.push({
-          type: "tool_call",
-          id: tool.id,
-          toolName: tool.toolName,
-          toolArgs: tool.toolArgs,
-          isCompleted: false,
-          requiresApproval: true,
-          runId: approvalPayload.runId,
-          requestId: approvalPayload.requestId,
-          toolCallId: tool.id,
-          approvalStatus: "pending",
-          editableArgs: tool.editableArgs,
-        });
+        upsertToolBlock(block.content, approvalToolPatch(approvalPayload, tool));
       }
       break;
     }

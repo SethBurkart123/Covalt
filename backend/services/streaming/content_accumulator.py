@@ -39,6 +39,26 @@ class MemberRunState:
     current_reasoning: str = ""
 
 
+def _approval_tool_payload(tool: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": tool.get("id"),
+        "toolName": tool.get("toolName"),
+        "toolArgs": tool.get("toolArgs"),
+        "isCompleted": False,
+        "requiresApproval": True,
+        "runId": payload.get("runId"),
+        "toolCallId": tool.get("id"),
+        "approvalKind": payload.get("kind"),
+        "approvalStatus": "pending",
+        "editableArgs": tool.get("editableArgs"),
+        "riskLevel": payload.get("riskLevel"),
+        "summary": payload.get("summary"),
+        "options": payload.get("options"),
+        "questions": payload.get("questions"),
+        "editable": payload.get("editable"),
+    }
+
+
 class ContentAccumulator:
     def __init__(self, content_blocks: list[dict[str, Any]] | None = None) -> None:
         self.content_blocks: list[dict[str, Any]] = list(content_blocks or [])
@@ -173,6 +193,7 @@ class ContentAccumulator:
         *,
         name: str = "Agent",
         task: str = "",
+        state: str | None = None,
         node_id: str | None = None,
         node_type: str | None = None,
         group_by_node: bool | None = None,
@@ -194,6 +215,8 @@ class ContentAccumulator:
                 member_block["groupByNode"] = bool(group_by_node)
             if task and not member_block.get("task"):
                 member_block["task"] = task
+            if state:
+                member_block["state"] = state
             return member_state, False
 
         # Flush any buffered parent text/reasoning so chronological order is preserved
@@ -208,6 +231,8 @@ class ContentAccumulator:
             "isCompleted": False,
             "task": task,
         }
+        if state:
+            block["state"] = state
         if node_id:
             block["nodeId"] = node_id
         if node_type:
@@ -231,6 +256,7 @@ class ContentAccumulator:
             run_id,
             name=str(data.get("memberName") or "Agent"),
             task=str(data.get("task") or ""),
+            state=str(data.get("state") or "") or None,
             node_id=str(data.get("nodeId")) if data.get("nodeId") else None,
             node_type=str(data.get("nodeType")) if data.get("nodeType") else None,
             group_by_node=bool(data.get("groupByNode")) if data.get("groupByNode") is not None else None,
@@ -390,7 +416,7 @@ class ContentAccumulator:
                 entry["status"] = status
             return self.append_tool_progress(tool_id, entry) is not None
 
-        if event_name == EVENT_WORKING_STATE_CHANGED:
+        if event_name == EVENT_WORKING_STATE_CHANGED and not data.get("memberRunId"):
             new_state = data.get("state")
             if isinstance(new_state, str) and new_state:
                 self.message_state = new_state
@@ -442,6 +468,13 @@ class ContentAccumulator:
             if event_name == EVENT_REASONING_COMPLETED:
                 self.complete_member_reasoning(member_state)
                 return True
+
+            if event_name == EVENT_WORKING_STATE_CHANGED:
+                new_state = data.get("state")
+                if isinstance(new_state, str) and new_state:
+                    self.member_block(member_state)["state"] = new_state
+                    return True
+                return False
 
             if event_name == EVENT_TOOL_CALL_STARTED:
                 tool = data.get("tool") or {}
@@ -497,24 +530,14 @@ class ContentAccumulator:
                     return False
                 self.flush_member_text(member_state)
                 self.flush_member_reasoning(member_state)
-                request_id = tool_payload.get("requestId")
                 for tool in tools:
                     if not isinstance(tool, dict):
                         continue
-                    self.add_tool_block(
+                    self.update_tool_block(
                         member_content,
-                        {
-                            "id": tool.get("id"),
-                            "toolName": tool.get("toolName"),
-                            "toolArgs": tool.get("toolArgs"),
-                            "isCompleted": False,
-                            "requiresApproval": True,
-                            "runId": tool_payload.get("runId"),
-                            "requestId": request_id,
-                            "toolCallId": tool.get("id"),
-                            "approvalStatus": "pending",
-                            "editableArgs": tool.get("editableArgs"),
-                        },
+                        str(tool.get("id") or ""),
+                        _approval_tool_payload(tool, tool_payload),
+                        create=True,
                     )
                 return True
 
@@ -621,24 +644,14 @@ class ContentAccumulator:
                 return False
             self.flush_text()
             self.flush_reasoning()
-            request_id = tool_payload.get("requestId")
             for tool in tools:
                 if not isinstance(tool, dict):
                     continue
-                self.add_tool_block(
+                self.update_tool_block(
                     self.content_blocks,
-                    {
-                        "id": tool.get("id"),
-                        "toolName": tool.get("toolName"),
-                        "toolArgs": tool.get("toolArgs"),
-                        "isCompleted": False,
-                        "requiresApproval": True,
-                        "runId": tool_payload.get("runId"),
-                        "requestId": request_id,
-                        "toolCallId": tool.get("id"),
-                        "approvalStatus": "pending",
-                        "editableArgs": tool.get("editableArgs"),
-                    },
+                    str(tool.get("id") or ""),
+                    _approval_tool_payload(tool, tool_payload),
+                    create=True,
                 )
             return True
 

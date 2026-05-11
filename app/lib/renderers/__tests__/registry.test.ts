@@ -49,6 +49,29 @@ describe("renderer registry", () => {
     expect(getToolRenderer("no-tool")).toBeUndefined();
   });
 
+  it("preserves renderer layout metadata", () => {
+    const def: RendererDefinition = {
+      key: "wide",
+      layout: "standalone",
+      tool: noopTool,
+    };
+    registerRenderer(def);
+    expect(getToolRenderer("wide")?.layout).toBe("standalone");
+  });
+
+  it("preserves default renderer display metadata", () => {
+    const def: RendererDefinition = {
+      key: "ls-title",
+      display: { title: "ls {directory_path}", icon: "folder" },
+      tool: noopTool,
+    };
+    registerRenderer(def);
+    expect(getToolRenderer("ls-title")?.display).toEqual({
+      title: "ls {directory_path}",
+      icon: "folder",
+    });
+  });
+
   it("getApprovalRenderer filters by approval field", () => {
     const def: RendererDefinition = { key: "approve", approval: noopApproval };
     const other: RendererDefinition = { key: "tool-only", tool: noopTool };

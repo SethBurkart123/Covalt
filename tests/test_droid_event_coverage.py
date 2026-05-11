@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import deque
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,9 +12,13 @@ from droid_sdk import (
     AssistantTextDelta,
     ThinkingTextDelta,
     TokenUsageUpdate,
+    ToolProgress,
+    ToolResult,
+    ToolUse,
     TurnComplete,
     WorkingStateChanged,
 )
+from droid_sdk.schemas.cli import ToolProgressUpdateNotification
 from droid_sdk.schemas.enums import DroidWorkingState
 
 from backend.services.streaming.content_accumulator import (
@@ -101,6 +107,28 @@ def test_working_state_changed_updates_message_state() -> None:
     assert acc.message_state == "executing_tool"
 
 
+def test_member_working_state_updates_member_preview_state() -> None:
+    acc = ContentAccumulator()
+    acc.apply_agent_event(
+        {
+            "event": "MemberRunStarted",
+            "memberRunId": "member-1",
+            "memberName": "Worker",
+        }
+    )
+    handled = acc.apply_agent_event(
+        {
+            "event": EVENT_WORKING_STATE_CHANGED,
+            "memberRunId": "member-1",
+            "memberName": "Worker",
+            "state": "executing",
+        }
+    )
+    assert handled is True
+    assert acc.message_state is None
+    assert acc.content_blocks[0]["state"] == "executing"
+
+
 def test_token_usage_updates_message_totals() -> None:
     acc = ContentAccumulator()
     handled = acc.apply_agent_event(
@@ -187,7 +215,10 @@ async def test_drain_stream_auto_closes_reasoning_on_text_delta() -> None:
         queue=queue,
         content_parts=[],
         tool_name_by_id={},
+        tool_args_by_id={},
+        pending_progress=deque(),
         pending_result_ids=deque(),
+        cwd="/tmp",
     )
 
     events: list[Any] = []
@@ -225,7 +256,10 @@ async def test_drain_stream_emits_token_usage_and_state_events() -> None:
         queue=queue,
         content_parts=[],
         tool_name_by_id={},
+        tool_args_by_id={},
+        pending_progress=deque(),
         pending_result_ids=deque(),
+        cwd="/tmp",
     )
 
     events: list[Any] = []
@@ -236,3 +270,283 @@ async def test_drain_stream_emits_token_usage_and_state_events() -> None:
     event_names = [e.data.get("event") for e in events]
     assert "WorkingStateChanged" in event_names
     assert "TokenUsage" in event_names
+
+
+@pytest.mark.asyncio
+async def test_drain_stream_maps_droid_task_to_member_run() -> None:
+    class _FakeClient:
+        async def receive_response(self):
+            yield ToolUse(
+                tool_name="Task",
+                tool_input={
+                    "description": "Review frontend renderers",
+                    "subagent_type": "worker",
+                    "prompt": "Check the UI.",
+                },
+                tool_use_id="task-1",
+            )
+            yield ToolProgress(tool_name="Task", content="Reading files")
+            yield ToolResult(
+                tool_name="",
+                content="session_id: 00000000-0000-0000-0000-000000000000 done",
+                is_error=False,
+            )
+            yield TurnComplete()
+
+    progress = ToolProgressUpdateNotification.model_validate(
+        {
+            "type": "tool_progress_update",
+            "toolUseId": "task-1",
+            "toolName": "Task",
+            "update": {
+                "type": "message",
+                "text": "Reading files",
+            },
+        }
+    )
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    ctx = _make_context()
+    await _drain_response_stream(
+        client=_FakeClient(),
+        context=ctx,
+        queue=queue,
+        content_parts=[],
+        tool_name_by_id={},
+        tool_args_by_id={},
+        pending_progress=deque([progress]),
+        pending_result_ids=deque(["task-1"]),
+        cwd="/tmp",
+    )
+
+    events: list[Any] = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    events.pop()
+
+    event_names = [e.data.get("event") for e in events]
+    assert event_names == [
+        "MemberRunStarted",
+        "RunContent",
+        "RunContent",
+        "MemberRunCompleted",
+    ]
+    assert events[0].data["memberName"] == "Review frontend renderers"
+    assert events[0].data["task"] == "Check the UI."
+    assert events[1].data["content"] == "Reading files"
+    assert events[2].data["content"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_drain_stream_completes_droid_task_child_tools_with_outputs() -> None:
+    class _FakeClient:
+        async def receive_response(self):
+            yield ToolUse(
+                tool_name="Task",
+                tool_input={"description": "Review frontend", "prompt": "Inspect files"},
+                tool_use_id="task-1",
+            )
+            yield ToolProgress(tool_name="Task", content="Read")
+            yield ToolProgress(tool_name="Task", content="Read complete")
+            yield ToolResult(tool_name="", content="", is_error=False)
+            yield TurnComplete()
+
+    progress = [
+        ToolProgressUpdateNotification.model_validate(
+            {
+                "type": "tool_progress_update",
+                "toolUseId": "task-1",
+                "toolName": "Task",
+                "update": {
+                    "type": "tool_call",
+                    "toolName": "Read",
+                    "parameters": {"file_path": "README.md"},
+                },
+            }
+        ),
+        ToolProgressUpdateNotification.model_validate(
+            {
+                "type": "tool_progress_update",
+                "toolUseId": "task-1",
+                "toolName": "Task",
+                "update": {
+                    "type": "tool_result",
+                    "toolName": "Read",
+                    "text": "README contents",
+                },
+            }
+        ),
+    ]
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    ctx = _make_context()
+    await _drain_response_stream(
+        client=_FakeClient(),
+        context=ctx,
+        queue=queue,
+        content_parts=[],
+        tool_name_by_id={},
+        tool_args_by_id={},
+        pending_progress=deque(progress),
+        pending_result_ids=deque(["task-1"]),
+        cwd="/tmp",
+    )
+
+    events: list[Any] = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    events.pop()
+
+    tool_events = [event for event in events if event.data.get("event", "").startswith("ToolCall")]
+    assert [event.data["event"] for event in tool_events] == [
+        "ToolCallStarted",
+        "ToolCallCompleted",
+    ]
+    assert tool_events[0].data["tool"]["toolArgs"] == {"file_path": "README.md"}
+    assert tool_events[1].data["tool"]["toolArgs"] == {"file_path": "README.md"}
+    assert tool_events[1].data["tool"]["toolResult"] == "README contents"
+
+
+@pytest.mark.asyncio
+async def test_drain_stream_backfills_droid_task_session_tool_results(
+    tmp_path, monkeypatch
+) -> None:
+    session_id = "e22623b6-ebc1-40f9-a8c6-496e938ea1d1"
+    cwd = "/repo"
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    session_dir = tmp_path / ".factory" / "sessions" / cwd.replace("/", "-")
+    session_dir.mkdir(parents=True)
+    session_file = session_dir / f"{session_id}.jsonl"
+    session_file.write_text(
+        "\n".join(
+            json.dumps(item)
+            for item in [
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "read-1",
+                                "name": "Read",
+                                "input": {"file_path": "README.md"},
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "read-1",
+                                "is_error": False,
+                                "content": "README contents",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "ls-1",
+                                "name": "LS",
+                                "input": {"directory_path": "."},
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "ls-1",
+                                "is_error": False,
+                                "content": "README.md",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "pending-1",
+                                "name": "Read",
+                                "input": {"file_path": "pending.md"},
+                            }
+                        ],
+                    },
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _FakeClient:
+        async def receive_response(self):
+            yield ToolUse(
+                tool_name="Task",
+                tool_input={"description": "Explore", "prompt": "Look around"},
+                tool_use_id="task-1",
+            )
+            yield ToolProgress(tool_name="Task", content="Read")
+            yield ToolResult(
+                tool_name="",
+                content=f"session_id: {session_id}\nFinal result",
+                is_error=False,
+            )
+            yield TurnComplete()
+
+    progress = ToolProgressUpdateNotification.model_validate(
+        {
+            "type": "tool_progress_update",
+            "toolUseId": "task-1",
+            "toolName": "Task",
+            "update": {
+                "type": "tool_call",
+                "toolName": "Read",
+                "parameters": {"file_path": "README.md"},
+                "subagentSessionId": session_id,
+            },
+        }
+    )
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    await _drain_response_stream(
+        client=_FakeClient(),
+        context=_make_context(),
+        queue=queue,
+        content_parts=[],
+        tool_name_by_id={},
+        tool_args_by_id={},
+        pending_progress=deque([progress]),
+        pending_result_ids=deque(["task-1"]),
+        cwd=cwd,
+    )
+
+    events: list[Any] = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    events.pop()
+
+    tool_events = [event for event in events if event.data.get("event", "").startswith("ToolCall")]
+    assert [event.data["event"] for event in tool_events] == [
+        "ToolCallStarted",
+        "ToolCallCompleted",
+        "ToolCallStarted",
+        "ToolCallCompleted",
+    ]
+    assert tool_events[1].data["tool"]["toolResult"] == "README contents"
+    assert tool_events[3].data["tool"]["toolName"] == "LS"
+    assert tool_events[3].data["tool"]["toolResult"] == "README.md"

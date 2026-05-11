@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { listRegisteredKeys, getRendererByKey } from "@/lib/renderers";
-import { getToolCallRenderer } from "../registry";
+import { getToolCallRenderer, getToolCallRendererDisplay } from "../registry";
 
 describe("tool-renderers registry wiring", () => {
   it("registers the six built-in renderers via the unified registry", () => {
@@ -26,5 +26,18 @@ describe("tool-renderers registry wiring", () => {
     const def = await getToolCallRenderer("does-not-exist");
     const fallback = await getToolCallRenderer("default");
     expect(def).toBe(fallback);
+  });
+
+  it("resolves renderer by tool name when no render plan is stored", async () => {
+    const byKey = await getToolCallRenderer("task");
+    const byToolName = await getToolCallRenderer(undefined, "Task");
+    expect(byToolName).toBe(byKey);
+  });
+
+  it("exposes default-renderer display metadata by tool name", () => {
+    expect(getToolCallRendererDisplay(undefined, "LS")).toEqual({
+      title: "ls {directory_path}",
+      icon: "folder",
+    });
   });
 });

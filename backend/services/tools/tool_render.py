@@ -12,6 +12,7 @@ from ... import db
 from ...db.models import ToolCall as DbToolCall
 from ...models.chat import ToolCallPayload
 from ..renderers.registry import find_descriptor_by_tool_name
+from ..streaming.runtime_events import EVENT_TOOL_CALL_COMPLETED
 from ..workspace_manager import get_workspace_manager
 from .render_plan_builder import get_render_plan_builder
 from .tool_registry import get_tool_registry
@@ -199,7 +200,6 @@ def _ensure_tool_call_completed_payload(
 ) -> None:
     event_name = str(payload.get("event") or "")
     if event_name != "tool_call_completed":
-        from ..streaming.runtime_events import EVENT_TOOL_CALL_COMPLETED
         if event_name != EVENT_TOOL_CALL_COMPLETED:
             return
 

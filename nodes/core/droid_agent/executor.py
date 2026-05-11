@@ -8,10 +8,11 @@ advanced popover, scoped per-node so multiple Droid nodes coexist.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
-import uuid
 from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,7 @@ from droid_sdk.errors import (
 from droid_sdk.errors import (
     TimeoutError as DroidTimeoutError,
 )
-from droid_sdk.schemas.cli import ToolResultNotification
+from droid_sdk.schemas.cli import ToolProgressUpdateNotification, ToolResultNotification
 from droid_sdk.schemas.enums import (
     AutonomyLevel,
     DroidInteractionMode,
@@ -69,6 +70,22 @@ _INTERACTION_MODES = ["auto", "spec"]
 # Process-local session cache so we resume the same droid session across turns
 # in the same chat. Keyed by `chat_id:node_id`; lost on backend restart.
 _session_cache: dict[str, str] = {}
+
+
+@dataclass
+class _DroidTaskRun:
+    member_run_id: str
+    member_name: str
+    task: str
+    cwd: str
+    subagent_session_id: str = ""
+    pending_tool_ids: deque[str] = field(default_factory=deque)
+    tool_args_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    tool_name_by_id: dict[str, str] = field(default_factory=dict)
+    completed_session_indices: set[int] = field(default_factory=set)
+    tool_counter: int = 0
+    completed_child_count: int = 0
+    last_text: str = ""
 
 
 class DroidAgentExecutor:
@@ -228,6 +245,8 @@ class DroidAgentExecutor:
 
         content_parts: list[str] = []
         tool_name_by_id: dict[str, str] = {}
+        tool_args_by_id: dict[str, dict[str, Any]] = {}
+        pending_progress: deque[ToolProgressUpdateNotification] = deque()
         pending_result_ids: deque[str] = deque()
 
         def _on_tool_result_notif(notification_dict: dict[str, Any]) -> None:
@@ -238,6 +257,15 @@ class DroidAgentExecutor:
                 logger.debug("Failed to parse tool_result notification", exc_info=True)
                 return
             pending_result_ids.append(parsed.tool_use_id)
+
+        def _on_tool_progress_notif(notification_dict: dict[str, Any]) -> None:
+            try:
+                inner = notification_dict.get("params", {}).get("notification", {})
+                parsed = ToolProgressUpdateNotification.model_validate(inner)
+            except Exception:
+                logger.debug("Failed to parse tool_progress notification", exc_info=True)
+                return
+            pending_progress.append(parsed)
 
         # Queue is the bridge between the SDK response stream and the
         # permission/ask_user handler callbacks: both producers push NodeEvents
@@ -270,6 +298,10 @@ class DroidAgentExecutor:
                 _on_tool_result_notif,
                 notification_type=SessionNotificationType.TOOL_RESULT,
             )
+            unsub_progress = client.on_notification(
+                _on_tool_progress_notif,
+                notification_type=SessionNotificationType.TOOL_PROGRESS_UPDATE,
+            )
             client.set_permission_handler(_permission_handler)
             client.set_ask_user_handler(_ask_user_handler)
 
@@ -300,7 +332,10 @@ class DroidAgentExecutor:
                     queue=event_queue,
                     content_parts=content_parts,
                     tool_name_by_id=tool_name_by_id,
+                    tool_args_by_id=tool_args_by_id,
+                    pending_progress=pending_progress,
                     pending_result_ids=pending_result_ids,
+                    cwd=cwd,
                 )
             )
 
@@ -355,6 +390,10 @@ class DroidAgentExecutor:
                 with _suppress_errors():
                     await stream_task
             unsub = locals().get("unsub_result")
+            if callable(unsub):
+                with _suppress_errors():
+                    unsub()
+            unsub = locals().get("unsub_progress")
             if callable(unsub):
                 with _suppress_errors():
                     unsub()
@@ -512,6 +551,342 @@ def _make_stream_warning_event(
     )
 
 
+def _is_droid_task_tool(tool_name: str | None) -> bool:
+    return str(tool_name or "").strip().lower() == "task"
+
+
+def _text_arg(args: dict[str, Any], key: str) -> str:
+    value = args.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _start_task_member_run(
+    context: FlowContext,
+    *,
+    tool_id: str,
+    tool_input: dict[str, Any],
+    cwd: str,
+) -> tuple[_DroidTaskRun, NodeEvent]:
+    description = _text_arg(tool_input, "description")
+    subagent_type = _text_arg(tool_input, "subagent_type")
+    prompt = _text_arg(tool_input, "prompt")
+    task_run = _DroidTaskRun(
+        member_run_id=f"{context.run_id}:task:{tool_id}",
+        member_name=description or subagent_type or "Task",
+        task=prompt or description,
+        cwd=cwd,
+    )
+    return task_run, _agent_event(
+        context,
+        "MemberRunStarted",
+        memberRunId=task_run.member_run_id,
+        memberName=task_run.member_name,
+        task=task_run.task,
+        nodeId=context.node_id,
+        nodeType=DroidAgentExecutor.node_type,
+    )
+
+
+def _task_member_fields(task_run: _DroidTaskRun) -> dict[str, Any]:
+    return {
+        "memberRunId": task_run.member_run_id,
+        "memberName": task_run.member_name,
+        "task": task_run.task,
+        "nodeType": DroidAgentExecutor.node_type,
+    }
+
+
+def _coerce_tool_result_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(str(item) for item in content if item is not None)
+    return "" if content is None else str(content)
+
+
+def _tool_key(tool_name: str, tool_args: dict[str, Any]) -> str:
+    try:
+        args = json.dumps(tool_args, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        args = str(tool_args)
+    return f"{tool_name.lower()}:{args}"
+
+
+def _clean_task_text(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        cleaned = re.sub(r"(?i)\bsession_id:\s*[0-9a-f-]{20,}\b", "", line)
+        if cleaned.strip():
+            lines.append(cleaned if cleaned == line else cleaned.strip())
+    return "\n".join(lines).strip()
+
+
+def _task_session_id(text: str) -> str:
+    match = re.search(r"(?i)\bsession_id:\s*([0-9a-f-]{20,})\b", text)
+    return match.group(1) if match else ""
+
+
+def _is_internal_task_text(text: str) -> bool:
+    normalized = text.strip().lower()
+    return normalized in {"executing", "subagent session started"}
+
+
+async def _emit_task_state(
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+    task_run: _DroidTaskRun,
+    state: str,
+) -> None:
+    if not state:
+        return
+    await queue.put(
+        _agent_event(
+            context,
+            "WorkingStateChanged",
+            state=state,
+            **_task_member_fields(task_run),
+        )
+    )
+
+
+async def _emit_task_progress(
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+    task_run: _DroidTaskRun,
+    notification: ToolProgressUpdateNotification,
+) -> None:
+    update = notification.update
+    update_type = str(update.type)
+    fields = _task_member_fields(task_run)
+    if update.subagent_session_id:
+        task_run.subagent_session_id = update.subagent_session_id
+    else:
+        task_run.subagent_session_id = (
+            task_run.subagent_session_id
+            or _task_session_id(update.text or update.details or "")
+        )
+
+    if update_type == "status":
+        await _emit_task_state(
+            context,
+            queue,
+            task_run,
+            update.status or update.details or update.text or "running",
+        )
+        return
+
+    if update_type == "message":
+        text = _clean_task_text(update.text or update.details or "")
+        if text:
+            if _is_internal_task_text(text):
+                await _emit_task_state(context, queue, task_run, text)
+                return
+            task_run.last_text = text
+            await queue.put(_agent_event(context, "RunContent", content=text, **fields))
+        return
+
+    if update_type == "tool_call":
+        child_id = f"{task_run.member_run_id}:tool:{task_run.tool_counter}"
+        task_run.tool_counter += 1
+        tool_args = dict(update.parameters or {})
+        task_run.pending_tool_ids.append(child_id)
+        task_run.tool_args_by_id[child_id] = tool_args
+        task_run.tool_name_by_id[child_id] = update.tool_name or "tool"
+        await queue.put(
+            _agent_event(
+                context,
+                "ToolCallStarted",
+                tool={
+                    "id": child_id,
+                    "toolName": update.tool_name or "tool",
+                    "toolArgs": tool_args,
+                    "isCompleted": False,
+                },
+                **fields,
+            )
+        )
+        return
+
+    if update_type == "tool_result":
+        if task_run.pending_tool_ids:
+            child_id = task_run.pending_tool_ids.popleft()
+        else:
+            child_id = f"{task_run.member_run_id}:tool:{task_run.tool_counter}"
+            task_run.tool_counter += 1
+        await queue.put(
+            _agent_event(
+                context,
+                "ToolCallCompleted",
+                tool={
+                    "id": child_id,
+                    "toolName": update.tool_name or "tool",
+                    "toolArgs": task_run.tool_args_by_id.get(child_id, {}),
+                    "toolResult": update.text or update.details or update.value_snippet or "",
+                    "failed": False,
+                },
+                **fields,
+            )
+        )
+        task_run.completed_child_count += 1
+        return
+
+    if update_type == "error":
+        message = update.error or update.text or update.details or "Task failed"
+        await queue.put(_agent_event(context, "MemberRunError", content=message, **fields))
+
+
+def _session_jsonl_path(cwd: str, session_id: str) -> Path | None:
+    if not session_id:
+        return None
+    root = Path.home() / ".factory" / "sessions"
+    direct = root / str(Path(cwd)).replace("/", "-") / f"{session_id}.jsonl"
+    if direct.exists():
+        return direct
+    return next(root.glob(f"*/{session_id}.jsonl"), None) if root.exists() else None
+
+
+def _task_session_tools(cwd: str, session_id: str) -> list[dict[str, Any]]:
+    path = _session_jsonl_path(cwd, session_id)
+    if path is None:
+        return []
+
+    tools: list[dict[str, Any]] = []
+    by_id: dict[str, dict[str, Any]] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            content = ((item.get("message") or {}).get("content") or [])
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use":
+                    tool = {
+                        "sessionIndex": len(tools),
+                        "toolName": block.get("name") or "tool",
+                        "toolArgs": dict(block.get("input") or {}),
+                        "toolResult": "",
+                        "failed": False,
+                        "hasResult": False,
+                    }
+                    by_id[str(block.get("id") or "")] = tool
+                    tools.append(tool)
+                elif block.get("type") == "tool_result":
+                    tool = by_id.get(str(block.get("tool_use_id") or ""))
+                    if tool is not None:
+                        tool["toolResult"] = _coerce_tool_result_text(
+                            block.get("content")
+                        )
+                        tool["failed"] = bool(block.get("is_error"))
+                        tool["hasResult"] = True
+    return [tool for tool in tools if tool["hasResult"]]
+
+
+def _find_session_tool(
+    tools: list[dict[str, Any]],
+    task_run: _DroidTaskRun,
+    *,
+    child_id: str | None = None,
+) -> dict[str, Any] | None:
+    child_key = None
+    if child_id is not None:
+        child_key = _tool_key(
+            task_run.tool_name_by_id.get(child_id, ""),
+            task_run.tool_args_by_id.get(child_id, {}),
+        )
+    for tool in tools:
+        if tool["sessionIndex"] in task_run.completed_session_indices:
+            continue
+        if child_key and child_key != _tool_key(tool["toolName"], tool["toolArgs"]):
+            continue
+        return tool
+    return None
+
+
+async def _backfill_task_session_tools(
+    context: FlowContext,
+    queue: asyncio.Queue[Any],
+    task_run: _DroidTaskRun,
+    *,
+    emit_missing_starts: bool = False,
+) -> None:
+    tools = _task_session_tools(task_run.cwd, task_run.subagent_session_id)
+    if not tools:
+        return
+
+    fields = _task_member_fields(task_run)
+    while task_run.pending_tool_ids:
+        child_id = task_run.pending_tool_ids[0]
+        tool = _find_session_tool(tools, task_run, child_id=child_id)
+        if tool is None:
+            break
+        task_run.pending_tool_ids.popleft()
+        await queue.put(
+            _agent_event(
+                context,
+                "ToolCallCompleted",
+                tool={
+                    "id": child_id,
+                    "toolName": tool["toolName"],
+                    "toolArgs": task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
+                    "toolResult": tool["toolResult"],
+                    "failed": tool["failed"],
+                },
+                **fields,
+            )
+        )
+        task_run.completed_session_indices.add(tool["sessionIndex"])
+        task_run.completed_child_count += 1
+
+    if not emit_missing_starts:
+        return
+
+    while True:
+        tool = _find_session_tool(tools, task_run)
+        if tool is None:
+            return
+        if task_run.pending_tool_ids:
+            child_id = task_run.pending_tool_ids.popleft()
+        else:
+            child_id = f"{task_run.member_run_id}:tool:{task_run.tool_counter}"
+            task_run.tool_counter += 1
+            task_run.tool_args_by_id[child_id] = dict(tool["toolArgs"])
+            task_run.tool_name_by_id[child_id] = tool["toolName"]
+            await queue.put(
+                _agent_event(
+                    context,
+                    "ToolCallStarted",
+                    tool={
+                        "id": child_id,
+                        "toolName": tool["toolName"],
+                        "toolArgs": tool["toolArgs"],
+                        "isCompleted": False,
+                    },
+                    **fields,
+                )
+            )
+        await queue.put(
+            _agent_event(
+                context,
+                "ToolCallCompleted",
+                tool={
+                    "id": child_id,
+                    "toolName": tool["toolName"],
+                    "toolArgs": task_run.tool_args_by_id.get(child_id, tool["toolArgs"]),
+                    "toolResult": tool["toolResult"],
+                    "failed": tool["failed"],
+                },
+                **fields,
+            )
+        )
+        task_run.completed_session_indices.add(tool["sessionIndex"])
+        task_run.completed_child_count += 1
+
+
 _RECOVERABLE_DROID_ERRORS = (DroidConnectionError, DroidTimeoutError)
 
 
@@ -522,9 +897,13 @@ async def _drain_response_stream(
     queue: asyncio.Queue[Any],
     content_parts: list[str],
     tool_name_by_id: dict[str, str],
+    tool_args_by_id: dict[str, dict[str, Any]],
+    pending_progress: deque[ToolProgressUpdateNotification],
     pending_result_ids: deque[str],
+    cwd: str,
 ) -> None:
     reasoning_open = False
+    task_runs: dict[str, _DroidTaskRun] = {}
 
     async def _close_reasoning_if_open() -> None:
         nonlocal reasoning_open
@@ -564,6 +943,17 @@ async def _drain_response_stream(
                     # renders in its own UI region.
                     await _close_reasoning_if_open()
                     tool_name_by_id[msg.tool_use_id] = msg.tool_name
+                    tool_args_by_id[msg.tool_use_id] = dict(msg.tool_input or {})
+                    if _is_droid_task_tool(msg.tool_name):
+                        task_run, event = _start_task_member_run(
+                            context,
+                            tool_id=msg.tool_use_id,
+                            tool_input=dict(msg.tool_input or {}),
+                            cwd=cwd,
+                        )
+                        task_runs[msg.tool_use_id] = task_run
+                        await queue.put(event)
+                        continue
                     await queue.put(
                         _agent_event(
                             context,
@@ -586,6 +976,41 @@ async def _drain_response_stream(
                         or (tool_name_by_id.get(tool_id) if tool_id else "")
                         or ""
                     )
+                    task_run = task_runs.pop(tool_id, None)
+                    if task_run is not None:
+                        fields = _task_member_fields(task_run)
+                        if msg.is_error:
+                            await queue.put(
+                                _agent_event(
+                                    context,
+                                    "MemberRunError",
+                                    content=_coerce_tool_result_text(msg.content) or "Task failed",
+                                    **fields,
+                                )
+                            )
+                        else:
+                            raw_text = _coerce_tool_result_text(msg.content)
+                            task_run.subagent_session_id = (
+                                task_run.subagent_session_id
+                                or _task_session_id(raw_text)
+                            )
+                            await _backfill_task_session_tools(
+                                context, queue, task_run, emit_missing_starts=True
+                            )
+                            final_text = _clean_task_text(raw_text)
+                            if final_text and final_text != task_run.last_text:
+                                await queue.put(
+                                    _agent_event(
+                                        context,
+                                        "RunContent",
+                                        content=final_text,
+                                        **fields,
+                                    )
+                                )
+                            await queue.put(
+                                _agent_event(context, "MemberRunCompleted", **fields)
+                            )
+                        continue
                     await queue.put(
                         _agent_event(
                             context,
@@ -593,6 +1018,7 @@ async def _drain_response_stream(
                             tool={
                                 "id": tool_id,
                                 "toolName": tool_name,
+                                "toolArgs": tool_args_by_id.get(tool_id, {}),
                                 "toolResult": msg.content,
                                 "failed": bool(msg.is_error),
                             },
@@ -601,10 +1027,18 @@ async def _drain_response_stream(
                     continue
 
                 if isinstance(msg, ToolProgress):
-                    tool_id = ""
-                    for tid, tname in tool_name_by_id.items():
-                        if tname == msg.tool_name:
-                            tool_id = tid
+                    notification = pending_progress.popleft() if pending_progress else None
+                    tool_id = notification.tool_use_id if notification is not None else ""
+                    if not tool_id:
+                        for tid, tname in tool_name_by_id.items():
+                            if tname == msg.tool_name:
+                                tool_id = tid
+                                break
+                    task_run = task_runs.get(tool_id)
+                    if task_run is not None and notification is not None:
+                        await _emit_task_progress(context, queue, task_run, notification)
+                        await _backfill_task_session_tools(context, queue, task_run)
+                        continue
                     await queue.put(
                         _make_tool_call_progress_event(
                             context,
@@ -688,30 +1122,27 @@ async def _handle_permission_request(
     context: FlowContext,
     queue: asyncio.Queue[Any],
 ) -> str:
-    request_id = uuid.uuid4().hex
-    approval_event = droid_permission_to_approval(
-        params, run_id=run_id, request_id=request_id
+    approval_event, pending_tools = droid_permission_to_approval(params, run_id=run_id)
+    await queue.put(
+        _approval_required_node_event(context, approval_event, pending_tools)
     )
-    await queue.put(_approval_required_node_event(context, approval_event))
 
     waiter = asyncio.Event()
-    run_control.register_approval_waiter(
-        run_id, request_id, waiter, owner_run_id=run_id
+    tool_ids = [str(t.get("id") or "") for t in pending_tools if t.get("id")]
+    session = run_control.register_approval_session(
+        run_id, tool_ids, waiter, owner_run_id=run_id
     )
     try:
         await waiter.wait()
-        cancelled = run_control.was_approval_cancelled(run_id, request_id)
-        record = run_control.get_approval_response(run_id, request_id)
-        resolved = approval_resolved_event(
-            run_id=run_id,
-            request_id=request_id,
-            record=record,
-            cancelled=cancelled,
+        resolved, resolved_tools = approval_resolved_event(
+            run_id=run_id, session=session, pending_tools=pending_tools
         )
-        await queue.put(_approval_resolved_node_event(context, resolved))
-        return droid_permission_response(record, cancelled=cancelled)
+        await queue.put(
+            _approval_resolved_node_event(context, resolved, resolved_tools)
+        )
+        return droid_permission_response(session)
     finally:
-        run_control.clear_approval(run_id, request_id)
+        run_control.clear_session(session)
 
 
 async def _handle_ask_user_request(
@@ -722,45 +1153,44 @@ async def _handle_ask_user_request(
     queue: asyncio.Queue[Any],
     question_lookup: dict[str, list[ApprovalQuestion]],
 ) -> dict[str, Any]:
-    request_id = uuid.uuid4().hex
-    approval_event = droid_ask_user_to_approval(
-        params, run_id=run_id, request_id=request_id
+    approval_event, pending_tools = droid_ask_user_to_approval(params, run_id=run_id)
+    dialog_tool_id = str(pending_tools[0].get("id") or "")
+    question_lookup[dialog_tool_id] = list(approval_event.questions)
+    await queue.put(
+        _approval_required_node_event(context, approval_event, pending_tools)
     )
-    question_lookup[request_id] = list(approval_event.questions)
-    await queue.put(_approval_required_node_event(context, approval_event))
 
     waiter = asyncio.Event()
-    run_control.register_approval_waiter(
-        run_id, request_id, waiter, owner_run_id=run_id
+    session = run_control.register_approval_session(
+        run_id, [dialog_tool_id], waiter, owner_run_id=run_id
     )
     try:
         await waiter.wait()
-        cancelled = run_control.was_approval_cancelled(run_id, request_id)
-        record = run_control.get_approval_response(run_id, request_id)
-        resolved = approval_resolved_event(
-            run_id=run_id,
-            request_id=request_id,
-            record=record,
-            cancelled=cancelled,
+        resolved, resolved_tools = approval_resolved_event(
+            run_id=run_id, session=session, pending_tools=pending_tools
         )
-        await queue.put(_approval_resolved_node_event(context, resolved))
+        await queue.put(
+            _approval_resolved_node_event(context, resolved, resolved_tools)
+        )
         return droid_ask_user_response(
-            record,
-            cancelled=cancelled,
-            questions=question_lookup.get(request_id, []),
+            session,
+            questions=question_lookup.get(dialog_tool_id, []),
         )
     finally:
-        run_control.clear_approval(run_id, request_id)
-        question_lookup.pop(request_id, None)
+        run_control.clear_session(session)
+        question_lookup.pop(dialog_tool_id, None)
 
 
-def _approval_required_node_event(context: FlowContext, event: Any) -> NodeEvent:
+def _approval_required_node_event(
+    context: FlowContext,
+    event: Any,
+    pending_tools: list[dict[str, Any]],
+) -> NodeEvent:
     return _agent_event(
         context,
         "ApprovalRequired",
-        approval={
+        tool={
             "runId": event.run_id,
-            "requestId": event.request_id,
             "kind": event.kind,
             "toolUseIds": list(event.tool_use_ids or []),
             "toolName": event.tool_name,
@@ -799,23 +1229,28 @@ def _approval_required_node_event(context: FlowContext, event: Any) -> NodeEvent
             "renderer": event.renderer,
             "config": dict(event.config) if isinstance(event.config, dict) else {},
             "timeoutMs": event.timeout_ms,
+            "tools": pending_tools,
         },
     )
 
 
-def _approval_resolved_node_event(context: FlowContext, event: Any) -> NodeEvent:
+def _approval_resolved_node_event(
+    context: FlowContext,
+    event: Any,
+    resolved_tools: list[dict[str, Any]],
+) -> NodeEvent:
     return _agent_event(
         context,
         "ApprovalResolved",
-        approval={
+        tool={
             "runId": event.run_id,
-            "requestId": event.request_id,
             "selectedOption": event.selected_option,
             "answers": [
                 {"index": a.index, "answer": a.answer} for a in event.answers
             ],
             "editedArgs": event.edited_args,
             "cancelled": bool(event.cancelled),
+            "tools": resolved_tools,
         },
     )
 

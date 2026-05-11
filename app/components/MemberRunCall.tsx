@@ -24,6 +24,7 @@ interface MemberRunCallProps {
   isCompleted?: boolean;
   hasError?: boolean;
   cancelled?: boolean;
+  state?: string;
   alwaysOpen?: boolean;
   compact?: boolean;
 }
@@ -38,6 +39,7 @@ export default function MemberRunCall({
   isCompleted = false,
   hasError = false,
   cancelled = false,
+  state,
   alwaysOpen = false,
   compact = false,
 }: MemberRunCallProps) {
@@ -61,6 +63,8 @@ export default function MemberRunCall({
       ? "Cancelled"
       : activeTools.length > 0
         ? `Running ${activeTools[0].toolName}${activeTools.length > 1 ? ` +${activeTools.length - 1}` : ""}`
+        : state && !isCompleted
+          ? state.replace(/[_-]+/g, " ")
         : undefined;
   const nameLabel = memberName || "Agent";
   const mode = compact || alwaysOpen ? "compact" : "regular";
@@ -129,14 +133,7 @@ export default function MemberRunCall({
               return (
                 <ToolCall
                   key={block.id || `tool-${i}`}
-                  id={block.id}
-                  toolName={block.toolName}
-                  toolArgs={block.toolArgs}
-                  toolResult={block.toolResult}
-                  isCompleted={block.isCompleted}
-                  toolCallId={block.toolCallId || block.id}
-                  renderPlan={block.renderPlan}
-                  failed={block.failed}
+                  {...block}
                   mode="minimal"
                 />
               );

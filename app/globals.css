@@ -81,6 +81,8 @@
   --shadow-opacity: var(--shadow-opacity);
   --color-shadow-color: var(--shadow-color);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --animate-skeleton: skeleton 2s -1s infinite linear;
   @keyframes skeleton {
     to {
@@ -107,6 +109,8 @@
   --accent: oklch(0.83 0.11 58);
   --accent-foreground: oklch(0.34 0.01 2.77);
   --destructive: oklch(0.61 0.21 22.24);
+  --success: oklch(0.55 0.13 145);
+  --success-foreground: oklch(1 0 0);
   --border: oklch(0.93 0.04 38.69);
   --input: oklch(0.93 0.04 38.69);
   --ring: oklch(0.74 0.16 34.71);
@@ -178,6 +182,8 @@
   --accent: oklch(0.26 0.02 349.45 / 0.68);
   --accent-foreground: oklch(0.94 0.01 51.32);
   --destructive: oklch(0.61 0.21 22.24);
+  --success: oklch(0.74 0.15 145);
+  --success-foreground: oklch(0.18 0.05 145);
   --border: oklch(0.36 0.02 342.27);
   --input: oklch(0.36 0.02 342.27);
   --ring: oklch(0.74 0.16 34.71);
@@ -957,6 +963,8 @@ body {
   --accent-foreground: oklch(0.34 0.01 2.77);
   --destructive: oklch(0.61 0.21 22.24);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.55 0.13 145);
+  --success-foreground: oklch(1 0 0);
   --border: oklch(0.93 0.04 38.69);
   --input: oklch(0.93 0.04 38.69);
   --ring: oklch(0.74 0.16 34.71);
@@ -984,6 +992,8 @@ body {
   --accent-foreground: oklch(0.26 0.02 352.4);
   --destructive: oklch(0.61 0.21 22.24);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.74 0.15 145);
+  --success-foreground: oklch(0.18 0.05 145);
   --border: oklch(0.36 0.02 342.27);
   --input: oklch(0.36 0.02 342.27);
   --ring: oklch(0.74 0.16 34.71);
@@ -1141,4 +1151,116 @@ body {
     left: var(--hit-area-l, 0px);
     pointer-events: inherit;
   }
+}
+
+/* Shared Prism token colors (gruvboxMaterial) — opt in via .code-tokens. */
+.code-tokens .token.delimiter,
+.code-tokens .token.boolean,
+.code-tokens .token.keyword,
+.code-tokens .token.selector,
+.code-tokens .token.important,
+.code-tokens .token.atrule,
+.code-tokens .token.property,
+.code-tokens .token.variable,
+.code-tokens .token.deleted {
+  @apply text-[#af2528];
+}
+
+.code-tokens .token.imports,
+.code-tokens .token.class-name,
+.code-tokens .token.maybe-class-name,
+.code-tokens .token.constant,
+.code-tokens .token.doctype,
+.code-tokens .token.builtin {
+  @apply text-[#b4730e];
+}
+
+.code-tokens .token.string,
+.code-tokens .token.attr-value {
+  @apply text-[#477a5b];
+}
+
+.code-tokens .token.property-access {
+  @apply text-[#266b79];
+}
+
+.code-tokens .token.function,
+.code-tokens .token.attr-name,
+.code-tokens .token.char,
+.code-tokens .token.url {
+  @apply text-[#72761e];
+}
+
+.code-tokens .token.tag {
+  @apply text-[#b94c07];
+}
+
+.code-tokens .token.comment,
+.code-tokens .token.prolog,
+.code-tokens .token.cdata,
+.code-tokens .token.operator,
+.code-tokens .token.inserted {
+  @apply text-[#a89984];
+}
+
+.code-tokens .token.entity,
+.code-tokens .token.number,
+.code-tokens .token.symbol {
+  @apply text-[#924f79];
+}
+
+.dark .code-tokens .token.imports,
+.dark .code-tokens .token.class-name,
+.dark .code-tokens .token.maybe-class-name,
+.dark .code-tokens .token.constant,
+.dark .code-tokens .token.doctype,
+.dark .code-tokens .token.builtin,
+.dark .code-tokens .token.function {
+  @apply text-[#d8a657];
+}
+
+.dark .code-tokens .token.property-access {
+  @apply text-[#7daea3];
+}
+
+.dark .code-tokens .token.tag {
+  @apply text-[#e78a4e];
+}
+
+.dark .code-tokens .token.attr-name,
+.dark .code-tokens .token.char,
+.dark .code-tokens .token.url,
+.dark .code-tokens .token.regex {
+  @apply text-[#a9b665];
+}
+
+.dark .code-tokens .token.attr-value,
+.dark .code-tokens .token.string {
+  @apply text-[#89b482];
+}
+
+.dark .code-tokens .token.comment,
+.dark .code-tokens .token.prolog,
+.dark .code-tokens .token.cdata,
+.dark .code-tokens .token.operator,
+.dark .code-tokens .token.inserted {
+  @apply text-[#a89984];
+}
+
+.dark .code-tokens .token.delimiter,
+.dark .code-tokens .token.boolean,
+.dark .code-tokens .token.keyword,
+.dark .code-tokens .token.selector,
+.dark .code-tokens .token.important,
+.dark .code-tokens .token.atrule,
+.dark .code-tokens .token.property,
+.dark .code-tokens .token.variable,
+.dark .code-tokens .token.deleted {
+  @apply text-[#ea6962];
+}
+
+.dark .code-tokens .token.entity,
+.dark .code-tokens .token.number,
+.dark .code-tokens .token.symbol {
+  @apply text-[#d3869b];
 }
