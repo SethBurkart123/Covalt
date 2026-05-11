@@ -9,6 +9,7 @@ import {
   CollapsibleHeader,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import { cn } from "@/lib/utils";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import type { ProgressEntry } from "@/lib/types/chat";
@@ -155,12 +156,11 @@ export function TerminalRenderer({
       >
         <CollapsibleHeader>
           <CollapsibleIcon icon={Terminal} />
-          <code
+          <MiddleTruncate
             data-testid="terminal-command"
-            className="text-sm font-mono text-foreground truncate min-w-0"
-          >
-            {fields.command ? `$ ${fields.command}` : "(no command)"}
-          </code>
+            text={fields.command ? `$ ${fields.command}` : "(no command)"}
+            className="flex-1 text-sm font-mono text-foreground"
+          />
         </CollapsibleHeader>
       </CollapsibleTrigger>
 

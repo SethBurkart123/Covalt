@@ -228,8 +228,8 @@ function CollapsibleTrigger({
           className,
         )}
       >
-        {children}
-        <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{children}</div>
+        <div className="flex shrink-0 items-center gap-2">
           {rightContent}
           {!disableToggle && (
             <motion.div
@@ -264,8 +264,8 @@ function CollapsibleTrigger({
         className,
       )}
     >
-      {children}
-      <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">{children}</div>
+      <div className="flex shrink-0 items-center gap-2">
         {rightContent}
         {!disableToggle && (
           <motion.div
@@ -338,7 +338,9 @@ function CollapsibleHeader({ children, className }: CollapsibleHeaderProps) {
   const { mode } = useCollapsible();
   if (mode === "minimal") return <>{children}</>;
   return (
-    <div className={cn("flex items-center gap-2", className)}>{children}</div>
+    <div className={cn("flex min-w-0 flex-1 items-center gap-2", className)}>
+      {children}
+    </div>
   );
 }
 

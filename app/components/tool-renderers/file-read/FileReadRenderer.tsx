@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/collapsible";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import { detectLanguage } from "./detect-language";
 
 function asString(value: unknown): string | undefined {
@@ -155,12 +156,11 @@ export function FileReadRenderer({
       <CollapsibleTrigger rightContent={rightContent}>
         <CollapsibleHeader>
           <CollapsibleIcon icon={FileText} />
-          <span
+          <MiddleTruncate
             data-testid="file-read-path"
-            className="text-sm font-mono text-foreground truncate min-w-0"
-          >
-            {path || "(unknown path)"}
-          </span>
+            text={path || "(unknown path)"}
+            className="flex-1 text-sm font-mono text-foreground"
+          />
         </CollapsibleHeader>
       </CollapsibleTrigger>
 

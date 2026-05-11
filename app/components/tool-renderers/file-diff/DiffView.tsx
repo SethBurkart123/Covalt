@@ -9,6 +9,7 @@ import ReactDiffViewer, {
 import { Prism } from "prism-react-renderer";
 import { FileCode2, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import { detectLanguage } from "../file-read/detect-language";
 
 export interface DiffCounts {
@@ -299,9 +300,12 @@ export function DiffView({
       className={cn("overflow-hidden rounded-md border border-border bg-card", className)}
     >
       <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-3 py-1.5">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <FileCode2 className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-xs text-foreground">{headerLabel}</span>
+          <MiddleTruncate
+            text={headerLabel}
+            className="flex-1 font-mono text-xs text-foreground"
+          />
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <DiffStats additions={counts.additions} deletions={counts.deletions} />

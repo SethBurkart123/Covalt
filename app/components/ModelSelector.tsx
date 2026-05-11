@@ -6,8 +6,6 @@ import {
   useEffect,
   useCallback,
   memo,
-  useRef,
-  useLayoutEffect,
 } from "react";
 import { Bot, CheckIcon, ChevronDownIcon, Star } from "lucide-react";
 import Fuse from "fuse.js";
@@ -22,6 +20,7 @@ import {
 import { CachedImage, preloadImages } from "@/components/ui/cached-image";
 import { VirtualizedCommandList } from "@/components/ui/virtualized-command-list";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import type { ModelInfo } from "@/lib/types/chat";
 import type { AgentInfo } from "@/python/api";
 import { agentFileUrl } from "@/python/api";
@@ -54,65 +53,6 @@ function getCustomProviderNames(): Record<string, string> {
   } catch {
     return {};
   }
-}
-
-function MiddleTruncate({
-  text,
-  className,
-}: {
-  text: string;
-  className?: string;
-}) {
-  const containerRef = useRef<HTMLSpanElement>(null);
-  const [truncated, setTruncated] = useState(text);
-
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const measure = () => {
-      container.textContent = text;
-      if (container.scrollWidth <= container.clientWidth) {
-        setTruncated(text);
-        return;
-      }
-
-      let start = 0;
-      let end = text.length;
-      const ellipsis = "…";
-
-      while (end - start > 2) {
-        const mid = Math.floor((start + end) / 2);
-        const half = Math.floor(mid / 2);
-        container.textContent =
-          text.slice(0, half) + ellipsis + text.slice(text.length - half);
-
-        if (container.scrollWidth <= container.clientWidth) start = mid;
-        else end = mid;
-      }
-
-      const half = Math.floor(start / 2);
-      setTruncated(
-        half > 0
-          ? text.slice(0, half) + ellipsis + text.slice(text.length - half)
-          : ellipsis,
-      );
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [text]);
-
-  return (
-    <span
-      ref={containerRef}
-      className={cn("block overflow-hidden whitespace-nowrap", className)}
-    >
-      {truncated}
-    </span>
-  );
 }
 
 function AgentIconSmall({ icon, agentId }: { icon?: string; agentId: string }) {
