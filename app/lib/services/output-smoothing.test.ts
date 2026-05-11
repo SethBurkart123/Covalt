@@ -167,23 +167,4 @@ describe("OutputSmoothingController", () => {
 
     controller.dispose();
   });
-
-  it("continues revealing near the live-stream tail", () => {
-    const updates: ContentBlock[][] = [];
-    const controller = new OutputSmoothingController((content) => updates.push(content));
-    const content = "x".repeat(100);
-
-    controller.update([{ type: "text", content }]);
-    animationFrame.flushAt(20);
-
-    const firstVisible = textOf(updates.at(-1) ?? []).length;
-    animationFrame.flushAt(120);
-    const secondVisible = textOf(updates.at(-1) ?? []).length;
-
-    expect(firstVisible).toBeGreaterThan(0);
-    expect(secondVisible).toBeGreaterThan(firstVisible);
-    expect(secondVisible).toBeLessThan(content.length);
-
-    controller.dispose();
-  });
 });

@@ -7,7 +7,6 @@ export const MIN_OUTPUT_SMOOTHING_DELAY_MS = 120;
 export const MAX_OUTPUT_SMOOTHING_DELAY_MS = 600;
 
 const MIN_CHARS_PER_SECOND = 48;
-const LIVE_TAIL_EASE_CHARS = 32;
 const BACKLOG_CURVE_CHARS = 900;
 const MAX_FINISH_DELAY_MS = 600;
 const FRAME_FALLBACK_MS = 16;
@@ -137,11 +136,6 @@ function targetLagSecondsForBacklog(backlogChars: number, delayMs: number): numb
   return sweetSpotLagSeconds + (maxLagSeconds - sweetSpotLagSeconds) * t;
 }
 
-function tailEaseMultiplier(charsUntilTail: number): number {
-  const t = Math.min(1, Math.max(0, charsUntilTail / LIVE_TAIL_EASE_CHARS));
-  return 0.82 + 0.18 * (1 - Math.pow(1 - t, 3));
-}
-
 export class OutputSmoothingController {
   private target: ContentBlock[] = [];
   private targetChars = 0;
@@ -265,11 +259,7 @@ export class OutputSmoothingController {
     const lagSeconds = targetLagSecondsForBacklog(backlog, this.delayMs);
 
     if (this.finalDeadlineAt === null) {
-      const baseSpeed = Math.max(MIN_CHARS_PER_SECOND, backlog / lagSeconds);
-      return Math.max(
-        MIN_CHARS_PER_SECOND,
-        baseSpeed * tailEaseMultiplier(backlog),
-      );
+      return Math.max(MIN_CHARS_PER_SECOND, backlog / lagSeconds);
     }
 
     const remainingSeconds = Math.max((this.finalDeadlineAt - frameAt) / 1000, 0.016);
