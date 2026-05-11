@@ -168,7 +168,22 @@ function appendInlineIndicator(html: string): string {
 
   const indicator = createTypewriterIndicator();
   if (lastTextNode?.parentNode) {
-    lastTextNode.parentNode.insertBefore(indicator, lastTextNode.nextSibling);
+    const parentElement =
+      lastTextNode.parentElement ?? lastTextNode.parentNode.parentElement;
+    const isPreformatted = !!parentElement?.closest('pre');
+    const text = lastTextNode.nodeValue ?? '';
+    const trailingWhitespace = isPreformatted ? text.match(/\s+$/)?.[0] : undefined;
+
+    if (trailingWhitespace) {
+      lastTextNode.nodeValue = text.slice(0, -trailingWhitespace.length);
+      lastTextNode.parentNode.insertBefore(indicator, lastTextNode.nextSibling);
+      lastTextNode.parentNode.insertBefore(
+        document.createTextNode(trailingWhitespace),
+        indicator.nextSibling,
+      );
+    } else {
+      lastTextNode.parentNode.insertBefore(indicator, lastTextNode.nextSibling);
+    }
   } else {
     template.content.appendChild(indicator);
   }

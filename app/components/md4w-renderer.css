@@ -110,6 +110,10 @@
   @apply bg-transparent p-0 font-mono text-sm font-normal text-inherit;
 }
 
+.prose.markdown-content pre code {
+  @apply rounded-none border-0 bg-transparent p-0 font-mono text-sm font-normal text-inherit;
+}
+
 .prose.markdown-content .markdown-code-block .markdown-code-copy-overlay {
   @apply pointer-events-none absolute right-2 top-2 z-10;
   height: calc(100% - 1rem);
