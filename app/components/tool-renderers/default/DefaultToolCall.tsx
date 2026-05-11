@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/collapsible";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { parseToolDisplayParts } from "@/lib/tooling";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import { ArgumentsDisplay } from "./ArgumentsDisplay";
 import { ResultRenderer } from "./ResultRenderer";
 
@@ -78,6 +79,7 @@ export function DefaultToolCall({
 
   const toolDisplay = parseToolDisplayParts(toolName);
   const title = renderTitleTemplate(display?.title, toolArgs, renderPlan?.config);
+  const headerLabel = title ?? toolDisplay.label;
   const Icon = ICONS[display?.icon ?? ""] ?? Wrench;
   const toolCallTestId = `tool-call-${toolName}`;
   const hasArgs = Object.keys(toolArgs || {}).length > 0;
@@ -98,20 +100,15 @@ export function DefaultToolCall({
       <CollapsibleTrigger>
         <CollapsibleHeader>
           <CollapsibleIcon icon={Icon} />
-          <span className="text-sm font-mono text-foreground">
-            {title ? (
-              title
-            ) : toolDisplay.namespace ? (
-              <>
-                <span>{toolDisplay.label}</span>
-                <span className="px-2 italic text-muted-foreground align-middle">
-                  {toolDisplay.namespace}
-                </span>
-              </>
-            ) : (
-              toolDisplay.label
-            )}
-          </span>
+          <MiddleTruncate
+            text={headerLabel}
+            className="flex-1 text-sm font-mono text-foreground"
+          />
+          {!title && toolDisplay.namespace && (
+            <span className="shrink-0 px-2 text-sm font-mono italic text-muted-foreground align-middle">
+              {toolDisplay.namespace}
+            </span>
+          )}
           {approvalStatus === "denied" && (
             <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">
               Denied

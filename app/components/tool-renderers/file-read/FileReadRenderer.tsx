@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/collapsible";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { cn } from "@/lib/utils";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import { detectLanguage } from "./detect-language";
 
 function asString(value: unknown): string | undefined {
@@ -19,7 +20,9 @@ function asString(value: unknown): string | undefined {
 }
 
 function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function tryParse(text: string): unknown {
@@ -56,12 +59,12 @@ function extractPath(
   toolArgs: Record<string, unknown> | undefined,
 ): string {
   return (
-    asString(config?.path)
-    ?? asString(toolArgs?.path)
-    ?? asString(toolArgs?.file)
-    ?? asString(toolArgs?.filePath)
-    ?? asString(toolArgs?.file_path)
-    ?? ""
+    asString(config?.path) ??
+    asString(toolArgs?.path) ??
+    asString(toolArgs?.file) ??
+    asString(toolArgs?.filePath) ??
+    asString(toolArgs?.file_path) ??
+    ""
   );
 }
 
@@ -97,9 +100,11 @@ export function FileReadRenderer({
 }: ToolCallRendererProps): ReactNode {
   const config = renderPlan?.config;
   const path = useMemo(() => extractPath(config, toolArgs), [config, toolArgs]);
-  const content = useMemo(() => extractContent(config, toolResult), [config, toolResult]);
+  const content = useMemo(
+    () => extractContent(config, toolResult),
+    [config, toolResult],
+  );
   const startLine = asNumber(config?.startLine);
-  const endLine = asNumber(config?.endLine);
   const languageOverride = asString(config?.language);
 
   const resolvedLanguage = useMemo(() => {
@@ -117,7 +122,7 @@ export function FileReadRenderer({
   );
   const lineNumberStart = startLine ?? 1;
   const maxLineNo = lineNumberStart + Math.max(0, lineCount - 1);
-  const gutterWidth = Math.max(2, String(maxLineNo).length) + 1;
+  const gutterWidth = Math.max(2, String(maxLineNo).length) + 3;
 
   const highlightedLines = useMemo(() => {
     if (content.length === 0) return [] as string[];
@@ -126,20 +131,6 @@ export function FileReadRenderer({
   }, [content, resolvedLanguage, highlight]);
 
   const [isOpen, setIsOpen] = useState(false);
-
-  const rightContent = (
-    <span className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-      {(startLine !== undefined || endLine !== undefined) && (
-        <span data-testid="file-read-line-range">
-          L{startLine ?? 1}
-          {endLine !== undefined ? `-${endLine}` : ""}
-        </span>
-      )}
-      <span data-testid="file-read-line-count">
-        {lineCount} {lineCount === 1 ? "line" : "lines"}
-      </span>
-    </span>
-  );
 
   return (
     <Collapsible
@@ -152,44 +143,47 @@ export function FileReadRenderer({
       data-testid="file-read-renderer"
       data-toolcall
     >
-      <CollapsibleTrigger rightContent={rightContent}>
+      <CollapsibleTrigger>
         <CollapsibleHeader>
           <CollapsibleIcon icon={FileText} />
-          <span
+          <MiddleTruncate
             data-testid="file-read-path"
-            className="text-sm font-mono text-foreground truncate min-w-0"
-          >
-            {path || "(unknown path)"}
-          </span>
+            text={path || "(unknown path)"}
+            className="flex-1 text-sm font-mono text-foreground"
+          />
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
-      <CollapsibleContent className="p-0 space-y-0">
+      <CollapsibleContent>
         {content.length === 0 ? (
           <div
             data-testid="file-read-empty"
-            className="px-3 py-3 text-sm text-muted-foreground"
+            className="rounded border border-border bg-background/5 px-3 py-2 text-sm text-muted-foreground"
           >
             (empty file)
           </div>
         ) : (
           <div
             data-testid="file-read-code"
-            className="max-h-[32rem] overflow-auto"
+            className="max-h-[32rem] overflow-auto rounded border border-border bg-background/5"
           >
-            <pre className="code-tokens m-0 text-xs leading-5 font-mono">
+            <pre className="code-tokens m-0 bg-transparent! text-xs leading-5 font-mono my-0!">
               {highlightedLines.map((html, i) => (
-                <div key={i} className="flex items-start">
+                <div key={i} className="flex items-start bg-transparent">
                   <span
-                    className="select-none shrink-0 px-2 text-right text-muted-foreground/60"
+                    className="select-none shrink-0 border-r border-border/70 bg-transparent px-2 text-right text-muted-foreground/60 h-[stretch]"
                     style={{ width: `${gutterWidth}ch` }}
                     aria-hidden="true"
                   >
                     {lineNumberStart + i}
                   </span>
                   <span
-                    className={cn("flex-1 min-w-0 whitespace-pre-wrap break-all pr-3")}
-                    dangerouslySetInnerHTML={{ __html: html.length === 0 ? "&nbsp;" : html }}
+                    className={cn(
+                      "flex-1 min-w-0 bg-transparent whitespace-pre-wrap break-all px-3",
+                    )}
+                    dangerouslySetInnerHTML={{
+                      __html: html.length === 0 ? "&nbsp;" : html,
+                    }}
                   />
                 </div>
               ))}

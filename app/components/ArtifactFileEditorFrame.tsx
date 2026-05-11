@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { SaveStatus } from "@/hooks/use-artifact-file-editor-state";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 
 interface ArtifactFileEditorFrameProps {
   filePath?: string;
@@ -97,9 +98,12 @@ function StatusBar({
   errorMessage,
 }: StatusBarProps) {
   return (
-    <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-1.5 text-xs">
-      <span className="truncate font-mono text-muted-foreground">{filePath}</span>
-      <div className="flex items-center gap-2">{renderStatus({ isDeleted, isDesynced, saveStatus, errorMessage })}</div>
+    <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/30 px-3 py-1.5 text-xs">
+      <MiddleTruncate
+        text={filePath}
+        className="flex-1 font-mono text-muted-foreground"
+      />
+      <div className="flex shrink-0 items-center gap-2">{renderStatus({ isDeleted, isDesynced, saveStatus, errorMessage })}</div>
     </div>
   );
 }

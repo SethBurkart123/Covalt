@@ -9,6 +9,7 @@ import {
   CollapsibleHeader,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
+import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";
 import { DiffView, DiffStats, countDiffLines } from "./DiffView";
 import { extractDiffInputs } from "./extract-diff-inputs";
@@ -54,9 +55,10 @@ export function FileDiffRenderer({
       >
         <CollapsibleHeader>
           <CollapsibleIcon icon={FileCode2} />
-          <span className="text-sm font-mono text-foreground truncate min-w-0">
-            {headerLabel}
-          </span>
+          <MiddleTruncate
+            text={headerLabel}
+            className="flex-1 text-sm font-mono text-foreground"
+          />
         </CollapsibleHeader>
       </CollapsibleTrigger>
 
