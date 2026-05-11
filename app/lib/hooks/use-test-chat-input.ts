@@ -6,6 +6,7 @@ import { useMessageEditing } from "@/lib/hooks/use-message-editing";
 import { createUserMessage, createAssistantMessage } from "@/lib/utils/message";
 import { api } from "@/lib/services/api";
 import { processMessageStream } from "@/lib/services/stream-processor";
+import { getOutputSmoothingConfig } from "@/lib/services/output-smoothing-settings";
 import type { Attachment, Message, MessageSibling } from "@/lib/types/chat";
 
 export function useTestChatInput(
@@ -46,28 +47,37 @@ export function useTestChatInput(
 
         let assistantMsgId: string | null = null;
 
-        const result = await processMessageStream(response, {
-          onUpdate: (content) => {
-            if (assistantMsgId) {
-              setMessages((prev) => {
-                const withoutStreaming = prev.filter((m) => m.id !== assistantMsgId);
-                return [
-                  ...withoutStreaming,
-                  { id: assistantMsgId!, role: "assistant", content, isComplete: false, sequence: 1 },
-                ];
-              });
-            }
+        const outputSmoothing = await getOutputSmoothingConfig();
+        const result = await processMessageStream(
+          response,
+          {
+            onUpdate: (content) => {
+              if (assistantMsgId) {
+                setMessages((prev) => {
+                  const withoutStreaming = prev.filter((m) => m.id !== assistantMsgId);
+                  return [
+                    ...withoutStreaming,
+                    { id: assistantMsgId!, role: "assistant", content, isComplete: false, sequence: 1 },
+                  ];
+                });
+              }
+            },
+            onSessionId: () => {},
+            onMessageId: (id) => {
+              assistantMsgId = id;
+              streamingMessageIdRef.current = id;
+            },
+            onEvent: (eventType, payload) => {
+              if (stopRequestedRef.current) return;
+              recordFlowEvent(eventType, payload);
+            },
           },
-          onSessionId: () => {},
-          onMessageId: (id) => {
-            assistantMsgId = id;
-            streamingMessageIdRef.current = id;
+          undefined,
+          {
+            smoothOutput: outputSmoothing.enabled,
+            outputSmoothingDelayMs: outputSmoothing.delayMs,
           },
-          onEvent: (eventType, payload) => {
-            if (stopRequestedRef.current) return;
-            recordFlowEvent(eventType, payload);
-          },
-        });
+        );
 
         if (result.messageId && result.finalContent.length > 0) {
           setMessages((prev) => {

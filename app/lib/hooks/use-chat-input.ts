@@ -75,8 +75,13 @@ export function useChatInput(
 
   const runState = chatId ? getRunState(chatId) : undefined;
   const isLoading = runState ? isActivePhase(runState.phase) : false;
-  const streamingContent = runState?.content || null;
-  const streamingMessageId = runState?.messageId || null;
+  const streamingContent = runState?.content?.length
+    ? runState.content
+    : isLoading
+      ? ([{ type: "text", content: "" }] satisfies Message["content"])
+      : null;
+  const streamingMessageId =
+    runState?.messageId || (isLoading && chatId ? `pending-assistant-${chatId}` : null);
 
   const preserveStreamingMessage = useCallback(
     ({ finalContent, messageId: msgId }: StreamResult) => {

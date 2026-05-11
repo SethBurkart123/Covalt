@@ -14,6 +14,7 @@ from ..models.chat import (
     DefaultToolsResponse,
     ModelInfo,
     ModelSettingsInfo,
+    OutputSmoothingSettings,
     ProviderCatalogItem,
     ProviderCatalogResponse,
     ProviderConfig,
@@ -24,6 +25,7 @@ from ..models.chat import (
     RecentModelsResponse,
     SaveAutoTitleSettingsInput,
     SaveModelSettingsInput,
+    SaveOutputSmoothingSettingsInput,
     SaveProviderConfigInput,
     SaveSystemPromptSettingsInput,
     SelectedModelResponse,
@@ -338,6 +340,28 @@ async def get_system_prompt_settings() -> SystemPromptSettings:
 async def save_system_prompt_settings(body: SaveSystemPromptSettingsInput) -> None:
     with db.db_session() as sess:
         db.save_system_prompt_setting(sess, body.prompt)
+
+
+@command
+async def get_output_smoothing_settings() -> OutputSmoothingSettings:
+    with db.db_session() as sess:
+        settings = db.get_output_smoothing_settings(sess)
+    return OutputSmoothingSettings(
+        enabled=settings.get("enabled", False),
+        delayMs=settings.get("delay_ms", 320),
+    )
+
+
+@command
+async def save_output_smoothing_settings(body: SaveOutputSmoothingSettingsInput) -> None:
+    with db.db_session() as sess:
+        db.save_output_smoothing_settings(
+            sess,
+            {
+                "enabled": body.enabled,
+                "delay_ms": body.delayMs,
+            },
+        )
 
 
 @command

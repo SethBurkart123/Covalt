@@ -50,9 +50,10 @@ describe("parseMessageSegments", () => {
     registerRenderer(
       makeDef("never", regexMatcher(/<never>([\s\S]*?)<\/never>/g)),
     );
-    const segments = parseMessageSegments("Hello **world**");
+    const content = "Hello **world**";
+    const segments = parseMessageSegments(content);
     expect(segments).toEqual([
-      { kind: "markdown", text: "Hello **world**" },
+      { kind: "markdown", start: 0, end: content.length, text: content },
     ]);
   });
 
@@ -64,15 +65,20 @@ describe("parseMessageSegments", () => {
       ),
     );
     const content = "before <system-reminder>note</system-reminder> after";
+    const rendererText = "<system-reminder>note</system-reminder>";
+    const rendererStart = content.indexOf(rendererText);
+    const rendererEnd = rendererStart + rendererText.length;
     const segments = parseMessageSegments(content);
     expect(segments).toEqual([
-      { kind: "markdown", text: "before " },
+      { kind: "markdown", start: 0, end: rendererStart, text: "before " },
       {
         kind: "renderer",
+        start: rendererStart,
+        end: rendererEnd,
         rendererKey: "system-reminder",
         config: { body: "note" },
       },
-      { kind: "markdown", text: " after" },
+      { kind: "markdown", start: rendererEnd, end: content.length, text: " after" },
     ]);
   });
 
@@ -94,11 +100,15 @@ describe("parseMessageSegments", () => {
     ]);
     expect(segments[1]).toEqual({
       kind: "renderer",
+      start: content.indexOf("<alpha>a</alpha>"),
+      end: content.indexOf("<alpha>a</alpha>") + "<alpha>a</alpha>".length,
       rendererKey: "alpha",
       config: { body: "a" },
     });
     expect(segments[3]).toEqual({
       kind: "renderer",
+      start: content.indexOf("<beta>b</beta>"),
+      end: content.indexOf("<beta>b</beta>") + "<beta>b</beta>".length,
       rendererKey: "beta",
       config: { body: "b" },
     });
@@ -120,10 +130,12 @@ describe("parseMessageSegments", () => {
     expect(segments).toEqual([
       {
         kind: "renderer",
+        start: 0,
+        end: 20,
         rendererKey: "outer",
         config: { tag: "outer" },
       },
-      { kind: "markdown", text: content.slice(20) },
+      { kind: "markdown", start: 20, end: content.length, text: content.slice(20) },
     ]);
   });
 
@@ -136,9 +148,11 @@ describe("parseMessageSegments", () => {
     );
     const content = "<tag>a</tag><tag>b</tag>";
     const segments = parseMessageSegments(content);
+    const firstTag = "<tag>a</tag>";
+    const secondTag = "<tag>b</tag>";
     expect(segments).toEqual([
-      { kind: "renderer", rendererKey: "tag", config: { body: "a" } },
-      { kind: "renderer", rendererKey: "tag", config: { body: "b" } },
+      { kind: "renderer", start: 0, end: firstTag.length, rendererKey: "tag", config: { body: "a" } },
+      { kind: "renderer", start: firstTag.length, end: firstTag.length + secondTag.length, rendererKey: "tag", config: { body: "b" } },
     ]);
   });
 });

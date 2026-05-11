@@ -352,6 +352,17 @@ button {
   animation: pulse 1.2s infinite alternate;
 }
 
+.streaming-block-indicator {
+  display: flex;
+  align-items: center;
+  min-height: 1.5rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.streaming-block-indicator .inline-typewriter-indicator {
+  margin-left: 0;
+}
+
 @keyframes pulse {
   from {
     opacity: 0.5;

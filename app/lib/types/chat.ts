@@ -190,9 +190,18 @@ export interface ApprovalResolvedPayload {
 }
 
 export type ContentBlock =
-  | { type: "text"; content: string }
+  | {
+      type: "text";
+      content: string;
+      lookaheadContent?: string;
+    }
   | ({ type: "tool_call" } & ToolCallPayload & { isCompleted: boolean })
-  | { type: "reasoning"; content: string; isCompleted: boolean }
+  | {
+      type: "reasoning";
+      content: string;
+      isCompleted: boolean;
+      lookaheadContent?: string;
+    }
   | {
       type: "member_run";
       runId: string;

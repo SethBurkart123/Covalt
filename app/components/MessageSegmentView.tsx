@@ -7,12 +7,25 @@ import type { MessageSegment } from "@/lib/renderers/parse-message-segments";
 interface MessageSegmentViewProps {
   segment: MessageSegment;
   chatId?: string;
+  showCursor?: boolean;
+  visibleChars?: number;
 }
 
-export function MessageSegmentView({ segment, chatId }: MessageSegmentViewProps) {
+export function MessageSegmentView({
+  segment,
+  chatId,
+  showCursor = false,
+  visibleChars,
+}: MessageSegmentViewProps) {
   if (segment.kind === "markdown") {
     if (!segment.text || segment.text.trim() === "") return null;
-    return <MarkdownRenderer content={segment.text} />;
+    return (
+      <MarkdownRenderer
+        content={segment.text}
+        showCursor={showCursor}
+        visibleChars={visibleChars}
+      />
+    );
   }
   return (
     <RendererSegment

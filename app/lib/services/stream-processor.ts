@@ -1,7 +1,11 @@
 "use client";
 
 import type { ContentBlock } from "@/lib/types/chat";
-import { RUNTIME_EVENT, isKnownRuntimeEvent } from "@/lib/services/runtime-events";
+import {
+  RUNTIME_EVENT,
+  isKnownRuntimeEvent,
+  isTerminalRuntimeEvent,
+} from "@/lib/services/runtime-events";
 import { handleFlowNodeStarted } from "@/lib/services/flow-node-handler";
 import {
   handleMemberRunCompleted,
@@ -35,6 +39,7 @@ import {
   handleToolCallStarted,
 } from "@/lib/services/tool-event-handler";
 import type { TokenUsage } from "@/lib/types/chat";
+import { OutputSmoothingController } from "@/lib/services/output-smoothing";
 
 export { createInitialState };
 export type { StreamState };
@@ -197,10 +202,16 @@ export interface StreamResult {
   messageId: string | null;
 }
 
+export interface ProcessMessageStreamOptions {
+  smoothOutput?: boolean;
+  outputSmoothingDelayMs?: number;
+}
+
 export async function processMessageStream(
   response: Response,
   callbacks: StreamCallbacks,
   initialBlocks?: ContentBlock[],
+  options?: ProcessMessageStreamOptions,
 ): Promise<StreamResult> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
@@ -214,13 +225,31 @@ export async function processMessageStream(
   let buffer = "";
   let currentEvent = "";
   let messageId: string | null = null;
+  const outputSmoothing = options?.smoothOutput
+    ? new OutputSmoothingController(callbacks.onUpdate, {
+        delayMs: options.outputSmoothingDelayMs,
+      })
+    : null;
+  const pendingTerminalEvents: [string, Record<string, unknown>][] = [];
 
   const wrappedCallbacks: StreamCallbacks = {
     ...callbacks,
+    onUpdate: outputSmoothing
+      ? (content) => outputSmoothing.update(content)
+      : callbacks.onUpdate,
     onMessageId: (id) => {
       messageId = id;
       callbacks.onMessageId?.(id);
     },
+    onEvent: outputSmoothing
+      ? (eventType, payload) => {
+          if (isTerminalRuntimeEvent(eventType)) {
+            pendingTerminalEvents.push([eventType, payload]);
+            return;
+          }
+          callbacks.onEvent?.(eventType, payload);
+        }
+      : callbacks.onEvent,
   };
 
   try {
@@ -256,7 +285,14 @@ export async function processMessageStream(
   }
 
   const finalContent = buildCurrentContent(state);
-  callbacks.onUpdate(finalContent);
+  if (outputSmoothing) {
+    await outputSmoothing.finish(finalContent);
+    for (const [eventType, payload] of pendingTerminalEvents) {
+      callbacks.onEvent?.(eventType, payload);
+    }
+  } else {
+    callbacks.onUpdate(finalContent);
+  }
 
   return { finalContent, messageId };
 }

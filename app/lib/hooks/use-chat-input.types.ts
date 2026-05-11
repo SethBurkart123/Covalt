@@ -40,7 +40,7 @@ export interface UseChatInputContext {
     options?: { persistDefaults?: boolean },
   ) => Promise<void>;
   getRunState: (chatId: string) => RunState | undefined;
-  startRun: (chatId: string) => void;
+  startRun: (chatId: string, options?: { subscribe?: boolean }) => void;
   completeRun: (chatId: string) => void;
   onPhaseChange: (callback: (chatId: string, phase: RunPhase, prevPhase: RunPhase) => void) => () => void;
   dispatchRunEvent: (chatId: string, event: RunEvent) => void;

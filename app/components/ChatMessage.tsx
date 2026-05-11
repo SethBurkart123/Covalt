@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, type ReactNode } from "react";
 import { preloadRenderersForToolCalls } from "@/components/ToolCallRouter";
 import clsx from "clsx";
 import ToolCall from "./ToolCall";
@@ -37,6 +37,107 @@ interface ChatMessageProps {
   chatId?: string;
 }
 
+type StreamingIndicatorTarget =
+  | { kind: "none" }
+  | { kind: "text"; blockIndex: number; segmentIndex: number }
+  | { kind: "reasoning"; blockIndex: number }
+  | { kind: "after-block"; blockIndex: number };
+
+const NO_STREAMING_INDICATOR: StreamingIndicatorTarget = { kind: "none" };
+
+function isInitialStreamingPlaceholder(content: ContentBlock[]): boolean {
+  if (content.length === 0) return true;
+  return content.length === 1 && content[0].type === "text" && content[0].content === "";
+}
+
+function hasActiveToolCall(blocks: ContentBlock[]): boolean {
+  return blocks.some((block) => {
+    if (block.type === "tool_call") return !block.isCompleted;
+    if (block.type === "member_run") return hasActiveToolCall(block.content);
+    return false;
+  });
+}
+
+function lastMarkdownSegmentIndex(text: string): number {
+  const segments = parseMessageSegments(text);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i];
+    if (segment.kind === "markdown" && segment.text?.trim()) return i;
+  }
+  return -1;
+}
+
+function activeMarkdownSegmentIndex(text: string, visibleChars: number): number {
+  const segments = parseMessageSegments(text);
+  let firstMarkdown = -1;
+  let fallback = -1;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment.kind !== "markdown" || !segment.text?.trim()) continue;
+    if (firstMarkdown === -1) firstMarkdown = i;
+    if (visibleChars <= segment.start) return firstMarkdown;
+    if (visibleChars > segment.start && visibleChars <= segment.end) return i;
+    if (visibleChars > segment.end) fallback = i;
+  }
+
+  return fallback !== -1 ? fallback : firstMarkdown;
+}
+
+function getStreamingIndicatorTarget(
+  content: ContentBlock[],
+  isStreaming?: boolean,
+): StreamingIndicatorTarget {
+  if (!isStreaming || isInitialStreamingPlaceholder(content)) {
+    return NO_STREAMING_INDICATOR;
+  }
+  if (hasActiveToolCall(content)) return NO_STREAMING_INDICATOR;
+
+  for (let i = content.length - 1; i >= 0; i--) {
+    const block = content[i];
+
+    if (block.type === "text") {
+      const lookaheadText = block.lookaheadContent ?? block.content;
+      if (!lookaheadText.trim()) continue;
+      const visibleChars = block.visibleChars ?? block.content.length;
+      const segmentIndex = block.lookaheadContent
+        ? activeMarkdownSegmentIndex(lookaheadText, visibleChars)
+        : lastMarkdownSegmentIndex(block.content);
+      return segmentIndex === -1
+        ? { kind: "after-block", blockIndex: i }
+        : { kind: "text", blockIndex: i, segmentIndex };
+    }
+
+    if (block.type === "reasoning") {
+      if (!block.isCompleted) return { kind: "reasoning", blockIndex: i };
+      return { kind: "after-block", blockIndex: i };
+    }
+
+    if (block.type === "tool_call") {
+      if (block.isDelegation) continue;
+      return { kind: "after-block", blockIndex: i };
+    }
+
+    if (block.type === "error" || block.type === "system_event" || block.type === "flow_step") {
+      return NO_STREAMING_INDICATOR;
+    }
+  }
+
+  return NO_STREAMING_INDICATOR;
+}
+
+function TypewriterIndicator() {
+  return <span className="inline-typewriter-indicator" aria-hidden="true" />;
+}
+
+function StreamingBlockIndicator() {
+  return (
+    <div className="streaming-block-indicator not-prose" aria-hidden="true">
+      <TypewriterIndicator />
+    </div>
+  );
+}
+
 function ChatMessage({
   role,
   content,
@@ -51,7 +152,10 @@ function ChatMessage({
   isLastAssistantMessage,
   chatId,
 }: ChatMessageProps) {
-  const contentRef = useRef<HTMLDivElement>(null);
+  const assistantBlocks = Array.isArray(content) ? content : null;
+  const indicatorTarget = assistantBlocks
+    ? getStreamingIndicatorTarget(assistantBlocks, isStreaming)
+    : NO_STREAMING_INDICATOR;
 
   useEffect(() => {
     if (!Array.isArray(content)) {
@@ -75,53 +179,6 @@ function ChatMessage({
     queueRenderers(content);
     preloadRenderersForToolCalls(renderers);
   }, [content]);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-
-    content
-      .querySelectorAll(".inline-typewriter-indicator")
-      .forEach((el) => el.remove());
-
-    if (isStreaming) {
-      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => {
-          if (node.nodeValue?.trim() === "") return NodeFilter.FILTER_SKIP;
-          const parentEl = node.parentElement;
-          if (parentEl?.closest("[data-toolcall]")) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        },
-      });
-
-      let lastTextNode: Text | null = null;
-      while (walker.nextNode()) {
-        lastTextNode = walker.currentNode as Text;
-      }
-
-      if (lastTextNode && lastTextNode.parentNode) {
-        const indicatorSpan = document.createElement("span");
-        indicatorSpan.classList.add("inline-typewriter-indicator");
-
-        if (lastTextNode.nextSibling) {
-          lastTextNode.parentNode.insertBefore(
-            indicatorSpan,
-            lastTextNode.nextSibling,
-          );
-        } else {
-          lastTextNode.parentNode.appendChild(indicatorSpan);
-        }
-      }
-    }
-
-    return () => {
-      content
-        .querySelectorAll(".inline-typewriter-indicator")
-        .forEach((el) => el.remove());
-    };
-  }, [isStreaming, content]);
 
   return (
     <div
@@ -163,41 +220,68 @@ function ChatMessage({
             )}
           >
             <div
-              ref={contentRef}
               data-testid="chat-message-assistant"
               className="relative assistant-message w-full prose !max-w-none dark:prose-invert prose-zinc"
             >
-              {Array.isArray(content) && (
+              {assistantBlocks && (
                 <>
-                  {content.length === 1 &&
-                  content[0].type === "text" &&
-                  content[0].content === "" &&
+                  {isInitialStreamingPlaceholder(assistantBlocks) &&
                   isStreaming ? (
                     <div className="inline-block">
-                      <div className="size-[0.65rem] bg-primary rounded-full animate-pulse"></div>
+                      <TypewriterIndicator />
                     </div>
                   ) : (
                     <>
                       {(() => {
-                        const blocks = content as ContentBlock[];
-                        const rendered: React.ReactNode[] = [];
+                        const blocks = assistantBlocks;
+                        const rendered: ReactNode[] = [];
 
                         for (let i = 0; i < blocks.length; i++) {
                           const block = blocks[i];
 
                           if (block.type === "text") {
-                            const text = block.content;
+                            const text = block.lookaheadContent ?? block.content;
+                            const visibleChars = block.visibleChars;
                             if (text && text.trim() !== "") {
                               const segments = parseMessageSegments(text);
                               segments.forEach((segment, segIdx) => {
+                                const isCursorSegment =
+                                  indicatorTarget.kind === "text" &&
+                                  indicatorTarget.blockIndex === i &&
+                                  indicatorTarget.segmentIndex === segIdx;
+
+                                let segmentVisibleChars: number | undefined = undefined;
+                                if (visibleChars !== undefined) {
+                                  if (segment.kind === "renderer") {
+                                    if (segment.start >= visibleChars) return;
+                                    if (segment.end > visibleChars) return;
+                                  } else if (segment.kind === "markdown") {
+                                    segmentVisibleChars = Math.max(
+                                      0,
+                                      Math.min(segment.end, visibleChars) - segment.start,
+                                    );
+                                    if (segmentVisibleChars <= 0 && !isCursorSegment) return;
+                                  }
+                                }
+
                                 rendered.push(
                                   <MessageSegmentView
                                     key={`text-${i}-${segIdx}`}
                                     segment={segment}
                                     chatId={chatId}
+                                    visibleChars={segmentVisibleChars}
+                                    showCursor={isCursorSegment}
                                   />,
                                 );
                               });
+                            }
+                            if (
+                              indicatorTarget.kind === "after-block" &&
+                              indicatorTarget.blockIndex === i
+                            ) {
+                              rendered.push(
+                                <StreamingBlockIndicator key={`indicator-${i}`} />,
+                              );
                             }
                             continue;
                           }
@@ -313,7 +397,10 @@ function ChatMessage({
                             }
 
                             const start = i;
-                            const group: ContentBlock[] = [];
+                            const group: Array<{
+                              block: ContentBlock;
+                              index: number;
+                            }> = [];
                             let j = i;
 
                             while (j < blocks.length) {
@@ -328,7 +415,7 @@ function ChatMessage({
                                 b.type === "tool_call" ||
                                 b.type === "reasoning"
                               ) {
-                                group.push(b);
+                                group.push({ block: b, index: j });
                                 j++;
                                 continue;
                               }
@@ -345,11 +432,11 @@ function ChatMessage({
                             i = j - 1;
 
                             const visibleGroup = group.filter(
-                              (b) =>
+                              ({ block: b }) =>
                                 !(b.type === "tool_call" && b.isDelegation),
                             );
 
-                            const groupItems = visibleGroup.map((b, idx) => {
+                            const groupItems = visibleGroup.map(({ block: b, index: blockIndex }, idx) => {
                               if (b.type === "tool_call") {
                                 return (
                                   <ToolCall
@@ -371,6 +458,12 @@ function ChatMessage({
                                     isLast={idx === visibleGroup.length - 1}
                                     active={!b.isCompleted && !!isStreaming}
                                     isCompleted={b.isCompleted}
+                                    lookaheadContent={b.lookaheadContent}
+                                    visibleChars={b.visibleChars}
+                                    showIndicator={
+                                      indicatorTarget.kind === "reasoning" &&
+                                      indicatorTarget.blockIndex === blockIndex
+                                    }
                                   />
                                 );
                               }
@@ -389,6 +482,15 @@ function ChatMessage({
                                     {groupItems}
                                   </div>
                                 </div>,
+                              );
+                            }
+
+                            if (
+                              indicatorTarget.kind === "after-block" &&
+                              group.some(({ index }) => index === indicatorTarget.blockIndex)
+                            ) {
+                              rendered.push(
+                                <StreamingBlockIndicator key={`indicator-${indicatorTarget.blockIndex}`} />,
                               );
                             }
                           }

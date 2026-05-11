@@ -66,6 +66,10 @@ def get_default_general_settings() -> dict[str, Any]:
             "model_id": "gpt-4o-mini",
         },
         "system_prompt": "",
+        "output_smoothing": {
+            "enabled": False,
+            "delay_ms": 320,
+        },
     }
 
 
@@ -85,6 +89,19 @@ def get_system_prompt_setting(sess: Session) -> str:
 
 def save_system_prompt_setting(sess: Session, prompt: str) -> None:
     update_general_settings(sess, {"system_prompt": prompt})
+
+
+def get_output_smoothing_settings(sess: Session) -> dict[str, Any]:
+    general = get_general_settings(sess)
+    settings = general.get("output_smoothing", {})
+    return {
+        **get_default_general_settings()["output_smoothing"],
+        **settings,
+    }
+
+
+def save_output_smoothing_settings(sess: Session, settings: dict[str, Any]) -> None:
+    update_general_settings(sess, {"output_smoothing": settings})
 
 
 def get_starred_models(sess: Session) -> list[str]:

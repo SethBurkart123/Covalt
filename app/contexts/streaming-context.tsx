@@ -37,7 +37,7 @@ interface StreamingContextValue {
   getRunState: (chatId: string) => RunState | undefined;
   isRunning: (chatId: string) => boolean;
   isAnyRunning: () => boolean;
-  startRun: (chatId: string) => void;
+  startRun: (chatId: string, options?: { subscribe?: boolean }) => void;
   completeRun: (chatId: string) => void;
   markSeen: (chatId: string) => void;
   subscribeToChat: (chatId: string) => void;
@@ -207,10 +207,14 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     return false;
   }, [runStates]);
 
-  const startRun = useCallback((chatId: string) => {
-    dispatch(chatId, { type: "START", chatId });
-    connectToStream(chatId);
-  }, [dispatch, connectToStream]);
+  const startRun = useCallback(
+    (chatId: string, options?: { subscribe?: boolean }) => {
+      dispatch(chatId, { type: "START", chatId });
+      if (options?.subscribe === false) return;
+      connectToStream(chatId);
+    },
+    [dispatch, connectToStream],
+  );
 
   const completeRun = useCallback((chatId: string) => {
     cleanupSubscription(chatId);

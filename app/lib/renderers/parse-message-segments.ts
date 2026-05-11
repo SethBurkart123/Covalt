@@ -5,6 +5,8 @@ registerBuiltinMessageRenderers();
 
 export interface MessageSegment {
   kind: "markdown" | "renderer";
+  start: number;
+  end: number;
   text?: string;
   rendererKey?: string;
   config?: Record<string, unknown>;
@@ -45,14 +47,14 @@ function emitSegments(content: string, accepted: AcceptedMatch[]): MessageSegmen
   for (const a of accepted) {
     if (a.start > cursor) {
       const text = content.slice(cursor, a.start);
-      if (text.length > 0) out.push({ kind: "markdown", text });
+      if (text.length > 0) out.push({ kind: "markdown", start: cursor, end: a.start, text });
     }
-    out.push({ kind: "renderer", rendererKey: a.key, config: a.config });
+    out.push({ kind: "renderer", start: a.start, end: a.end, rendererKey: a.key, config: a.config });
     cursor = a.end;
   }
   if (cursor < content.length) {
     const text = content.slice(cursor);
-    if (text.length > 0) out.push({ kind: "markdown", text });
+    if (text.length > 0) out.push({ kind: "markdown", start: cursor, end: content.length, text });
   }
   return out;
 }

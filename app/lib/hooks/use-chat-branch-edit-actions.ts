@@ -8,6 +8,7 @@ import {
   setPrefetchedChat,
 } from "@/lib/services/chat-prefetch";
 import { processMessageStream } from "@/lib/services/stream-processor";
+import { getOutputSmoothingConfig } from "@/lib/services/output-smoothing-settings";
 import { runtimeEventToRunEvent } from "@/lib/services/chat-run-machine";
 import {
   createUserMessage,
@@ -103,7 +104,8 @@ export function useChatBranchEditActions({
     setBaseMessages(nextBaseMessages);
     editing.clearEditing();
 
-    startRun(chatId);
+    const outputSmoothing = await getOutputSmoothingConfig();
+    startRun(chatId, { subscribe: !outputSmoothing.enabled });
     const existing = getPrefetchedChat(chatId);
     if (!existing?.siblings) {
       setPrefetchedChat(chatId, {
@@ -130,19 +132,27 @@ export function useChatBranchEditActions({
       );
       streamAbortRef.current = abort;
 
-      const result = await processMessageStream(response, {
-        onUpdate: (content) => {
-          dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+      const result = await processMessageStream(
+        response,
+        {
+          onUpdate: (content) => {
+            dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+          },
+          onMessageId: (id) => {
+            dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+          },
+          onEvent: (eventType, payload) => {
+            const runEvent = runtimeEventToRunEvent(eventType, payload);
+            if (runEvent) dispatchRunEvent(chatId, runEvent);
+          },
+          onThinkTagDetected,
         },
-        onMessageId: (id) => {
-          dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+        undefined,
+        {
+          smoothOutput: outputSmoothing.enabled,
+          outputSmoothingDelayMs: outputSmoothing.delayMs,
         },
-        onEvent: (eventType, payload) => {
-          const runEvent = runtimeEventToRunEvent(eventType, payload);
-          if (runEvent) dispatchRunEvent(chatId, runEvent);
-        },
-        onThinkTagDetected,
-      });
+      );
 
       if (isStillForeground(chatId)) preserveStreamingMessage(result);
       completeRun(chatId);

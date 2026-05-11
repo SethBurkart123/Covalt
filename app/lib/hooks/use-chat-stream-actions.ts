@@ -7,6 +7,7 @@ import {
   setPrefetchedChat,
 } from "@/lib/services/chat-prefetch";
 import { processMessageStream } from "@/lib/services/stream-processor";
+import { getOutputSmoothingConfig } from "@/lib/services/output-smoothing-settings";
 import { createErrorMessage, createUserMessage } from "@/lib/utils/message";
 import type { Attachment, Message } from "@/lib/types/chat";
 import { runtimeEventToRunEvent } from "@/lib/services/chat-run-machine";
@@ -118,9 +119,10 @@ export function useChatStreamActions({
       let sessionId: string | null = null;
       const modelOptions = getVisibleModelOptions?.();
       const variables = getVisibleVariables?.();
+      const outputSmoothing = await getOutputSmoothingConfig();
 
       if (chatId) {
-        startRun(chatId);
+        startRun(chatId, { subscribe: !outputSmoothing.enabled });
         seedPrefetchWithLocalHistory(chatId, newBaseMessages);
       }
 
@@ -139,50 +141,58 @@ export function useChatStreamActions({
         if (!response.ok)
           throw new Error(`Failed to stream chat: ${response.statusText}`);
 
-        const result = await processMessageStream(response, {
-          onUpdate: (content) => {
-            const currentChatId = sessionId || chatId;
-            if (currentChatId) {
-              dispatchRunEvent(currentChatId, {
-                type: "CONTENT_UPDATE",
-                content,
-              });
-            }
-          },
-          onSessionId: async (id) => {
-            sessionId = id;
-            if (id) {
-              if (!chatId) {
-                startRun(id);
-                seedPrefetchWithLocalHistory(id, newBaseMessages);
-                window.history.replaceState(null, "", `/?chatId=${id}`);
-                refreshChats();
-                api
-                  .generateChatTitle(id)
-                  .then(refreshChats)
-                  .catch(console.error);
-              } else {
-                dispatchRunEvent(chatId, { type: "SESSION_ID", chatId: id });
+        const result = await processMessageStream(
+          response,
+          {
+            onUpdate: (content) => {
+              const currentChatId = sessionId || chatId;
+              if (currentChatId) {
+                dispatchRunEvent(currentChatId, {
+                  type: "CONTENT_UPDATE",
+                  content,
+                });
               }
-            }
+            },
+            onSessionId: async (id) => {
+              sessionId = id;
+              if (id) {
+                if (!chatId) {
+                  startRun(id, { subscribe: !outputSmoothing.enabled });
+                  seedPrefetchWithLocalHistory(id, newBaseMessages);
+                  window.history.replaceState(null, "", `/?chatId=${id}`);
+                  refreshChats();
+                  api
+                    .generateChatTitle(id)
+                    .then(refreshChats)
+                    .catch(console.error);
+                } else {
+                  dispatchRunEvent(chatId, { type: "SESSION_ID", chatId: id });
+                }
+              }
+            },
+            onMessageId: (id) => {
+              const currentChatId = sessionId || chatId;
+              if (currentChatId) {
+                dispatchRunEvent(currentChatId, {
+                  type: "MESSAGE_ID",
+                  messageId: id,
+                });
+              }
+            },
+            onEvent: (eventType, payload) => {
+              const currentChatId = sessionId || chatId;
+              if (!currentChatId) return;
+              const runEvent = runtimeEventToRunEvent(eventType, payload);
+              if (runEvent) dispatchRunEvent(currentChatId, runEvent);
+            },
+            onThinkTagDetected,
           },
-          onMessageId: (id) => {
-            const currentChatId = sessionId || chatId;
-            if (currentChatId) {
-              dispatchRunEvent(currentChatId, {
-                type: "MESSAGE_ID",
-                messageId: id,
-              });
-            }
+          undefined,
+          {
+            smoothOutput: outputSmoothing.enabled,
+            outputSmoothingDelayMs: outputSmoothing.delayMs,
           },
-          onEvent: (eventType, payload) => {
-            const currentChatId = sessionId || chatId;
-            if (!currentChatId) return;
-            const runEvent = runtimeEventToRunEvent(eventType, payload);
-            if (runEvent) dispatchRunEvent(currentChatId, runEvent);
-          },
-          onThinkTagDetected,
-        });
+        );
 
         const finalChatId = sessionId || chatId;
         if (finalChatId) {
@@ -242,7 +252,8 @@ export function useChatStreamActions({
       const idx = baseMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      startRun(chatId);
+      const outputSmoothing = await getOutputSmoothingConfig();
+      startRun(chatId, { subscribe: !outputSmoothing.enabled });
       const truncated = baseMessages.slice(0, idx);
       setBaseMessages(truncated);
       seedPrefetchWithLocalHistory(chatId, truncated);
@@ -261,19 +272,27 @@ export function useChatStreamActions({
         );
         streamAbortRef.current = abort;
 
-        const result = await processMessageStream(response, {
-          onUpdate: (content) => {
-            dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+        const result = await processMessageStream(
+          response,
+          {
+            onUpdate: (content) => {
+              dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+            },
+            onMessageId: (id) => {
+              dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+            },
+            onEvent: (eventType, payload) => {
+              const runEvent = runtimeEventToRunEvent(eventType, payload);
+              if (runEvent) dispatchRunEvent(chatId, runEvent);
+            },
+            onThinkTagDetected,
           },
-          onMessageId: (id) => {
-            dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+          undefined,
+          {
+            smoothOutput: outputSmoothing.enabled,
+            outputSmoothingDelayMs: outputSmoothing.delayMs,
           },
-          onEvent: (eventType, payload) => {
-            const runEvent = runtimeEventToRunEvent(eventType, payload);
-            if (runEvent) dispatchRunEvent(chatId, runEvent);
-          },
-          onThinkTagDetected,
-        });
+        );
 
         if (isStillForeground(chatId)) preserveStreamingMessage(result);
         completeRun(chatId);
@@ -316,7 +335,8 @@ export function useChatStreamActions({
 
       const truncated = baseMessages.slice(0, idx);
       setBaseMessages(truncated);
-      startRun(chatId);
+      const outputSmoothing = await getOutputSmoothingConfig();
+      startRun(chatId, { subscribe: !outputSmoothing.enabled });
       seedPrefetchWithLocalHistory(chatId, truncated);
 
       try {
@@ -333,19 +353,27 @@ export function useChatStreamActions({
         );
         streamAbortRef.current = abort;
 
-        const result = await processMessageStream(response, {
-          onUpdate: (content) => {
-            dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+        const result = await processMessageStream(
+          response,
+          {
+            onUpdate: (content) => {
+              dispatchRunEvent(chatId, { type: "CONTENT_UPDATE", content });
+            },
+            onMessageId: (id) => {
+              dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+            },
+            onEvent: (eventType, payload) => {
+              const runEvent = runtimeEventToRunEvent(eventType, payload);
+              if (runEvent) dispatchRunEvent(chatId, runEvent);
+            },
+            onThinkTagDetected,
           },
-          onMessageId: (id) => {
-            dispatchRunEvent(chatId, { type: "MESSAGE_ID", messageId: id });
+          undefined,
+          {
+            smoothOutput: outputSmoothing.enabled,
+            outputSmoothingDelayMs: outputSmoothing.delayMs,
           },
-          onEvent: (eventType, payload) => {
-            const runEvent = runtimeEventToRunEvent(eventType, payload);
-            if (runEvent) dispatchRunEvent(chatId, runEvent);
-          },
-          onThinkTagDetected,
-        });
+        );
 
         if (isStillForeground(chatId)) preserveStreamingMessage(result);
         completeRun(chatId);

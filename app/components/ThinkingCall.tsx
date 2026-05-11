@@ -15,22 +15,28 @@ import { useAutoCollapse } from "@/lib/hooks/use-auto-collapse";
 
 interface ThinkingCallProps {
   content: string;
+  lookaheadContent?: string;
+  visibleChars?: number;
   active?: boolean;
   isGrouped?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
   isCompleted?: boolean;
   mode?: CollapsibleMode;
+  showIndicator?: boolean;
 }
 
 export default function ThinkingCall({
   content,
+  lookaheadContent,
+  visibleChars,
   active = false,
   isGrouped = false,
   isFirst = false,
   isLast = false,
   isCompleted = false,
   mode = "regular",
+  showIndicator = false,
 }: ThinkingCallProps) {
   const { isOpen, isClosing, isManuallyExpanded, setIsOpen, handleToggle } =
     useAutoCollapse({ active });
@@ -68,7 +74,11 @@ export default function ThinkingCall({
           ref={contentRef}
           className={(active || isClosing) && !isManuallyExpanded ? "max-h-48 overflow-y-auto pt-2" : ""}
         >
-          <MarkdownRenderer content={content} />
+          <MarkdownRenderer
+            content={lookaheadContent ?? content}
+            visibleChars={visibleChars}
+            showCursor={showIndicator}
+          />
         </div>
       </CollapsibleContent>
     </Collapsible>

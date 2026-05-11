@@ -126,7 +126,11 @@ export default function MemberRunCall({
           {content.map((block, i) => {
             if (block.type === "text") {
               return block.content ? (
-                <MarkdownRenderer key={`text-${i}`} content={block.content} />
+                <MarkdownRenderer
+                  key={`text-${i}`}
+                  content={block.lookaheadContent ?? block.content}
+                  visibleChars={block.visibleChars}
+                />
               ) : null;
             }
             if (block.type === "tool_call") {
@@ -143,6 +147,8 @@ export default function MemberRunCall({
                 <ThinkingCall
                   key={`reason-${i}`}
                   content={block.content}
+                  lookaheadContent={block.lookaheadContent}
+                  visibleChars={block.visibleChars}
                   active={!block.isCompleted}
                   isCompleted={block.isCompleted}
                   mode="minimal"

@@ -519,6 +519,16 @@ class SaveSystemPromptSettingsInput(BaseModel):
     prompt: str
 
 
+class OutputSmoothingSettings(BaseModel):
+    enabled: bool = False
+    delayMs: int = 320
+
+
+class SaveOutputSmoothingSettingsInput(BaseModel):
+    enabled: bool
+    delayMs: int = 320
+
+
 class ReasoningInfo(BaseModel):
     supports: bool
     isUserOverride: bool
