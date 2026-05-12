@@ -178,7 +178,6 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
           handleEvent(event);
         }
       } catch {
-        // stream errored or was aborted
       } finally {
         cleanupSubscription(chatId);
       }
