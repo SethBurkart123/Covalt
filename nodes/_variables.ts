@@ -46,6 +46,12 @@ export interface VariableSpec {
   show_when?: ShowWhen;
   /** Set by chat-start when merging in a downstream node's contribution. */
   contributed_by?: string;
+  /**
+   * Routing hint for the frontend submit path. "node" (default) → values are
+   * sent in the `variables` map. "model_option" → values are sent in the
+   * `modelOptions` map so backend per-model schema validation applies.
+   */
+  source?: 'node' | 'model_option';
 }
 
 export type VariableValueMap = Record<string, unknown>;

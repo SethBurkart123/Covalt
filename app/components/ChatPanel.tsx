@@ -8,7 +8,6 @@ import { usePageTitle } from "@/contexts/page-title-context";
 import { ArtifactPanelProvider } from "@/contexts/artifact-panel-context";
 import { useChatInput } from "@/lib/hooks/use-chat-input";
 import { useChatVariableSpecs } from "@/lib/hooks/use-chat-variables";
-import { useModelOptions } from "@/lib/hooks/use-model-options";
 import { useVariables } from "@/lib/hooks/use-variables";
 import { api } from "@/lib/services/api";
 import {
@@ -147,28 +146,64 @@ export default function ChatPanel() {
   }, [workspaceButton, setRightContent]);
 
   const {
-    schema: modelOptionSchema,
-    values: modelOptionValues,
-    setValue: setModelOptionValue,
-    reset: resetModelOptions,
-    getVisibleValues: getVisibleModelOptions,
-  } = useModelOptions(selectedModel, availableModels, {
-    persistedValues: modelSelectionState.modelOptions,
-    onValuesChange: setModelOptions,
-  });
-
-  const {
     specs: chatVariableSpecs,
     optionsContext: chatVariableOptionsContext,
   } = useChatVariableSpecs({ chatId, modelId: selectedModel });
+
+  const mergedPersistedValues = useMemo(
+    () => ({
+      ...modelSelectionState.modelOptions,
+      ...modelSelectionState.variables,
+    }),
+    [modelSelectionState.modelOptions, modelSelectionState.variables],
+  );
+
+  const specsRef = useRef(chatVariableSpecs);
+  specsRef.current = chatVariableSpecs;
+
+  const handleVariableValuesChange = useCallback(
+    (next: Record<string, unknown>) => {
+      const modelOpts: Record<string, unknown> = {};
+      const vars: Record<string, unknown> = {};
+      for (const spec of specsRef.current) {
+        if (!(spec.id in next)) continue;
+        const bucket = spec.source === "model_option" ? modelOpts : vars;
+        bucket[spec.id] = next[spec.id];
+      }
+      setModelOptions(modelOpts);
+      setVariables(vars);
+    },
+    [setModelOptions, setVariables],
+  );
 
   const variables = useVariables({
     storageKey: null,
     specs: chatVariableSpecs,
     optionsContext: chatVariableOptionsContext,
-    persistedValues: modelSelectionState.variables,
-    onValuesChange: setVariables,
+    persistedValues: mergedPersistedValues,
+    onValuesChange: handleVariableValuesChange,
   });
+
+  const getVisibleModelOptions = useCallback(() => {
+    if (selectedModel.startsWith("agent:")) return {};
+    const visible = variables.getVisibleValues();
+    const result: Record<string, unknown> = {};
+    for (const spec of specsRef.current) {
+      if (spec.source !== "model_option") continue;
+      if (spec.id in visible) result[spec.id] = visible[spec.id];
+    }
+    return result;
+  }, [variables, selectedModel]);
+
+  const getVisibleNodeVariables = useCallback(() => {
+    const visible = variables.getVisibleValues();
+    const result: Record<string, unknown> = {};
+    for (const spec of specsRef.current) {
+      if (spec.source === "model_option") continue;
+      if (spec.id in visible) result[spec.id] = visible[spec.id];
+    }
+    return result;
+  }, [variables]);
 
   const {
     handleSubmit,
@@ -196,7 +231,7 @@ export default function ChatPanel() {
   } = useChatInput(
     handleThinkTagDetected,
     getVisibleModelOptions,
-    variables.getVisibleValues,
+    getVisibleNodeVariables,
   );
 
   const messages = useMemo(() => {
@@ -274,10 +309,6 @@ export default function ChatPanel() {
       selectedModel={selectedModel}
       setSelectedModel={setSelectedModel}
       models={availableModels}
-      optionSchema={modelOptionSchema}
-      optionValues={modelOptionValues}
-      onOptionChange={setModelOptionValue}
-      onResetOptions={resetModelOptions}
       variableSpecs={variables.visibleSpecs}
       variableCtx={variableRuntimeCtx}
       onResetVariables={variables.reset}

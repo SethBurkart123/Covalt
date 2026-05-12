@@ -117,11 +117,17 @@ async def get_chat_variable_specs(
     if graph_data is None and agent_id:
         graph_data = _agent_graph_data(agent_id)
 
-    if graph_data is None and body.chatId:
+    if graph_data is None and (body.chatId or body.modelId):
         try:
-            graph_data = get_graph_data_for_chat(body.chatId, body.modelId, model_options={})
+            graph_data = get_graph_data_for_chat(
+                body.chatId, body.modelId, model_options={}
+            )
         except Exception:
-            logger.exception("Failed to load graph data for chat %s", body.chatId)
+            logger.exception(
+                "Failed to load graph data for chat=%s model=%s",
+                body.chatId,
+                body.modelId,
+            )
             graph_data = None
 
     if graph_data is None:

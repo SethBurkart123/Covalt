@@ -19,7 +19,6 @@ import clsx from "clsx";
 import { LayoutGroup } from "motion/react";
 import type {
   ModelInfo,
-  OptionSchema,
   AttachmentType,
   UploadingAttachment,
   Attachment,
@@ -28,8 +27,6 @@ import { ToolSelector } from "@/components/ToolSelector";
 import { useToolsCatalog } from "@/contexts/tools-context";
 import ModelSelector from "@/components/ModelSelector";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
-import MainModelOptions from "@/components/MainModelOptions";
-import AdvancedOptionsPopover from "@/components/AdvancedOptionsPopover";
 import {
   VariablesAdvancedPopover,
   VariablesHeader,
@@ -59,10 +56,6 @@ interface LeftToolbarProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: readonly ModelInfo[];
-  optionSchema?: OptionSchema;
-  optionValues?: Record<string, unknown>;
-  onOptionChange?: (key: string, value: unknown) => void;
-  onResetOptions?: () => void;
   variableSpecs?: VariableSpec[];
   variableCtx?: VariablesRuntimeContext;
   onResetVariables?: () => void;
@@ -77,10 +70,6 @@ const LeftToolbar = memo(function LeftToolbar({
   selectedModel,
   setSelectedModel,
   models,
-  optionSchema,
-  optionValues,
-  onOptionChange,
-  onResetOptions,
   variableSpecs,
   variableCtx,
   onResetVariables,
@@ -108,24 +97,6 @@ const LeftToolbar = memo(function LeftToolbar({
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           models={models}
-        />
-      )}
-
-      {optionSchema && optionValues && onOptionChange && (
-        <MainModelOptions
-          schema={optionSchema}
-          values={optionValues}
-          onChange={onOptionChange}
-        />
-      )}
-
-      {optionSchema && optionValues && onOptionChange && onResetOptions && (
-        <AdvancedOptionsPopover
-          schema={optionSchema}
-          values={optionValues}
-          onChange={onOptionChange}
-          onReset={onResetOptions}
-          disabled={isLoading}
         />
       )}
 
@@ -211,10 +182,6 @@ interface ChatInputFormProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   models: readonly ModelInfo[];
-  optionSchema?: OptionSchema;
-  optionValues?: Record<string, unknown>;
-  onOptionChange?: (key: string, value: unknown) => void;
-  onResetOptions?: () => void;
   variableSpecs?: VariableSpec[];
   variableCtx?: VariablesRuntimeContext;
   onResetVariables?: () => void;
@@ -238,10 +205,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     selectedModel,
     setSelectedModel,
     models,
-    optionSchema,
-    optionValues,
-    onOptionChange,
-    onResetOptions,
     variableSpecs,
     variableCtx,
     onResetVariables,
@@ -257,23 +220,21 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
     >([]);
 
     const toolSelectorState = useMemo(() => {
-      const schema = optionSchema;
-      if (!schema) return { disabled: false, reason: undefined };
+      const disableSpec = variableSpecs?.find(
+        (spec) => spec.source === "model_option" && spec.id === "disable_tools",
+      );
+      if (!disableSpec) return { disabled: false, reason: undefined };
 
-      const allDefs = [...schema.main, ...schema.advanced];
-      const disableDef = allDefs.find((def) => def.key === "disable_tools");
-      if (!disableDef) return { disabled: false, reason: undefined };
-
-      if (disableDef.default === true) {
+      if (disableSpec.default === true) {
         return { disabled: true, reason: "Tools not supported by this model" };
       }
 
-      if (optionValues?.disable_tools === true) {
+      if (variableCtx?.values.disable_tools === true) {
         return { disabled: true, reason: "Tools disabled in model options" };
       }
 
       return { disabled: false, reason: undefined };
-    }, [optionSchema, optionValues]);
+    }, [variableSpecs, variableCtx]);
 
     const formRef = useRef<HTMLFormElement>(null);
     const editorRef = useRef<Editor | null>(null);
@@ -821,10 +782,6 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
                 models={models}
-                optionSchema={optionSchema}
-                optionValues={optionValues}
-                onOptionChange={onOptionChange}
-                onResetOptions={onResetOptions}
                 variableSpecs={variableSpecs}
                 variableCtx={variableCtx}
                 onResetVariables={onResetVariables}

@@ -89,6 +89,7 @@ class VariableSpec:
     placement: Literal["header", "advanced"] = "header"
     show_when: dict[str, Any] | None = None
     contributed_by: str | None = None
+    source: Literal["node", "model_option"] = "node"
 
 
 def control_kind_from_dict(raw: Any) -> ControlKind:
@@ -170,6 +171,10 @@ def variable_spec_from_dict(raw: Any) -> VariableSpec:
         raise ValueError(f"variable spec {spec_id} requires a label")
 
     show_when_raw = raw.get("show_when")
+    source_raw = raw.get("source")
+    source: Literal["node", "model_option"] = (
+        "model_option" if source_raw == "model_option" else "node"
+    )
     return VariableSpec(
         id=spec_id,
         label=label,
@@ -182,6 +187,7 @@ def variable_spec_from_dict(raw: Any) -> VariableSpec:
         placement=raw.get("placement", "header") or "header",
         show_when=show_when_raw if isinstance(show_when_raw, dict) else None,
         contributed_by=raw.get("contributed_by"),
+        source=source,
     )
 
 
@@ -205,6 +211,8 @@ def variable_spec_to_dict(spec: VariableSpec) -> dict[str, Any]:
         out["show_when"] = spec.show_when
     if spec.contributed_by:
         out["contributed_by"] = spec.contributed_by
+    if spec.source and spec.source != "node":
+        out["source"] = spec.source
     return out
 
 

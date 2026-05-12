@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from backend.providers import resolve_provider_options
+from backend.providers import get_provider_model_options, resolve_provider_options
 from backend.runtime import (
     AgentConfig,
     AgentHandle,
@@ -86,20 +86,22 @@ class AgentExecutor:
         context: FlowContext | None = None,
     ) -> list[dict[str, Any]]:
         del context
-        if data.get("disableModelVariable") is True:
-            return []
         agent_name = str(data.get("name") or "Agent")
-        return [
-            {
-                "id": "model",
-                "label": "Model",
-                "section": agent_name,
-                "control": {"kind": "searchable", "grouped": True},
-                "options": {"kind": "callback", "load": "models:list"},
-                "default": data.get("model", ""),
-                "placement": "header",
-            },
-        ]
+        specs: list[dict[str, Any]] = []
+        if data.get("disableModelVariable") is not True:
+            specs.append(
+                {
+                    "id": "model",
+                    "label": "Model",
+                    "section": agent_name,
+                    "control": {"kind": "searchable", "grouped": True},
+                    "options": {"kind": "callback", "load": "models:list"},
+                    "default": data.get("model", ""),
+                    "placement": "header",
+                }
+            )
+        specs.extend(_model_option_specs(str(data.get("model") or ""), agent_name))
+        return specs
 
     async def materialize(
         self,
@@ -1404,6 +1406,88 @@ def _split_model_id(model_str: str) -> tuple[str | None, str | None]:
     if not provider or not model_id:
         return None, None
     return provider, model_id
+
+
+_OPTION_TYPE_TO_CONTROL_KIND = {
+    "select": "select",
+    "slider": "slider",
+    "number": "number",
+    "boolean": "boolean",
+}
+
+
+def _model_option_specs(model_str: str, section: str) -> list[dict[str, Any]]:
+    """Translate provider model options into variable specs for the toolbar."""
+    provider, model_id = _split_model_id(model_str)
+    if not provider or not model_id:
+        return []
+    try:
+        metadata = get_cached_model_metadata(provider, model_id)
+        schema = get_provider_model_options(provider, model_id, metadata)
+    except Exception:
+        return []
+
+    specs: list[dict[str, Any]] = []
+    for placement, definitions in (
+        ("header", schema.get("main") or []),
+        ("advanced", schema.get("advanced") or []),
+    ):
+        for definition in definitions:
+            spec = _option_definition_to_spec(definition, placement, section)
+            if spec is not None:
+                specs.append(spec)
+    return specs
+
+
+def _option_definition_to_spec(
+    definition: dict[str, Any],
+    placement: str,
+    section: str,
+) -> dict[str, Any] | None:
+    key = definition.get("key")
+    if not isinstance(key, str) or not key:
+        return None
+    kind = _OPTION_TYPE_TO_CONTROL_KIND.get(str(definition.get("type") or ""))
+    if kind is None:
+        return None
+
+    control: dict[str, Any] = {"kind": kind}
+    for attr in ("min", "max", "step"):
+        value = definition.get(attr)
+        if value is not None:
+            control[attr] = value
+
+    spec: dict[str, Any] = {
+        "id": key,
+        "label": str(definition.get("label") or key),
+        "section": section,
+        "control": control,
+        "default": definition.get("default"),
+        "placement": placement,
+        "source": "model_option",
+    }
+
+    if kind == "select":
+        choices = definition.get("options") or []
+        spec["options"] = {
+            "kind": "static",
+            "options": [
+                {"value": choice.get("value"), "label": str(choice.get("label") or "")}
+                for choice in choices
+                if isinstance(choice, dict)
+            ],
+        }
+
+    show_when = definition.get("showWhen")
+    if isinstance(show_when, dict):
+        param_id = show_when.get("option")
+        values = show_when.get("values") or []
+        if isinstance(param_id, str) and param_id and isinstance(values, list):
+            spec["show_when"] = {
+                "valueIn": [{"paramId": param_id, "values": list(values)}],
+            }
+
+    return spec
 
 
 def _should_disable_tools(

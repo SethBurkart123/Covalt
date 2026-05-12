@@ -171,7 +171,10 @@ class TestChatStartExecutor:
         result = await executor.execute({}, {}, ctx)
 
         specs = result.outputs["output"].value["variable_specs"]
-        by_id = {spec["id"]: spec for spec in specs}
+        model_picker_specs = [
+            spec for spec in specs if spec.get("source", "node") == "node"
+        ]
+        by_id = {spec["id"]: spec for spec in model_picker_specs}
         assert set(by_id) == {
             node_model_variable_id("agent-a"),
             node_model_variable_id("agent-b"),

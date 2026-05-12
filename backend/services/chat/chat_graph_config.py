@@ -301,13 +301,17 @@ def _build_canonical_chat_graph(
 
 
 def get_graph_data_for_chat(
-    chat_id: str,
+    chat_id: str | None,
     model_id: str | None,
     model_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    with db.db_session() as sess:
-        config = db.get_chat_agent_config(sess, chat_id) or {}
-        system_prompt = db.get_system_prompt_setting(sess) or ""
+    if chat_id:
+        with db.db_session() as sess:
+            config = db.get_chat_agent_config(sess, chat_id) or {}
+            system_prompt = db.get_system_prompt_setting(sess) or ""
+    else:
+        config = {}
+        system_prompt = ""
 
     agent_id: str | None = None
 

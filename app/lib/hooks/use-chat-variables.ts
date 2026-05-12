@@ -24,7 +24,7 @@ function shouldFetchSpecs(args: UseChatVariableSpecsArgs): boolean {
   if (args.graphData) return true;
   if (args.chatId) return true;
   if (args.agentId) return true;
-  if (args.modelId && args.modelId.startsWith("agent:")) return true;
+  if (args.modelId) return true;
   return false;
 }
 
