@@ -8,9 +8,11 @@ advanced popover, scoped per-node so multiple Droid nodes coexist.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import mimetypes
 import posixpath
 import re
 import shutil
@@ -50,6 +52,7 @@ from droid_sdk.schemas.enums import (
 
 from backend.runtime import ApprovalQuestion
 from backend.services.streaming import run_control
+from backend.services.workspace_manager import get_workspace_manager
 from nodes._types import DataValue, ExecutionResult, FlowContext, NodeEvent
 from nodes._variables import variable_id_suffix
 from nodes.core.droid_agent._approval_bridge import (
@@ -70,6 +73,15 @@ _STREAM_DONE = object()
 _REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"]
 _AUTONOMY_LEVELS = ["off", "low", "medium", "high"]
 _INTERACTION_MODES = ["auto", "spec"]
+_MAX_NATIVE_DROID_ATTACHMENT_BYTES = 10 * 1024 * 1024
+_DROID_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_DROID_TEXT_FILE_MIME_TYPES = {
+    "application/json",
+    "application/xml",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+}
 
 # Process-local cache for sessions already resolved in this process. Durable
 # branch lookup comes from execution traces keyed by message path.
@@ -113,6 +125,15 @@ class _DroidSessionPlan:
 class _DroidSessionCheckpoint:
     session_id: str
     line_count: int | None = None
+
+
+@dataclass(frozen=True)
+class _DroidAttachment:
+    kind: str
+    path: Path
+    name: str
+    mime_type: str
+    size: int
 
 
 class DroidAgentExecutor:
@@ -229,6 +250,7 @@ class DroidAgentExecutor:
         input_value = _coerce_input_value(inputs.get("input"))
         message = _resolve_message(input_value)
         variables = _coerce_dict(input_value.get("variables"))
+        attachments = _resolve_droid_attachments(input_value, context)
 
         suffix = variable_id_suffix(str(data.get("name") or "droid"))
         cwd = _coerce_str(
@@ -351,7 +373,15 @@ class DroidAgentExecutor:
                     data={"run_id": session_id},
                 )
 
-            await client.add_user_message(text=message)
+            user_message, images, files = _build_droid_user_message(
+                message,
+                attachments,
+            )
+            await client.add_user_message(
+                text=user_message,
+                images=images or None,
+                files=files or None,
+            )
 
             stream_task = asyncio.create_task(
                 _drain_response_stream(
@@ -510,6 +540,265 @@ def _resolve_message(input_value: dict[str, Any]) -> str:
                 if isinstance(content, str) and content:
                     return content
     return ""
+
+
+def _resolve_droid_attachments(
+    input_value: dict[str, Any],
+    context: FlowContext,
+) -> list[_DroidAttachment]:
+    attachments: list[_DroidAttachment] = []
+    seen_paths: set[Path] = set()
+
+    for item in _iter_direct_attachments(input_value.get("attachments")):
+        _append_droid_attachment(attachments, seen_paths, item, context)
+
+    for item in _iter_latest_user_runtime_attachments(input_value.get("runtime_messages")):
+        _append_droid_attachment(attachments, seen_paths, item, context)
+
+    return attachments
+
+
+def _iter_direct_attachments(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _iter_latest_user_runtime_attachments(value: Any) -> list[Any]:
+    messages = value if isinstance(value, list) else [value] if value is not None else []
+    for message in reversed(messages):
+        role = _field_value(message, "role")
+        if role is not None and str(role) != "user":
+            continue
+        attachments = _field_value(message, "attachments")
+        if isinstance(attachments, list):
+            return attachments
+    return []
+
+
+def _append_droid_attachment(
+    attachments: list[_DroidAttachment],
+    seen_paths: set[Path],
+    item: Any,
+    context: FlowContext,
+) -> None:
+    attachment = _coerce_droid_attachment(item, context)
+    if attachment is None:
+        return
+    resolved_path = attachment.path.resolve()
+    if resolved_path in seen_paths:
+        return
+    seen_paths.add(resolved_path)
+    attachments.append(attachment)
+
+
+def _coerce_droid_attachment(
+    item: Any,
+    context: FlowContext,
+) -> _DroidAttachment | None:
+    if isinstance(item, dict):
+        path = _attachment_path_from_dict(item, context)
+        kind = str(item.get("type") or item.get("kind") or "file")
+        name = str(item.get("name") or (path.name if path else "attachment"))
+        mime_type = _coerce_str(
+            item.get("mimeType"),
+            item.get("mediaType"),
+            item.get("media_type"),
+            item.get("mime"),
+            _guess_mime_type(path, name),
+            "application/octet-stream",
+        )
+        size = _coerce_optional_int(item.get("size"))
+        return _make_droid_attachment(kind, path, name, mime_type, size)
+
+    path_value = _field_value(item, "path")
+    path = _coerce_path(path_value)
+    kind = str(_field_value(item, "kind") or _field_value(item, "type") or "file")
+    name = str(_field_value(item, "name") or (path.name if path else "attachment"))
+    mime_type = _coerce_str(
+        _field_value(item, "mimeType"),
+        _field_value(item, "mediaType"),
+        _field_value(item, "media_type"),
+        _field_value(item, "mime"),
+        _guess_mime_type(path, name),
+        "application/octet-stream",
+    )
+    size = _coerce_optional_int(_field_value(item, "size"))
+    return _make_droid_attachment(kind, path, name, mime_type, size)
+
+
+def _make_droid_attachment(
+    kind: str,
+    path: Path | None,
+    name: str,
+    mime_type: str,
+    size: int | None,
+) -> _DroidAttachment | None:
+    if path is None or not path.is_file():
+        return None
+    actual_size = _safe_file_size(path)
+    return _DroidAttachment(
+        kind=kind if kind in {"image", "file", "audio", "video"} else "file",
+        path=path,
+        name=name or path.name,
+        mime_type=mime_type,
+        size=actual_size if actual_size is not None else size or 0,
+    )
+
+
+def _attachment_path_from_dict(
+    item: dict[str, Any],
+    context: FlowContext,
+) -> Path | None:
+    for key in ("path", "filepath", "file_path"):
+        path = _coerce_path(item.get(key))
+        if path is not None:
+            return path
+
+    name = item.get("name")
+    chat_id = getattr(context, "chat_id", None)
+    if not isinstance(name, str) or not name or not isinstance(chat_id, str) or not chat_id:
+        return None
+    return _chat_workspace_attachment_path(chat_id, name)
+
+
+def _chat_workspace_attachment_path(chat_id: str, name: str) -> Path | None:
+    try:
+        workspace_dir = get_workspace_manager(chat_id).workspace_dir.resolve()
+        candidate = (workspace_dir / name).resolve()
+        candidate.relative_to(workspace_dir)
+        return candidate
+    except Exception:
+        logger.debug("Failed to resolve chat attachment path", exc_info=True)
+        return None
+
+
+def _coerce_path(value: Any) -> Path | None:
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str) and value:
+        return Path(value).expanduser()
+    return None
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_file_size(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _guess_mime_type(path: Path | None, name: str) -> str:
+    mime_type, _encoding = mimetypes.guess_type(path.name if path else name)
+    return mime_type or ""
+
+
+def _field_value(item: Any, key: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key, None)
+
+
+def _build_droid_user_message(
+    message: str,
+    attachments: list[_DroidAttachment],
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    images: list[dict[str, Any]] = []
+    files: list[dict[str, Any]] = []
+
+    for attachment in attachments:
+        if attachment.size > _MAX_NATIVE_DROID_ATTACHMENT_BYTES:
+            continue
+        source = _droid_attachment_source(attachment)
+        if source is None:
+            continue
+        if attachment.mime_type in _DROID_IMAGE_MIME_TYPES:
+            images.append(source)
+        else:
+            files.append(source)
+
+    return _append_attachment_paths_to_message(message, attachments), images, files
+
+
+def _droid_attachment_source(attachment: _DroidAttachment) -> dict[str, Any] | None:
+    if attachment.mime_type in _DROID_IMAGE_MIME_TYPES:
+        data = _read_base64(attachment.path)
+        if data is None:
+            return None
+        return {"type": "base64", "mediaType": attachment.mime_type, "data": data}
+
+    if attachment.mime_type == "application/pdf":
+        data = _read_base64(attachment.path)
+        if data is None:
+            return None
+        return {
+            "type": "base64",
+            "mediaType": attachment.mime_type,
+            "data": data,
+            "name": attachment.name,
+        }
+
+    if _is_droid_text_file(attachment.mime_type):
+        data = _read_text(attachment.path)
+        if data is None:
+            return None
+        return {
+            "type": "text",
+            "mediaType": attachment.mime_type,
+            "data": data,
+            "name": attachment.name,
+        }
+
+    return None
+
+
+def _is_droid_text_file(mime_type: str) -> bool:
+    return mime_type.startswith("text/") or mime_type in _DROID_TEXT_FILE_MIME_TYPES
+
+
+def _read_base64(path: Path) -> str | None:
+    try:
+        return base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        logger.debug("Failed to read Droid attachment", exc_info=True)
+        return None
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        logger.debug("Failed to read Droid text attachment", exc_info=True)
+        return None
+
+
+def _append_attachment_paths_to_message(
+    message: str,
+    attachments: list[_DroidAttachment],
+) -> str:
+    if not attachments:
+        return message
+
+    manifest = [
+        {
+            "name": attachment.name,
+            "path": str(attachment.path),
+            "mimeType": attachment.mime_type,
+            "kind": attachment.kind,
+        }
+        for attachment in attachments
+    ]
+    base_message = message.rstrip() if message.strip() else "Please use the attached files."
+    return (
+        f"{base_message}\n\n"
+        "Attached files are available on disk:\n"
+        f"```json\n{json.dumps(manifest, indent=2)}\n```"
+    )
 
 
 def _agent_event(context: FlowContext, event_name: str, **payload: Any) -> NodeEvent:

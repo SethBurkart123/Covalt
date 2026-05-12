@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections import deque
 from pathlib import Path
@@ -32,8 +33,11 @@ from backend.services.streaming.runtime_events import (
     EVENT_TOOL_CALL_STARTED,
     EVENT_WORKING_STATE_CHANGED,
 )
+from nodes._types import DataValue, ExecutionResult
 from nodes.core.droid_agent.executor import (
     _STREAM_DONE,
+    DroidAgentExecutor,
+    _build_droid_user_message,
     _build_session_plan,
     _display_path,
     _drain_response_stream,
@@ -45,6 +49,7 @@ from nodes.core.droid_agent.executor import (
     _make_token_usage_event,
     _make_tool_call_progress_event,
     _make_working_state_event,
+    _resolve_droid_attachments,
     _resume_or_initialize_session,
 )
 
@@ -76,6 +81,179 @@ def test_droid_tool_payload_formats_display_path_args_only() -> None:
         "file_path": "../other/file.py",
         "command": "cat /repo/current/file.py",
     }
+
+
+def test_droid_attachments_encode_supported_files_and_append_paths(tmp_path) -> None:
+    image_path = tmp_path / "shot.png"
+    image_path.write_bytes(b"fake-png")
+    pdf_path = tmp_path / "spec.pdf"
+    pdf_path.write_bytes(b"%PDF fake")
+    text_path = tmp_path / "notes.txt"
+    text_path.write_text("ship it", encoding="utf-8")
+    zip_path = tmp_path / "archive.zip"
+    zip_path.write_bytes(b"zip")
+
+    attachments = _resolve_droid_attachments(
+        {
+            "attachments": [
+                {
+                    "type": "image",
+                    "name": "shot.png",
+                    "mimeType": "image/png",
+                    "size": image_path.stat().st_size,
+                    "path": str(image_path),
+                },
+                {
+                    "type": "file",
+                    "name": "spec.pdf",
+                    "mimeType": "application/pdf",
+                    "size": pdf_path.stat().st_size,
+                    "path": str(pdf_path),
+                },
+                {
+                    "type": "file",
+                    "name": "notes.txt",
+                    "mimeType": "text/plain",
+                    "size": text_path.stat().st_size,
+                    "path": str(text_path),
+                },
+                {
+                    "type": "file",
+                    "name": "archive.zip",
+                    "mimeType": "application/zip",
+                    "size": zip_path.stat().st_size,
+                    "path": str(zip_path),
+                },
+            ]
+        },
+        _make_context(),
+    )
+
+    message, images, files = _build_droid_user_message("review these", attachments)
+
+    assert images == [
+        {
+            "type": "base64",
+            "mediaType": "image/png",
+            "data": base64.b64encode(b"fake-png").decode("ascii"),
+        }
+    ]
+    files_by_name = {file["name"]: file for file in files}
+    assert files_by_name["spec.pdf"]["type"] == "base64"
+    assert files_by_name["spec.pdf"]["data"] == base64.b64encode(b"%PDF fake").decode("ascii")
+    assert files_by_name["notes.txt"]["type"] == "text"
+    assert files_by_name["notes.txt"]["data"] == "ship it"
+    assert "archive.zip" not in files_by_name
+    assert "Attached files are available on disk" in message
+    assert str(zip_path) in message
+
+
+def test_droid_attachments_resolve_chat_workspace_metadata(tmp_path, monkeypatch) -> None:
+    attachment_path = tmp_path / "notes.txt"
+    attachment_path.write_text("hello", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor.get_workspace_manager",
+        lambda _chat_id: SimpleNamespace(workspace_dir=tmp_path),
+    )
+    context = SimpleNamespace(node_id="droid-1", run_id="run-1", chat_id="chat-1", services=None)
+
+    attachments = _resolve_droid_attachments(
+        {
+            "attachments": [
+                {
+                    "type": "file",
+                    "name": "notes.txt",
+                    "mimeType": "text/plain",
+                    "size": attachment_path.stat().st_size,
+                }
+            ]
+        },
+        context,
+    )
+
+    assert len(attachments) == 1
+    assert attachments[0].path == attachment_path.resolve()
+
+
+@pytest.mark.asyncio
+async def test_droid_executor_passes_attachments_to_client(tmp_path, monkeypatch) -> None:
+    image_path = tmp_path / "shot.png"
+    image_path.write_bytes(b"fake-png")
+    captured: dict[str, Any] = {}
+
+    class FakeClient:
+        async def connect(self) -> None:
+            pass
+
+        def on_notification(self, *_args: Any, **_kwargs: Any):
+            return lambda: None
+
+        def set_permission_handler(self, _handler: Any) -> None:
+            pass
+
+        def set_ask_user_handler(self, _handler: Any) -> None:
+            pass
+
+        async def add_user_message(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def receive_response(self):
+            yield TurnComplete()
+
+        def clear_permission_handler(self) -> None:
+            pass
+
+        def clear_ask_user_handler(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+    fake_client = FakeClient()
+
+    async def fake_resume_or_initialize_session(*_args: Any, **_kwargs: Any) -> str:
+        return "session-1"
+
+    monkeypatch.setattr("nodes.core.droid_agent.executor.resolve_droid_executable", lambda: "/bin/droid")
+    monkeypatch.setattr("nodes.core.droid_agent.executor.ProcessTransport", lambda **_kwargs: object())
+    monkeypatch.setattr("nodes.core.droid_agent.executor.DroidClient", lambda transport: fake_client)
+    monkeypatch.setattr(
+        "nodes.core.droid_agent.executor._resume_or_initialize_session",
+        fake_resume_or_initialize_session,
+    )
+
+    executor = DroidAgentExecutor()
+    items = [
+        item
+        async for item in executor.execute(
+            {"cwd": str(tmp_path)},
+            {
+                "input": DataValue(
+                    type="data",
+                    value={
+                        "message": "describe this",
+                        "attachments": [
+                            {
+                                "type": "image",
+                                "name": "shot.png",
+                                "mimeType": "image/png",
+                                "size": image_path.stat().st_size,
+                                "path": str(image_path),
+                            }
+                        ],
+                    },
+                )
+            },
+            _make_context(),
+        )
+    ]
+
+    assert captured["text"].startswith("describe this")
+    assert captured["images"][0]["mediaType"] == "image/png"
+    assert captured["images"][0]["data"] == base64.b64encode(b"fake-png").decode("ascii")
+    assert captured["files"] is None
+    assert any(isinstance(item, ExecutionResult) for item in items)
 
 
 def _make_chat_context(
