@@ -134,14 +134,14 @@ export function useModelSelection({
       });
   }, [chatId]);
 
-  const activeChatState =
-    chatId && chatSelection?.chatId === chatId ? chatSelection.state : EMPTY_SELECTION;
+  const chatStateReady = chatId != null && chatSelection?.chatId === chatId;
+  const activeChatState = chatSelection?.state ?? EMPTY_SELECTION;
   const activeGlobalState =
     selectionSettings.mode === "fixed"
       ? selectionSettings.fixedSelection
       : globalState;
   const activeLoaded = chatId
-    ? chatLoaded && chatSelection?.chatId === chatId
+    ? chatLoaded && chatStateReady
     : globalLoaded && selectionSettingsLoaded;
   const catalogReady = !modelsLoading && !agentsLoading;
   const activeState = chatId ? activeChatState : activeGlobalState;

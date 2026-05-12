@@ -412,13 +412,13 @@ function ModelSelector({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "inline-flex rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 min-w-20",
+            "inline-flex !h-9 sm:!h-9 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium min-w-20 [&_:where(img,svg)]:!size-4 [&_:where(img,svg)]:!min-h-0 [&_:where(img,svg)]:!min-w-0",
             className,
           )}
         >
           {selectedAgent ? (
             <span className="inline-flex items-center gap-1.5">
-              <span className="shrink-0 flex items-center">
+              <span className="size-4 shrink-0 flex items-center justify-center">
                 <AgentIconSmall
                   icon={selectedAgent.icon}
                   agentId={selectedAgent.id}
@@ -429,7 +429,7 @@ function ModelSelector({
           ) : selectedModelInfo ? (
             <span className="inline-flex items-center gap-1.5">
               {SelectedProviderIcon && (
-                <span className="shrink-0 flex items-center">
+                <span className="size-4 shrink-0 flex items-center justify-center">
                   <SelectedProviderIcon />
                 </span>
               )}
