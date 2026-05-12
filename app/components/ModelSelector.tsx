@@ -412,28 +412,30 @@ function ModelSelector({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "flex shrink-0 rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 justify-between min-w-20",
+            "inline-flex rounded-xl items-center gap-1.5 px-3 py-1 text-sm font-medium h-9 min-w-20",
             className,
           )}
         >
           {selectedAgent ? (
-            <span className="flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5">
               <span className="shrink-0 flex items-center">
                 <AgentIconSmall
                   icon={selectedAgent.icon}
                   agentId={selectedAgent.id}
                 />
               </span>
-              <MiddleTruncate text={selectedAgent.name} />
+              <span className="whitespace-nowrap">{selectedAgent.name}</span>
             </span>
           ) : selectedModelInfo ? (
-            <span className="flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5">
               {SelectedProviderIcon && (
                 <span className="shrink-0 flex items-center">
                   <SelectedProviderIcon />
                 </span>
               )}
-              <MiddleTruncate text={selectedModelInfo.modelId} />
+              <span className="whitespace-nowrap">
+                {selectedModelInfo.modelId}
+              </span>
             </span>
           ) : models.length === 0 ? (
             <Skeleton className="h-4 w-24" />
@@ -555,7 +557,10 @@ function ModelSelector({
                         <row.ProviderIcon />
                       </span>
                     )}
-                    <MiddleTruncate text={row.model.modelId} />
+                    <MiddleTruncate
+                      className="flex-1"
+                      text={row.model.modelId}
+                    />
                   </span>
                   <span className="ml-auto flex shrink-0 items-center gap-1">
                     <ModelStarButton
