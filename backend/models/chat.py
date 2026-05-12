@@ -195,10 +195,27 @@ class ToggleChatToolsInput(BaseModel):
     toolIds: list[str]
 
 
-class UpdateChatModelInput(BaseModel):
-    chatId: str
-    provider: str
-    modelId: str
+class ModelSelectionState(BaseModel):
+    model_key: str = ""
+    model_options: dict[str, Any] = Field(default_factory=dict)
+    variables: dict[str, Any] = Field(default_factory=dict)
+
+
+class SetModelSelectionStateInput(ModelSelectionState):
+    pass
+
+
+class ModelSelectionSettings(BaseModel):
+    mode: Literal["last_used", "fixed"] = "last_used"
+    fixed_selection: ModelSelectionState = Field(default_factory=ModelSelectionState)
+
+
+class SaveModelSelectionSettingsInput(ModelSelectionSettings):
+    pass
+
+
+class UpdateChatSelectionInput(ModelSelectionState):
+    chat_id: str
 
 
 class ToolInfo(BaseModel):
@@ -462,14 +479,6 @@ class SetDefaultToolsInput(BaseModel):
     toolIds: list[str]
 
 
-class SelectedModelResponse(BaseModel):
-    modelKey: str
-
-
-class SetSelectedModelInput(BaseModel):
-    modelKey: str
-
-
 class RecentModelsResponse(BaseModel):
     modelKeys: list[str]
 
@@ -487,9 +496,12 @@ class SetStarredModelsInput(BaseModel):
 
 
 class ChatAgentConfigResponse(BaseModel):
-    toolIds: list[str]
+    tool_ids: list[str]
     provider: str
-    modelId: str
+    model_id: str
+    agent_id: str | None = None
+    model_options: dict[str, Any] = Field(default_factory=dict)
+    variables: dict[str, Any] = Field(default_factory=dict)
 
 
 class AutoTitleSettings(BaseModel):

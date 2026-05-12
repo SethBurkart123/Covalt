@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ... import db
+from ..models.model_selection import update_chat_model_selection
 
 
 def _load_chat_config(sess: Any, chat_id: str) -> dict[str, Any]:
@@ -19,10 +20,17 @@ def update_chat_tool_ids(chat_id: str, tool_ids: list[str]) -> None:
         db.update_chat_agent_config(sess, chatId=chat_id, config=config)
 
 
-def update_chat_model_provider(chat_id: str, provider: str, model_id: str) -> None:
+def update_chat_selection(
+    chat_id: str,
+    model_key: str,
+    model_options: dict[str, Any] | None = None,
+    variables: dict[str, Any] | None = None,
+) -> None:
     with db.db_session() as sess:
-        config = _load_chat_config(sess, chat_id)
-        config["provider"] = provider
-        config["model_id"] = model_id
-        config.pop("agent_id", None)
-        db.update_chat_agent_config(sess, chatId=chat_id, config=config)
+        update_chat_model_selection(
+            sess,
+            chat_id,
+            model_key,
+            model_options=model_options,
+            variables=variables,
+        )

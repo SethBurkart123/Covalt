@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VariableOption, VariableSpec } from "@nodes/_variables";
 import type { ResolveOptionsContext } from "@/lib/flow/variable-options";
 import {
@@ -37,37 +37,66 @@ interface UseVariablesArgs {
   storageKey: string | null;
   specs: VariableSpec[];
   optionsContext?: ResolveOptionsContext;
+  persistedValues?: Record<string, unknown>;
+  onValuesChange?: (values: Record<string, unknown>) => void;
+}
+
+function resolveValues(
+  storageKey: string | null,
+  defaults: Record<string, unknown>,
+  persistedValues?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (persistedValues) return { ...defaults, ...persistedValues };
+  return loadPersistedValues(storageKey, defaults);
 }
 
 export function useVariables({
   storageKey,
   specs,
   optionsContext,
+  persistedValues,
+  onValuesChange,
 }: UseVariablesArgs): VariablesContext {
   const defaults = useMemo(() => buildDefaults(specs), [specs]);
+  const persistedKey = useMemo(
+    () => JSON.stringify(persistedValues ?? null),
+    [persistedValues],
+  );
   const [values, setValues] = useState<Record<string, unknown>>(() =>
-    loadPersistedValues(storageKey, defaults),
+    resolveValues(storageKey, defaults, persistedValues),
+  );
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+
+  const commitValues = useCallback(
+    (nextValues: Record<string, unknown>) => {
+      valuesRef.current = nextValues;
+      setValues(nextValues);
+      if (onValuesChange) {
+        onValuesChange(nextValues);
+      } else {
+        persistVariableValues(storageKey, nextValues);
+      }
+    },
+    [onValuesChange, storageKey],
   );
 
   useEffect(() => {
-    setValues(loadPersistedValues(storageKey, defaults));
-  }, [storageKey, defaults]);
+    const nextValues = resolveValues(storageKey, defaults, persistedValues);
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+  }, [storageKey, defaults, persistedKey, persistedValues]);
 
   const setValue = useCallback(
     (id: string, value: unknown) => {
-      setValues((prev) => {
-        const next = { ...prev, [id]: value };
-        persistVariableValues(storageKey, next);
-        return next;
-      });
+      commitValues({ ...valuesRef.current, [id]: value });
     },
-    [storageKey],
+    [commitValues],
   );
 
   const reset = useCallback(() => {
-    setValues(defaults);
-    persistVariableValues(storageKey, defaults);
-  }, [defaults, storageKey]);
+    commitValues(defaults);
+  }, [commitValues, defaults]);
 
   const { optionsFor, loadingFor, refresh } = useVariableOptions({
     specs,

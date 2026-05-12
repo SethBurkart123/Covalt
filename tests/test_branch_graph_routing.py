@@ -83,9 +83,9 @@ async def test_continue_message_agent_model_routes_to_graph_runtime() -> None:
     channel = CapturingChannel()
 
     body = branches.ContinueMessageRequest(
-        messageId="assistant-old",
-        chatId=chat_id,
-        modelId="agent:agent-1",
+        message_id="assistant-old",
+        chat_id=chat_id,
+        model_id="agent:agent-1",
     )
 
     with (
@@ -138,9 +138,9 @@ async def test_retry_message_agent_model_routes_to_graph_runtime() -> None:
     channel = CapturingChannel()
 
     body = branches.RetryMessageRequest(
-        messageId="assistant-old",
-        chatId=chat_id,
-        modelId="agent:agent-1",
+        message_id="assistant-old",
+        chat_id=chat_id,
+        model_id="agent:agent-1",
     )
 
     with (
@@ -193,10 +193,10 @@ async def test_edit_message_agent_model_routes_to_graph_runtime() -> None:
     channel = CapturingChannel()
 
     body = branches.EditUserMessageRequest(
-        messageId="user-old",
-        newContent="updated prompt",
-        chatId=chat_id,
-        modelId="agent:agent-1",
+        message_id="user-old",
+        new_content="updated prompt",
+        chat_id=chat_id,
+        model_id="agent:agent-1",
     )
 
     with (

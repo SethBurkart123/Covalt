@@ -32,7 +32,10 @@ class StartRunDependencies:
         [str | None, str | None, dict[str, Any] | None, Channel],
         dict[str, Any] | None,
     ]
-    ensure_chat_initialized: Callable[[str | None, str | None], str]
+    ensure_chat_initialized: Callable[
+        [str | None, str | None, dict[str, Any] | None, dict[str, Any] | None],
+        str,
+    ]
     prepare_stream_attachments: Callable[
         [str, Sequence[AttachmentMetaLike], str | None], StreamAttachmentState
     ]
@@ -66,7 +69,12 @@ async def execute_start_run(
         if validated_model_options is None:
             return
 
-    chat_id = deps.ensure_chat_initialized(input_data.chat_id, input_data.model_id)
+    chat_id = deps.ensure_chat_initialized(
+        input_data.chat_id,
+        input_data.model_id,
+        validated_model_options,
+        input_data.variables,
+    )
 
     if not input_data.model_id:
         result = deps.validate_model_options(

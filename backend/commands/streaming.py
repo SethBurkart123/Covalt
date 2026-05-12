@@ -82,39 +82,66 @@ class AttachmentInput(BaseModel):
     id: str
     type: str
     name: str
-    mimeType: str
+    mime_type: str
     size: int
     data: str
+
+    @property
+    def mimeType(self) -> str:
+        return self.mime_type
 
 
 class AttachmentMeta(BaseModel):
     id: str
     type: str
     name: str
-    mimeType: str
+    mime_type: str
     size: int
+
+    @property
+    def mimeType(self) -> str:
+        return self.mime_type
 
 
 class StreamChatRequest(BaseModel):
     messages: list[dict[str, Any]]
-    modelId: str | None = None
-    modelOptions: dict[str, Any] | None = None
-    chatId: str | None = None
-    toolIds: list[str] = []
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    chat_id: str | None = None
+    tool_ids: list[str] = []
     attachments: list[AttachmentMeta] = []
     variables: dict[str, Any] | None = None
 
 
 class CancelRunRequest(BaseModel):
-    messageId: str
+    message_id: str
 
 
 class RespondToToolDecisionInput(BaseModel):
-    runId: str
-    toolCallId: str
-    selectedOption: str
-    editedArgs: dict[str, Any] | None = None
+    run_id: str
+    tool_call_id: str
+    selected_option: str
+    edited_args: dict[str, Any] | None = None
     cancelled: bool = False
+
+
+def _wire_get(data: dict[str, Any], snake_key: str, camel_key: str) -> Any:
+    return data.get(snake_key, data.get(camel_key))
+
+
+def _message_attachments(data: dict[str, Any]) -> list[dict[str, Any]] | None:
+    attachments = data.get("attachments")
+    if not isinstance(attachments, list):
+        return attachments
+    return [
+        {
+            **attachment,
+            "mimeType": _wire_get(attachment, "mime_type", "mimeType"),
+        }
+        if isinstance(attachment, dict)
+        else attachment
+        for attachment in attachments
+    ]
 
 
 def _record_tool_decision(
@@ -166,10 +193,10 @@ def _build_cancel_flow_run_dependencies() -> CancelFlowRunDependencies:
 async def respond_to_tool_decision(body: RespondToToolDecisionInput) -> dict:
     return execute_respond_to_tool_decision(
         RespondToToolDecisionInputDTO(
-            run_id=body.runId,
-            tool_call_id=body.toolCallId,
-            selected_option=body.selectedOption,
-            edited_args=body.editedArgs,
+            run_id=body.run_id,
+            tool_call_id=body.tool_call_id,
+            selected_option=body.selected_option,
+            edited_args=body.edited_args,
             cancelled=body.cancelled,
         ),
         _build_respond_to_tool_decision_dependencies(),
@@ -179,7 +206,7 @@ async def respond_to_tool_decision(body: RespondToToolDecisionInput) -> dict:
 @command
 async def cancel_run(body: CancelRunRequest) -> dict:
     return execute_cancel_run(
-        CancelRunInput(message_id=body.messageId),
+        CancelRunInput(message_id=body.message_id),
         _build_cancel_run_dependencies(),
     )
 
@@ -187,7 +214,7 @@ async def cancel_run(body: CancelRunRequest) -> dict:
 @command
 async def cancel_flow_run(body: CancelFlowRunRequest) -> dict:
     return execute_cancel_flow_run(
-        CancelFlowRunInput(run_id=body.runId),
+        CancelFlowRunInput(run_id=body.run_id),
         _build_cancel_flow_run_dependencies(),
     )
 
@@ -252,9 +279,9 @@ async def stream_chat(
             id=m.get("id"),
             role=m.get("role"),
             content=m.get("content", ""),
-            createdAt=m.get("createdAt"),
-            toolCalls=m.get("toolCalls"),
-            attachments=m.get("attachments"),
+            createdAt=_wire_get(m, "created_at", "createdAt"),
+            toolCalls=_wire_get(m, "tool_calls", "toolCalls"),
+            attachments=_message_attachments(m),
         )
         for m in body.messages
     ]
@@ -263,10 +290,10 @@ async def stream_chat(
         StartRunInput(
             channel=channel,
             messages=messages,
-            model_id=body.modelId,
-            model_options=body.modelOptions,
-            chat_id=body.chatId,
-            tool_ids=body.toolIds,
+            model_id=body.model_id,
+            model_options=body.model_options,
+            chat_id=body.chat_id,
+            tool_ids=body.tool_ids,
             attachments=body.attachments,
             variables=body.variables,
         ),
@@ -275,9 +302,9 @@ async def stream_chat(
 
 
 class StreamAgentChatRequest(BaseModel):
-    agentId: str
+    agent_id: str
     messages: list[dict[str, Any]]
-    chatId: str | None = None
+    chat_id: str | None = None
     ephemeral: bool = False
     variables: dict[str, Any] | None = None
 
@@ -290,16 +317,16 @@ class FlowRunPromptInput(BaseModel):
 
 
 class StreamFlowRunRequest(BaseModel):
-    agentId: str
+    agent_id: str
     mode: Literal["execute", "runFrom"]
-    targetNodeId: str
-    cachedOutputs: dict[str, dict[str, Any]] | None = None
-    promptInput: FlowRunPromptInput | None = None
-    nodeIds: list[str] | None = None
+    target_node_id: str
+    cached_outputs: dict[str, dict[str, Any]] | None = None
+    prompt_input: FlowRunPromptInput | None = None
+    node_ids: list[str] | None = None
 
 
 class CancelFlowRunRequest(BaseModel):
-    runId: str
+    run_id: str
 
 
 def _build_stream_agent_run_dependencies() -> StreamAgentRunDependencies:
@@ -327,9 +354,9 @@ async def stream_agent_chat(
             id=m.get("id"),
             role=m.get("role"),
             content=m.get("content", ""),
-            createdAt=m.get("createdAt"),
-            toolCalls=m.get("toolCalls"),
-            attachments=m.get("attachments"),
+            createdAt=_wire_get(m, "created_at", "createdAt"),
+            toolCalls=_wire_get(m, "tool_calls", "toolCalls"),
+            attachments=_message_attachments(m),
         )
         for m in body.messages
     ]
@@ -337,9 +364,9 @@ async def stream_agent_chat(
     await execute_stream_agent_run(
         StreamAgentRunInput(
             channel=channel,
-            agent_id=body.agentId,
+            agent_id=body.agent_id,
             messages=messages,
-            chat_id=body.chatId,
+            chat_id=body.chat_id,
             ephemeral=body.ephemeral,
             variables=body.variables,
         ),
@@ -371,19 +398,19 @@ async def stream_flow_run(
     await execute_stream_flow_run(
         StreamFlowRunInput(
             channel=channel,
-            agent_id=body.agentId,
+            agent_id=body.agent_id,
             mode=body.mode,
-            target_node_id=body.targetNodeId,
-            cached_outputs=body.cachedOutputs,
+            target_node_id=body.target_node_id,
+            cached_outputs=body.cached_outputs,
             prompt_input=FlowRunPromptInputDTO(
-                message=body.promptInput.message if body.promptInput else None,
-                history=body.promptInput.history if body.promptInput else None,
-                messages=body.promptInput.messages if body.promptInput else None,
-                attachments=body.promptInput.attachments if body.promptInput else None,
+                message=body.prompt_input.message if body.prompt_input else None,
+                history=body.prompt_input.history if body.prompt_input else None,
+                messages=body.prompt_input.messages if body.prompt_input else None,
+                attachments=body.prompt_input.attachments if body.prompt_input else None,
             )
-            if body.promptInput
+            if body.prompt_input
             else None,
-            node_ids=body.nodeIds,
+            node_ids=body.node_ids,
         ),
         _build_stream_flow_run_dependencies(),
     )
@@ -391,7 +418,7 @@ async def stream_flow_run(
 
 
 class ConnectStreamRequest(BaseModel):
-    chatId: str
+    chat_id: str
 
 
 
@@ -399,15 +426,15 @@ class ConnectStreamRequest(BaseModel):
 @command
 async def connect_stream(channel: Channel[ChatEvent], body: ConnectStreamRequest) -> None:
     """Atomically check if a stream exists and subscribe in one call."""
-    result = await broadcaster.get_or_subscribe(body.chatId)
+    result = await broadcaster.get_or_subscribe(body.chat_id)
     if result is None:
-        emit_chat_event(channel, EVENT_STREAM_NOT_ACTIVE, content=body.chatId)
+        emit_chat_event(channel, EVENT_STREAM_NOT_ACTIVE, content=body.chat_id)
         return
 
     emit_chat_event(
         channel,
         EVENT_STREAM_SUBSCRIBED,
-        content=body.chatId,
+        content=body.chat_id,
         status=result.status,
         messageId=result.message_id,
         errorMessage=result.error_message,
@@ -430,7 +457,4 @@ async def connect_stream(channel: Channel[ChatEvent], body: ConnectStreamRequest
     except asyncio.CancelledError:
         pass
     finally:
-        await broadcaster.unsubscribe(body.chatId, result.queue)
-
-
-
+        await broadcaster.unsubscribe(body.chat_id, result.queue)

@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   streamAvailableModels,
-  getSelectedModel as fetchSelectedModel,
-  setSelectedModel as saveSelectedModel,
   getRecentModels as fetchRecentModels,
   toAsyncIterable,
 } from "@/python/api";
@@ -62,7 +60,6 @@ function setCachedModels(models: readonly ModelInfo[], connectedProviders: reado
 }
 
 export function useModels() {
-  const [selectedModel, setSelectedModel] = useState<string>("");
   const [models, setModels] = useState<readonly ModelInfo[]>([]);
   const [connectedProviders, setConnectedProviders] = useState<readonly string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,51 +67,14 @@ export function useModels() {
   const activeLoadIdRef = useRef(0);
   const modelsRef = useRef<readonly ModelInfo[]>([]);
   const connectedProvidersRef = useRef<readonly string[]>([]);
-  const savedModelRef = useRef<string>("");
-  const recentModelsRef = useRef<readonly string[]>([]);
 
   modelsRef.current = models;
   connectedProvidersRef.current = connectedProviders;
 
-  const selectModel = useCallback((nextModels: readonly ModelInfo[]) => {
-    if (nextModels.length === 0) {
-      setSelectedModel("");
-      return;
-    }
-
-    const modelKeys = new Set(nextModels.map((m) => `${m.provider}:${m.modelId}`));
-    const isAvailable = (key: string) => key.startsWith("agent:") || modelKeys.has(key);
-
-    if (savedModelRef.current && isAvailable(savedModelRef.current)) {
-      setSelectedModel(savedModelRef.current);
-      return;
-    }
-
-    for (const recent of recentModelsRef.current) {
-      if (isAvailable(recent)) {
-        setSelectedModel(recent);
-        savedModelRef.current = recent;
-        saveSelectedModel({ body: { modelKey: recent } }).catch(() => {});
-        return;
-      }
-    }
-
-    const defaultModel = nextModels.find((m) => m.isDefault) || nextModels[0];
-    const modelKey = `${defaultModel.provider}:${defaultModel.modelId}`;
-    setSelectedModel(modelKey);
-    savedModelRef.current = modelKey;
-    saveSelectedModel({ body: { modelKey } }).catch(() => {});
-  }, []);
-
-  const fetchPreferences = useCallback(async () => {
+  const fetchRecentModelCache = useCallback(async () => {
     try {
-      const [selectedRes, recentRes] = await Promise.all([
-        fetchSelectedModel(),
-        fetchRecentModels(),
-      ]);
-      savedModelRef.current = selectedRes.modelKey || "";
-      recentModelsRef.current = recentRes.modelKeys || [];
-      setRecentModelsCache(recentModelsRef.current);
+      const recentRes = await fetchRecentModels();
+      setRecentModelsCache(recentRes.modelKeys || []);
     } catch {
       // Backend not ready yet, will retry when URL is set
     }
@@ -131,7 +91,6 @@ export function useModels() {
         setModels(cached.models);
         setConnectedProviders(cached.connectedProviders);
         setIsLoading(false);
-        selectModel(cached.models);
         return;
       }
     }
@@ -144,7 +103,6 @@ export function useModels() {
     const providerState = buildProviderState(modelsRef.current);
     let latestModels = modelsRef.current;
     let latestConnectedProviders = connectedProvidersRef.current;
-    let selectedDuringLoad = false;
     let sawStartedEvent = false;
     let expectedProviders = new Set<string>();
     const seenProviders = new Set<string>();
@@ -156,17 +114,9 @@ export function useModels() {
       setModels(latestModels);
     };
 
-    const syncConnectedProviders = (nextConnectedProviders: string[]) => {
+    const syncConnectedProviders = (nextConnectedProviders: readonly string[]) => {
       latestConnectedProviders = nextConnectedProviders;
       setConnectedProviders(nextConnectedProviders);
-    };
-
-    const maybeSelectModel = (isCompleted: boolean) => {
-      if (selectedDuringLoad) return;
-      if (forceRefresh && !isCompleted) return;
-      if (latestModels.length === 0 && !isCompleted) return;
-      selectModel(latestModels);
-      selectedDuringLoad = true;
     };
 
     try {
@@ -189,7 +139,6 @@ export function useModels() {
           upsertProvider(providerState, event.provider, [...(event.models || [])]);
           syncModelsFromProviders();
           syncConnectedProviders([...(event.connectedProviders || latestConnectedProviders)]);
-          maybeSelectModel(false);
           continue;
         }
 
@@ -203,7 +152,6 @@ export function useModels() {
               (provider) => provider !== event.provider,
             ),
           );
-          maybeSelectModel(false);
           continue;
         }
 
@@ -213,7 +161,6 @@ export function useModels() {
           }
           syncModelsFromProviders();
           syncConnectedProviders([...(event.connectedProviders || latestConnectedProviders)]);
-          maybeSelectModel(true);
           setCachedModels(latestModels, latestConnectedProviders);
           break;
         }
@@ -228,13 +175,13 @@ export function useModels() {
         if (activeChannelRef.current === controller) activeChannelRef.current = null;
       }
     }
-  }, [selectModel]);
+  }, []);
 
   useEffect(() => {
-    fetchPreferences().then(() => loadModels());
+    fetchRecentModelCache().then(() => loadModels());
 
     const unsubscribe = subscribeBackendBaseUrl(() => {
-      fetchPreferences().then(() => loadModels(true));
+      fetchRecentModelCache().then(() => loadModels(true));
     });
 
     return () => {
@@ -242,19 +189,11 @@ export function useModels() {
       activeChannelRef.current?.abort();
       activeChannelRef.current = null;
     };
-  }, [loadModels, fetchPreferences]);
-
-  const updateSelectedModel = useCallback((model: string) => {
-    setSelectedModel(model);
-    savedModelRef.current = model;
-    saveSelectedModel({ body: { modelKey: model } }).catch(() => {});
-  }, []);
+  }, [loadModels, fetchRecentModelCache]);
 
   const refreshModels = useCallback(() => loadModels(true), [loadModels]);
 
   return {
-    selectedModel,
-    setSelectedModel: updateSelectedModel,
     models,
     connectedProviders,
     isLoading,

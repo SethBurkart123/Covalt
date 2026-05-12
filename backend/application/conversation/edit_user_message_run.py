@@ -50,7 +50,10 @@ class EditUserMessageRunDependencies:
         [str, str | None, dict[str, Any] | None, Channel],
         dict[str, Any] | None,
     ]
-    update_chat_model_selection: Callable[[Any, str, str], None]
+    update_chat_model_selection: Callable[
+        [Any, str, str, dict[str, Any] | None, dict[str, Any] | None],
+        None,
+    ]
     get_session: Callable[[], Any]
     get_original_message: Callable[[Any, str], Any]
     get_manifest_for_message: Callable[[Any, str], str | None]
@@ -118,7 +121,13 @@ async def execute_edit_user_message_run(
 
     with deps.get_session() as sess:
         if input_data.model_id:
-            deps.update_chat_model_selection(sess, input_data.chat_id, input_data.model_id)
+            deps.update_chat_model_selection(
+                sess,
+                input_data.chat_id,
+                input_data.model_id,
+                input_data.model_options,
+                input_data.variables,
+            )
 
         original_msg = deps.get_original_message(sess, input_data.message_id)
         if not original_msg:

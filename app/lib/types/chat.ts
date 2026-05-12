@@ -297,7 +297,14 @@ export interface ChatContextType {
   hasMoreChats: boolean;
   isLoadingMoreChats: boolean;
   selectedModel: string;
+  modelSelectionState: import("@/lib/services/model-selection").ModelSelectionState;
+  modelSelectionSettings: import("@/lib/services/model-selection").ModelSelectionSettings;
   setSelectedModel: (model: string) => void;
+  setModelOptions: (modelOptions: Record<string, unknown>) => void;
+  setVariables: (variables: Record<string, unknown>) => void;
+  setModelSelectionSettings: (
+    settings: import("@/lib/services/model-selection").ModelSelectionSettings,
+  ) => void;
   models: readonly ModelInfo[];
   refreshModels: () => Promise<void>;
   agents: readonly import("@/python/api").AgentInfo[];

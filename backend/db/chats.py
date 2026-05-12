@@ -372,12 +372,16 @@ def create_branch_message(
     if role == "assistant":
         config = get_chat_agent_config(sess, chat_id)
         if config:
-            provider = config.get("provider") or ""
-            model_id = config.get("model_id") or ""
-            if provider and model_id:
-                model_used = f"{provider}:{model_id}"
+            agent_id = config.get("agent_id") or ""
+            if agent_id:
+                model_used = f"agent:{agent_id}"
             else:
-                model_used = model_id or None
+                provider = config.get("provider") or ""
+                model_id = config.get("model_id") or ""
+                if provider and model_id:
+                    model_used = f"{provider}:{model_id}"
+                else:
+                    model_used = model_id or None
 
     message = Message(
         id=message_id,
