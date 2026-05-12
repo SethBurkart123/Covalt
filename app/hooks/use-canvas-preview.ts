@@ -80,7 +80,7 @@ export function useCanvasPreview({ agentId, lastSaved, previewImage }: CanvasPre
     if (previewTimestampRef.current) return previewTimestampRef.current;
     if (!previewImage) return null;
 
-    const baseUrl = agentFileUrl({ agentId, fileType: 'preview' });
+    const baseUrl = await agentFileUrl({ agentId, fileType: 'preview' });
     const url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
 
     try {

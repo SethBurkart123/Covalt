@@ -293,7 +293,7 @@ class StreamFlowRunRequest(BaseModel):
     agentId: str
     mode: Literal["execute", "runFrom"]
     targetNodeId: str
-    cachedOutputs: dict[str, dict[str, dict[str, Any]]] | None = None
+    cachedOutputs: dict[str, dict[str, Any]] | None = None
     promptInput: FlowRunPromptInput | None = None
     nodeIds: list[str] | None = None
 

@@ -70,6 +70,8 @@ export function FlowRunPrompt() {
     const submitPromise = submitPrompt({
       message,
       history: parsed.value,
+      messages: undefined,
+      attachments: undefined,
     });
     closePrompt();
     await submitPromise;

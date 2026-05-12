@@ -5,7 +5,7 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-export function buildFileTree(paths: string[]): FileTreeNode[] {
+export function buildFileTree(paths: readonly string[]): FileTreeNode[] {
   const root: FileTreeNode[] = [];
 
   for (const path of paths) {

@@ -138,23 +138,23 @@ export const api = {
     title?: string,
     model?: string,
     chatId?: string,
-  ): Promise<ChatData> => createChat({ body: { id: chatId, title, model } }),
+  ): Promise<ChatData> => createChat({ body: { id: chatId, title, model, agentConfig: undefined } }),
 
   deleteChat: (chatId: string): Promise<void> =>
     deleteChat({ body: { id: chatId } }),
 
   renameChat: (chatId: string, title: string): Promise<ChatData> =>
-    updateChat({ body: { id: chatId, title } }),
+    updateChat({ body: { id: chatId, title, model: undefined } }),
 
   toggleStarChat: (chatId: string): Promise<ChatData> =>
     toggleStarChat({ body: { id: chatId } }),
 
   streamChat: (
-    messages: Message[],
+    messages: readonly Message[],
     modelId: string,
     chatId?: string,
-    toolIds?: string[],
-    attachments?: Attachment[],
+    toolIds?: readonly string[],
+    attachments?: readonly Attachment[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
   ): StreamHandle => {
@@ -192,7 +192,7 @@ export const api = {
 
   streamAgentChat: (
     agentId: string,
-    messages: Message[],
+    messages: readonly Message[],
     chatId?: string,
     ephemeral?: boolean,
     variables?: Record<string, unknown>,
@@ -228,7 +228,7 @@ export const api = {
     messageId: string,
     chatId: string,
     modelId?: string,
-    toolIds?: string[],
+    toolIds?: readonly string[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
   ): StreamHandle => {
@@ -247,7 +247,7 @@ export const api = {
     messageId: string,
     chatId: string,
     modelId?: string,
-    toolIds?: string[],
+    toolIds?: readonly string[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
   ): StreamHandle => {
@@ -267,10 +267,10 @@ export const api = {
     newContent: string,
     chatId: string,
     modelId?: string,
-    toolIds?: string[],
+    toolIds?: readonly string[],
     modelOptions?: Record<string, unknown>,
-    existingAttachments?: Attachment[],
-    newAttachments?: PendingAttachment[],
+    existingAttachments?: readonly Attachment[],
+    newAttachments?: readonly PendingAttachment[],
     variables?: Record<string, unknown>,
   ): StreamHandle => {
     const body: EditUserMessageRequest = {

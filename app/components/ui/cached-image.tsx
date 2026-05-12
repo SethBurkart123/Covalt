@@ -34,22 +34,30 @@ function load(src: string): Promise<string> {
 }
 
 interface CachedImageProps {
-  src: string;
+  src: string | Promise<string>;
   alt?: string;
   className?: string;
 }
 
 export function CachedImage({ src, alt = "", className }: CachedImageProps) {
-  const [url, setUrl] = useState<string | null>(cache.get(src) ?? null);
+  const [url, setUrl] = useState<string | null>(
+    typeof src === "string" ? cache.get(src) ?? null : null,
+  );
 
   useEffect(() => {
-    if (cache.has(src)) { setUrl(cache.get(src)!); return; }
-    if (errors.has(src)) return;
-
     let cancelled = false;
-    load(src).then((result) => {
-      if (!cancelled && result) setUrl(result);
-    });
+    const handle = (resolvedSrc: string) => {
+      if (cache.has(resolvedSrc)) { setUrl(cache.get(resolvedSrc)!); return; }
+      if (errors.has(resolvedSrc)) return;
+      load(resolvedSrc).then((result) => {
+        if (!cancelled && result) setUrl(result);
+      });
+    };
+    if (typeof src === "string") {
+      handle(src);
+    } else {
+      src.then((resolved) => { if (!cancelled) handle(resolved); });
+    }
     return () => { cancelled = true; };
   }, [src]);
 
@@ -57,6 +65,9 @@ export function CachedImage({ src, alt = "", className }: CachedImageProps) {
   return <img src={url} alt={alt} className={className} />;
 }
 
-export function preloadImages(urls: string[]) {
-  for (const url of urls) load(url);
+export function preloadImages(urls: ReadonlyArray<string | Promise<string>>) {
+  for (const url of urls) {
+    if (typeof url === "string") load(url);
+    else url.then((resolved) => load(resolved));
+  }
 }

@@ -69,11 +69,11 @@ interface ToolsCatalogContextType {
 }
 
 interface ToolsActiveContextType {
-  activeToolIds: string[];
+  activeToolIds: readonly string[];
   toggleTool: (toolId: string) => void;
   toggleToolset: (toolsetId: string) => void;
   setChatToolIds: (
-    toolIds: string[],
+    toolIds: readonly string[],
     options?: { persistDefaults?: boolean }
   ) => Promise<void>;
   isToolsetActive: (toolsetId: string) => boolean;
@@ -89,11 +89,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const { mcpServers, removeMcpServer } = useMcpStatus();
 
   const [availableTools, setAvailableTools] = useState<ToolInfo[]>([]);
-  const [activeToolIds, setActiveToolIds] = useState<string[]>([]);
+  const [activeToolIds, setActiveToolIds] = useState<readonly string[]>([]);
   const [isLoadingTools, setIsLoadingTools] = useState(true);
   const [isLoadingActiveTools, setIsLoadingActiveTools] = useState(true);
   const hasLoadedToolsOnce = useRef(false);
-  const pendingChatToolIdsRef = useRef<string[] | null>(null);
+  const pendingChatToolIdsRef = useRef<readonly string[] | null>(null);
 
   const connectedServerIds = useMemo(
     () =>
@@ -195,7 +195,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   }, [availableTools]);
 
   const persistTools = useCallback(
-    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+    async (newToolIds: readonly string[], options?: { persistDefaults?: boolean }) => {
       const persistDefaults = options?.persistDefaults ?? true;
       try {
         if (chatId) {
@@ -218,7 +218,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   );
 
   const setChatToolIds = useCallback(
-    async (newToolIds: string[], options?: { persistDefaults?: boolean }) => {
+    async (newToolIds: readonly string[], options?: { persistDefaults?: boolean }) => {
       const prevToolIds = activeToolIds;
       setActiveToolIds(newToolIds);
 

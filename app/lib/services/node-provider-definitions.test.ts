@@ -9,7 +9,7 @@ vi.mock('@/lib/flow', () => ({
   unregisterPlugin: vi.fn(),
 }));
 
-import { listNodeProviderDefinitions } from '@/python/api';
+import { listNodeProviderDefinitions, type NodeProviderDefinitionsResponse } from '@/python/api';
 import { registerPlugin, unregisterPlugin } from '@/lib/flow';
 import { refreshNodeProviderDefinitions } from './node-provider-definitions';
 
@@ -55,7 +55,7 @@ describe('node-provider-definitions service', () => {
           pluginId: 'external.beta',
         },
       ],
-    });
+    } as unknown as NodeProviderDefinitionsResponse);
 
     await refreshNodeProviderDefinitions();
 
@@ -96,7 +96,7 @@ describe('node-provider-definitions service', () => {
             pluginId: 'external.alpha',
           },
         ],
-      })
+      } as unknown as NodeProviderDefinitionsResponse)
       .mockResolvedValueOnce({
         definitions: [
           {
@@ -109,7 +109,7 @@ describe('node-provider-definitions service', () => {
             pluginId: 'external.beta',
           },
         ],
-      });
+      } as unknown as NodeProviderDefinitionsResponse);
 
     await refreshNodeProviderDefinitions();
     await refreshNodeProviderDefinitions();
@@ -132,7 +132,7 @@ describe('node-provider-definitions service', () => {
           providerId: 'covalt-n8n-nodes',
         },
       ],
-    });
+    } as unknown as NodeProviderDefinitionsResponse);
 
     await refreshNodeProviderDefinitions();
 

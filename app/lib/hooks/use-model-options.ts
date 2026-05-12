@@ -137,7 +137,7 @@ function savePersistedOptions(
 
 export function useModelOptions(
   selectedModel: string,
-  models: ModelInfo[],
+  models: readonly ModelInfo[],
 ): {
   schema: OptionSchema;
   values: Record<string, unknown>;

@@ -8,9 +8,9 @@ export function cn(...inputs: ClassValue[]) {
 
 const MAX_RECENT_MODELS = 5;
 
-let cachedRecentModels: string[] = [];
+let cachedRecentModels: readonly string[] = [];
 
-export function setRecentModelsCache(models: string[]): void {
+export function setRecentModelsCache(models: readonly string[]): void {
   cachedRecentModels = models;
 }
 
@@ -21,7 +21,7 @@ export function addRecentModel(modelKey: string): void {
   saveRecentModels({ body: { modelKeys: cachedRecentModels } }).catch(() => {});
 }
 
-export function getRecentModels(): string[] {
+export function getRecentModels(): readonly string[] {
   return cachedRecentModels;
 }
 

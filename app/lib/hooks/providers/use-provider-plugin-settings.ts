@@ -17,7 +17,7 @@ import {
 
 interface UseProviderPluginSettingsState {
   policy: ProviderPluginPolicy;
-  indexes: ProviderPluginIndexInfo[];
+  indexes: readonly ProviderPluginIndexInfo[];
   errorByKey: Record<string, string>;
   isRunningUpdateCheck: boolean;
   indexName: string;
@@ -50,7 +50,7 @@ export function useProviderPluginSettings(): UseProviderPluginSettingsState &
     mode: 'safe',
     autoUpdateEnabled: false,
   });
-  const [indexes, setIndexes] = useState<ProviderPluginIndexInfo[]>([]);
+  const [indexes, setIndexes] = useState<readonly ProviderPluginIndexInfo[]>([]);
   const [errorByKey, setErrorByKey] = useState<Record<string, string>>({});
   const [isRunningUpdateCheck, setIsRunningUpdateCheck] = useState(false);
   const [indexName, setIndexName] = useState('');

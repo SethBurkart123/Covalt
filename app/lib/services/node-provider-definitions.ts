@@ -61,7 +61,7 @@ export async function refreshNodeProviderDefinitions(): Promise<void> {
     category: item.category as NodeDefinition['category'],
     icon: item.icon,
     executionMode: item.executionMode as NodeDefinition['executionMode'],
-    parameters: item.parameters as NodeDefinition['parameters'],
+    parameters: (item.parameters ?? []) as readonly unknown[] as NodeDefinition['parameters'],
     pluginId: item.pluginId || item.providerId,
   })) as NodeDefinition[];
 

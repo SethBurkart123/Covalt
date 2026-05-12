@@ -25,8 +25,8 @@ const AUTOSAVE_MAX_WAIT_MS = 4000;
 type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
 
 interface NormalizedEdgeData {
-  sourceType?: string;
-  targetType?: string;
+  sourceType: string | undefined;
+  targetType: string | undefined;
   channel: 'flow' | 'link';
 }
 
@@ -266,7 +266,9 @@ export function AgentEditorProvider({ agentId, children }: AgentEditorProviderPr
         await updateAgent({
           body: {
             id: agentId,
-            ...updates,
+            name: updates.name,
+            description: updates.description,
+            icon: updates.icon,
           },
         });
 

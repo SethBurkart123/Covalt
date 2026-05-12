@@ -67,7 +67,7 @@ interface McpServerInspectorDialogProps {
   onOpenChange: (open: boolean) => void;
   server: McpServerStatus | null;
   serverLabel?: string;
-  tools: MCPToolInfo[];
+  tools: readonly MCPToolInfo[];
   onEdit: () => void;
   onDelete: () => void;
   onReconnect: () => Promise<void>;

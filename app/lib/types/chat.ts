@@ -194,6 +194,7 @@ export type ContentBlock =
       type: "text";
       content: string;
       lookaheadContent?: string;
+      visibleChars?: number;
     }
   | ({ type: "tool_call" } & ToolCallPayload & { isCompleted: boolean })
   | {
@@ -201,6 +202,7 @@ export type ContentBlock =
       content: string;
       isCompleted: boolean;
       lookaheadContent?: string;
+      visibleChars?: number;
     }
   | {
       type: "member_run";
@@ -296,8 +298,8 @@ export interface ChatContextType {
   isLoadingMoreChats: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: ModelInfo[];
+  models: readonly ModelInfo[];
   refreshModels: () => Promise<void>;
-  agents: import("@/python/api").AgentInfo[];
+  agents: readonly import("@/python/api").AgentInfo[];
   refreshAgents: () => Promise<void>;
 }

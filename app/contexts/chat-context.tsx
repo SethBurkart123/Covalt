@@ -14,7 +14,7 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 const PAGE_SIZE = 50;
 
-function indexChats(list: ChatData[]): Record<string, ChatData> {
+function indexChats(list: readonly ChatData[]): Record<string, ChatData> {
   const out: Record<string, ChatData> = {};
   for (const c of list) {
     if (c.id) out[c.id] = c;

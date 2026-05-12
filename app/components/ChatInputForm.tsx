@@ -58,7 +58,7 @@ interface LeftToolbarProps {
   isLoading: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: ModelInfo[];
+  models: readonly ModelInfo[];
   optionSchema?: OptionSchema;
   optionValues?: Record<string, unknown>;
   onOptionChange?: (key: string, value: unknown) => void;
@@ -210,7 +210,7 @@ interface ChatInputFormProps {
   isLoading: boolean;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: ModelInfo[];
+  models: readonly ModelInfo[];
   optionSchema?: OptionSchema;
   optionValues?: Record<string, unknown>;
   onOptionChange?: (key: string, value: unknown) => void;

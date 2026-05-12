@@ -276,7 +276,7 @@ export function FlowRunnerProvider({ children, agentId }: { children: ReactNode;
           mode,
           targetNodeId: nodeId,
           cachedOutputs,
-          promptInput: { ...input },
+          promptInput: input,
           nodeIds,
         });
         streamAbortRef.current = abort;

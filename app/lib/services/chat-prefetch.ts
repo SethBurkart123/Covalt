@@ -3,6 +3,7 @@
 import { CHAT_MESSAGES_PAGE_SIZE } from "@/lib/chat-constants";
 import { api } from "@/lib/services/api";
 import type { Message, MessageSibling } from "@/lib/types/chat";
+import { chatMessagesToMessages } from "@/lib/types/chat-message-adapter";
 import { getChatAgentConfig, type ChatAgentConfigResponse } from "@/python/api";
 
 interface PrefetchedChatData {
@@ -55,7 +56,7 @@ export async function prefetchChat(chatId: string): Promise<PrefetchedChatData |
 
   const promise = (async () => {
     const page = await api.getChatMessagesPage(chatId, CHAT_MESSAGES_PAGE_SIZE);
-    const messages = (page.messages || []) as Message[];
+    const messages = chatMessagesToMessages(page.messages);
     const messageIds = Array.from(new Set(messages.map((m) => m.id)));
     const fetchedAt = Date.now();
     const pageInfo = {

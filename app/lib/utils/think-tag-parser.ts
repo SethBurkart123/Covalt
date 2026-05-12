@@ -6,7 +6,7 @@ const CLOSE_TAG = "</think>";
 
 export function shouldParseThinkTags(
   modelUsed: string | undefined,
-  modelSettings: ModelSettingsInfo[] | undefined,
+  modelSettings: readonly ModelSettingsInfo[] | undefined,
 ): boolean {
   if (!modelUsed || !modelSettings) return false;
   const [provider, modelId] = modelUsed.split(":", 2);

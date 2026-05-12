@@ -267,8 +267,8 @@ export default function ProviderStorePanel() {
     mode: "safe",
     autoUpdateEnabled: false,
   });
-  const [sources, setSources] = useState<ProviderPluginSourceInfo[]>([]);
-  const [installed, setInstalled] = useState<ProviderPluginInfo[]>([]);
+  const [sources, setSources] = useState<readonly ProviderPluginSourceInfo[]>([]);
+  const [installed, setInstalled] = useState<readonly ProviderPluginInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingPolicy, setIsSavingPolicy] = useState(false);
   const [installingSourceId, setInstallingSourceId] = useState<string | null>(
@@ -411,7 +411,7 @@ export default function ProviderStorePanel() {
   ) => {
     setErrorByKey((prev) => ({ ...prev, [`autoupdate:${pluginId}`]: "" }));
     try {
-      await setProviderPluginAutoUpdate({ body: { id: pluginId, override } });
+      await setProviderPluginAutoUpdate({ body: { id: pluginId, trackingRef: undefined, override } });
       await reload();
     } catch (error) {
       setErrorByKey((prev) => ({

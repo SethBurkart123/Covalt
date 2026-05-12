@@ -30,7 +30,7 @@ interface Model {
 
 interface ModelChipSelectorProps {
   selectedModels: Model[];
-  availableModels: Model[];
+  availableModels: readonly Model[];
   onAdd: (provider: string, modelId: string) => void;
   onRemove: (provider: string, modelId: string) => void;
   loading?: boolean;

@@ -26,9 +26,9 @@ import {
 
 export interface FlowRunPromptInput {
   message: string;
-  history?: Record<string, unknown>[];
-  messages?: unknown[];
-  attachments?: Record<string, unknown>[];
+  history: readonly Record<string, unknown>[] | undefined;
+  messages: readonly unknown[] | undefined;
+  attachments: readonly Record<string, unknown>[] | undefined;
 }
 
 interface FlowExecutionContextValue {

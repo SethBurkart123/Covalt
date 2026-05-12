@@ -38,7 +38,7 @@ export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: 
       const response = await getProviderOverview({
         body: { providers: providerIds },
       });
-      return response as ProviderOverviewResponse;
+      return response as unknown as ProviderOverviewResponse;
     },
     [],
   );
@@ -88,7 +88,7 @@ export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: 
       const pluginsByProvider: Record<string, ProviderPluginMeta> = {};
       for (const plugin of pluginResponse.plugins || []) {
         if (!plugin.provider) continue;
-        pluginsByProvider[plugin.provider] = plugin;
+        pluginsByProvider[plugin.provider] = plugin as unknown as ProviderPluginMeta;
       }
 
       setProviderConfigs(map);

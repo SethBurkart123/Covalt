@@ -161,8 +161,8 @@ export function ServerFormDialog({
     const results = await Promise.allSettled(
       ops.map(({ id, config, isUpdate }) =>
         isUpdate
-          ? updateMcpServer({ body: { id, config } })
-          : addMcpServer({ body: { id, config } })
+          ? updateMcpServer({ body: { id, name: undefined, config } })
+          : addMcpServer({ body: { id, name: undefined, config } })
       )
     );
     results.forEach((r, idx) => {
@@ -275,30 +275,38 @@ export function ServerFormDialog({
   };
 
   const buildConfigFromForm = (): MCPServerConfig => {
-    const config: MCPServerConfig = {
-      requiresConfirmation: formData.requiresConfirmation,
-    };
-
-    if (formData.type === "stdio") {
-      const { command, args } = parseCommandString(formData.command);
-      config.command = command || undefined;
-      if (args.length > 0) config.args = args;
-      if (formData.cwd.trim()) config.cwd = formData.cwd;
-    } else {
-      const trimmedUrl = formData.url.trim();
-      config.url = trimmedUrl || undefined;
-      config.transport = formData.type;
-      const headers = parseHeadersString(formData.headers);
-      if (headers) config.headers = headers;
-    }
-
     const envObj: Record<string, string> = {};
     for (const { key, value } of formData.env) {
       if (key.trim()) envObj[key.trim()] = value;
     }
-    if (Object.keys(envObj).length > 0) config.env = envObj;
+    const env = Object.keys(envObj).length > 0 ? envObj : undefined;
 
-    return config;
+    if (formData.type === "stdio") {
+      const { command, args } = parseCommandString(formData.command);
+      return {
+        requiresConfirmation: formData.requiresConfirmation,
+        command: command || undefined,
+        args: args.length > 0 ? args : undefined,
+        cwd: formData.cwd.trim() || undefined,
+        url: undefined,
+        transport: undefined,
+        headers: undefined,
+        env,
+        toolOverrides: undefined,
+      } as MCPServerConfig;
+    }
+    const trimmedUrl = formData.url.trim();
+    return {
+      requiresConfirmation: formData.requiresConfirmation,
+      command: undefined,
+      args: undefined,
+      cwd: undefined,
+      url: trimmedUrl || undefined,
+      transport: formData.type,
+      headers: parseHeadersString(formData.headers),
+      env,
+      toolOverrides: undefined,
+    } as MCPServerConfig;
   };
 
   const validateFormData = useCallback((data: ServerFormData): string | null => {
@@ -353,7 +361,7 @@ export function ServerFormDialog({
         });
       } else {
         await addMcpServer({
-          body: { name: displayName, config },
+          body: { id: undefined, name: displayName, config },
         });
       }
 
@@ -385,9 +393,9 @@ export function ServerFormDialog({
       const results = await Promise.allSettled(
         Object.entries(servers).map(async ([id, rawConfig]) => {
           try {
-            await addMcpServer({ body: { id, config: rawConfig as MCPServerConfig } });
+            await addMcpServer({ body: { id, name: undefined, config: rawConfig as MCPServerConfig } });
           } catch {
-            await updateMcpServer({ body: { id, config: rawConfig as MCPServerConfig } });
+            await updateMcpServer({ body: { id, name: undefined, config: rawConfig as MCPServerConfig } });
           }
         })
       );

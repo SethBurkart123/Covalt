@@ -7,7 +7,7 @@ import type { MCPToolInfo } from "@/python/api";
 import { getToolDisplayLabel } from "@/lib/tooling";
 
 interface ToolListProps {
-  tools: MCPToolInfo[];
+  tools: readonly MCPToolInfo[];
   selectedToolId: string | null;
   onSelectTool: (toolId: string) => void;
 }

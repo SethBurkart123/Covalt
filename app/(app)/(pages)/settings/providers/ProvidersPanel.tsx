@@ -203,7 +203,7 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
       const nextExtra = { ...currentExtra, extraModels: models };
       setProviderConfigField(providerId, 'extra', nextExtra);
       try {
-        await saveProviderSettings({ body: { provider: providerId, extra: nextExtra } });
+        await saveProviderSettings({ body: { provider: providerId, apiKey: undefined, baseUrl: undefined, extra: nextExtra } });
         refreshModels?.();
       } catch (error) {
         console.error('Failed to save extra models', error);

@@ -9,7 +9,7 @@ import ModelChipSelector from "./ModelChipSelector";
 
 export default function ModelSettingsPanel() {
   const { models, isLoading: modelsLoading } = useModels();
-  const [modelSettings, setModelSettings] = useState<ModelSettingsInfo[]>([]);
+  const [modelSettings, setModelSettings] = useState<readonly ModelSettingsInfo[]>([]);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +77,7 @@ export default function ModelSettingsPanel() {
         supports: false,
         isUserOverride: false,
       },
+      thinkingTagPrompted: update.thinkingTagPrompted ?? existing?.thinkingTagPrompted,
     };
 
     const previousSettings = modelSettings;

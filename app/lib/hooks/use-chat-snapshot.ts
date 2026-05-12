@@ -12,6 +12,7 @@ import {
 import { isActivePhase, isTerminalPhase } from "@/lib/services/chat-run-machine";
 import type { RunPhase, RunState } from "@/contexts/streaming-context";
 import type { Message, MessageSibling } from "@/lib/types/chat";
+import { chatMessagesToMessages } from "@/lib/types/chat-message-adapter";
 import type {
   ReloadMessages,
   UseChatInputRefs,
@@ -96,7 +97,7 @@ export function useChatSnapshot({
 
   const fetchSnapshot = useCallback(async (id: string) => {
     const page = await api.getChatMessagesPage(id, CHAT_MESSAGES_PAGE_SIZE);
-    const messages = (page.messages || []) as Message[];
+    const messages = chatMessagesToMessages(page.messages);
     const messageIds = Array.from(new Set(messages.map((msg) => msg.id)));
     const siblings: Record<string, MessageSibling[]> =
       messageIds.length > 0
@@ -139,7 +140,7 @@ export function useChatSnapshot({
         CHAT_MESSAGES_PAGE_SIZE,
         beforeCursor,
       );
-      const olderMessages = (page.messages || []) as Message[];
+      const olderMessages = chatMessagesToMessages(page.messages);
       const messageIds = Array.from(new Set(olderMessages.map((msg) => msg.id)));
       const olderSiblings: Record<string, MessageSibling[]> =
         messageIds.length > 0

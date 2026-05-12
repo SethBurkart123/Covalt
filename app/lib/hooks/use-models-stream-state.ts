@@ -5,8 +5,8 @@ interface ProviderState {
   providerModels: Map<string, ModelInfo[]>;
 }
 
-export function normalizeDefaultModel(models: ModelInfo[]): ModelInfo[] {
-  if (models.length === 0) return models;
+export function normalizeDefaultModel(models: readonly ModelInfo[]): ModelInfo[] {
+  if (models.length === 0) return [...models];
 
   return models.map((model, index) => {
     const isDefault = index === 0;
@@ -15,7 +15,7 @@ export function normalizeDefaultModel(models: ModelInfo[]): ModelInfo[] {
   });
 }
 
-export function buildProviderState(models: ModelInfo[]): ProviderState {
+export function buildProviderState(models: readonly ModelInfo[]): ProviderState {
   const providerOrder: string[] = [];
   const providerModels = new Map<string, ModelInfo[]>();
 

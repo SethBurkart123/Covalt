@@ -398,7 +398,7 @@ export function WorkspaceBrowser({
   lastRunChangedPaths = EMPTY_CHANGED_PATHS,
   onFilesCountChange,
 }: WorkspaceBrowserProps) {
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<readonly string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);

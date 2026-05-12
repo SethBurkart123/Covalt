@@ -74,7 +74,7 @@ function AgentIconSmall({ icon, agentId }: { icon?: string; agentId: string }) {
 interface ModelSelectorProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
-  models: ModelInfo[];
+  models: readonly ModelInfo[];
   hideAgents?: boolean;
   className?: string;
 }
@@ -121,7 +121,7 @@ function ModelSelector({
   const [providerMap, setProviderMap] = useState<
     Record<string, ProviderDefinition>
   >({});
-  const [starredModels, setStarredModels] = useState<string[]>([]);
+  const [starredModels, setStarredModels] = useState<readonly string[]>([]);
   const { agents, refreshAgents, refreshModels } = useChat();
 
   const hasModels = models.length > 0;

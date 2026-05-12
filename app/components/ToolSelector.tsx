@@ -101,7 +101,7 @@ export const ToolSelector = memo(function ToolSelector({
       await startOauthPolling({
         key: server.id,
         start: () =>
-          startMcpOauth({ body: { serverId: server.id, serverUrl } }),
+          startMcpOauth({ body: { serverId: server.id, serverUrl, callbackPort: undefined } }),
         poll: () => getMcpOauthStatus({ body: { id: server.id } }),
         isStartSuccess: (result) => result.success,
         getStartAuthUrl: (result) => result.authUrl || undefined,

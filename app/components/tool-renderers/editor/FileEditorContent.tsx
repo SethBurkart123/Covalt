@@ -117,7 +117,7 @@ export function FileEditorContent({
   rootPath,
   editable,
 }: FileEditorContentProps) {
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<readonly string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());

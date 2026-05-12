@@ -87,7 +87,7 @@ function ToolsetCard({
   isToggling,
 }: ToolsetCardProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [tools, setTools] = useState<ToolsetToolInfo[]>([]);
+  const [tools, setTools] = useState<readonly ToolsetToolInfo[]>([]);
   const [isLoadingTools, setIsLoadingTools] = useState(false);
 
   const handleOpenChange = async (open: boolean) => {
@@ -269,7 +269,7 @@ export default function InstalledPanel({
   importSignal,
 }: InstalledPanelProps) {
   const { availableTools, mcpServers, refreshTools } = useTools();
-  const [toolsets, setToolsets] = useState<ToolsetInfo[] | null>(null);
+  const [toolsets, setToolsets] = useState<readonly ToolsetInfo[] | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
   const [uninstallingToolset, setUninstallingToolset] =
@@ -282,7 +282,7 @@ export default function InstalledPanel({
   const [inspectingServerKey, setInspectingServerKey] = useState<string | null>(
     null,
   );
-  const [inspectorTools, setInspectorTools] = useState<MCPToolInfo[]>([]);
+  const [inspectorTools, setInspectorTools] = useState<readonly MCPToolInfo[]>([]);
 
   const mcpTools = useMemo(() => {
     const byServer: Record<string, ChatToolInfo[]> = {};

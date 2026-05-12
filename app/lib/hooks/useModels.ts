@@ -4,6 +4,7 @@ import {
   getSelectedModel as fetchSelectedModel,
   setSelectedModel as saveSelectedModel,
   getRecentModels as fetchRecentModels,
+  toAsyncIterable,
 } from "@/python/api";
 import type { ModelInfo } from "@/lib/types/chat";
 import { setRecentModelsCache } from "@/lib/utils";
@@ -22,8 +23,8 @@ const CACHE_KEY = "modelsCache";
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface ModelsCache {
-  models: ModelInfo[];
-  connectedProviders: string[];
+  models: readonly ModelInfo[];
+  connectedProviders: readonly string[];
   timestamp: number;
 }
 
@@ -35,7 +36,7 @@ interface ModelsStreamEvent {
   expectedProviders?: string[];
 }
 
-function getCachedModels(): { models: ModelInfo[]; connectedProviders: string[] } | null {
+function getCachedModels(): { models: readonly ModelInfo[]; connectedProviders: readonly string[] } | null {
   if (typeof window === "undefined") return null;
 
   const cached = localStorage.getItem(CACHE_KEY);
@@ -49,7 +50,7 @@ function getCachedModels(): { models: ModelInfo[]; connectedProviders: string[] 
   }
 }
 
-function setCachedModels(models: ModelInfo[], connectedProviders: string[]): void {
+function setCachedModels(models: readonly ModelInfo[], connectedProviders: readonly string[]): void {
   if (typeof window === "undefined") return;
 
   const cache: ModelsCache = {
@@ -62,20 +63,20 @@ function setCachedModels(models: ModelInfo[], connectedProviders: string[]): voi
 
 export function useModels() {
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
+  const [models, setModels] = useState<readonly ModelInfo[]>([]);
+  const [connectedProviders, setConnectedProviders] = useState<readonly string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const activeChannelRef = useRef<ReturnType<typeof streamAvailableModels> | null>(null);
+  const activeChannelRef = useRef<AbortController | null>(null);
   const activeLoadIdRef = useRef(0);
-  const modelsRef = useRef<ModelInfo[]>([]);
-  const connectedProvidersRef = useRef<string[]>([]);
+  const modelsRef = useRef<readonly ModelInfo[]>([]);
+  const connectedProvidersRef = useRef<readonly string[]>([]);
   const savedModelRef = useRef<string>("");
-  const recentModelsRef = useRef<string[]>([]);
+  const recentModelsRef = useRef<readonly string[]>([]);
 
   modelsRef.current = models;
   connectedProvidersRef.current = connectedProviders;
 
-  const selectModel = useCallback((nextModels: ModelInfo[]) => {
+  const selectModel = useCallback((nextModels: readonly ModelInfo[]) => {
     if (nextModels.length === 0) {
       setSelectedModel("");
       return;
@@ -119,9 +120,9 @@ export function useModels() {
     }
   }, []);
 
-  const loadModels = useCallback((forceRefresh = false): Promise<void> => {
+  const loadModels = useCallback(async (forceRefresh = false): Promise<void> => {
     const loadId = ++activeLoadIdRef.current;
-    activeChannelRef.current?.close();
+    activeChannelRef.current?.abort();
     activeChannelRef.current = null;
 
     if (!forceRefresh) {
@@ -131,117 +132,102 @@ export function useModels() {
         setConnectedProviders(cached.connectedProviders);
         setIsLoading(false);
         selectModel(cached.models);
-        return Promise.resolve();
+        return;
       }
     }
 
     setIsLoading(true);
 
-    return new Promise<void>((resolve) => {
-      const channel = streamAvailableModels();
-      activeChannelRef.current = channel;
+    const controller = new AbortController();
+    activeChannelRef.current = controller;
 
-      const providerState = buildProviderState(modelsRef.current);
-      let latestModels = modelsRef.current;
-      let latestConnectedProviders = connectedProvidersRef.current;
-      let selectedDuringLoad = false;
-      let settled = false;
-      let sawStartedEvent = false;
-      let expectedProviders = new Set<string>();
-      const seenProviders = new Set<string>();
+    const providerState = buildProviderState(modelsRef.current);
+    let latestModels = modelsRef.current;
+    let latestConnectedProviders = connectedProvidersRef.current;
+    let selectedDuringLoad = false;
+    let sawStartedEvent = false;
+    let expectedProviders = new Set<string>();
+    const seenProviders = new Set<string>();
 
-      const isCurrentLoad = () => activeLoadIdRef.current === loadId;
+    const isCurrentLoad = () => activeLoadIdRef.current === loadId;
 
-      const syncModelsFromProviders = () => {
-        latestModels = syncModelsFromProviderState(providerState);
-        setModels(latestModels);
-      };
+    const syncModelsFromProviders = () => {
+      latestModels = syncModelsFromProviderState(providerState);
+      setModels(latestModels);
+    };
 
-      const syncConnectedProviders = (nextConnectedProviders: string[]) => {
-        latestConnectedProviders = nextConnectedProviders;
-        setConnectedProviders(nextConnectedProviders);
-      };
+    const syncConnectedProviders = (nextConnectedProviders: string[]) => {
+      latestConnectedProviders = nextConnectedProviders;
+      setConnectedProviders(nextConnectedProviders);
+    };
 
-      const maybeSelectModel = (isCompleted: boolean) => {
-        if (selectedDuringLoad) return;
-        if (forceRefresh && !isCompleted) return;
-        if (latestModels.length === 0 && !isCompleted) return;
-        selectModel(latestModels);
-        selectedDuringLoad = true;
-      };
+    const maybeSelectModel = (isCompleted: boolean) => {
+      if (selectedDuringLoad) return;
+      if (forceRefresh && !isCompleted) return;
+      if (latestModels.length === 0 && !isCompleted) return;
+      selectModel(latestModels);
+      selectedDuringLoad = true;
+    };
 
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (isCurrentLoad()) {
-          setIsLoading(false);
-          if (activeChannelRef.current === channel) activeChannelRef.current = null;
-        }
-        resolve();
-      };
-
-      channel.subscribe((payload) => {
-        if (!isCurrentLoad()) return;
-
+    try {
+      for await (const payload of toAsyncIterable(streamAvailableModels({ signal: controller.signal }))) {
+        if (!isCurrentLoad() || controller.signal.aborted) break;
         const event = payload as ModelsStreamEvent;
 
         if (event.event === "ModelsStarted") {
           sawStartedEvent = true;
-          const nextExpectedProviders = event.expectedProviders || [];
+          const nextExpectedProviders = [...(event.expectedProviders || [])];
           expectedProviders = new Set(nextExpectedProviders);
           reorderProviderState(providerState, nextExpectedProviders);
           syncModelsFromProviders();
-          return;
+          continue;
         }
 
         if (event.event === "ModelsBatch") {
-          if (!event.provider) return;
+          if (!event.provider) continue;
           seenProviders.add(event.provider);
-          upsertProvider(providerState, event.provider, event.models || []);
+          upsertProvider(providerState, event.provider, [...(event.models || [])]);
           syncModelsFromProviders();
-          syncConnectedProviders(event.connectedProviders || latestConnectedProviders);
+          syncConnectedProviders([...(event.connectedProviders || latestConnectedProviders)]);
           maybeSelectModel(false);
-          return;
+          continue;
         }
 
         if (event.event === "ModelsFailed") {
-          if (!event.provider) return;
+          if (!event.provider) continue;
           seenProviders.add(event.provider);
           removeProvider(providerState, event.provider);
           syncModelsFromProviders();
           syncConnectedProviders(
-            (event.connectedProviders || latestConnectedProviders).filter(
+            [...(event.connectedProviders || latestConnectedProviders)].filter(
               (provider) => provider !== event.provider,
             ),
           );
           maybeSelectModel(false);
-          return;
+          continue;
         }
 
         if (event.event === "ModelsCompleted") {
           if (sawStartedEvent) {
             pruneProviderState(providerState, expectedProviders, seenProviders);
           }
-
           syncModelsFromProviders();
-          syncConnectedProviders(event.connectedProviders || latestConnectedProviders);
+          syncConnectedProviders([...(event.connectedProviders || latestConnectedProviders)]);
           maybeSelectModel(true);
           setCachedModels(latestModels, latestConnectedProviders);
-          finish();
+          break;
         }
-      });
-
-      channel.onError((error) => {
-        if (isCurrentLoad()) {
-          console.error("Failed to load models:", error.message);
-        }
-        finish();
-      });
-
-      channel.onClose(() => {
-        finish();
-      });
-    });
+      }
+    } catch (error) {
+      if (isCurrentLoad() && !controller.signal.aborted) {
+        console.error("Failed to load models:", error);
+      }
+    } finally {
+      if (isCurrentLoad()) {
+        setIsLoading(false);
+        if (activeChannelRef.current === controller) activeChannelRef.current = null;
+      }
+    }
   }, [selectModel]);
 
   useEffect(() => {
@@ -253,7 +239,7 @@ export function useModels() {
 
     return () => {
       unsubscribe();
-      activeChannelRef.current?.close();
+      activeChannelRef.current?.abort();
       activeChannelRef.current = null;
     };
   }, [loadModels, fetchPreferences]);

@@ -10,7 +10,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { connectStream as apiConnectStream } from "@/python/api";
+import { connectStream as apiConnectStream, toAsyncIterable } from "@/python/api";
 import {
   processEvent,
   createInitialState,
@@ -98,11 +98,11 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   const connectToStream = useCallback((chatId: string) => {
     if (subscriptionsRef.current.has(chatId)) return;
 
-    const channel = apiConnectStream({ body: { chatId } });
-    if (!channel) return;
+    const controller = new AbortController();
+    const stream = apiConnectStream({ body: { chatId } }, { signal: controller.signal });
 
     subscriptionsRef.current.set(chatId, {
-      unsubscribe: () => channel.close?.(),
+      unsubscribe: () => controller.abort(),
     });
 
     processorStatesRef.current.set(chatId, createInitialState());
@@ -171,9 +171,18 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    channel.subscribe(handleEvent);
-    channel.onError?.(() => cleanupSubscription(chatId));
-    channel.onClose?.(() => cleanupSubscription(chatId));
+    (async () => {
+      try {
+        for await (const event of toAsyncIterable(stream)) {
+          if (controller.signal.aborted) break;
+          handleEvent(event);
+        }
+      } catch {
+        // stream errored or was aborted
+      } finally {
+        cleanupSubscription(chatId);
+      }
+    })();
   }, [cleanupSubscription, dispatch]);
 
   useEffect(() => {

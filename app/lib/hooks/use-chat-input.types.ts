@@ -34,9 +34,9 @@ export interface UseChatInputContext {
   chatId: string | null;
   selectedModel: string;
   refreshChats: () => Promise<void>;
-  activeToolIds: string[];
+  activeToolIds: readonly string[];
   setChatToolIds: (
-    toolIds: string[],
+    toolIds: readonly string[],
     options?: { persistDefaults?: boolean },
   ) => Promise<void>;
   getRunState: (chatId: string) => RunState | undefined;
