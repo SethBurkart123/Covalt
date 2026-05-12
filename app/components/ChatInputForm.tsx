@@ -419,6 +419,8 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
       return ranked.map((entry) => entry.item);
     }, []);
 
+    const handleFilesDropRef = useRef<(files: File[]) => void>(() => {});
+
     const editor = useEditor({
       immediatelyRender: false,
       extensions: [
@@ -448,6 +450,32 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
             "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
             "min-h-[40px] max-h-[200px] overflow-y-auto",
           ),
+        },
+        handlePaste: (_view, event) => {
+          const clipboard = event.clipboardData;
+          if (!clipboard) return false;
+
+          const files: File[] = [];
+          if (clipboard.files && clipboard.files.length > 0) {
+            for (let i = 0; i < clipboard.files.length; i++) {
+              const file = clipboard.files.item(i);
+              if (file) files.push(file);
+            }
+          } else if (clipboard.items && clipboard.items.length > 0) {
+            for (let i = 0; i < clipboard.items.length; i++) {
+              const item = clipboard.items[i];
+              if (item.kind === "file") {
+                const file = item.getAsFile();
+                if (file) files.push(file);
+              }
+            }
+          }
+
+          if (files.length === 0) return false;
+
+          event.preventDefault();
+          handleFilesDropRef.current(files);
+          return true;
         },
       },
     });
@@ -715,6 +743,10 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         }
       });
     }, []);
+
+    useEffect(() => {
+      handleFilesDropRef.current = handleFilesDrop;
+    }, [handleFilesDrop]);
 
     const handleRemoveAttachment = useCallback((id: string) => {
       setPendingAttachments((prev) => {
