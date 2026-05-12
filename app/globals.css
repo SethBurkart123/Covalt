@@ -268,6 +268,7 @@ button {
 
 .dark .prose {
   --tw-prose-pre-bg: #ffffff04;
+  --tw-prose-pre-code: #ebdbb2;
 
   pre {
     @apply border-card;
@@ -280,6 +281,7 @@ button {
 
 .prose {
   --tw-prose-pre-bg: #fff8f4;
+  --tw-prose-pre-code: #654735;
   --tw-prose-hr: var(--border);
 
   .open_grepper_editor {
