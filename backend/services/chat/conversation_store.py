@@ -10,7 +10,12 @@ from ... import db
 from ..models.model_selection import parse_model_id, update_chat_model_selection
 
 
-def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
+def ensure_chat_initialized(
+    chat_id: str | None,
+    model_id: str | None,
+    model_options: dict[str, Any] | None = None,
+    variables: dict[str, Any] | None = None,
+) -> str:
     agent_ref: str | None = None
     if model_id and model_id.startswith("agent:"):
         agent_ref = model_id[len("agent:"):]
@@ -37,6 +42,10 @@ def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
             }
             if agent_ref:
                 config["agent_id"] = agent_ref
+            if model_options is not None:
+                config["model_options"] = dict(model_options)
+            if variables is not None:
+                config["variables"] = dict(variables)
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
             return chat_id
 
@@ -51,9 +60,19 @@ def ensure_chat_initialized(chat_id: str | None, model_id: str | None) -> str:
             }
             if agent_ref:
                 config["agent_id"] = agent_ref
+            if model_options is not None:
+                config["model_options"] = dict(model_options)
+            if variables is not None:
+                config["variables"] = dict(variables)
             db.update_chat_agent_config(sess, chatId=chat_id, config=config)
         elif model_id:
-            update_chat_model_selection(sess, chat_id, model_id)
+            update_chat_model_selection(
+                sess,
+                chat_id,
+                model_id,
+                model_options=model_options,
+                variables=variables,
+            )
 
     return chat_id
 
@@ -96,13 +115,17 @@ def init_assistant_message(chat_id: str, parent_id: str | None) -> str:
         try:
             config = db.get_chat_agent_config(sess, chat_id)
             if config:
-                provider = config.get("provider") or ""
-                model_id = config.get("model_id") or ""
-                model_used = (
-                    f"{provider}:{model_id}"
-                    if provider and model_id
-                    else (model_id or None)
-                )
+                agent_id = config.get("agent_id") or ""
+                if agent_id:
+                    model_used = f"agent:{agent_id}"
+                else:
+                    provider = config.get("provider") or ""
+                    model_id = config.get("model_id") or ""
+                    model_used = (
+                        f"{provider}:{model_id}"
+                        if provider and model_id
+                        else (model_id or None)
+                    )
         except Exception:
             pass
 

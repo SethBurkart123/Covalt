@@ -9,6 +9,7 @@ import { subscribeBackendBaseUrl } from "@/lib/services/backend-url";
 import { useChatOperations } from "@/lib/hooks/useChatOperations";
 import { useModels } from "@/lib/hooks/useModels";
 import { useAgents } from "@/lib/hooks/useAgents";
+import { useModelSelection } from "@/lib/hooks/use-model-selection";
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
@@ -42,8 +43,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setCurrentChatId(id);
   }, []);
 
-  const { models, selectedModel, setSelectedModel, refreshModels } = useModels();
-  const { agents, refreshAgents } = useAgents();
+  const { models, isLoading: modelsLoading, refreshModels } = useModels();
+  const { agents, isLoading: agentsLoading, refreshAgents } = useAgents();
+  const {
+    selectedModel,
+    selectionState: modelSelectionState,
+    selectionSettings: modelSelectionSettings,
+    setSelectedModel,
+    setModelOptions,
+    setVariables,
+    setSelectionSettings: setModelSelectionSettings,
+  } = useModelSelection({
+    chatId: currentChatId,
+    models,
+    modelsLoading,
+    agents,
+    agentsLoading,
+  });
 
   const operations = useChatOperations({
     allChatsData,
@@ -158,7 +174,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     hasMoreChats,
     isLoadingMoreChats: isLoadingMore,
     selectedModel,
+    modelSelectionState,
+    modelSelectionSettings,
     setSelectedModel,
+    setModelOptions,
+    setVariables,
+    setModelSelectionSettings,
     models,
     refreshModels,
     agents,
@@ -175,9 +196,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     hasMoreChats,
     isLoadingMore,
     selectedModel,
+    modelSelectionState,
+    modelSelectionSettings,
     models,
     refreshModels,
     setSelectedModel,
+    setModelOptions,
+    setVariables,
+    setModelSelectionSettings,
     agents,
     refreshAgents,
   ]);

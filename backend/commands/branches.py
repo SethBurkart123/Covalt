@@ -27,39 +27,39 @@ from ..application.conversation import (
 )
 from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.chat.chat_graph_config import get_graph_data_for_chat
-from ..services.streaming.chat_stream import run_graph_chat_runtime
-from ..services.streaming.stream_lifecycle import append_error_block_to_message
-from ..services.streaming.conversation_run_service import (
-    build_message_history,
-    emit_run_start_events,
-    validate_model_options,
-)
 from ..services.chat.file_storage import (
     get_extension_from_mime,
     get_pending_attachment_path,
 )
 from ..services.models.model_selection import update_chat_model_selection
+from ..services.streaming.chat_stream import run_graph_chat_runtime
+from ..services.streaming.conversation_run_service import (
+    build_message_history,
+    emit_run_start_events,
+    validate_model_options,
+)
 from ..services.streaming.runtime_events import EVENT_RUN_ERROR, emit_chat_event
+from ..services.streaming.stream_lifecycle import append_error_block_to_message
 from ..services.workspace_manager import get_workspace_manager, materialize_to_branch
 
 logger = logging.getLogger(__name__)
 
 
 class ContinueMessageRequest(BaseModel):
-    messageId: str
-    chatId: str
-    modelId: str | None = None
-    modelOptions: dict[str, Any] | None = None
-    toolIds: list[str] = []
+    message_id: str
+    chat_id: str
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    tool_ids: list[str] = []
     variables: dict[str, Any] | None = None
 
 
 class RetryMessageRequest(BaseModel):
-    messageId: str
-    chatId: str
-    modelId: str | None = None
-    modelOptions: dict[str, Any] | None = None
-    toolIds: list[str] = []
+    message_id: str
+    chat_id: str
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    tool_ids: list[str] = []
     variables: dict[str, Any] | None = None
 
 
@@ -67,39 +67,47 @@ class AttachmentInput(BaseModel):
     id: str
     type: str
     name: str
-    mimeType: str
+    mime_type: str
     size: int
     data: str
+
+    @property
+    def mimeType(self) -> str:
+        return self.mime_type
 
 
 class ExistingAttachmentInput(BaseModel):
     id: str
     type: str
     name: str
-    mimeType: str
+    mime_type: str
     size: int
+
+    @property
+    def mimeType(self) -> str:
+        return self.mime_type
 
 
 class EditUserMessageRequest(BaseModel):
-    messageId: str
-    newContent: str
-    chatId: str
-    modelId: str | None = None
-    modelOptions: dict[str, Any] | None = None
-    toolIds: list[str] = []
-    existingAttachments: list[ExistingAttachmentInput] = []
-    newAttachments: list[AttachmentInput] = []
+    message_id: str
+    new_content: str
+    chat_id: str
+    model_id: str | None = None
+    model_options: dict[str, Any] | None = None
+    tool_ids: list[str] = []
+    existing_attachments: list[ExistingAttachmentInput] = []
+    new_attachments: list[AttachmentInput] = []
     variables: dict[str, Any] | None = None
 
 
 class SwitchToSiblingRequest(BaseModel):
-    messageId: str
-    siblingId: str
-    chatId: str
+    message_id: str
+    sibling_id: str
+    chat_id: str
 
 
 class GetMessageSiblingsRequest(BaseModel):
-    messageId: str
+    message_id: str
 
 
 class MessageSiblingInfo(BaseModel):
@@ -109,8 +117,8 @@ class MessageSiblingInfo(BaseModel):
 
 
 class GetMessageSiblingsBatchRequest(BaseModel):
-    chatId: str
-    messageIds: list[str]
+    chat_id: str
+    message_ids: list[str]
 
 
 def _get_original_message(sess: Any, message_id: str) -> Any:
@@ -191,11 +199,11 @@ async def continue_message(
     await execute_continue_run(
         ContinueRunInput(
             channel=channel,
-            chat_id=body.chatId,
-            message_id=body.messageId,
-            model_id=body.modelId,
-            model_options=body.modelOptions,
-            tool_ids=body.toolIds,
+            chat_id=body.chat_id,
+            message_id=body.message_id,
+            model_id=body.model_id,
+            model_options=body.model_options,
+            tool_ids=body.tool_ids,
             variables=body.variables,
         ),
         _build_continue_run_dependencies(),
@@ -238,11 +246,11 @@ async def retry_message(
     await execute_retry_run(
         RetryRunInput(
             channel=channel,
-            chat_id=body.chatId,
-            message_id=body.messageId,
-            model_id=body.modelId,
-            model_options=body.modelOptions,
-            tool_ids=body.toolIds,
+            chat_id=body.chat_id,
+            message_id=body.message_id,
+            model_id=body.model_id,
+            model_options=body.model_options,
+            tool_ids=body.tool_ids,
             variables=body.variables,
         ),
         _build_retry_run_dependencies(),
@@ -337,12 +345,12 @@ async def edit_user_message(
     await execute_edit_user_message_run(
         EditUserMessageRunInput(
             channel=channel,
-            chat_id=body.chatId,
-            message_id=body.messageId,
-            new_content=body.newContent,
-            model_id=body.modelId,
-            model_options=body.modelOptions,
-            tool_ids=body.toolIds,
+            chat_id=body.chat_id,
+            message_id=body.message_id,
+            new_content=body.new_content,
+            model_id=body.model_id,
+            model_options=body.model_options,
+            tool_ids=body.tool_ids,
             existing_attachments=[
                 ExistingAttachmentInputDTO(
                     id=attachment.id,
@@ -351,7 +359,7 @@ async def edit_user_message(
                     mimeType=attachment.mimeType,
                     size=attachment.size,
                 )
-                for attachment in body.existingAttachments
+                for attachment in body.existing_attachments
             ],
             new_attachments=[
                 NewAttachmentInputDTO(
@@ -362,7 +370,7 @@ async def edit_user_message(
                     size=attachment.size,
                     data=attachment.data,
                 )
-                for attachment in body.newAttachments
+                for attachment in body.new_attachments
             ],
             variables=body.variables,
         ),
@@ -375,10 +383,10 @@ async def switch_to_sibling(
     body: SwitchToSiblingRequest,
 ) -> None:
     with db.db_session() as sess:
-        leaf_id = db.get_leaf_descendant(sess, body.siblingId, body.chatId)
-        db.set_active_leaf(sess, body.chatId, leaf_id)
+        leaf_id = db.get_leaf_descendant(sess, body.sibling_id, body.chat_id)
+        db.set_active_leaf(sess, body.chat_id, leaf_id)
 
-    materialize_to_branch(body.chatId, leaf_id)
+    materialize_to_branch(body.chat_id, leaf_id)
 
 
 @command
@@ -386,7 +394,7 @@ async def get_message_siblings(
     body: GetMessageSiblingsRequest,
 ) -> list[MessageSiblingInfo]:
     with db.db_session() as sess:
-        message = sess.get(db.Message, body.messageId)
+        message = sess.get(db.Message, body.message_id)
         if not message:
             return []
 
@@ -414,14 +422,14 @@ async def get_message_siblings(
 async def get_message_siblings_batch(
     body: GetMessageSiblingsBatchRequest,
 ) -> dict[str, list[MessageSiblingInfo]]:
-    message_ids = list(dict.fromkeys(body.messageIds))
+    message_ids = list(dict.fromkeys(body.message_ids))
     if not message_ids:
         return {}
 
     with db.db_session() as sess:
         stmt = (
             select(db.Message.id, db.Message.parent_message_id)
-            .where(db.Message.chatId == body.chatId)
+            .where(db.Message.chatId == body.chat_id)
             .where(db.Message.id.in_(message_ids))
         )
         message_rows = list(sess.execute(stmt))
@@ -439,7 +447,7 @@ async def get_message_siblings_batch(
         siblings_by_parent: dict[str | None, list[MessageSiblingInfo]] = {}
         active_path_ids: set[str] = set()
 
-        chat = sess.get(db.Chat, body.chatId)
+        chat = sess.get(db.Chat, body.chat_id)
         if chat and chat.active_leaf_message_id:
             active_path_msgs = db.get_message_path(sess, chat.active_leaf_message_id)
             active_path_ids = {m.id for m in active_path_msgs}
@@ -451,7 +459,7 @@ async def get_message_siblings_batch(
                     db.Message.parent_message_id,
                     db.Message.sequence,
                 )
-                .where(db.Message.chatId == body.chatId)
+                .where(db.Message.chatId == body.chat_id)
                 .where(or_(*conditions))
                 .order_by(db.Message.sequence.asc())
             )

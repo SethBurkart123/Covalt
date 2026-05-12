@@ -135,7 +135,10 @@ export default function AutoTitlePanel() {
   };
 
   const handleModelChange = (modelKey: string) => {
-    const [provider, modelId] = modelKey.split(":", 2);
+    const separatorIndex = modelKey.lastIndexOf(":");
+    if (separatorIndex <= 0 || separatorIndex >= modelKey.length - 1) return;
+    const provider = modelKey.slice(0, separatorIndex);
+    const modelId = modelKey.slice(separatorIndex + 1);
     updateSettings({ provider, modelId });
   };
 
@@ -237,6 +240,7 @@ export default function AutoTitlePanel() {
                     selectedModel={`${settings.provider}:${settings.modelId}`}
                     setSelectedModel={handleModelChange}
                     models={models}
+                    hideAgents
                   />
                 </div>
               )}

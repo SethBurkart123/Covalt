@@ -14,7 +14,13 @@ def parse_model_id(model_id: str | None) -> tuple[str, str]:
     return "", model_id
 
 
-def update_chat_model_selection(sess: Any, chat_id: str, model_id: str) -> None:
+def update_chat_model_selection(
+    sess: Any,
+    chat_id: str,
+    model_id: str,
+    model_options: dict[str, Any] | None = None,
+    variables: dict[str, Any] | None = None,
+) -> None:
     config = db.get_chat_agent_config(sess, chat_id) or {}
     if model_id.startswith("agent:"):
         config["agent_id"] = model_id[len("agent:") :]
@@ -23,4 +29,8 @@ def update_chat_model_selection(sess: Any, chat_id: str, model_id: str) -> None:
         config["provider"] = provider
         config["model_id"] = model
         config.pop("agent_id", None)
+    if model_options is not None:
+        config["model_options"] = dict(model_options)
+    if variables is not None:
+        config["variables"] = dict(variables)
     db.update_chat_agent_config(sess, chatId=chat_id, config=config)

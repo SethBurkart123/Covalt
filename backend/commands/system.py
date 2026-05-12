@@ -13,6 +13,8 @@ from ..models.chat import (
     AutoTitleSettings,
     DefaultToolsResponse,
     ModelInfo,
+    ModelSelectionSettings,
+    ModelSelectionState,
     ModelSettingsInfo,
     OutputSmoothingSettings,
     ProviderCatalogItem,
@@ -24,14 +26,14 @@ from ..models.chat import (
     ReasoningInfo,
     RecentModelsResponse,
     SaveAutoTitleSettingsInput,
+    SaveModelSelectionSettingsInput,
     SaveModelSettingsInput,
     SaveOutputSmoothingSettingsInput,
     SaveProviderConfigInput,
     SaveSystemPromptSettingsInput,
-    SelectedModelResponse,
     SetDefaultToolsInput,
+    SetModelSelectionStateInput,
     SetRecentModelsInput,
-    SetSelectedModelInput,
     SetStarredModelsInput,
     StarredModelsResponse,
     SystemPromptSettings,
@@ -263,15 +265,29 @@ async def set_default_tools(body: SetDefaultToolsInput) -> None:
 
 
 @command
-async def get_selected_model() -> SelectedModelResponse:
+async def get_model_selection_state() -> ModelSelectionState:
     with db.db_session() as sess:
-        return SelectedModelResponse(modelKey=db.get_selected_model(sess))
+        return ModelSelectionState(**db.get_model_selection_state(sess))
 
 
 @command
-async def set_selected_model(body: SetSelectedModelInput) -> None:
+async def set_model_selection_state(body: SetModelSelectionStateInput) -> None:
     with db.db_session() as sess:
-        db.set_selected_model(sess, body.modelKey)
+        db.set_model_selection_state(sess, body.model_dump())
+
+
+@command
+async def get_model_selection_settings() -> ModelSelectionSettings:
+    with db.db_session() as sess:
+        return ModelSelectionSettings(**db.get_model_selection_settings(sess))
+
+
+@command
+async def save_model_selection_settings(
+    body: SaveModelSelectionSettingsInput,
+) -> None:
+    with db.db_session() as sess:
+        db.set_model_selection_settings(sess, body.model_dump())
 
 
 @command

@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from .models import UserSettings
 
+MODEL_SELECTION_MODES = {"last_used", "fixed"}
+
 
 def get_user_setting(sess: Session, key: str) -> str | None:
     setting: UserSettings | None = sess.get(UserSettings, key)
@@ -116,12 +118,76 @@ def set_starred_models(sess: Session, model_keys: list[str]) -> None:
     set_user_setting(sess, "starred_models", orjson.dumps(model_keys).decode())
 
 
-def get_selected_model(sess: Session) -> str:
-    return get_user_setting(sess, "selected_model") or ""
+def _selection_state_from_dict(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {}
+    model_key = value.get("model_key")
+    model_options = value.get("model_options")
+    variables = value.get("variables")
+    return {
+        "model_key": model_key if isinstance(model_key, str) else "",
+        "model_options": model_options if isinstance(model_options, dict) else {},
+        "variables": variables if isinstance(variables, dict) else {},
+    }
 
 
-def set_selected_model(sess: Session, model_key: str) -> None:
-    set_user_setting(sess, "selected_model", model_key)
+def _json_dict_from_setting(value: str | None) -> dict[str, Any] | None:
+    if not value:
+        return None
+    try:
+        parsed = orjson.loads(value)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _selection_state_from_value(value: str | None) -> dict[str, Any] | None:
+    parsed = _json_dict_from_setting(value)
+    if parsed is None:
+        return None
+    return _selection_state_from_dict(parsed)
+
+
+def get_model_selection_state(sess: Session) -> dict[str, Any]:
+    state = _selection_state_from_value(get_user_setting(sess, "selected_model_state"))
+    if state is not None:
+        return state
+    return _selection_state_from_dict({})
+
+
+def set_model_selection_state(sess: Session, state: dict[str, Any]) -> None:
+    payload = _selection_state_from_dict(state)
+    set_user_setting(
+        sess,
+        "selected_model_state",
+        orjson.dumps(payload).decode(),
+    )
+
+
+def get_model_selection_settings(sess: Session) -> dict[str, Any]:
+    settings = _json_dict_from_setting(get_user_setting(sess, "model_selection_settings"))
+    if settings is None:
+        return {
+            "mode": "last_used",
+            "fixed_selection": _selection_state_from_dict({}),
+        }
+
+    mode = settings.get("mode")
+    return {
+        "mode": mode if mode in MODEL_SELECTION_MODES else "last_used",
+        "fixed_selection": _selection_state_from_dict(settings.get("fixed_selection")),
+    }
+
+
+def set_model_selection_settings(sess: Session, settings: dict[str, Any]) -> None:
+    mode = settings.get("mode")
+    payload = {
+        "mode": mode if mode in MODEL_SELECTION_MODES else "last_used",
+        "fixed_selection": _selection_state_from_dict(settings.get("fixed_selection")),
+    }
+    set_user_setting(sess, "model_selection_settings", orjson.dumps(payload).decode())
 
 
 def get_recent_models(sess: Session) -> list[str]:

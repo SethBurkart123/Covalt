@@ -29,19 +29,24 @@ def test_update_chat_tool_ids_updates_config() -> None:
     assert kwargs["config"]["tool_ids"] == ["tool:new"]
 
 
-def test_update_chat_model_provider_clears_agent_selection() -> None:
+def test_update_chat_selection_saves_agent_and_parameters() -> None:
     db_mock, _sess = _db_mock()
-    db_mock.get_chat_agent_config.return_value = {
-        "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet",
-        "agent_id": "agent-123",
-    }
 
-    with patch.object(chat_config, "db", db_mock):
-        chat_config.update_chat_model_provider("chat-1", "openai", "gpt-4o-mini")
+    with (
+        patch.object(chat_config, "db", db_mock),
+        patch.object(chat_config, "update_chat_model_selection") as update_selection,
+    ):
+        chat_config.update_chat_selection(
+            "chat-1",
+            "agent:agent-123",
+            model_options={"temperature": 0.2},
+            variables={"tone": "direct"},
+        )
 
-    _, kwargs = db_mock.update_chat_agent_config.call_args
-    assert kwargs["chatId"] == "chat-1"
-    assert kwargs["config"]["provider"] == "openai"
-    assert kwargs["config"]["model_id"] == "gpt-4o-mini"
-    assert "agent_id" not in kwargs["config"]
+    update_selection.assert_called_once_with(
+        _sess,
+        "chat-1",
+        "agent:agent-123",
+        model_options={"temperature": 0.2},
+        variables={"tone": "direct"},
+    )

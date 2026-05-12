@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ModelInfo,
   OptionDefinition,
@@ -15,6 +15,11 @@ interface PersistedOptions {
 interface StorageContext {
   provider: string;
   modelId: string;
+}
+
+interface UseModelOptionsConfig {
+  persistedValues?: Record<string, unknown>;
+  onValuesChange?: (values: Record<string, unknown>) => void;
 }
 
 const STORAGE_VERSION = 1;
@@ -101,21 +106,27 @@ function loadPersistedOptions(
 
     const values =
       parsed.values && typeof parsed.values === "object" ? parsed.values : {};
-    const nextValues: Record<string, unknown> = {};
-
-    for (const definition of getAllDefinitions(schema)) {
-      const candidate = (values as Record<string, unknown>)[definition.key];
-      nextValues[definition.key] =
-        candidate !== undefined && isValidValue(candidate, definition)
-          ? candidate
-          : definition.default;
-    }
-
-    return nextValues;
+    return normalizeOptionValues(schema, values as Record<string, unknown>);
   } catch (error) {
     console.error("Failed to parse persisted model options:", error);
     return getDefaults(schema);
   }
+}
+
+function normalizeOptionValues(
+  schema: OptionSchema,
+  values: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const nextValues: Record<string, unknown> = {};
+  const source = values ?? {};
+  for (const definition of getAllDefinitions(schema)) {
+    const candidate = source[definition.key];
+    nextValues[definition.key] =
+      candidate !== undefined && isValidValue(candidate, definition)
+        ? candidate
+        : definition.default;
+  }
+  return nextValues;
 }
 
 function savePersistedOptions(
@@ -138,6 +149,7 @@ function savePersistedOptions(
 export function useModelOptions(
   selectedModel: string,
   models: readonly ModelInfo[],
+  config: UseModelOptionsConfig = {},
 ): {
   schema: OptionSchema;
   values: Record<string, unknown>;
@@ -149,6 +161,7 @@ export function useModelOptions(
     () => resolveStorageContext(selectedModel),
     [selectedModel],
   );
+  const { persistedValues, onValuesChange } = config;
 
   const schema = useMemo<OptionSchema>(() => {
     if (!storage) return EMPTY_SCHEMA;
@@ -160,40 +173,55 @@ export function useModelOptions(
     return model?.options ?? EMPTY_SCHEMA;
   }, [models, storage]);
 
-  const storageKeyRef = useRef<string | null>(null);
   const currentKey = storage ? getStorageKey(storage.provider, storage.modelId) : null;
-
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    storage ? loadPersistedOptions(storage, schema) : getDefaults(schema),
+  const persistedKey = useMemo(
+    () => JSON.stringify(persistedValues ?? null),
+    [persistedValues],
   );
 
-  if (currentKey !== storageKeyRef.current) {
-    storageKeyRef.current = currentKey;
-    const nextValues = storage ? loadPersistedOptions(storage, schema) : getDefaults(schema);
+  const [values, setValues] = useState<Record<string, unknown>>(() =>
+    persistedValues
+      ? normalizeOptionValues(schema, persistedValues)
+      : storage
+        ? loadPersistedOptions(storage, schema)
+        : getDefaults(schema),
+  );
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+
+  const commitValues = useCallback(
+    (nextValues: Record<string, unknown>) => {
+      valuesRef.current = nextValues;
+      setValues(nextValues);
+      if (onValuesChange) {
+        onValuesChange(nextValues);
+      } else if (storage) {
+        savePersistedOptions(storage, nextValues);
+      }
+    },
+    [onValuesChange, storage],
+  );
+
+  useEffect(() => {
+    const nextValues = persistedValues
+      ? normalizeOptionValues(schema, persistedValues)
+      : storage
+        ? loadPersistedOptions(storage, schema)
+        : getDefaults(schema);
+    valuesRef.current = nextValues;
     setValues(nextValues);
-  }
+  }, [currentKey, persistedKey, persistedValues, schema, storage]);
 
   const setValue = useCallback(
     (key: string, value: unknown) => {
-      setValues((currentValues) => {
-        const nextValues = { ...currentValues, [key]: value };
-        if (storage) {
-          savePersistedOptions(storage, nextValues);
-        }
-        return nextValues;
-      });
+      commitValues({ ...valuesRef.current, [key]: value });
     },
-    [storage],
+    [commitValues],
   );
 
   const reset = useCallback(() => {
-    const defaults = getDefaults(schema);
-    setValues(defaults);
-
-    if (storage) {
-      savePersistedOptions(storage, defaults);
-    }
-  }, [schema, storage]);
+    commitValues(getDefaults(schema));
+  }, [commitValues, schema]);
 
   const getVisibleValues = useCallback((): Record<string, unknown> => {
     const visibleValues: Record<string, unknown> = {};

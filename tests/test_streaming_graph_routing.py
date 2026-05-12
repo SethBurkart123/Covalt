@@ -46,8 +46,8 @@ async def test_stream_chat_agent_model_uses_graph_runtime() -> None:
     channel = MagicMock()
     body = streaming.StreamChatRequest(
         messages=_user_message_payload(),
-        modelId="agent:agent-1",
-        chatId="chat-1",
+        model_id="agent:agent-1",
+        chat_id="chat-1",
     )
 
     graph_runtime = AsyncMock()
@@ -70,8 +70,8 @@ async def test_stream_chat_non_agent_model_uses_graph_runtime() -> None:
     channel = MagicMock()
     body = streaming.StreamChatRequest(
         messages=_user_message_payload(),
-        modelId="openai:gpt-4o-mini",
-        chatId="chat-1",
+        model_id="openai:gpt-4o-mini",
+        chat_id="chat-1",
     )
 
     graph_runtime = AsyncMock()
@@ -103,15 +103,15 @@ async def test_stream_chat_preserves_historical_message_attachments() -> None:
                         "id": "att-1",
                         "type": "image",
                         "name": "screenshot.png",
-                        "mimeType": "image/png",
+                        "mime_type": "image/png",
                         "size": 123,
                     }
                 ],
             },
             {"id": "u1", "role": "user", "content": "follow-up question"},
         ],
-        modelId="openai:gpt-4o-mini",
-        chatId="chat-1",
+        model_id="openai:gpt-4o-mini",
+        chat_id="chat-1",
     )
 
     graph_runtime = AsyncMock()
@@ -138,7 +138,7 @@ async def test_stream_chat_preserves_historical_message_attachments() -> None:
 async def test_stream_agent_chat_uses_graph_runtime() -> None:
     channel = MagicMock()
     body = streaming.StreamAgentChatRequest(
-        agentId="agent-1",
+        agent_id="agent-1",
         messages=_user_message_payload(),
         ephemeral=True,
     )
@@ -160,7 +160,7 @@ async def test_stream_agent_chat_uses_graph_runtime() -> None:
 async def test_stream_agent_chat_preserves_historical_message_attachments() -> None:
     channel = MagicMock()
     body = streaming.StreamAgentChatRequest(
-        agentId="agent-1",
+        agent_id="agent-1",
         messages=[
             {
                 "id": "u0",
@@ -171,7 +171,7 @@ async def test_stream_agent_chat_preserves_historical_message_attachments() -> N
                         "id": "att-1",
                         "type": "image",
                         "name": "diagram.png",
-                        "mimeType": "image/png",
+                        "mime_type": "image/png",
                         "size": 321,
                     }
                 ],

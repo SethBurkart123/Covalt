@@ -48,7 +48,10 @@ function parseSelectedModel(
 export default function ChatPanel() {
   const {
     selectedModel,
+    modelSelectionState,
     setSelectedModel,
+    setModelOptions,
+    setVariables,
     models: availableModels,
     chatId,
     agents,
@@ -149,22 +152,22 @@ export default function ChatPanel() {
     setValue: setModelOptionValue,
     reset: resetModelOptions,
     getVisibleValues: getVisibleModelOptions,
-  } = useModelOptions(selectedModel, availableModels);
+  } = useModelOptions(selectedModel, availableModels, {
+    persistedValues: modelSelectionState.modelOptions,
+    onValuesChange: setModelOptions,
+  });
 
   const {
     specs: chatVariableSpecs,
     optionsContext: chatVariableOptionsContext,
   } = useChatVariableSpecs({ chatId, modelId: selectedModel });
 
-  const variableStorageKey = useMemo(
-    () => (chatId ? `covalt:variables:${chatId}` : null),
-    [chatId],
-  );
-
   const variables = useVariables({
-    storageKey: variableStorageKey,
+    storageKey: null,
     specs: chatVariableSpecs,
     optionsContext: chatVariableOptionsContext,
+    persistedValues: modelSelectionState.variables,
+    onValuesChange: setVariables,
   });
 
   const {

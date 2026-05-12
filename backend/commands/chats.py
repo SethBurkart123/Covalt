@@ -24,9 +24,12 @@ from ..models.chat import (
     ToggleChatToolsInput,
     ToolInfo,
     UpdateChatInput,
-    UpdateChatModelInput,
+    UpdateChatSelectionInput,
 )
-from ..services.chat.chat_config import update_chat_model_provider, update_chat_tool_ids
+from ..services.chat.chat_config import (
+    update_chat_selection,
+    update_chat_tool_ids,
+)
 from ..services.streaming.title_generator import generate_title_for_chat
 from ..services.tools.mcp_manager import ensure_mcp_initialized
 from ..services.tools.tool_registry import get_tool_registry
@@ -204,8 +207,13 @@ async def toggle_chat_tools(body: ToggleChatToolsInput) -> None:
 
 
 @command
-async def update_chat_model(body: UpdateChatModelInput) -> None:
-    update_chat_model_provider(body.chatId, body.provider, body.modelId)
+async def update_chat_selection_state(body: UpdateChatSelectionInput) -> None:
+    update_chat_selection(
+        body.chat_id,
+        body.model_key,
+        model_options=body.model_options,
+        variables=body.variables,
+    )
 
 
 @command
@@ -273,10 +281,16 @@ async def get_chat_agent_config(body: ChatId) -> ChatAgentConfigResponse:
         if not config:
             config = db.get_default_agent_config()
 
+    model_options = config.get("model_options")
+    variables = config.get("variables")
+
     return ChatAgentConfigResponse(
-        toolIds=config.get("tool_ids", []),
+        tool_ids=config.get("tool_ids", []),
         provider=config.get("provider", "openai"),
-        modelId=config.get("model_id", "gpt-4o-mini"),
+        model_id=config.get("model_id", "gpt-4o-mini"),
+        agent_id=config.get("agent_id"),
+        model_options=model_options if isinstance(model_options, dict) else {},
+        variables=variables if isinstance(variables, dict) else {},
     )
 
 
