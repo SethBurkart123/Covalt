@@ -165,6 +165,21 @@
   height: var(--electrobun-titlebar-height);
 }
 
+.electrobun-webkit-app-region-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.electrobun-webkit-app-region-no-drag,
+.electrobun-webkit-app-region-drag button,
+.electrobun-webkit-app-region-drag a,
+.electrobun-webkit-app-region-drag input,
+.electrobun-webkit-app-region-drag textarea,
+.electrobun-webkit-app-region-drag select {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .dark {
   color-scheme: dark;
   --background: oklch(0.26 0.02 352.4);
@@ -254,15 +269,8 @@ button {
 
 .quick-actions,
 .chat-input-form {
-  @media (max-width: 770px) {
+  @media (max-width: 767px) {
     transform: translateX(0) !important;
-  }
-}
-
-[data-slot="sidebar-inset"] {
-  @media (max-width: 770px) {
-    margin-left: 0 !important;
-    width: 100% !important;
   }
 }
 

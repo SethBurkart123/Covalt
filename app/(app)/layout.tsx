@@ -8,7 +8,6 @@ import { PageTitleProvider } from "@/contexts/page-title-context";
 import { WebSocketProvider } from "@/contexts/websocket-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { TrafficLightOverlay } from "@/components/TrafficLightOverlay";
 
 import type { CSSProperties, ReactNode } from "react";
 
@@ -28,8 +27,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   } as CSSProperties}
                 >
                   <AppSidebar />
-                  <TrafficLightOverlay />
-                  <SidebarInset className="dark:bg-card/30 border border-border shadow overflow-clip">
+                  <SidebarInset className="dark:bg-card/30 shadow overflow-clip">
                     {children}
                   </SidebarInset>
                 </SidebarProvider>

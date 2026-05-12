@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   ComponentProps,
   CSSProperties,
 } from "react";
@@ -52,6 +53,9 @@ type SidebarContextProps = {
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
+  effectiveIsMobile: boolean;
+  isExitingToMobile: boolean;
+  commitMobile: () => void;
   toggleSidebar: () => void;
 };
 
@@ -82,6 +86,24 @@ function SidebarProvider({
   const [openMobile, setOpenMobile] = useState(false);
   const [_open, _setOpen] = useState(defaultOpen);
   const open = openProp ?? _open;
+
+  const [effectiveIsMobile, setEffectiveIsMobile] = useState(isMobile);
+  const sawDesktopRef = useRef(false);
+  const isExitingToMobile =
+    isMobile && !effectiveIsMobile && open && sawDesktopRef.current;
+  useEffect(() => {
+    if (!isMobile) {
+      sawDesktopRef.current = true;
+      setEffectiveIsMobile(false);
+      return;
+    }
+    if (!open || !sawDesktopRef.current) {
+      setEffectiveIsMobile(true);
+    }
+  }, [isMobile, open]);
+  const commitMobile = useCallback(() => {
+    setEffectiveIsMobile((prev) => (prev ? prev : true));
+  }, []);
 
   const setOpen = useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -120,11 +142,24 @@ function SidebarProvider({
       open,
       setOpen,
       isMobile,
+      effectiveIsMobile,
+      isExitingToMobile,
+      commitMobile,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [
+      open,
+      setOpen,
+      isMobile,
+      effectiveIsMobile,
+      isExitingToMobile,
+      commitMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+    ],
   );
 
   return (
@@ -164,7 +199,20 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const {
+    isMobile,
+    effectiveIsMobile,
+    isExitingToMobile,
+    commitMobile,
+    state,
+    openMobile,
+    setOpenMobile,
+  } = useSidebar();
+  const wasEffectiveMobileRef = useRef(effectiveIsMobile);
+  const slideInFromMobile = wasEffectiveMobileRef.current && !effectiveIsMobile;
+  useEffect(() => {
+    wasEffectiveMobileRef.current = effectiveIsMobile;
+  }, [effectiveIsMobile]);
 
   if (collapsible === "none") {
     return (
@@ -181,7 +229,7 @@ function Sidebar({
     );
   }
 
-  if (isMobile) {
+  if (effectiveIsMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
@@ -208,7 +256,7 @@ function Sidebar({
 
   return (
     <div
-      className="group peer text-sidebar-foreground hidden md:block absolute"
+      className="group peer text-sidebar-foreground block absolute"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
@@ -230,17 +278,28 @@ function Sidebar({
         <motion.div
           data-slot="sidebar-container"
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh md:flex w-[var(--sidebar-width)]",
+            "fixed inset-y-0 z-10 flex h-svh w-[var(--sidebar-width)]",
             side === "left" ? "left-0" : "right-0",
             variant === "floating" || variant === "inset"
               ? "p-2 pt-0"
               : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
+          initial={
+            slideInFromMobile
+              ? { x: side === "left" ? "-100%" : "100%" }
+              : false
+          }
           animate={{
-            x: state === "expanded" ? 0 : side === "left" ? "-100%" : "100%",
+            x:
+              isExitingToMobile || state === "collapsed"
+                ? side === "left" ? "-100%" : "100%"
+                : 0,
           }}
           transition={SIDEBAR_TRANSITION}
+          onAnimationComplete={() => {
+            if (isMobile && !effectiveIsMobile) commitMobile();
+          }}
           {...(props as HTMLMotionProps<"div">)}
         >
           <motion.div
@@ -286,31 +345,49 @@ function SidebarTrigger({
 }
 
 function SidebarInset({ className, style, ...props }: ComponentProps<"main">) {
-  const { state } = useSidebar();
-  const expandedMargin = "var(--sidebar-width)";
-  const collapsedMargin = "0.5rem";
+  const { state, effectiveIsMobile, isExitingToMobile } = useSidebar();
+  const targetingMobile = effectiveIsMobile || isExitingToMobile;
+  const fullscreen = targetingMobile || state === "collapsed";
+  const leftMargin = fullscreen
+    ? "0px"
+    : state === "expanded"
+      ? "var(--sidebar-width)"
+      : "0.5rem";
+  const sideGap = fullscreen ? "0px" : "0.5rem";
+  const radius = fullscreen ? 0 : 12;
+  const borderColor = fullscreen ? "rgba(0,0,0,0)" : "var(--border)";
 
   return (
     <motion.main
       data-slot="sidebar-inset"
       className={cn(
-        "bg-background relative flex w-full flex-1 flex-col",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:mt-2 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",
+        "bg-background relative flex w-full flex-1 flex-col peer-data-[variant=inset]:shadow-sm border border-border",
         className,
       )}
       style={{
         ...style,
-        width: "calc(100% - var(--sidebar-inset-margin-left) - 0.5rem)",
+        width:
+          "calc(100% - var(--sidebar-inset-margin-left) - var(--sidebar-inset-margin-right))",
       }}
       initial={{
-        ["--sidebar-inset-margin-left" as string]:
-          state === "expanded" ? expandedMargin : collapsedMargin,
-        marginLeft: state === "expanded" ? expandedMargin : collapsedMargin,
+        ["--sidebar-inset-margin-left" as string]: leftMargin,
+        ["--sidebar-inset-margin-right" as string]: sideGap,
+        marginLeft: leftMargin,
+        marginRight: sideGap,
+        marginTop: sideGap,
+        marginBottom: sideGap,
+        borderRadius: radius,
+        borderColor,
       }}
       animate={{
-        ["--sidebar-inset-margin-left" as string]:
-          state === "expanded" ? expandedMargin : collapsedMargin,
-        marginLeft: state === "expanded" ? expandedMargin : collapsedMargin,
+        ["--sidebar-inset-margin-left" as string]: leftMargin,
+        ["--sidebar-inset-margin-right" as string]: sideGap,
+        marginLeft: leftMargin,
+        marginRight: sideGap,
+        marginTop: sideGap,
+        marginBottom: sideGap,
+        borderRadius: radius,
+        borderColor,
       }}
       transition={SIDEBAR_TRANSITION}
       {...(props as HTMLMotionProps<"main">)}

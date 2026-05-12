@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Bot, Package, PlusIcon, Settings, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -19,6 +19,7 @@ import { useStreaming } from "@/contexts/streaming-context";
 import { groupChatsByTimePeriod } from "@/lib/utils/chat-grouping";
 import { ChatItem } from "@/components/ChatItem";
 import { prefetchChat } from "@/lib/services/chat-prefetch";
+import { useIsElectrobunMac } from "@/lib/hooks/use-electrobun-platform";
 
 type SidebarRow =
   | { kind: "header"; key: string; label: string }
@@ -87,10 +88,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     [chatGroups, hasMoreChats],
   );
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+  const scrollRef = useCallback((node: HTMLDivElement | null) => {
+    setScrollEl(node?.parentElement ?? null);
+  }, []);
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollRef.current?.parentElement ?? null,
+    getScrollElement: () => scrollEl,
     estimateSize: (i) => {
       const r = rows[i];
       if (r.kind === "header") return HEADER_ESTIMATE;
@@ -120,9 +124,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     router.prefetch(`/?chatId=${id}`);
   }, [currentChatId, router]);
 
+  const isMac = useIsElectrobunMac();
+
   return (
     <Sidebar variant="inset" {...props}>
-      <div className="electrobun-titlebar electrobun-webkit-app-region-drag" />
+      <div
+        className="electrobun-webkit-app-region-drag shrink-0"
+        style={{ height: isMac ? 28 : 0 }}
+      />
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
