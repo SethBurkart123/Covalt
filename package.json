@@ -87,7 +87,7 @@
     "covalt-desktop": ".",
     "diff": "^9.0.0",
     "dompurify": "3.2.7",
-    "electrobun": "latest",
+    "electrobun": "1.18.1",
     "fflate": "^0.8.2",
     "frimousse": "^0.3.0",
     "fuse.js": "^7.1.0",

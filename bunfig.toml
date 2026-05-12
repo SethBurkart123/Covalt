@@ -1,2 +1,3 @@
 [install]
 minimumReleaseAge = 777600
+minimumReleaseAgeExcludes = ["electrobun"]
