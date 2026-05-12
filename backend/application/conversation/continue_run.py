@@ -7,12 +7,12 @@ from typing import Any
 from zynk import Channel
 
 from ...models import parse_message_blocks, serialize_message_blocks
-from ...models.chat import ChatMessage
+from ...models.chat import ChatEvent, ChatMessage
 
 
 @dataclass
 class ContinueRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     chat_id: str
     message_id: str
     model_id: str | None = None

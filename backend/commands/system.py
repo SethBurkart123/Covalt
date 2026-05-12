@@ -86,7 +86,7 @@ async def get_db_path() -> DbPathResponse:
 
 
 @command
-async def stream_available_models(channel: Channel) -> None:
+async def stream_available_models(channel: Channel[AvailableModelsEvent]) -> None:
     enabled_providers = get_enabled_providers_from_factory()
     connected_providers: set[str] = set()
 

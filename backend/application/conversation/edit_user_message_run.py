@@ -8,7 +8,7 @@ from typing import Any
 
 from zynk import Channel
 
-from ...models.chat import Attachment, ChatMessage
+from ...models.chat import Attachment, ChatEvent, ChatMessage
 
 
 @dataclass
@@ -32,7 +32,7 @@ class NewAttachmentInput:
 
 @dataclass
 class EditUserMessageRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     chat_id: str
     message_id: str
     new_content: str

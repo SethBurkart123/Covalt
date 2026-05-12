@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ProviderConfig, ProviderDefinition } from '@/lib/types/provider-catalog';
 import { toProviderConfigMap } from '@/lib/services/provider-catalog';
-import { request } from '@/python/_internal';
+import { getProviderOverview, listProviderPlugins } from '@/python/api';
 import type {
   OAuthState,
   ProviderOverviewResponse,
   ProviderPluginMeta,
-  ProviderPluginsResponse,
 } from './types';
 import { normalizeOAuthStatus } from './types';
 
@@ -34,11 +33,15 @@ export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: 
     [providers],
   );
 
-  const fetchProviderOverview = useCallback(async (providerIds: string[]) => {
-    return request<ProviderOverviewResponse>('get_provider_overview', {
-      body: { providers: providerIds },
-    });
-  }, []);
+  const fetchProviderOverview = useCallback(
+    async (providerIds: string[]): Promise<ProviderOverviewResponse> => {
+      const response = await getProviderOverview({
+        body: { providers: providerIds },
+      });
+      return response as ProviderOverviewResponse;
+    },
+    [],
+  );
 
   const loadSettings = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setIsLoading(true);
@@ -52,7 +55,7 @@ export function useProviderCatalogData({ getProviders, extraProviderIds = [] }: 
       ]);
       const [overviewResponse, pluginResponse] = await Promise.all([
         fetchProviderOverview(providerIds),
-        request<ProviderPluginsResponse>('list_provider_plugins', {}),
+        listProviderPlugins(),
       ]);
 
       const map = toProviderConfigMap(catalog, overviewResponse?.providers || []);

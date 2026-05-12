@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  initBridge,
+  initZynk,
   completeMcpOauthCallback,
   failMcpOauthCallback,
 } from "@/python/api";
@@ -18,7 +18,7 @@ function OAuthCallbackPageContent() {
 
   useEffect(() => {
     async function handleCallback() {
-      initBridge(getBackendBaseUrl());
+      initZynk({ baseUrl: getBackendBaseUrl() });
       const code = searchParams.get("code");
       const state = searchParams.get("state");
       const error = searchParams.get("error");

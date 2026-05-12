@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from zynk import Bridge
+from zynk.codegen import generate_client
+import zynk.generators.effect  # noqa: F401  registers the "effect" generator
 
 import nodes
 from backend.services.plugins.plugin_registry import _DEFAULT_PLUGIN_REGISTRY
@@ -50,8 +52,20 @@ def main() -> int:
     dev_mode = os.environ.get("COVALT_DEV_MODE") == "1"
     generate_ts = os.environ.get("COVALT_GENERATE_TS") == "1"
     port = int(os.environ.get("COVALT_BACKEND_PORT", "8000"))
+    if generate_ts:
+        generate_client(
+            str(output_dir / "api.ts"),
+            language="effect",
+            options={
+                "default": "effect",
+                "commands": "promise",
+                "uploads": "promise",
+                "statics": "promise",
+            },
+        )
+        logger.info(f"✓ Effect client generated: {output_dir / 'api.ts'}")
+
     bridge_kwargs: dict[str, Any] = {
-        "generate_ts": str(output_dir / "api.ts") if generate_ts else None,
         "port": port,
         "debug": False,
         "app_init": "backend.services.flows.http_routes:register_http_routes",

@@ -36,7 +36,7 @@ from ..application.tooling import (
 from ..application.tooling import (
     RespondToToolDecisionInput as RespondToToolDecisionInputDTO,
 )
-from ..models.chat import ChatMessage
+from ..models.chat import ChatEvent, ChatMessage
 from ..services.chat.chat_attachments import prepare_stream_attachments
 from ..services.chat.chat_graph_config import _build_trigger_payload, get_graph_data_for_chat
 from ..services.chat.conversation_store import (
@@ -201,7 +201,7 @@ def _prepare_stream_attachments_for_start_run(
 
 
 def _emit_run_started(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     chat_id: str,
     file_renames: dict[str, str] | None,
 ) -> None:
@@ -213,7 +213,7 @@ def _emit_run_started(
     )
 
 
-def _emit_assistant_message_id(channel: Channel, assistant_msg_id: str) -> None:
+def _emit_assistant_message_id(channel: Channel[ChatEvent], assistant_msg_id: str) -> None:
     emit_chat_event(channel, EVENT_ASSISTANT_MESSAGE_ID, content=assistant_msg_id)
 
 
@@ -244,7 +244,7 @@ def _build_start_run_dependencies() -> StartRunDependencies:
 
 @command
 async def stream_chat(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: StreamChatRequest,
 ) -> None:
     messages: list[ChatMessage] = [
@@ -319,7 +319,7 @@ def _build_stream_agent_run_dependencies() -> StreamAgentRunDependencies:
 
 @command
 async def stream_agent_chat(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: StreamAgentChatRequest,
 ) -> None:
     messages: list[ChatMessage] = [
@@ -365,7 +365,7 @@ def _build_stream_flow_run_dependencies() -> StreamFlowRunDependencies:
 
 @command
 async def stream_flow_run(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: StreamFlowRunRequest,
 ) -> None:
     await execute_stream_flow_run(
@@ -397,7 +397,7 @@ class ConnectStreamRequest(BaseModel):
 
 
 @command
-async def connect_stream(channel: Channel, body: ConnectStreamRequest) -> None:
+async def connect_stream(channel: Channel[ChatEvent], body: ConnectStreamRequest) -> None:
     """Atomically check if a stream exists and subscribe in one call."""
     result = await broadcaster.get_or_subscribe(body.chatId)
     if result is None:

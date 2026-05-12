@@ -6,9 +6,23 @@ import type {
   MessageSibling,
   PendingAttachment,
 } from "@/lib/types/chat";
-import type { ChatMessagesPageResponse, ChatPageCursor, ChatPageResponse } from "@/python/api";
+import type { Stream as StreamType } from "effect";
+import type {
+  ChatEvent,
+  ChatMessagesPageResponse,
+  ChatPageCursor,
+  ChatPageResponse,
+  ContinueMessageRequest,
+  EditUserMessageRequest,
+  RetryMessageRequest,
+  StreamAgentChatRequest,
+  StreamChatRequest,
+  StreamFlowRunRequest,
+  ZynkClient,
+  ZynkError,
+} from "@/python/api";
 import {
-  initBridge,
+  initZynk,
   getAllChats,
   listChatsPage,
   getChatMessagesPage,
@@ -23,18 +37,25 @@ import {
   generateChatTitle,
   respondToThinkingTagPrompt,
   toggleStarChat,
+  streamChat,
+  streamAgentChat,
+  streamFlowRun,
+  continueMessage,
+  retryMessage,
+  editUserMessage,
+  listNodeProviderPlugins,
+  listNodeProviderDefinitions,
+  installNodeProviderPluginFromRepo,
+  importNodeProviderPluginFromDirectory,
+  enableNodeProviderPlugin,
+  uninstallNodeProviderPlugin,
+  toAsyncIterable,
 } from "@/python/api";
-import { createChannel, request, type BridgeError } from "@/python/_internal";
 import { getBackendBaseUrl } from "@/lib/services/backend-url";
 import { RUNTIME_EVENT, isTerminalRuntimeEvent } from "@/lib/services/runtime-events";
 
 if (typeof window !== "undefined") {
-  initBridge(getBackendBaseUrl());
-}
-
-interface StreamingChatEvent {
-  event: string;
-  [key: string]: unknown;
+  initZynk({ baseUrl: getBackendBaseUrl() });
 }
 
 interface StreamHandle {
@@ -42,38 +63,50 @@ interface StreamHandle {
   abort: () => void;
 }
 
-function createStreamingResponse(channelName: string, body: Record<string, unknown>): StreamHandle {
+function chatEventStreamToResponse(
+  stream: StreamType.Stream<ChatEvent, ZynkError, ZynkClient>,
+): StreamHandle {
   const encoder = new TextEncoder();
-  const channel = createChannel<StreamingChatEvent>(channelName, { body });
+  const controller = new AbortController();
+  let closed = false;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start: (controller) => {
+  const body = new ReadableStream<Uint8Array>({
+    async start(rsController) {
       const sendEvent = (event: string, data: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`event: ${event}\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        rsController.enqueue(encoder.encode(`event: ${event}\n`));
+        rsController.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          rsController.close();
+        } catch {}
       };
 
-      channel.subscribe((evt: StreamingChatEvent) => {
-        const { event, ...rest } = evt || {};
-
-        const eventName = typeof event === "string" && event ? event : RUNTIME_EVENT.RUN_CONTENT;
-        sendEvent(eventName, rest);
-
-        if (isTerminalRuntimeEvent(eventName)) {
-          controller.close();
-          channel.close();
+      try {
+        for await (const evt of toAsyncIterable(stream)) {
+          if (controller.signal.aborted) break;
+          const { event, ...rest } = evt;
+          const eventName = typeof event === "string" && event ? event : RUNTIME_EVENT.RUN_CONTENT;
+          sendEvent(eventName, rest as Record<string, unknown>);
+          if (isTerminalRuntimeEvent(eventName)) break;
         }
-      });
-
-      channel.onClose(() => controller.close());
-      channel.onError((error: BridgeError) => {
-        sendEvent(RUNTIME_EVENT.RUN_ERROR, { error: error.message });
-        controller.close();
-      });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          const message = error instanceof Error ? error.message : String(error);
+          sendEvent(RUNTIME_EVENT.RUN_ERROR, { error: message });
+        }
+      } finally {
+        close();
+      }
+    },
+    cancel() {
+      controller.abort();
     },
   });
 
-  const response = new Response(stream, {
+  const response = new Response(body, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
@@ -81,7 +114,7 @@ function createStreamingResponse(channelName: string, body: Record<string, unkno
     },
   });
 
-  return { response, abort: () => channel.close() };
+  return { response, abort: () => controller.abort() };
 }
 
 export const api = {
@@ -124,8 +157,8 @@ export const api = {
     attachments?: Attachment[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
-  ): StreamHandle =>
-    createStreamingResponse("stream_chat", {
+  ): StreamHandle => {
+    const body: StreamChatRequest = {
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -153,7 +186,9 @@ export const api = {
           mimeType: a.mimeType,
           size: a.size,
         })) || [],
-    }),
+    };
+    return chatEventStreamToResponse(streamChat({ body }));
+  },
 
   streamAgentChat: (
     agentId: string,
@@ -161,8 +196,8 @@ export const api = {
     chatId?: string,
     ephemeral?: boolean,
     variables?: Record<string, unknown>,
-  ): StreamHandle =>
-    createStreamingResponse("stream_agent_chat", {
+  ): StreamHandle => {
+    const body: StreamAgentChatRequest = {
       agentId,
       messages: messages.map((m) => ({
         id: m.id,
@@ -181,19 +216,13 @@ export const api = {
       chatId,
       ephemeral: ephemeral ?? false,
       variables,
-    }),
+    };
+    return chatEventStreamToResponse(streamAgentChat({ body }));
+  },
 
   streamFlowRun: (
-    body: {
-      agentId: string;
-      mode: "execute" | "runFrom";
-      targetNodeId: string;
-      cachedOutputs?: Record<string, Record<string, unknown>>;
-      promptInput?: Record<string, unknown>;
-      nodeIds?: string[];
-    }
-  ): StreamHandle =>
-    createStreamingResponse("stream_flow_run", body),
+    body: StreamFlowRunRequest,
+  ): StreamHandle => chatEventStreamToResponse(streamFlowRun({ body })),
 
   continueMessage: (
     messageId: string,
@@ -202,15 +231,17 @@ export const api = {
     toolIds?: string[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
-  ): StreamHandle =>
-    createStreamingResponse("continue_message", {
+  ): StreamHandle => {
+    const body: ContinueMessageRequest = {
       messageId,
       chatId,
       modelId,
       toolIds,
       modelOptions,
       variables,
-    }),
+    };
+    return chatEventStreamToResponse(continueMessage({ body }));
+  },
 
   retryMessage: (
     messageId: string,
@@ -219,15 +250,17 @@ export const api = {
     toolIds?: string[],
     modelOptions?: Record<string, unknown>,
     variables?: Record<string, unknown>,
-  ): StreamHandle =>
-    createStreamingResponse("retry_message", {
+  ): StreamHandle => {
+    const body: RetryMessageRequest = {
       messageId,
       chatId,
       modelId,
       toolIds,
       modelOptions,
       variables,
-    }),
+    };
+    return chatEventStreamToResponse(retryMessage({ body }));
+  },
 
   editUserMessage: (
     messageId: string,
@@ -239,8 +272,8 @@ export const api = {
     existingAttachments?: Attachment[],
     newAttachments?: PendingAttachment[],
     variables?: Record<string, unknown>,
-  ): StreamHandle =>
-    createStreamingResponse("edit_user_message", {
+  ): StreamHandle => {
+    const body: EditUserMessageRequest = {
       messageId,
       newContent,
       chatId,
@@ -265,7 +298,9 @@ export const api = {
           size: a.size,
           data: a.data,
         })) || [],
-    }),
+    };
+    return chatEventStreamToResponse(editUserMessage({ body }));
+  },
 
   switchToSibling: (
     messageId: string,
@@ -277,27 +312,24 @@ export const api = {
   getMessageSiblings: (messageId: string): Promise<MessageSibling[]> =>
     getMessageSiblings({ body: { messageId } }) as Promise<MessageSibling[]>,
 
-  listNodeProviderPlugins: (): Promise<unknown> =>
-    request('list_node_provider_plugins', {}),
+  listNodeProviderPlugins: () => listNodeProviderPlugins(),
 
-  listNodeProviderDefinitions: (): Promise<unknown> =>
-    request('list_node_provider_definitions', {}),
+  listNodeProviderDefinitions: () => listNodeProviderDefinitions(),
 
   installNodeProviderPluginFromRepo: (
     repoUrl: string,
     ref?: string,
     pluginPath?: string,
-  ): Promise<unknown> =>
-    request('install_node_provider_plugin_from_repo', { body: { repoUrl, ref, pluginPath } }),
+  ) => installNodeProviderPluginFromRepo({ body: { repoUrl, ref, pluginPath } }),
 
-  importNodeProviderPluginFromDirectory: (path: string): Promise<unknown> =>
-    request('import_node_provider_plugin_from_directory', { body: { path } }),
+  importNodeProviderPluginFromDirectory: (path: string) =>
+    importNodeProviderPluginFromDirectory({ body: { path } }),
 
-  enableNodeProviderPlugin: (id: string, enabled: boolean): Promise<unknown> =>
-    request('enable_node_provider_plugin', { body: { id, enabled } }),
+  enableNodeProviderPlugin: (id: string, enabled: boolean) =>
+    enableNodeProviderPlugin({ body: { id, enabled } }),
 
-  uninstallNodeProviderPlugin: (id: string): Promise<unknown> =>
-    request('uninstall_node_provider_plugin', { body: { id } }),
+  uninstallNodeProviderPlugin: (id: string) =>
+    uninstallNodeProviderPlugin({ body: { id } }),
 
   getMessageSiblingsBatch: (
     chatId: string,

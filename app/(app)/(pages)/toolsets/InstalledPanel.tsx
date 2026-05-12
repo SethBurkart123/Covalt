@@ -440,7 +440,7 @@ export default function InstalledPanel({
 
     setIsImporting(true);
     try {
-      await importToolset({ file }).promise;
+      await importToolset({ file });
       await loadToolsets();
       refreshTools?.();
     } catch (err) {

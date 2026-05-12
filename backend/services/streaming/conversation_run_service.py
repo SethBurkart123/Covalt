@@ -20,7 +20,7 @@ from ...models import (
     decode_message_content,
     serialize_message_blocks,
 )
-from ...models.chat import Attachment, ChatMessage
+from ...models.chat import Attachment, ChatEvent, ChatMessage
 from . import stream_broadcaster as broadcaster
 from ..chat.chat_utils import extract_error_message
 from .stream_lifecycle import append_error_block_to_message
@@ -42,7 +42,7 @@ def validate_model_options(
     chat_id: str | None,
     model_id: str | None,
     model_options: dict[str, Any] | None,
-    channel: Channel,
+    channel: Channel[ChatEvent],
 ) -> dict[str, Any] | None:
     """Resolve and validate model options, sending RunError on failure.
 
@@ -86,7 +86,7 @@ def build_message_history(db_messages: list[Any]) -> list[ChatMessage]:
 
 
 def emit_run_start_events(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     chat_id: str | None,
     assistant_msg_id: str,
     *,
@@ -116,7 +116,7 @@ def _save_msg_content(msg_id: str, content: str) -> None:
 async def handle_streaming_run_error(
     assistant_msg_id: str,
     error: Exception,
-    channel: Channel,
+    channel: Channel[ChatEvent],
     *,
     chat_id: str = "",
     ephemeral: bool = False,

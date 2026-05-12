@@ -15,7 +15,7 @@ export default function AgentsPage() {
   const { setTitle, setRightContent } = usePageTitle();
   const router = useRouter();
 
-  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [agents, setAgents] = useState<readonly AgentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

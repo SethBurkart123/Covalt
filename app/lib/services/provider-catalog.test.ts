@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/python/_internal', () => ({
-  request: vi.fn(),
+vi.mock('@/python/api', () => ({
+  getProviderCatalog: vi.fn(),
 }));
 
 vi.mock('@/(app)/(pages)/settings/providers/provider-icons', () => ({
   getProviderIcon: () => (() => null),
 }));
 
-import { request } from '@/python/_internal';
+import { getProviderCatalog } from '@/python/api';
 import { fetchProviderCatalog } from '@/lib/services/provider-catalog';
 
-const requestMock = vi.mocked(request);
+const requestMock = vi.mocked(getProviderCatalog);
 
 describe('provider-catalog service', () => {
   beforeEach(() => {

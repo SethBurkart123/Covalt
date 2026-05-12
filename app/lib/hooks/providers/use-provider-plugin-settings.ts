@@ -190,7 +190,7 @@ export function useProviderPluginSettings(): UseProviderPluginSettingsState &
     setIsUploading(true);
     setErrorByKey((prev) => ({ ...prev, upload: '' }));
     try {
-      await importProviderPlugin({ file }).promise;
+      await importProviderPlugin({ file });
     } catch (error) {
       setErrorByKey((prev) => ({
         ...prev,

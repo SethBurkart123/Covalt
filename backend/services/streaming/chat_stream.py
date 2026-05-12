@@ -682,7 +682,7 @@ async def run_graph_chat_runtime(
     graph_data: dict[str, Any],
     messages: list[ChatMessage],
     assistant_msg_id: str,
-    channel: Channel,
+    channel: Channel[ChatEvent],
     *,
     chat_id: str,
     ephemeral: bool,

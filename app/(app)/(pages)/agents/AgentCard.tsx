@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
@@ -41,14 +41,25 @@ function AgentIconImage({
   cacheKey?: string;
 }) {
   const [hasError, setHasError] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
 
-  if (hasError) {
+  useEffect(() => {
+    let cancelled = false;
+    agentFileUrl({ agentId, fileType: "icon" }).then((value) => {
+      if (!cancelled) setUrl(withCacheKey(value, cacheKey));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, cacheKey]);
+
+  if (hasError || !url) {
     return <Bot className="size-8 text-muted-foreground" />;
   }
 
   return (
     <img
-      src={withCacheKey(agentFileUrl({ agentId, fileType: "icon" }), cacheKey)}
+      src={url}
       className="size-8 rounded object-cover"
       alt=""
       onError={() => setHasError(true)}
@@ -88,22 +99,31 @@ function AgentIcon({
 
 function AgentPreview({ agent }: { agent: AgentInfo }) {
   const [hasError, setHasError] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const showFallback = !agent.previewImage || hasError;
   const cacheKey = agent.updatedAt;
+  const showFallback = !agent.previewImage || hasError;
+
+  useEffect(() => {
+    if (showFallback) return;
+    let cancelled = false;
+    agentFileUrl({ agentId: agent.id, fileType: "preview" }).then((value) => {
+      if (!cancelled) setPreviewUrl(withCacheKey(value, cacheKey));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agent.id, cacheKey, showFallback]);
 
   return (
     <div className="aspect-video relative flex items-center justify-center rounded-b-xl bg-background overflow-clip">
-      {showFallback ? (
+      {showFallback || !previewUrl ? (
         <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
           <AgentIcon icon={agent.icon} agentId={agent.id} cacheKey={cacheKey} />
         </div>
       ) : (
         <img
-          src={withCacheKey(
-            agentFileUrl({ agentId: agent.id, fileType: "preview" }),
-            cacheKey,
-          )}
+          src={previewUrl}
           alt={`${agent.name} preview`}
           className="w-full h-full object-cover"
           onError={() => setHasError(true)}

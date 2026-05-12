@@ -10,6 +10,8 @@ from zynk import Channel
 
 from nodes._types import NodeEvent
 
+from ...models.chat import ChatEvent
+
 from ...services.streaming.runtime_events import (
     EVENT_FLOW_NODE_COMPLETED,
     EVENT_FLOW_NODE_ERROR,
@@ -34,7 +36,7 @@ class FlowRunPromptInput:
 
 @dataclass
 class StreamFlowRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     agent_id: str
     mode: Literal["execute", "runFrom"]
     target_node_id: str

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { getBaseUrl } from "@/python/_internal";
+import { getBackendBaseUrl } from "@/lib/services/backend-url";
 
 export interface McpServerStatus {
   id: string;
@@ -132,7 +132,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const ws = new WebSocket(`${getBaseUrl().replace(/^http/, "ws")}/ws/events`);
+      const ws = new WebSocket(`${getBackendBaseUrl().replace(/^http/, "ws")}/ws/events`);
       wsRef.current = ws;
       setStatus("connecting");
 
@@ -220,7 +220,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => {
       try {
-        getBaseUrl();
+        getBackendBaseUrl();
         connect();
       } catch {
         scheduleReconnect();

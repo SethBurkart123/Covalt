@@ -1,6 +1,9 @@
 "use client";
 
-import { request } from "@/python/_internal";
+import {
+  getOutputSmoothingSettings as apiGetOutputSmoothingSettings,
+  saveOutputSmoothingSettings as apiSaveOutputSmoothingSettings,
+} from "@/python/api";
 import {
   DEFAULT_OUTPUT_SMOOTHING_DELAY_MS,
   normalizeOutputSmoothingDelayMs,
@@ -23,12 +26,12 @@ function normalizeSettings(settings: OutputSmoothingSettings): Required<OutputSm
 }
 
 export function getOutputSmoothingSettings(): Promise<OutputSmoothingSettings> {
-  return request("get_output_smoothing_settings", {});
+  return apiGetOutputSmoothingSettings();
 }
 
-export function saveOutputSmoothingSettings(settings: OutputSmoothingSettings): Promise<void> {
+export async function saveOutputSmoothingSettings(settings: OutputSmoothingSettings): Promise<void> {
   const normalized = normalizeSettings(settings);
-  return request("save_output_smoothing_settings", { body: normalized });
+  await apiSaveOutputSmoothingSettings({ body: normalized });
 }
 
 export async function getOutputSmoothingConfig(): Promise<Required<OutputSmoothingSettings>> {

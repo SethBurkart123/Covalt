@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 from zynk import Channel
 
-from ...models.chat import Attachment, ChatMessage
+from ...models.chat import Attachment, ChatEvent, ChatMessage
 from ...services.chat.chat_attachments import AttachmentMetaLike, StreamAttachmentState
 
 
@@ -16,7 +16,7 @@ class LoggerLike(Protocol):
 
 @dataclass
 class StartRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     messages: list[ChatMessage]
     model_id: str | None = None
     model_options: dict[str, Any] | None = None

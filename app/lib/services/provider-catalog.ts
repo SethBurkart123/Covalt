@@ -1,7 +1,6 @@
-import { request } from '@/python/_internal';
+import { getProviderCatalog } from '@/python/api';
 import type {
   ProviderCatalogItem,
-  ProviderCatalogResponse,
   ProviderConfig,
   ProviderDefinition,
   ProviderFieldDef,
@@ -85,9 +84,11 @@ export const fetchProviderCatalog = async (options?: { force?: boolean }): Promi
   }
 
   if (!providerCatalogPromise) {
-    providerCatalogPromise = request<ProviderCatalogResponse>('get_provider_catalog', {})
+    providerCatalogPromise = getProviderCatalog()
       .then((response) => {
-        const providers = (response.providers || []).map(toProviderDefinition);
+        const providers = (response.providers || []).map((item) =>
+          toProviderDefinition(item as ProviderCatalogItem),
+        );
         providerCatalogCache = providers;
         return providers;
       })

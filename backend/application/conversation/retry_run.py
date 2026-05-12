@@ -6,12 +6,12 @@ from typing import Any
 
 from zynk import Channel
 
-from ...models.chat import ChatMessage
+from ...models.chat import ChatEvent, ChatMessage
 
 
 @dataclass
 class RetryRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     chat_id: str
     message_id: str
     model_id: str | None = None

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/python/_internal', () => ({
-  request: vi.fn(),
+vi.mock('@/python/api', () => ({
+  listNodeProviderDefinitions: vi.fn(),
 }));
 
 vi.mock('@/lib/flow', () => ({
@@ -9,11 +9,11 @@ vi.mock('@/lib/flow', () => ({
   unregisterPlugin: vi.fn(),
 }));
 
-import { request } from '@/python/_internal';
+import { listNodeProviderDefinitions } from '@/python/api';
 import { registerPlugin, unregisterPlugin } from '@/lib/flow';
 import { refreshNodeProviderDefinitions } from './node-provider-definitions';
 
-const requestMock = vi.mocked(request);
+const requestMock = vi.mocked(listNodeProviderDefinitions);
 const registerPluginMock = vi.mocked(registerPlugin);
 const unregisterPluginMock = vi.mocked(unregisterPlugin);
 

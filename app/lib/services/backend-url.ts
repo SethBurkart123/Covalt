@@ -1,4 +1,4 @@
-import { initBridge } from "@/python/_internal";
+import { initZynk } from "@/python/api";
 
 const STORAGE_KEY = "covalt:backendBaseUrl";
 let cachedBaseUrl: string | null = null;
@@ -69,7 +69,7 @@ function setBackendBaseUrl(value: string): void {
     window.localStorage.setItem(STORAGE_KEY, cachedBaseUrl);
   } catch {}
 
-  initBridge(cachedBaseUrl);
+  initZynk({ baseUrl: cachedBaseUrl });
   for (const listener of listeners) {
     try {
       listener(cachedBaseUrl);

@@ -25,7 +25,7 @@ from ..application.conversation import (
 from ..application.conversation import (
     NewAttachmentInput as NewAttachmentInputDTO,
 )
-from ..models.chat import Attachment, ChatMessage
+from ..models.chat import Attachment, ChatEvent, ChatMessage
 from ..services.chat.chat_graph_config import get_graph_data_for_chat
 from ..services.streaming.chat_stream import run_graph_chat_runtime
 from ..services.streaming.stream_lifecycle import append_error_block_to_message
@@ -136,7 +136,7 @@ def _create_branch_message(
 
 
 def _emit_continue_run_start_events(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     chat_id: str,
     message_id: str,
     blocks: list[dict[str, Any]] | None,
@@ -144,7 +144,7 @@ def _emit_continue_run_start_events(
     emit_run_start_events(channel, chat_id, message_id, blocks=blocks)
 
 
-def _emit_branch_run_error(channel: Channel, content: str) -> None:
+def _emit_branch_run_error(channel: Channel[ChatEvent], content: str) -> None:
     emit_chat_event(channel, EVENT_RUN_ERROR, content=content)
 
 
@@ -185,7 +185,7 @@ def _build_continue_run_dependencies() -> ContinueRunDependencies:
 
 @command
 async def continue_message(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: ContinueMessageRequest,
 ) -> None:
     await execute_continue_run(
@@ -203,7 +203,7 @@ async def continue_message(
 
 
 def _emit_retry_run_start_events(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     chat_id: str,
     message_id: str,
 ) -> None:
@@ -232,7 +232,7 @@ def _build_retry_run_dependencies() -> RetryRunDependencies:
 
 @command
 async def retry_message(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: RetryMessageRequest,
 ) -> None:
     await execute_retry_run(
@@ -298,7 +298,7 @@ def _create_chat_message(
     )
 
 
-def _emit_edit_run_start_events(channel: Channel, chat_id: str, message_id: str) -> None:
+def _emit_edit_run_start_events(channel: Channel[ChatEvent], chat_id: str, message_id: str) -> None:
     emit_run_start_events(channel, chat_id, message_id)
 
 
@@ -331,7 +331,7 @@ def _build_edit_user_message_run_dependencies() -> EditUserMessageRunDependencie
 
 @command
 async def edit_user_message(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     body: EditUserMessageRequest,
 ) -> None:
     await execute_edit_user_message_run(

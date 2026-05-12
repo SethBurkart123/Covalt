@@ -150,7 +150,7 @@ export default function ToolsetsPage() {
       ) {
         setIsDropImporting(true);
         try {
-          await importToolset({ file }).promise;
+          await importToolset({ file });
           setImportSignal((n) => n + 1);
           refreshTools();
         } catch (err) {
@@ -189,7 +189,7 @@ export default function ToolsetsPage() {
           const zipFile = new File([zipped], "toolset.zip", {
             type: "application/zip",
           });
-          await importToolset({ file: zipFile }).promise;
+          await importToolset({ file: zipFile });
           setImportSignal((n) => n + 1);
           refreshTools();
         } catch (err) {

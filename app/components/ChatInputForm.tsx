@@ -677,19 +677,20 @@ const ChatInputForm: React.FC<ChatInputFormProps> = memo(
         setPendingAttachments((prev) => [...prev, newAttachment]);
 
         try {
-          const uploadHandle = uploadAttachment({ file, id });
-
-          uploadHandle.onProgress((event) => {
-            setPendingAttachments((prev) =>
-              prev.map((att) =>
-                att.id === id
-                  ? { ...att, uploadProgress: event.percentage }
-                  : att,
-              ),
-            );
-          });
-
-          await uploadHandle.promise;
+          await uploadAttachment(
+            { file, id },
+            {
+              onProgress: (event) => {
+                setPendingAttachments((prev) =>
+                  prev.map((att) =>
+                    att.id === id
+                      ? { ...att, uploadProgress: event.percentage }
+                      : att,
+                  ),
+                );
+              },
+            },
+          );
 
           setPendingAttachments((prev) =>
             prev.map((att) =>

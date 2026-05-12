@@ -1,22 +1,8 @@
 
-import { request } from '@/python/_internal';
+import { listNodeProviderDefinitions } from '@/python/api';
 import type { NodeDefinition } from '@/lib/flow';
 import { registerPlugin, unregisterPlugin } from '@/lib/flow';
 import type { PluginManifest } from '@nodes/_manifest';
-
-interface NodeProviderDefinitionsResponse {
-  definitions: Array<{
-    type: string;
-    name: string;
-    description?: string;
-    category: NodeDefinition['category'];
-    icon: string;
-    executionMode: NodeDefinition['executionMode'];
-    parameters: NodeDefinition['parameters'];
-    providerId?: string;
-    pluginId?: string;
-  }>;
-}
 
 const loadedProviderPluginIds = new Set<string>();
 
@@ -67,15 +53,15 @@ function recordLoadedProviderPlugins(nextPluginIds: Set<string>): void {
 }
 
 export async function refreshNodeProviderDefinitions(): Promise<void> {
-  const response = await request<NodeProviderDefinitionsResponse>('list_node_provider_definitions', {});
+  const response = await listNodeProviderDefinitions();
   const definitions: NodeDefinition[] = (response.definitions || []).map((item) => ({
     id: item.type,
     name: item.name,
     description: item.description,
-    category: item.category,
+    category: item.category as NodeDefinition['category'],
     icon: item.icon,
-    executionMode: item.executionMode,
-    parameters: item.parameters,
+    executionMode: item.executionMode as NodeDefinition['executionMode'],
+    parameters: item.parameters as NodeDefinition['parameters'],
     pluginId: item.pluginId || item.providerId,
   })) as NodeDefinition[];
 

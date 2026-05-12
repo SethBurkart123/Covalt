@@ -183,7 +183,7 @@ export function useCanvasPreview({ agentId, lastSaved, previewImage }: CanvasPre
       const response = await fetch(dataUrl);
       const blob = await response.blob();
       const file = new File([blob], 'preview.png', { type: 'image/png' });
-      await uploadAgentPreview({ file, agentId }).promise;
+      await uploadAgentPreview({ file, agentId });
       previewTimestampRef.current = Date.now();
     } catch (err) {
       console.error('Failed to capture/upload preview:', err);

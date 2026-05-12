@@ -85,7 +85,7 @@ def make_chat_event(
 
 
 def emit_chat_event(
-    channel: Channel,
+    channel: Channel[ChatEvent],
     event: str,
     *,
     allow_unknown: bool = False,

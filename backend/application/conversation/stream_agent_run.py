@@ -7,12 +7,12 @@ from typing import Any
 
 from zynk import Channel
 
-from ...models.chat import ChatMessage
+from ...models.chat import ChatEvent, ChatMessage
 
 
 @dataclass
 class StreamAgentRunInput:
-    channel: Channel
+    channel: Channel[ChatEvent]
     agent_id: str
     messages: list[ChatMessage]
     chat_id: str | None = None
