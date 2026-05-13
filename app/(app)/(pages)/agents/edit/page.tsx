@@ -83,7 +83,7 @@ function AgentEditorContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-[50vh] flex items-center justify-center">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground">Loading agent...</p>
@@ -94,7 +94,7 @@ function AgentEditorContent() {
 
   if (loadError || !agent) {
     return (
-      <div className="min-h-[50vh] flex items-center justify-center">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center max-w-md">
           <div className="flex items-center justify-center size-12 rounded-full bg-destructive/10">
             <AlertCircle className="size-6 text-destructive" />

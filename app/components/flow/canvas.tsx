@@ -18,6 +18,7 @@ import {
   Position,
   useReactFlow,
   useStoreApi,
+  useNodesInitialized,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { XYHandle } from '@xyflow/system';
@@ -314,6 +315,17 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
 
   const { screenToFlowPosition, getNodes, fitView } = useReactFlow();
   const store = useStoreApi();
+  const nodesInitialized = useNodesInitialized();
+  const hasFitInitialViewRef = useRef(false);
+
+  useEffect(() => {
+    if (hasFitInitialViewRef.current) return;
+    if (!nodesInitialized) return;
+    if (!nodes.length) return;
+    hasFitInitialViewRef.current = true;
+    fitView({ padding: 0.15, duration: 0 });
+  }, [nodesInitialized, nodes.length, fitView]);
+
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const isHoveringCanvasRef = useRef(false);
   const nodesRef = useRef(nodes);
@@ -817,6 +829,7 @@ function FlowCanvasInner({ onNodeDoubleClick }: FlowCanvasProps) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
+        fitViewOptions={{ padding: 0.15 }}
         minZoom={0.05}
         defaultEdgeOptions={defaultEdgeOptions}
         connectionLineComponent={CustomConnectionLine}
