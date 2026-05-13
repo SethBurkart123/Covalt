@@ -8,7 +8,7 @@ import { Prism } from 'prism-react-renderer';
 import { cn } from '@/lib/utils';
 import './md4w-renderer.css';
 
-const MD4W_WASM_URL = '/vendor/md4w-fast.wasm';
+const MD4W_WASM_PATH = '/vendor/md4w-fast.wasm';
 const MD4W_EQUATION_OPEN = '<x-equation';
 const MD4W_EQUATION_CLOSE = '</x-equation>';
 const MD4W_PARSE_FLAGS = [
@@ -76,7 +76,10 @@ function configureHighlighter(): void {
 function ensureMd4w(): Promise<void> {
   configureHighlighter();
   if (md4wReady) return Promise.resolve();
-  md4wInitPromise ??= initMd4w(MD4W_WASM_URL).then(() => {
+  // Pass an absolute URL so md4w's `new URL(wasm, import.meta.url)` ignores its
+  // base (which Next bundles as file:// in static exports).
+  const wasmUrl = new URL(MD4W_WASM_PATH, window.location.origin).toString();
+  md4wInitPromise ??= initMd4w(wasmUrl).then(() => {
     md4wReady = true;
   }).catch(error => {
     console.warn('md4w failed to initialise; falling back to plain text.', error);
