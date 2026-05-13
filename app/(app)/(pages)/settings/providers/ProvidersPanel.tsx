@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,9 +54,10 @@ const saveCustomProviders = (entries: CustomProviderEntry[]) => {
 
 interface ProvidersPanelProps {
   onOpenStore?: () => void;
+  scrollElement?: HTMLElement | null;
 }
 
-export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
+export default function ProvidersPanel({ onOpenStore, scrollElement }: ProvidersPanelProps) {
   const [search, setSearch] = useState('');
   const [connectionUiByProvider, setConnectionUiByProvider] = useState<Record<string, ProviderConnectionUiState>>({});
   const [oauthUiByProvider, setOauthUiByProvider] = useState<Record<string, ProviderOauthUiState>>({});
@@ -212,8 +214,123 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
     [providerConfigs, setProviderConfigField, refreshModels],
   );
 
+  const rows = useMemo(() => {
+    if (isLoading) return [];
+    const baseProviderDefs = new Map(providers.map((d) => [d.provider, d]));
+    const customBaseProviderIds = new Set(customProviders.map((e) => e.baseProvider));
+    const filteredProviders = displayProviders.filter((d) => !customBaseProviderIds.has(d.provider));
+
+    const result: { providerId: string; def: typeof displayProviders[number]; customName?: string; onRemove?: () => void; onNameChange?: (name: string) => void }[] = [];
+
+    const searchLower = search.trim().toLowerCase();
+    for (const entry of customProviders) {
+      if (searchLower && !entry.name.toLowerCase().includes(searchLower)) continue;
+      const baseDef = baseProviderDefs.get(entry.baseProvider);
+      if (!baseDef) continue;
+      result.push({
+        providerId: entry.id,
+        def: baseDef,
+        customName: entry.name,
+        onRemove: () => removeCustomProvider(entry.id),
+        onNameChange: (name) => renameCustomProvider(entry.id, name),
+      });
+    }
+
+    for (const def of filteredProviders) {
+      result.push({ providerId: def.provider, def });
+    }
+
+    return result;
+  }, [isLoading, providers, customProviders, displayProviders, removeCustomProvider, renameCustomProvider, search]);
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollElement ?? null,
+    estimateSize: () => 64,
+    overscan: 5,
+    getItemKey: (i) => rows[i]?.providerId ?? String(i),
+  });
+
+  const buildProviderItem = useCallback(
+    (item: typeof rows[number]) => {
+      const providerId = item.providerId;
+      const def = item.def;
+
+      const config =
+        providerConfigs[providerId] ||
+        ({
+          provider: providerId,
+          apiKey: '',
+          baseUrl: def.defaults?.baseUrl,
+        } satisfies ProviderConfig);
+
+      const connection =
+        connectionUiByProvider[providerId] ||
+        ({
+          saving: false,
+          saved: false,
+          status: 'idle',
+          error: undefined,
+        } satisfies ProviderConnectionUiState);
+
+      const oauthUi =
+        oauthUiByProvider[providerId] ||
+        ({
+          code: '',
+          enterpriseDomain: '',
+          authenticating: false,
+          revoking: false,
+          submitting: false,
+        } satisfies ProviderOauthUiState);
+
+      const displayDef = item.customName
+        ? { ...def, name: item.customName, provider: providerId }
+        : def;
+
+      const row: ProviderItemRowViewModel = {
+        def: displayDef,
+        config,
+        isConnected: isConnected(providerId),
+        isPluginProvider: Boolean(pluginProviders[providerId]),
+        oauthStatus: oauthStatus[providerId],
+        connection,
+        oauthUi,
+      };
+
+      const actions: ProviderItemRowActions = {
+        onOauthCodeChange: (value) => patchOauthUi(providerId, { code: value }),
+        onOauthEnterpriseDomainChange: (value) => patchOauthUi(providerId, { enterpriseDomain: value }),
+        onOauthStart: () => startOauth(providerId, oauthUi.enterpriseDomain),
+        onOauthSubmitCode: () => submitOauthCode(providerId, oauthUi.code || ''),
+        onOauthRevoke: () => revokeOauth(providerId),
+        onOauthOpenLink: openOauthWindow,
+        onChange: (field, value) => setProviderConfigField(providerId, field, value),
+        onSave: () => handleSave(providerId),
+        onTestConnection: () => handleTestConnection(providerId),
+        onExtraModelsChange: (models) => handleExtraModelsChange(providerId, models),
+        ...(item.onRemove ? { onUninstall: item.onRemove } : row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
+      };
+
+      return (
+        <ProviderItem
+          row={row}
+          actions={actions}
+          editableName={item.onNameChange != null}
+          onNameChange={item.onNameChange}
+        />
+      );
+    },
+    [
+      providerConfigs, connectionUiByProvider, oauthUiByProvider,
+      isConnected, pluginProviders, oauthStatus,
+      patchOauthUi, startOauth, submitOauthCode, revokeOauth,
+      openOauthWindow, setProviderConfigField, handleSave,
+      handleTestConnection, handleExtraModelsChange, handleUninstall,
+    ],
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 py-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Providers</h1>
@@ -221,10 +338,25 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
             Manage API keys and OAuth connections for each provider.
           </p>
         </div>
-
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-10 -my-2 py-2">
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              'color-mix(in srgb, var(--sidebar) 50%, var(--background) 50%)',
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-full h-6 -z-10 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(to bottom, color-mix(in srgb, var(--sidebar) 50%, var(--background) 50%), transparent)',
+          }}
+        />
+        <div className="flex items-center gap-2">
         <div className="relative w-full">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -260,113 +392,53 @@ export default function ProvidersPanel({ onOpenStore }: ProvidersPanelProps) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 pb-4">
-        {isLoading
-          ? Array.from({ length: 6 }).map((_, index) => (
-              <Card key={`provider-skeleton-${index}`} className="overflow-hidden border-border/70 py-2 gap-0">
-                <div className="w-full px-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-                    <Skeleton className="h-8 w-8 rounded-md" />
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-48" />
-                    </div>
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-3 pt-5">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <Card key={`skeleton-${index}`} className="overflow-hidden border-border/70 py-2 gap-0">
+              <div className="w-full px-4 flex items-center justify-between">
+                <div className="flex items-center gap-3 text-left flex-1 min-w-0">
+                  <Skeleton className="h-8 w-8 rounded-md" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-48" />
                   </div>
-                  <Skeleton className="h-8 w-20 rounded-md" />
                 </div>
-              </Card>
-            ))
-          : (() => {
-              const baseProviderDefs = new Map(providers.map((d) => [d.provider, d]));
-              const customBaseProviderIds = new Set(customProviders.map((e) => e.baseProvider));
-              const filteredProviders = displayProviders.filter((d) => !customBaseProviderIds.has(d.provider));
-
-              const renderProviderItem = (providerId: string, def: typeof displayProviders[number], options?: { customName?: string; onRemove?: () => void; onNameChange?: (name: string) => void }) => {
-                const config =
-                  providerConfigs[providerId] ||
-                  ({
-                    provider: providerId,
-                    apiKey: '',
-                    baseUrl: def.defaults?.baseUrl,
-                  } satisfies ProviderConfig);
-
-                const connection =
-                  connectionUiByProvider[providerId] ||
-                  ({
-                    saving: false,
-                    saved: false,
-                    status: 'idle',
-                    error: undefined,
-                  } satisfies ProviderConnectionUiState);
-
-                const oauthUi =
-                  oauthUiByProvider[providerId] ||
-                  ({
-                    code: '',
-                    enterpriseDomain: '',
-                    authenticating: false,
-                    revoking: false,
-                    submitting: false,
-                  } satisfies ProviderOauthUiState);
-
-                const displayDef = options?.customName
-                  ? { ...def, name: options.customName, provider: providerId }
-                  : def;
-
-                const row: ProviderItemRowViewModel = {
-                  def: displayDef,
-                  config,
-                  isConnected: isConnected(providerId),
-                  isPluginProvider: Boolean(pluginProviders[providerId]),
-                  oauthStatus: oauthStatus[providerId],
-                  connection,
-                  oauthUi,
-                };
-
-                const actions: ProviderItemRowActions = {
-                  onOauthCodeChange: (value) => patchOauthUi(providerId, { code: value }),
-                  onOauthEnterpriseDomainChange: (value) => patchOauthUi(providerId, { enterpriseDomain: value }),
-                  onOauthStart: () => startOauth(providerId, oauthUi.enterpriseDomain),
-                  onOauthSubmitCode: () => submitOauthCode(providerId, oauthUi.code || ''),
-                  onOauthRevoke: () => revokeOauth(providerId),
-                  onOauthOpenLink: openOauthWindow,
-                  onChange: (field, value) => setProviderConfigField(providerId, field, value),
-                  onSave: () => handleSave(providerId),
-                  onTestConnection: () => handleTestConnection(providerId),
-                  onExtraModelsChange: (models) => handleExtraModelsChange(providerId, models),
-                  ...(options?.onRemove ? { onUninstall: options.onRemove } : row.isPluginProvider ? { onUninstall: () => handleUninstall(providerId) } : {}),
-                };
-
-                return (
-                  <ProviderItem
-                    key={providerId}
-                    row={row}
-                    actions={actions}
-                    editableName={options?.onNameChange != null}
-                    onNameChange={options?.onNameChange}
-                  />
-                );
-              };
-
-              return (
-                <>
-                  {customProviders.map((entry) => {
-                    const baseDef = baseProviderDefs.get(entry.baseProvider);
-                    if (!baseDef) return null;
-                    return renderProviderItem(entry.id, baseDef, {
-                      customName: entry.name,
-                      onRemove: () => removeCustomProvider(entry.id),
-                      onNameChange: (name) => renameCustomProvider(entry.id, name),
-                    });
-                  })}
-                  {filteredProviders.map((def) => renderProviderItem(def.provider, def))}
-                </>
-              );
-            })()}
-      </div>
-
+                <Skeleton className="h-8 w-20 rounded-md" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div
+          style={{
+            height: virtualizer.getTotalSize() + 20,
+            position: 'relative',
+            width: '100%',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((vi) => (
+            <div
+              key={rows[vi.index].providerId}
+              data-index={vi.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 20,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${vi.start}px)`,
+              }}
+              className="pb-3"
+            >
+              {buildProviderItem(rows[vi.index])}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

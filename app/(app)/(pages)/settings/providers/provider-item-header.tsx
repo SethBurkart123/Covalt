@@ -26,7 +26,7 @@ function ProviderIdentity({
 >) {
   return (
     <div className="flex items-center gap-3 text-left flex-1 min-w-0">
-      <div className="rounded-md flex items-center justify-center">
+      <div className="rounded-md flex items-center justify-center size-8 shrink-0">
         <Icon />
       </div>
       <div className="flex-1 min-w-0">

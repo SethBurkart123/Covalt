@@ -15,6 +15,7 @@ import { AppearancePanel } from "./appearance/AppearancePanel";
 export default function SettingsPage() {
   const { setTitle } = usePageTitle();
   const [activeTab, setActiveTab] = useState<TabKey>("providers");
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setTitle("Settings");
@@ -23,7 +24,11 @@ export default function SettingsPage() {
   return (
     <div className="flex w-full h-full">
       <SettingsSidebar activeTab={activeTab} onChangeTab={setActiveTab} />
-      <main className="flex-1 overflow-y-auto">
+      <main
+        ref={setScrollEl}
+        className="flex-1 overflow-y-auto"
+        style={{ scrollbarGutter: 'stable' }}
+      >
         <div className="container max-w-4xl px-4 mx-auto">
           {activeTab === "general" ? (
             <div className="space-y-10 py-6">
@@ -39,7 +44,10 @@ export default function SettingsPage() {
           ) : activeTab === "providers:plugins" ? (
             <ProviderPluginSettingsPanel />
           ) : (
-            <ProvidersPanel onOpenStore={() => setActiveTab("providers:store")} />
+            <ProvidersPanel
+              onOpenStore={() => setActiveTab("providers:store")}
+              scrollElement={scrollEl}
+            />
           )}
         </div>
       </main>
