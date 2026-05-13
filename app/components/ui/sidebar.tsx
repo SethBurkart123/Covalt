@@ -20,13 +20,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -39,6 +32,15 @@ const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "s";
+const HOVER_ZONE_WIDTH = 12;
+const KEEP_ZONE_PX = 64;
+
+const FLOATING_TRANSITION = {
+  type: "spring" as const,
+  stiffness: 550,
+  damping: 35,
+  mass: 0.8,
+};
 
 export const SIDEBAR_TRANSITION = {
   type: "spring" as const,
@@ -51,7 +53,9 @@ type SidebarContextProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
   openMobile: boolean;
-  setOpenMobile: (open: boolean) => void;
+  setOpenMobile: (value: boolean | ((prev: boolean) => boolean)) => void;
+  mobilePinned: boolean;
+  setMobilePinned: (pinned: boolean) => void;
   isMobile: boolean;
   effectiveIsMobile: boolean;
   isExitingToMobile: boolean;
@@ -83,7 +87,15 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
-  const [openMobile, setOpenMobile] = useState(false);
+  const [openMobile, _setOpenMobile] = useState(false);
+  const [mobilePinned, setMobilePinned] = useState(false);
+  const setOpenMobile = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    _setOpenMobile((prev) => {
+      const next = typeof value === "function" ? value(prev) : value;
+      if (!next) setMobilePinned(false);
+      return next;
+    });
+  }, []);
   const [_open, _setOpen] = useState(defaultOpen);
   const open = openProp ?? _open;
 
@@ -119,8 +131,15 @@ function SidebarProvider({
   );
 
   const toggleSidebar = useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-  }, [isMobile, setOpen, setOpenMobile]);
+    if (isMobile) {
+      setOpenMobile((prev) => {
+        if (!prev) setMobilePinned(true);
+        return !prev;
+      });
+    } else {
+      setOpen((prev) => !prev);
+    }
+  }, [isMobile, setOpen]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -147,6 +166,8 @@ function SidebarProvider({
       commitMobile,
       openMobile,
       setOpenMobile,
+      mobilePinned,
+      setMobilePinned,
       toggleSidebar,
     }),
     [
@@ -158,6 +179,7 @@ function SidebarProvider({
       commitMobile,
       openMobile,
       setOpenMobile,
+      mobilePinned,
       toggleSidebar,
     ],
   );
@@ -187,6 +209,147 @@ function SidebarProvider({
   );
 }
 
+function useSidebarEdgeTrigger(side: "left" | "right", enabled: boolean) {
+  const { openMobile, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (!enabled || openMobile) return;
+
+    const isNearEdge = (x: number) =>
+      side === "left"
+        ? x <= HOVER_ZONE_WIDTH
+        : x >= window.innerWidth - HOVER_ZONE_WIDTH;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isNearEdge(e.clientX)) setOpenMobile(true);
+    };
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      const exitedCorrectSide =
+        side === "left" ? e.clientX <= 0 : e.clientX >= window.innerWidth;
+      if (exitedCorrectSide) setOpenMobile(true);
+    };
+
+    const handleMouseEnter = (e: MouseEvent) => {
+      if (isNearEdge(e.clientX)) setOpenMobile(true);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.documentElement.addEventListener("mouseleave", handleMouseLeave);
+    document.documentElement.addEventListener("mouseenter", handleMouseEnter);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
+      document.documentElement.removeEventListener("mouseenter", handleMouseEnter);
+    };
+  }, [enabled, openMobile, side, setOpenMobile]);
+}
+
+function useKeepZoneDismiss(side: "left" | "right", active: boolean) {
+  const { setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (!active) return;
+
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const sidebarWidthPx = parseFloat(SIDEBAR_WIDTH_MOBILE) * rem;
+    const gapPx = 0.5 * rem;
+    const keepEdge =
+      side === "left"
+        ? gapPx + sidebarWidthPx + KEEP_ZONE_PX
+        : window.innerWidth - gapPx - sidebarWidthPx - KEEP_ZONE_PX;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const inZone =
+        side === "left"
+          ? e.clientX <= keepEdge
+          : e.clientX >= keepEdge;
+      if (!inZone) setOpenMobile(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
+  }, [active, side, setOpenMobile]);
+}
+
+function usePinnedDismiss(
+  panelRef: React.RefObject<HTMLDivElement | null>,
+  active: boolean,
+) {
+  const { setOpenMobile, setMobilePinned } = useSidebar();
+
+  useEffect(() => {
+    if (!active) return;
+
+    const handleClick = (e: MouseEvent) => {
+      if (panelRef.current?.contains(e.target as Node)) {
+        setMobilePinned(false);
+      } else {
+        setOpenMobile(false);
+      }
+    };
+
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [active, panelRef, setOpenMobile, setMobilePinned]);
+}
+
+function SidebarFloatingOverlay({
+  side,
+  children,
+  enabled,
+}: {
+  side: "left" | "right";
+  children: React.ReactNode;
+  enabled: boolean;
+}) {
+  const { openMobile, setOpenMobile, mobilePinned } = useSidebar();
+  const visible = enabled && openMobile;
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useSidebarEdgeTrigger(side, enabled);
+  useKeepZoneDismiss(side, visible && !mobilePinned);
+  usePinnedDismiss(panelRef, visible && mobilePinned);
+
+  useEffect(() => {
+    if (!enabled && openMobile) setOpenMobile(false);
+  }, [enabled, openMobile, setOpenMobile]);
+
+  return (
+    <AnimatePresence>
+        {visible && (
+          <motion.div
+            ref={panelRef}
+            data-sidebar="sidebar"
+            data-slot="sidebar"
+            data-mobile="true"
+            className={cn(
+              "fixed z-50 flex flex-col",
+              "bg-sidebar text-sidebar-foreground",
+              "rounded-2xl border border-sidebar-border shadow-xl",
+              "top-2 bottom-2 w-[var(--sidebar-width)]",
+              "p-2",
+              side === "left" ? "left-2" : "right-2",
+            )}
+            style={
+              {
+                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              } as CSSProperties
+            }
+            initial={{ x: side === "left" ? "-110%" : "110%", opacity: 1 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: side === "left" ? "-110%" : "110%", opacity: 1 }}
+            transition={FLOATING_TRANSITION}
+          >
+            <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+  );
+}
+
 function Sidebar({
   side = "left",
   variant = "sidebar",
@@ -205,8 +368,6 @@ function Sidebar({
     isExitingToMobile,
     commitMobile,
     state,
-    openMobile,
-    setOpenMobile,
   } = useSidebar();
   const wasEffectiveMobileRef = useRef(effectiveIsMobile);
   const slideInFromMobile = wasEffectiveMobileRef.current && !effectiveIsMobile;
@@ -231,90 +392,80 @@ function Sidebar({
 
   if (effectiveIsMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-            } as CSSProperties
-          }
-          side={side}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+      <SidebarFloatingOverlay side={side} enabled>
+        {children}
+      </SidebarFloatingOverlay>
     );
   }
 
+  const desktopCollapsed = state === "collapsed";
+
   return (
-    <div
-      className="group peer text-sidebar-foreground block absolute"
-      data-state={state}
-      data-collapsible={state === "collapsed" ? collapsible : ""}
-      data-variant={variant}
-      data-side={side}
-      data-slot="sidebar"
-    >
+    <>
+      <SidebarFloatingOverlay side={side} enabled={desktopCollapsed}>
+        {children}
+      </SidebarFloatingOverlay>
       <div
-        data-slot="sidebar-gap"
-        className={cn(
-          "relative w-(--sidebar-width) bg-transparent",
-          "group-data-[collapsible=offcanvas]:w-0",
-          "group-data-[side=right]:rotate-180",
-          variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
-        )}
-      />
-      <AnimatePresence>
-        <motion.div
-          data-slot="sidebar-container"
+        className="group peer text-sidebar-foreground block absolute"
+        data-state={state}
+        data-collapsible={state === "collapsed" ? collapsible : ""}
+        data-variant={variant}
+        data-side={side}
+        data-slot="sidebar"
+      >
+        <div
+          data-slot="sidebar-gap"
           className={cn(
-            "fixed inset-y-0 z-10 flex h-svh w-[var(--sidebar-width)]",
-            side === "left" ? "left-0" : "right-0",
+            "relative w-(--sidebar-width) bg-transparent",
+            "group-data-[collapsible=offcanvas]:w-0",
+            "group-data-[side=right]:rotate-180",
             variant === "floating" || variant === "inset"
-              ? "p-2 pt-0"
-              : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className,
+              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
-          initial={
-            slideInFromMobile
-              ? { x: side === "left" ? "-100%" : "100%" }
-              : false
-          }
-          animate={{
-            x:
-              isExitingToMobile || state === "collapsed"
-                ? side === "left" ? "-100%" : "100%"
-                : 0,
-          }}
-          transition={SIDEBAR_TRANSITION}
-          onAnimationComplete={() => {
-            if (isMobile && !effectiveIsMobile) commitMobile();
-          }}
-          {...(props as HTMLMotionProps<"div">)}
-        >
+        />
+        <AnimatePresence>
           <motion.div
-            data-sidebar="sidebar"
-            data-slot="sidebar-inner"
+            data-slot="sidebar-container"
             className={cn(
-              "group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm",
-              variant !== "inset" && "bg-sidebar",
+              "fixed inset-y-0 z-10 flex h-svh w-[var(--sidebar-width)]",
+              side === "left" ? "left-0" : "right-0",
+              variant === "floating" || variant === "inset"
+                ? "p-2"
+                : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              className,
             )}
+            initial={
+              slideInFromMobile
+                ? { x: side === "left" ? "-100%" : "100%" }
+                : false
+            }
+            animate={{
+              x:
+                isExitingToMobile || state === "collapsed"
+                  ? side === "left" ? "-100%" : "100%"
+                  : 0,
+            }}
+            transition={SIDEBAR_TRANSITION}
+            onAnimationComplete={() => {
+              if (isMobile && !effectiveIsMobile) commitMobile();
+            }}
+            {...(props as HTMLMotionProps<"div">)}
           >
-            {children}
+            <motion.div
+              data-sidebar="sidebar"
+              data-slot="sidebar-inner"
+              className={cn(
+                "group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm",
+                variant !== "inset" && "bg-sidebar",
+              )}
+            >
+              {children}
+            </motion.div>
           </motion.div>
-        </motion.div>
-      </AnimatePresence>
-    </div>
+        </AnimatePresence>
+      </div>
+    </>
   );
 }
 
@@ -400,7 +551,7 @@ function SidebarHeader({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="sidebar-header"
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col gap-2 pb-2", className)}
       {...props}
     />
   );
@@ -411,7 +562,7 @@ function SidebarFooter({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="sidebar-footer"
       data-sidebar="footer"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col gap-2 pt-2", className)}
       {...props}
     />
   );
