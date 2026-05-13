@@ -79,8 +79,7 @@ function ensureMd4w(): Promise<void> {
   md4wInitPromise ??= initMd4w(MD4W_WASM_URL).then(() => {
     md4wReady = true;
   }).catch(error => {
-    md4wInitPromise = null;
-    throw error;
+    console.warn('md4w failed to initialise; falling back to plain text.', error);
   });
   return md4wInitPromise;
 }
@@ -246,8 +245,16 @@ function markdownPrefixWithLookahead(full: string, visibleChars: number): string
 }
 
 function renderMarkdown(content: string): string {
-  const rawHtml = mdToHtml(content, { parseFlags: [...MD4W_PARSE_FLAGS] });
-  return scrubGeneratedUrls(restoreSafeDetails(renderMd4wMath(rawHtml)));
+  if (!md4wReady) {
+    return `<pre class="markdown-fallback">${escapeHtml(content)}</pre>`;
+  }
+  try {
+    const rawHtml = mdToHtml(content, { parseFlags: [...MD4W_PARSE_FLAGS] });
+    return scrubGeneratedUrls(restoreSafeDetails(renderMd4wMath(rawHtml)));
+  } catch (error) {
+    console.warn('md4w render failed; falling back to plain text.', error);
+    return `<pre class="markdown-fallback">${escapeHtml(content)}</pre>`;
+  }
 }
 
 function SuspendingMarkdown({
