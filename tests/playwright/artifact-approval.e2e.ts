@@ -161,6 +161,12 @@ function getToolCardByName(page: Page, toolName: string): Locator {
   return getLatestAssistantMessage(page).getByTestId(`tool-call-${toolName}`).first();
 }
 
+function getApprovalCardByName(page: Page, toolName: string): Locator {
+  return getLatestAssistantMessage(page)
+    .locator(`[data-approval-test-id="approval-${toolName}"]`)
+    .first();
+}
+
 function getArtifactPane(page: Page): Locator {
   return page.locator(selectors.artifactPanel).first();
 }
@@ -211,21 +217,21 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_requires_approval',
       });
 
-      const approvalCard = getToolCardByName(page, 'e2e_requires_approval');
+      const approvalCard = getApprovalCardByName(page, 'e2e_requires_approval');
+      const allowButton = approvalCard.getByTestId('approval-option-allow_once');
+      const denyButton = approvalCard.getByTestId('approval-option-deny');
 
       await expect(approvalCard).toBeVisible({ timeout: 20_000 });
-      await expect(approvalCard.getByRole('button', { name: 'Approve' })).toBeVisible();
-      await expect(approvalCard.getByRole('button', { name: 'Deny' })).toBeVisible();
+      await expect(allowButton).toBeVisible();
+      await expect(denyButton).toBeVisible();
 
-      await approvalCard.getByRole('button', { name: 'Approve' }).click();
+      await allowButton.click();
 
-      await expect(approvalCard.getByRole('button', { name: 'Approve' })).toHaveCount(0, {
-        timeout: 10_000,
-      });
-      await expect(approvalCard.getByRole('button', { name: 'Deny' })).toHaveCount(0);
-      await expect(approvalCard.getByText('Denied')).toHaveCount(0);
-      await expect(approvalCard).toContainText('e2e_requires_approval');
-      await approvalCard.click();
+      const resolvedToolCard = getToolCardByName(page, 'e2e_requires_approval');
+      await expect(resolvedToolCard).toBeVisible({ timeout: 10_000 });
+      await expect(resolvedToolCard.getByText('Denied')).toHaveCount(0);
+      await expect(resolvedToolCard).toContainText('e2e_requires_approval');
+      await resolvedToolCard.click();
 
       const artifactPane = getArtifactPane(page);
       await expect(artifactPane).toBeVisible({ timeout: 10_000 });
@@ -251,18 +257,20 @@ test.describe('playwright core artifact and approval flows', () => {
         value: 'e2e_requires_approval',
       });
 
-      const approvalCard = getToolCardByName(page, 'e2e_requires_approval');
+      const approvalCard = getApprovalCardByName(page, 'e2e_requires_approval');
+      const allowButton = approvalCard.getByTestId('approval-option-allow_once');
+      const denyButton = approvalCard.getByTestId('approval-option-deny');
 
       await expect(approvalCard).toBeVisible({ timeout: 20_000 });
-      await expect(approvalCard.getByRole('button', { name: 'Approve' })).toBeVisible();
-      await expect(approvalCard.getByRole('button', { name: 'Deny' })).toBeVisible();
+      await expect(allowButton).toBeVisible();
+      await expect(denyButton).toBeVisible();
 
-      await approvalCard.getByRole('button', { name: 'Deny' }).click();
+      await denyButton.click();
 
-      await expect(approvalCard.getByText('Denied')).toBeVisible({ timeout: 10_000 });
-      await expect(approvalCard.getByText('Result')).toHaveCount(0);
-      await expect(approvalCard.getByRole('button', { name: 'Approve' })).toHaveCount(0);
-      await expect(approvalCard.getByRole('button', { name: 'Deny' })).toHaveCount(0);
+      const resolvedToolCard = getToolCardByName(page, 'e2e_requires_approval');
+      await expect(resolvedToolCard).toBeVisible({ timeout: 10_000 });
+      await expect(resolvedToolCard.getByText('Denied')).toBeVisible();
+      await expect(resolvedToolCard.getByText('Result')).toHaveCount(0);
       await expect(page.locator(selectors.chatInputSubmit)).toBeVisible();
     } finally {
       await restore();
