@@ -102,7 +102,7 @@ async def test_continue_message_current_event_and_delegation_shape() -> None:
     }
     runtime_mock = AsyncMock()
     channel = CapturingChannel()
-    body = branches.ContinueMessageRequest(messageId="assistant-old", chatId=chat_id)
+    body = branches.ContinueMessageRequest(message_id="assistant-old", chat_id=chat_id)
 
     with (
         patch.object(branches, "db", db_mock),
@@ -170,7 +170,7 @@ async def test_retry_message_current_event_and_delegation_shape() -> None:
     }
     runtime_mock = AsyncMock()
     channel = CapturingChannel()
-    body = branches.RetryMessageRequest(messageId="assistant-old", chatId=chat_id)
+    body = branches.RetryMessageRequest(message_id="assistant-old", chat_id=chat_id)
 
     with (
         patch.object(branches, "db", db_mock),
@@ -239,9 +239,9 @@ async def test_edit_user_message_current_event_and_delegation_shape() -> None:
     runtime_mock = AsyncMock()
     channel = CapturingChannel()
     body = branches.EditUserMessageRequest(
-        messageId="user-old",
-        newContent="updated prompt",
-        chatId=chat_id,
+        message_id="user-old",
+        new_content="updated prompt",
+        chat_id=chat_id,
     )
 
     with (

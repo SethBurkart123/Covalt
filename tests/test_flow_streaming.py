@@ -346,12 +346,12 @@ class TestStreamFlowRunCommand:
     async def test_stream_flow_run_emits_node_events(self):
         channel = _make_channel()
         body = streaming.StreamFlowRunRequest(
-            agentId="agent-1",
+            agent_id="agent-1",
             mode="execute",
-            targetNodeId="b",
-            cachedOutputs=None,
-            promptInput=streaming.FlowRunPromptInput(message="hello"),
-            nodeIds=["a", "b"],
+            target_node_id="b",
+            cached_outputs=None,
+            prompt_input=streaming.FlowRunPromptInput(message="hello"),
+            node_ids=["a", "b"],
         )
 
         agent_manager = MagicMock()
@@ -393,11 +393,11 @@ class TestStreamFlowRunCommand:
         channel = _make_channel()
         cached_outputs = {"a": {"output": {"type": "string", "value": "hello"}}}
         body = streaming.StreamFlowRunRequest(
-            agentId="agent-1",
+            agent_id="agent-1",
             mode="execute",
-            targetNodeId="b",
-            cachedOutputs=cached_outputs,
-            promptInput=streaming.FlowRunPromptInput(message="hello"),
+            target_node_id="b",
+            cached_outputs=cached_outputs,
+            prompt_input=streaming.FlowRunPromptInput(message="hello"),
         )
 
         agent_manager = MagicMock()

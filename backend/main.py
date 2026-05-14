@@ -41,11 +41,11 @@ def _ensure_e2e_toolset() -> None:
 
 def main() -> int:
     init_database()
-    _ensure_e2e_toolset()
     rebuild_node_route_index()
     reload_node_provider_registry()
     register_builtin_loaders()
     register_builtin_renderers()
+    _ensure_e2e_toolset()
 
     repo_root = Path(__file__).parent.parent
     output_dir = repo_root / "app" / "python"

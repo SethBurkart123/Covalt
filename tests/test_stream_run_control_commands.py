@@ -67,10 +67,10 @@ async def test_respond_to_tool_decision_records_and_signals_session() -> None:
 
     result = await streaming.respond_to_tool_decision(
         streaming.RespondToToolDecisionInput(
-            runId="run-1",
-            toolCallId="tu-1",
-            selectedOption="allow_once",
-            editedArgs={"query": "covalt"},
+            run_id="run-1",
+            tool_call_id="tu-1",
+            selected_option="allow_once",
+            edited_args={"query": "covalt"},
             cancelled=False,
         )
     )
@@ -89,9 +89,9 @@ async def test_respond_to_tool_decision_records_and_signals_session() -> None:
 async def test_respond_to_tool_decision_returns_unmatched_for_unknown_tool_call() -> None:
     result = await streaming.respond_to_tool_decision(
         streaming.RespondToToolDecisionInput(
-            runId="run-x",
-            toolCallId="ghost",
-            selectedOption="allow_once",
+            run_id="run-x",
+            tool_call_id="ghost",
+            selected_option="allow_once",
         )
     )
     assert result == {"success": True, "matched": False}
@@ -108,7 +108,7 @@ async def test_cancel_run_with_run_id_cancels_agent_and_clears_state(
     run_control.register_active_run("msg-1", fake_agent)
     run_control.set_active_run_id("msg-1", "run-1")
 
-    result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="msg-1"))
+    result = await streaming.cancel_run(streaming.CancelRunRequest(message_id="msg-1"))
 
     assert result == {"cancelled": True}
     assert fake_agent.cancelled_run_ids == ["run-1"]
@@ -126,7 +126,7 @@ async def test_cancel_run_without_run_id_marks_early_cancel(
 
     run_control.register_active_run("msg-2", fake_agent)
 
-    result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="msg-2"))
+    result = await streaming.cancel_run(streaming.CancelRunRequest(message_id="msg-2"))
 
     assert result == {"cancelled": True}
     assert run_control.get_active_run("msg-2") == (None, fake_agent)
@@ -147,7 +147,7 @@ async def test_cancel_run_before_run_id_on_flow_handle_applies_after_late_bind(
     run_control.register_active_run("msg-flow-early", flow_handle)
 
     result = await streaming.cancel_run(
-        streaming.CancelRunRequest(messageId="msg-flow-early")
+        streaming.CancelRunRequest(message_id="msg-flow-early")
     )
 
     assert result == {"cancelled": True}
@@ -168,7 +168,7 @@ async def test_cancel_run_without_active_run_marks_early_cancel(
     fake_db = _FakeDb()
     monkeypatch.setattr(streaming, "db", fake_db)
 
-    result = await streaming.cancel_run(streaming.CancelRunRequest(messageId="missing"))
+    result = await streaming.cancel_run(streaming.CancelRunRequest(message_id="missing"))
 
     assert result == {"cancelled": True}
     assert run_control.consume_early_cancel("missing") is True
@@ -192,7 +192,7 @@ async def test_cancel_run_paused_at_hitl_wakes_session_and_defers_cleanup(
     )
 
     result = await streaming.cancel_run(
-        streaming.CancelRunRequest(messageId="msg-hitl")
+        streaming.CancelRunRequest(message_id="msg-hitl")
     )
 
     assert result == {"cancelled": True}
@@ -217,7 +217,7 @@ async def test_cancel_run_with_graph_flow_handle_cancels_bound_agent(
     run_control.set_active_run_id("msg-flow", "run-flow")
 
     result = await streaming.cancel_run(
-        streaming.CancelRunRequest(messageId="msg-flow")
+        streaming.CancelRunRequest(message_id="msg-flow")
     )
 
     assert result == {"cancelled": True}
