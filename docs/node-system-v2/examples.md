@@ -377,7 +377,12 @@ A node that monitors and intervenes in running workflows. This is an ambient nod
   category: 'debug',
   icon: 'Eye',
   
-  ambient: true,  // starts with workflow, not when inputs ready
+  ambient: true,
+  
+  subscription: {
+    filter: {'type': 'completed'},     // watch for node completions
+    onWorkflowComplete: 'terminate',   // nothing to clean up
+  },
   
   ports: [
     { id: 'watch', direction: 'in', mode: 'reference', schema: { type: 'any' }, multiple: true },
@@ -385,13 +390,11 @@ A node that monitors and intervenes in running workflows. This is an ambient nod
   ],
   
   controls: [
-    { id: 'check_interval', type: 'number', default: 5000 },
     { id: 'idle_threshold', type: 'number', default: 30000 },
   ],
   
   events: {
-    emits: ['supervisor:check', 'supervisor:intervention'],
-    accepts: ['stop', 'workflow:completed'],
+    emits: ['supervisor:intervention'],
   },
 }
 ```
@@ -401,36 +404,27 @@ class WorkflowSupervisorExecutor:
     node_type = "workflow-supervisor"
     
     async def execute(self, config, inputs, refs, regions, runtime):
-        interval = config['check_interval'] / 1000
         threshold = config['idle_threshold'] / 1000
         
-        while True:
-            # Check for stop or workflow completion
-            async for event in runtime.subscribe({
-                'or': [
-                    {'nodeId': self.node_id, 'type': 'stop'},
-                    {'type': 'workflow:completed'}
-                ]
-            }, timeout=interval):
-                return  # clean exit
-            
-            # Timeout means no stop signal, continue monitoring
-            processes = runtime.get_active_processes()
-            
-            for node_id, state in processes.items():
+        # Events delivered based on subscription — no polling needed
+        async for event in runtime.events():
+            # On each completion event, check all processes for stuck nodes
+            for node_id, state in runtime.get_active_processes().items():
                 if state.idle_time > threshold:
                     yield Event(type='supervisor:intervention', data={'target': node_id})
                     
-                    # Emit nudge notification — fire and forget, don't wait
+                    # Emit nudge notification — fire and forget
                     yield Result(outputs={'nudged': node_id})
                     
                     runtime.inject_event(node_id, Event(
                         type='nudge',
                         data={'message': 'You appear stuck. Please continue.'}
                     ))
+        
+        yield Result(outputs={}, stop=True)
 ```
 
-The supervisor emits to `nudged` each time it intervenes. Because there's no `stop=True`, it keeps running and downstream execution happens in parallel. The runtime terminates it when the workflow completes.
+The supervisor listens for completion events as triggers to check for stuck nodes. Each completion is an opportunity to scan. The `onWorkflowComplete: 'terminate'` means no cleanup is needed — the runtime kills it immediately when the workflow ends.
 
 ## Event Forwarder (Observability)
 
@@ -443,18 +437,20 @@ A passive node that watches all events and forwards them to an external endpoint
   category: 'debug',
   icon: 'Activity',
   
-  ambient: true,  // starts with workflow
+  ambient: true,
   
-  ports: [],  // no data flow, pure side effects
+  subscription: {
+    filter: {'type': '*'},          // receive all events
+    replay: true,                    // don't miss events during startup
+    onWorkflowComplete: 'finish',    // let us flush before terminating
+  },
+  
+  ports: [],
   
   controls: [
     { id: 'endpoint', type: 'string', placeholder: 'https://...' },
-    { id: 'filter', type: 'enum', options: ['all', 'errors', 'completions', 'tools'] },
+    { id: 'batch_size', type: 'number', default: 50 },
   ],
-  
-  events: {
-    accepts: ['workflow:completed'],
-  },
 }
 ```
 
@@ -464,38 +460,37 @@ class EventForwarderExecutor:
     
     async def execute(self, config, inputs, refs, regions, runtime):
         endpoint = config['endpoint']
-        event_filter = self.build_filter(config['filter'])
+        batch_size = config.get('batch_size', 50)
+        batch = []
         
         async with aiohttp.ClientSession() as session:
-            async for event in runtime.subscribe(event_filter):
-                # Check for workflow completion
-                if event.type == 'workflow:completed':
-                    break
-                
-                await session.post(endpoint, json={
+            # Events delivered based on subscription.filter
+            # Loop exits when workflow completes (onWorkflowComplete: 'finish')
+            async for event in runtime.events():
+                batch.append({
                     'id': event.id,
                     'type': event.type,
                     'source': event.source,
                     'data': event.data,
                 })
+                
+                if len(batch) >= batch_size:
+                    await session.post(endpoint, json=batch)
+                    batch = []
+            
+            # Flush remaining events after workflow completes
+            if batch:
+                await session.post(endpoint, json=batch)
         
-        # No outputs, just clean termination
         yield Result(outputs={}, stop=True)
-    
-    def build_filter(self, filter_type):
-        base = {'type': 'workflow:completed'}  # always listen for completion
-        
-        if filter_type == 'all':
-            return {'or': [{'type': '*'}, base]}
-        elif filter_type == 'errors':
-            return {'or': [{'type': 'error'}, base]}
-        elif filter_type == 'completions':
-            return {'or': [{'type': 'completed'}, base]}
-        elif filter_type == 'tools':
-            return {'or': [{'type': 'tool_call_started'}, {'type': 'tool_call_completed'}, base]}
 ```
 
-No ports, just event subscription. The `ambient: true` flag means it starts immediately when the workflow begins. It runs until it sees `workflow:completed`, then exits cleanly.
+The subscription declaration handles the complexity:
+- `filter` determines which events arrive
+- `replay: true` ensures no events are missed during node startup
+- `onWorkflowComplete: 'finish'` stops the event loop but lets the executor flush remaining data
+
+The executor is just straightforward batch processing.
 
 ## External Approval Gate
 
@@ -692,18 +687,20 @@ An ambient node that watches an external queue and processes items through downs
   
   ambient: true,
   
+  subscription: {
+    onWorkflowComplete: 'grace:10000',  // allow 10s to finish current item
+  },
+  
   ports: [
     { id: 'item', direction: 'out', mode: 'value', schema: { type: 'object' } },
   ],
   
   controls: [
     { id: 'queue_url', type: 'string' },
-    { id: 'batch_size', type: 'number', default: 1 },
   ],
   
   events: {
     emits: ['queue:item_received', 'queue:item_acked', 'queue:item_nacked'],
-    accepts: ['stop', 'workflow:completed'],
   },
 }
 ```
@@ -741,7 +738,9 @@ class QueueProcessorExecutor:
         yield Result(outputs={}, stop=True)
 ```
 
-The key is `await_downstream=True` — the executor pauses after each emit until all nodes triggered by that emission complete. This ensures items are only acknowledged after successful processing. The `downstream_results` dictionary contains outputs from all downstream nodes, keyed by node ID.
+The key is `await_downstream=True` — the executor pauses after each emit until all nodes triggered by that emission complete. This ensures items are only acknowledged after successful processing.
+
+Note `onWorkflowComplete: 'grace:10000'` — this gives the processor up to 10 seconds to finish acknowledging the current item before being terminated. Without this, an item could be processed but never acknowledged.
 
 ## Multi-Emit with Mixed Behaviors
 

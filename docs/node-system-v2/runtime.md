@@ -55,9 +55,58 @@ Some nodes need to run for the entire workflow lifetime, watching events or supe
 When a workflow begins, the runtime:
 1. Starts all `ambient: true` nodes immediately
 2. Begins normal triggered execution for everything else
-3. When the workflow completes, ambient nodes receive a `workflow:completed` event and are terminated
+3. When the workflow completes, handles ambient node termination based on their subscription config
 
 Ambient nodes don't need connected inputs to run. They exist to observe, supervise, or react to external events.
+
+### Event Subscriptions
+
+Ambient nodes typically need to receive events. Rather than polling, declare what events to receive:
+
+```ts
+{
+  id: 'event-forwarder',
+  ambient: true,
+  
+  subscription: {
+    filter: {'type': '*'},              // which events to receive
+    replay: true,                        // backfill events from workflow start
+    onWorkflowComplete: 'finish',        // how to handle workflow completion
+  },
+}
+```
+
+**filter**: Event filter (same syntax as `runtime.subscribe()`). Only matching events are delivered.
+
+**replay**: If true, buffer events from workflow start until the node is ready. The node receives all events it would have missed during startup. Default: false.
+
+**onWorkflowComplete**: What happens when the workflow completes:
+- `'terminate'` — Kill immediately, no cleanup (default)
+- `'finish'` — Stop delivering events, let the executor finish naturally
+- `'grace:5000'` — Wait up to 5000ms for node to stop, then kill
+- `'ignore'` — Node keeps running until it stops itself (dangerous, can hang workflow)
+
+In the executor, events arrive through `runtime.events()`:
+
+```python
+async def execute(self, config, inputs, refs, regions, runtime):
+    batch = []
+    
+    async for event in runtime.events():
+        batch.append(event)
+        if len(batch) >= 100:
+            await self.flush(batch)
+            batch = []
+    
+    # Loop exits based on onWorkflowComplete setting
+    # With 'finish': we get here to clean up
+    if batch:
+        await self.flush(batch)
+    
+    yield Result(outputs={}, stop=True)
+```
+
+For nodes without a `subscription` declaration, `runtime.events()` yields nothing. They can still use `runtime.subscribe()` imperatively for dynamic subscriptions.
 
 ### Emission Behavior
 

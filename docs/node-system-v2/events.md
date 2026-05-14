@@ -37,7 +37,13 @@ This is imperative — the executor decides based on the current situation. See 
 
 ### Termination
 
-Eventually the node completes (emitting final outputs with `stop=True`) or is terminated by the runtime. Ambient nodes typically run until the workflow completes, at which point they receive a `workflow:completed` event.
+Eventually the node completes (emitting final outputs with `stop=True`) or is terminated by the runtime.
+
+Ambient nodes declare how to handle workflow completion via `subscription.onWorkflowComplete`:
+- `'terminate'` — kill immediately
+- `'finish'` — stop delivering events, let executor clean up
+- `'grace:N'` — wait up to N ms for node to stop, then kill
+- `'ignore'` — node must handle termination itself
 
 This model accommodates both simple transform nodes (which emit once and stop immediately) and long-running processes (like an agent that may run for minutes, pausing for tool calls and approvals, or a supervisor that runs for the entire workflow lifetime).
 
