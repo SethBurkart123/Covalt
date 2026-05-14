@@ -1,4 +1,3 @@
-"use client";
 
 import type { ContentBlock, TokenUsage } from "@/lib/types/chat";
 

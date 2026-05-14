@@ -1,4 +1,3 @@
-"use client";
 
 import { Monitor, Loader2 } from "lucide-react";
 import {

@@ -24,18 +24,13 @@
     "allowJs": true,
     "incremental": true,
     "esModuleInterop": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./app/*"],
       "@nodes/*": ["./nodes/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.d.ts", ".next/types/**/*.ts"],
+  "include": ["vite-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": [
     "node_modules",
     "zynk",

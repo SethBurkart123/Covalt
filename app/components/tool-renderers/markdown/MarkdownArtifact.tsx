@@ -1,4 +1,3 @@
-"use client";
 
 import { FileText, Loader2 } from "lucide-react";
 import {

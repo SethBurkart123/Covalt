@@ -1,4 +1,3 @@
-"use client";
 
 import { memo } from "react";
 import type { ControlKindId, VariableOption, VariableSpec } from "@nodes/_variables";

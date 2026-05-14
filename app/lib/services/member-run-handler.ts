@@ -1,4 +1,3 @@
-"use client";
 
 import type { ContentBlock } from "@/lib/types/chat";
 import { RUNTIME_EVENT } from "@/lib/services/runtime-events";

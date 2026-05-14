@@ -5,7 +5,7 @@ import type {
   ProviderDefinition,
   ProviderFieldDef,
 } from '@/lib/types/provider-catalog';
-import { getProviderIcon } from '@/(app)/(pages)/settings/providers/provider-icons';
+import { getProviderIcon } from '@/pages/settings/providers/provider-icons';
 
 const toProviderId = (value: string): string => value.toLowerCase().trim().replace(/-/g, '_');
 

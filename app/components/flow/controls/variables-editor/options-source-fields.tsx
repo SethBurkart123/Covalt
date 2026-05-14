@@ -1,4 +1,3 @@
-"use client";
 
 import { Plus, Trash2 } from "lucide-react";
 import type { VariableOption, VariableSpec } from "@nodes/_variables";

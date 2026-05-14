@@ -1,4 +1,3 @@
-"use client";
 
 import { memo } from "react";
 import { motion } from "motion/react";
@@ -9,7 +8,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { TEST_CHAT_PANEL_TRANSITION } from "@/(app)/(pages)/agents/edit/AgentTestChatPanel";
+import { TEST_CHAT_PANEL_TRANSITION } from "@/pages/agents/edit/AgentTestChatPanel";
 import { useIsElectrobunMac } from "@/lib/hooks/use-electrobun-platform";
 
 const TITLEBAR_OFFSET_PX = 74;

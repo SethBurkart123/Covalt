@@ -1,4 +1,3 @@
-"use client";
 
 import { autoUpdate, computePosition, flip, offset, shift, type VirtualElement } from "@floating-ui/dom";
 import { Extension, ReactRenderer } from "@tiptap/react";

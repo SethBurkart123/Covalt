@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback } from "react";
 import { respondToToolDecision } from "@/python/api";

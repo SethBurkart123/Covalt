@@ -1,4 +1,3 @@
-"use client";
 
 import type { OptionDefinition } from "@/lib/types/chat";
 import { Switch } from "@/components/ui/switch";

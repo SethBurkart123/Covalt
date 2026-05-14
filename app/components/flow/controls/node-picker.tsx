@@ -1,4 +1,3 @@
-'use client';
 
 import { useCallback, useMemo, useState } from 'react';
 import { CheckIcon, ChevronDownIcon, Crosshair, Bot } from 'lucide-react';

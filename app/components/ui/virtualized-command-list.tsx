@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";

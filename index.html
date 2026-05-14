@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" suppressHydrationWarning>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Elegant" />
+    <title>Covalt</title>
+    <script>
+      (() => {
+        try {
+          const mode = localStorage.getItem("theme-mode");
+          const isDark =
+            mode === "dark" ||
+            ((mode === "system" || !mode) &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+          const root = document.documentElement;
+          root.classList.toggle("dark", isDark);
+
+          const raw = localStorage.getItem("theme-active-styles");
+          if (!raw) return;
+
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+
+          const styles = parsed[isDark ? "dark" : "light"];
+          if (!styles || typeof styles !== "object") return;
+
+          for (const key in styles) {
+            const value = styles[key];
+            if (typeof value === "string" && value) {
+              root.style.setProperty("--" + key, value);
+            }
+          }
+        } catch {}
+      })();
+    </script>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/app/main.tsx"></script>
+  </body>
+</html>

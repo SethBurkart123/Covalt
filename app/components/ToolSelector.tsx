@@ -1,4 +1,3 @@
-"use client";
 
 import { memo, useMemo, useState, useCallback } from "react";
 import { Loader2, Wrench, KeyRound, Settings } from "lucide-react";

@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useCallback } from "react";
 import type { Attachment, Message, PendingAttachment } from "@/lib/types/chat";

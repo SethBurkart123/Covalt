@@ -1,4 +1,3 @@
-"use client";
 
 import type { ReactNode } from "react";
 import { MoreHorizontal, Settings2 } from "lucide-react";

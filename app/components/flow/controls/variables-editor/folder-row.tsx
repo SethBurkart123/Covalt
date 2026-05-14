@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";

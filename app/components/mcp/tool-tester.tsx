@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useCallback, useMemo } from "react";
 import { Play, Loader2, ChevronDown, ChevronUp, Clock } from "lucide-react";

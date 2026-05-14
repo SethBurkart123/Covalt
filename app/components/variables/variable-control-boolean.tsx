@@ -1,4 +1,3 @@
-"use client";
 
 import type { VariableControlProps } from "./variable-control";
 import { Switch } from "@/components/ui/switch";

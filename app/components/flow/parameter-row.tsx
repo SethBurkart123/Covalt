@@ -1,4 +1,3 @@
-'use client';
 
 import { memo, useCallback } from 'react';
 import type { Parameter } from '@/lib/flow';

@@ -1,4 +1,3 @@
-"use client";
 
 import { memo, useCallback, useEffect, useState } from "react";
 import { X, FileText, Music, Video, File } from "lucide-react";

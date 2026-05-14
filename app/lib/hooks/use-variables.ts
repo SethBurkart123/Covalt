@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VariableOption, VariableSpec } from "@nodes/_variables";

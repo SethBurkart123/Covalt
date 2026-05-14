@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Globe, Search } from "lucide-react";

@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { getBackendBaseUrl } from "@/lib/services/backend-url";

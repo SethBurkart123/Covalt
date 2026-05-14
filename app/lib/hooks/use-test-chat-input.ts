@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useCallback, useMemo, useRef } from "react";
 import { useAgentTestChat } from "@/contexts/agent-test-chat-context";

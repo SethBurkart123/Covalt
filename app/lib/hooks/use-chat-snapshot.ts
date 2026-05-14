@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CHAT_MESSAGES_PAGE_SIZE } from "@/lib/chat-constants";

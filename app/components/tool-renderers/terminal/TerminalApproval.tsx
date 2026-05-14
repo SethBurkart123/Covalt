@@ -1,4 +1,3 @@
-"use client";
 
 import { type ReactNode } from "react";
 import { DefaultApproval } from "@/components/approvals/DefaultApproval";

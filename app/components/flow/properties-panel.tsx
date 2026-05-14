@@ -1,4 +1,3 @@
-'use client';
 
 import { useCallback, useMemo, memo } from 'react';
 import { useNodesData, useStore } from '@xyflow/react';

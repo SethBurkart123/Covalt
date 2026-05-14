@@ -1,4 +1,3 @@
-"use client";
 
 import { memo, useEffect, type ReactNode } from "react";
 import { preloadRenderersForToolCalls } from "@/components/ToolCallRouter";

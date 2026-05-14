@@ -1,7 +1,6 @@
-"use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearch } from "@tanstack/react-router";
 import type { ChatContextType, AllChatsData, ChatData } from "@/lib/types/chat";
 import type { ChatPageCursor } from "@/python/api";
 import { api } from "@/lib/services/api";
@@ -24,10 +23,11 @@ function indexChats(list: readonly ChatData[]): Record<string, ChatData> {
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const searchParams = useSearchParams();
+  const search = useSearch({ strict: false }) as { chatId?: string };
+  const chatIdFromUrl = search.chatId ?? null;
   const [allChatsData, setAllChatsData] = useState<AllChatsData>({ chats: {} });
-  const [currentChatId, setCurrentChatId] = useState<string | null>(() =>
-    searchParams.has("chatId") ? searchParams.get("chatId") || "" : null,
+  const [currentChatId, setCurrentChatId] = useState<string | null>(
+    () => chatIdFromUrl,
   );
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -120,9 +120,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [loadFirstPage]);
 
   useEffect(() => {
-    const chatIdFromUrl = searchParams.has("chatId")
-      ? searchParams.get("chatId") || ""
-      : null;
     if (chatIdFromUrl === currentChatIdRef.current) {
       if (pendingUrlSyncsRef.current > 0) pendingUrlSyncsRef.current -= 1;
       return;
@@ -132,7 +129,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return;
     }
     setCurrentChatId(chatIdFromUrl);
-  }, [searchParams]);
+  }, [chatIdFromUrl]);
 
   const chatIds = useMemo(() => 
     Object.keys(allChatsData.chats).sort((a, b) => {

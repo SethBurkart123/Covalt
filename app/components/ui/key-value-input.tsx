@@ -1,4 +1,3 @@
-"use client";
 
 import { Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";

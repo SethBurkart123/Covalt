@@ -1,4 +1,3 @@
-'use client';
 
 import { memo, type ComponentType } from 'react';
 import type { Parameter, ParameterType } from '@/lib/flow';

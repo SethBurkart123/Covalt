@@ -1,4 +1,3 @@
-"use client";
 
 import type { StreamState } from "@/lib/services/stream-processor-state";
 import { flushReasoningBlock, flushTextBlock } from "@/lib/services/stream-processor-state";

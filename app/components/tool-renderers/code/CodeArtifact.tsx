@@ -1,4 +1,3 @@
-"use client";
 
 import { FileCode2, Loader2 } from "lucide-react";
 import {

@@ -1,4 +1,3 @@
-'use client';
 
 import { useChat } from '@/contexts/chat-context';
 import ModelSelector from '@/components/ModelSelector';

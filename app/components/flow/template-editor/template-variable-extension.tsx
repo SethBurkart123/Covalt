@@ -1,4 +1,3 @@
-'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { InputRule, Node, PasteRule, mergeAttributes } from '@tiptap/core';

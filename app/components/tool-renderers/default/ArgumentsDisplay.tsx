@@ -1,4 +1,3 @@
-"use client";
 
 interface ArgumentsDisplayProps {
   args: Record<string, unknown>;

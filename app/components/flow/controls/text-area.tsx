@@ -1,4 +1,3 @@
-'use client';
 
 import type { Parameter } from '@/lib/flow';
 import { TemplateEditor } from '../template-editor';

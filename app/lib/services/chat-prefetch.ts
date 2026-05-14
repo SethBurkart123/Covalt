@@ -1,4 +1,3 @@
-"use client";
 
 import { CHAT_MESSAGES_PAGE_SIZE } from "@/lib/chat-constants";
 import { api } from "@/lib/services/api";

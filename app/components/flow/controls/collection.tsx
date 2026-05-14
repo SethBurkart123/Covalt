@@ -1,5 +1,4 @@
 
-'use client';
 
 import { useMemo } from 'react';
 import type { ControlProps } from './';

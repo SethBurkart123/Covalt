@@ -1,4 +1,3 @@
-"use client";
 
 import { ToolCallRouter } from "@/components/ToolCallRouter";
 import type { ToolCallRendererProps } from "@/lib/tool-renderers/types";

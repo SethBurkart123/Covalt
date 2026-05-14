@@ -49,6 +49,7 @@ target/
 
 zynk
 tsconfig.tsbuildinfo
+app/routeTree.gen.ts
 
 # Local refactor/review artifacts
 .desloppify/

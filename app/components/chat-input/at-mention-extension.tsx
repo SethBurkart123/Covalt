@@ -1,4 +1,3 @@
-"use client";
 
 import { Node, mergeAttributes } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";

@@ -1,4 +1,3 @@
-"use client";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { useLazyMessageRenderer } from "@/lib/renderers/use-lazy-message-renderer";

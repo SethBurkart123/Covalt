@@ -1,8 +1,7 @@
-"use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Bot, Package, PlusIcon, Settings, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import {
@@ -47,6 +46,7 @@ const LOADER_ESTIMATE = 32;
 const LOAD_MORE_THRESHOLD = 10;
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const navigate = useNavigate();
   const router = useRouter();
   const {
     chatId: currentChatId,
@@ -121,7 +121,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const handlePrefetch = useCallback((id: string) => {
     if (!id || id === currentChatId) return;
     void prefetchChat(id);
-    router.prefetch(`/?chatId=${id}`);
+    void router.preloadRoute({ to: "/", search: { chatId: id } });
   }, [currentChatId, router]);
 
   const isMac = useIsElectrobunMac();
@@ -257,21 +257,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => router.push("/agents")}
+              onClick={() => navigate({ to: "/agents" })}
             >
               <Bot className="size-4" />
               Agents
             </button>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => router.push("/toolsets")}
+              onClick={() => navigate({ to: "/toolsets" })}
             >
               <Package className="size-4" />
               Toolsets
             </button>
             <button
               className="px-3 py-2 flex items-center gap-2 w-full rounded-lg hover:bg-muted focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => router.push("/settings")}
+              onClick={() => navigate({ to: "/settings" })}
             >
               <Settings className="size-4" />
               Settings

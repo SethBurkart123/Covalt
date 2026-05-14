@@ -1,4 +1,3 @@
-"use client";
 
 import type { Editor, Range } from "@tiptap/core";
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from "react";

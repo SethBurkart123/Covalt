@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Terminal } from "lucide-react";

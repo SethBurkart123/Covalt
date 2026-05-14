@@ -307,6 +307,12 @@ function startFrontendServer(): { url: string; server: FrontendServer } {
       const { pathname } = new URL(req.url);
       const filePath = resolveStaticFile(rootDir, pathname);
       if (!filePath) {
+        const indexHtml = path.join(rootDir, "index.html");
+        if (existsSync(indexHtml) && !path.extname(pathname)) {
+          return new Response(Bun.file(indexHtml).stream(), {
+            headers: { "Content-Type": "text/html" },
+          });
+        }
         const notFound = path.join(rootDir, "404.html");
         if (existsSync(notFound)) {
           return new Response(Bun.file(notFound).stream(), {

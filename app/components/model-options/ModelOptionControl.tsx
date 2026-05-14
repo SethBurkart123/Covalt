@@ -1,4 +1,3 @@
-"use client";
 
 import type { OptionDefinition } from "@/lib/types/chat";
 import { BooleanOption } from "@/components/model-options/BooleanOption";

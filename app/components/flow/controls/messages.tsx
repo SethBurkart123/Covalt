@@ -1,4 +1,3 @@
-'use client';
 
 import { useCallback, useMemo } from 'react';
 import { X } from 'lucide-react';

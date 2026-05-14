@@ -1,14 +1,12 @@
-"use client";
 
 import { memo, use, useEffect, useLayoutEffect, useRef } from 'react';
 import { Idiomorph } from 'idiomorph';
 import katex from 'katex';
 import { init as initMd4w, mdToHtml, setCodeHighlighter } from 'md4w';
+import md4wWasmUrl from 'md4w-wasm?url';
 import { Prism } from 'prism-react-renderer';
 import { cn } from '@/lib/utils';
 import './md4w-renderer.css';
-
-const MD4W_WASM_PATH = '/vendor/md4w-fast.wasm';
 const MD4W_EQUATION_OPEN = '<x-equation';
 const MD4W_EQUATION_CLOSE = '</x-equation>';
 const MD4W_PARSE_FLAGS = [
@@ -76,10 +74,9 @@ function configureHighlighter(): void {
 function ensureMd4w(): Promise<void> {
   configureHighlighter();
   if (md4wReady) return Promise.resolve();
-  // Pass an absolute URL so md4w's `new URL(wasm, import.meta.url)` ignores its
-  // base (which Next bundles as file:// in static exports).
-  const wasmUrl = new URL(MD4W_WASM_PATH, window.location.origin).toString();
-  md4wInitPromise ??= initMd4w(wasmUrl).then(() => {
+  // Pass a Response so md4w skips its universal-FS path, which under Vite
+  // tries to import `node:fs/promises` because `globalThis.process` is defined.
+  md4wInitPromise ??= initMd4w(fetch(md4wWasmUrl)).then(() => {
     md4wReady = true;
   }).catch(error => {
     console.warn('md4w failed to initialise; falling back to plain text.', error);

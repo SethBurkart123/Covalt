@@ -4,7 +4,7 @@ vi.mock('@/python/api', () => ({
   getProviderCatalog: vi.fn(),
 }));
 
-vi.mock('@/(app)/(pages)/settings/providers/provider-icons', () => ({
+vi.mock('@/pages/settings/providers/provider-icons', () => ({
   getProviderIcon: () => (() => null),
 }));
 

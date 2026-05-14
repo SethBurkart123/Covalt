@@ -1,4 +1,3 @@
-'use client';
 
 import type { ControlProps } from './';
 import { TemplateEditor } from '../template-editor';

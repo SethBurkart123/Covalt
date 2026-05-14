@@ -1,4 +1,3 @@
-"use client";
 
 import { memo } from "react";
 import { Wrench } from "lucide-react";

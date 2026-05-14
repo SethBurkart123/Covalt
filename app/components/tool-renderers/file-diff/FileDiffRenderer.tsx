@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useState, type ReactNode } from "react";
 import { FileCode2 } from "lucide-react";

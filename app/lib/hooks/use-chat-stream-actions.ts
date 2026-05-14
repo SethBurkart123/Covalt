@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { api } from "@/lib/services/api";

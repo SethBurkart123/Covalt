@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getApprovalRenderer } from "@/lib/renderers";

@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { AllChatsData } from "@/lib/types/chat";
 import { api } from "@/lib/services/api";
 import { prefetchChat } from "@/lib/services/chat-prefetch";
@@ -17,17 +17,17 @@ export function useChatOperations({
   currentChatId,
   setCurrentChatId,
 }: UseChatOperationsProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const startNewChat = useCallback(() => {
     setCurrentChatId(null);
-    router.push("/");
+    void navigate({ to: "/", search: {} });
 
     setTimeout(() => {
       const input = document.querySelector(".query-input") as HTMLElement | null;
       input?.focus?.();
     }, 0);
-  }, [setCurrentChatId, router]);
+  }, [setCurrentChatId, navigate]);
 
   const switchChat = useCallback(
     (id: string) => {
@@ -35,9 +35,9 @@ export function useChatOperations({
 
       void prefetchChat(id);
       setCurrentChatId(id);
-      router.push(`/?chatId=${id}`);
+      void navigate({ to: "/", search: { chatId: id } });
     },
-    [currentChatId, allChatsData, setCurrentChatId, router],
+    [currentChatId, allChatsData, setCurrentChatId, navigate],
   );
 
   const deleteChat = useCallback(

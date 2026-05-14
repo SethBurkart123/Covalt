@@ -1,4 +1,3 @@
-"use client";
 
 import {
   useState,
@@ -24,10 +23,10 @@ import { MiddleTruncate } from "@/components/ui/middle-truncate";
 import type { ModelInfo } from "@/lib/types/chat";
 import type { AgentInfo } from "@/python/api";
 import { agentFileUrl } from "@/python/api";
-import { getProviderMap } from "@/(app)/(pages)/settings/providers/provider-registry";
+import { getProviderMap } from "@/pages/settings/providers/provider-registry";
 import { cn, getRecentModels } from "@/lib/utils";
 import { useChat } from "@/contexts/chat-context";
-import { OpenAIIcon } from "@/(app)/(pages)/settings/providers/provider-icons";
+import { OpenAIIcon } from "@/pages/settings/providers/provider-icons";
 import type { ProviderDefinition } from "@/lib/types/provider-catalog";
 import {
   getStarredModels,

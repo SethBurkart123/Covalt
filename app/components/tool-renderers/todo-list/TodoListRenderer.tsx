@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, type ReactNode, type SVGProps } from "react";
 import { CheckCircle2, Circle, ListTodo } from "lucide-react";

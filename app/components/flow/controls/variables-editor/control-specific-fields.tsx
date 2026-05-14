@@ -1,4 +1,3 @@
-"use client";
 
 import type { VariableSpec } from "@nodes/_variables";
 import { Input } from "@/components/ui/input";
