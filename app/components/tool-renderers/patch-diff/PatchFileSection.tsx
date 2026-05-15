@@ -1,10 +1,4 @@
-
-import { useState, type ReactNode } from "react";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
+import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { DiffView } from "../file-diff/DiffView";
 import type { ParsedFilePatch } from "./parse-patch";
@@ -22,41 +16,31 @@ const ACTION_LABEL: Record<ParsedFilePatch["action"], string> = {
 
 export function PatchFileSection({
   file,
-  defaultExpanded = true,
 }: PatchFileSectionProps): ReactNode {
-  const [isOpen, setIsOpen] = useState(defaultExpanded);
-
   return (
-    <Collapsible
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      mode="minimal"
+    <div
       data-testid="patch-file-section"
       data-file-path={file.path}
+      className="relative"
     >
-      <CollapsibleTrigger
-        rightContent={
-          <span
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-medium",
-              actionPillClass(file.action),
-            )}
-          >
-            {ACTION_LABEL[file.action]}
-          </span>
-        }
-      >
-        <span className="font-mono">{file.path}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pl-0 pt-2 pb-2">
-        <DiffView
-          filePath={file.path}
-          oldContent={file.oldContent}
-          newContent={file.newContent}
-          precomputedCounts={{ additions: file.additions, deletions: file.deletions }}
-        />
-      </CollapsibleContent>
-    </Collapsible>
+      <div className="absolute right-2 top-2 z-10">
+        <span
+          className={cn(
+            "rounded px-1.5 py-0.5 text-[10px] font-medium",
+            actionPillClass(file.action),
+          )}
+        >
+          {ACTION_LABEL[file.action]}
+        </span>
+      </div>
+      <DiffView
+        filePath={file.path}
+        oldContent={file.oldContent}
+        newContent={file.newContent}
+        precomputedCounts={{ additions: file.additions, deletions: file.deletions }}
+        disableCollapsibleChrome
+      />
+    </div>
   );
 }
 
