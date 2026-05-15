@@ -79,15 +79,11 @@ function revealBlocks(
           ...block,
           content: block.content.slice(0, visibleLength),
           isCompleted: block.isCompleted && visibleLength >= block.content.length,
-          lookaheadContent: visibleLength < block.content.length ? block.content : undefined,
-          visibleChars: visibleLength < block.content.length ? visibleLength : undefined,
         });
       } else {
         revealed.push({
           ...block,
           content: block.content.slice(0, visibleLength),
-          lookaheadContent: visibleLength < block.content.length ? block.content : undefined,
-          visibleChars: visibleLength < block.content.length ? visibleLength : undefined,
         });
       }
       continue;

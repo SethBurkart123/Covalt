@@ -127,8 +127,7 @@ export default function MemberRunCall({
               return block.content ? (
                 <MarkdownRenderer
                   key={`text-${i}`}
-                  content={block.lookaheadContent ?? block.content}
-                  visibleChars={block.visibleChars}
+                  content={block.content}
                 />
               ) : null;
             }
@@ -146,8 +145,6 @@ export default function MemberRunCall({
                 <ThinkingCall
                   key={`reason-${i}`}
                   content={block.content}
-                  lookaheadContent={block.lookaheadContent}
-                  visibleChars={block.visibleChars}
                   active={!block.isCompleted}
                   isCompleted={block.isCompleted}
                   mode="minimal"

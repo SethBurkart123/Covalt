@@ -66,8 +66,6 @@ describe("OutputSmoothingController", () => {
     const visible = textOf(updates.at(-1) ?? []);
     expect(visible.length).toBeGreaterThan(0);
     expect(visible.length).toBeLessThan(content.length);
-    expect(block.lookaheadContent).toBe(content);
-    expect(block.visibleChars).toBe(visible.length);
 
     controller.dispose();
   });

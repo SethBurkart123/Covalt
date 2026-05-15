@@ -190,60 +190,6 @@ function appendInlineIndicator(html: string): string {
   return template.innerHTML;
 }
 
-function findOpenFence(markdown: string): string | null {
-  // Basic fenced code support: if the prefix ends inside a fence, auto-close it so
-  // partial rendering stays stable while streaming.
-  let open: { ch: '`' | '~'; len: number } | null = null;
-  const lines = markdown.split('\n');
-
-  for (const line of lines) {
-    const m = line.match(/^\s*([`~]{3,})/);
-    if (!m) continue;
-
-    const fence = m[1];
-    const ch = fence[0] as '`' | '~';
-    const len = fence.length;
-
-    if (!open) {
-      open = { ch, len };
-      continue;
-    }
-
-    if (open.ch === ch && len >= open.len) {
-      open = null;
-    }
-  }
-
-  return open ? open.ch.repeat(open.len) : null;
-}
-
-function countUnescapedBackticks(markdown: string): number {
-  let count = 0;
-  for (let i = 0; i < markdown.length; i++) {
-    if (markdown[i] !== '`') continue;
-    if (i > 0 && markdown[i - 1] === '\\') continue;
-    count += 1;
-  }
-  return count;
-}
-
-function markdownPrefixWithLookahead(full: string, visibleChars: number): string {
-  const cut = Math.max(0, Math.floor(visibleChars));
-  const prefix = full.slice(0, cut);
-  if (!prefix) return prefix;
-
-  const openFence = findOpenFence(prefix);
-  if (openFence) {
-    return `${prefix}\n${openFence}\n`;
-  }
-
-  // Keep inline-code stable when streaming mid-span.
-  const ticks = countUnescapedBackticks(prefix);
-  if (ticks % 2 === 1) return `${prefix}\``;
-
-  return prefix;
-}
-
 function renderMarkdown(content: string): string {
   if (!md4wReady) {
     return `<pre class="markdown-fallback">${escapeHtml(content)}</pre>`;
@@ -262,47 +208,29 @@ function SuspendingMarkdown({
   fontSize,
   trimLast,
   showCursor,
-  visibleChars,
 }: {
   content: string;
   fontSize: string;
   trimLast: boolean;
   showCursor: boolean;
-  visibleChars?: number;
 }) {
   if (!md4wReady) use(ensureMd4w());
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const lastContentRef = useRef<string | null>(null);
   const lastShowCursorRef = useRef<boolean | null>(null);
-  const lastVisibleCharsRef = useRef<number | undefined>(undefined);
   const lastHtmlRef = useRef<string | null>(null);
-  const lastMarkdownRenderedRef = useRef<string | null>(null);
-  const lastHtmlBaseRef = useRef<string | null>(null);
   const frameRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    if (
-      content === lastContentRef.current &&
-      showCursor === lastShowCursorRef.current &&
-      visibleChars === lastVisibleCharsRef.current
-    ) {
+    if (content === lastContentRef.current && showCursor === lastShowCursorRef.current) {
       return;
     }
 
     const applyContent = () => {
-      const markdownToRender = visibleChars === undefined
-        ? content
-        : markdownPrefixWithLookahead(content, visibleChars);
-
-      if (markdownToRender !== lastMarkdownRenderedRef.current) {
-        lastHtmlBaseRef.current = renderMarkdown(markdownToRender);
-        lastMarkdownRenderedRef.current = markdownToRender;
-      }
-
-      const baseHtml = lastHtmlBaseRef.current ?? '';
+      const baseHtml = renderMarkdown(content);
       const html = showCursor ? appendInlineIndicator(baseHtml) : baseHtml;
       if (html !== lastHtmlRef.current) {
         if (lastHtmlRef.current === null) {
@@ -314,7 +242,6 @@ function SuspendingMarkdown({
       }
       lastContentRef.current = content;
       lastShowCursorRef.current = showCursor;
-      lastVisibleCharsRef.current = visibleChars;
       frameRef.current = null;
     };
 
@@ -332,7 +259,7 @@ function SuspendingMarkdown({
         frameRef.current = null;
       }
     };
-  }, [content, showCursor, visibleChars]);
+  }, [content, showCursor]);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -372,13 +299,11 @@ function MarkdownRendererInner({
   fontSize = '1rem',
   trimLast = false,
   showCursor = false,
-  visibleChars,
 }: {
   content: string;
   fontSize?: string;
   trimLast?: boolean;
   showCursor?: boolean;
-  visibleChars?: number;
 }) {
   return (
     <SuspendingMarkdown
@@ -386,7 +311,6 @@ function MarkdownRendererInner({
       fontSize={fontSize}
       trimLast={trimLast}
       showCursor={showCursor}
-      visibleChars={visibleChars}
     />
   );
 }

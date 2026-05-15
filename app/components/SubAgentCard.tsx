@@ -47,19 +47,11 @@ function TaskPrompt({ task }: { task: string }) {
   );
 }
 
-function TextBlock({
-  content,
-  lookaheadContent,
-  visibleChars,
-}: {
-  content: string;
-  lookaheadContent?: string;
-  visibleChars?: number;
-}) {
+function TextBlock({ content }: { content: string }) {
   if (!content.trim()) return null;
   return (
     <div className="px-4">
-      <MarkdownRenderer content={lookaheadContent ?? content} visibleChars={visibleChars} />
+      <MarkdownRenderer content={content} />
     </div>
   );
 }
@@ -114,8 +106,6 @@ function BlockItem({
       <ThinkingCall
         key={`think-${index}`}
         content={block.content}
-        lookaheadContent={block.lookaheadContent}
-        visibleChars={block.visibleChars}
         isGrouped={isGrouped}
         isFirst={isFirst}
         isLast={isLast}
@@ -287,8 +277,6 @@ function SubAgentContent({
         <TextBlock
           key={`text-${i}`}
           content={block.content}
-          lookaheadContent={block.lookaheadContent}
-          visibleChars={block.visibleChars}
         />,
       );
       i++;

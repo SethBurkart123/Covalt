@@ -66,23 +66,6 @@ function lastMarkdownSegmentIndex(text: string): number {
   return -1;
 }
 
-function activeMarkdownSegmentIndex(text: string, visibleChars: number): number {
-  const segments = parseMessageSegments(text);
-  let firstMarkdown = -1;
-  let fallback = -1;
-
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    if (segment.kind !== "markdown" || !segment.text?.trim()) continue;
-    if (firstMarkdown === -1) firstMarkdown = i;
-    if (visibleChars <= segment.start) return firstMarkdown;
-    if (visibleChars > segment.start && visibleChars <= segment.end) return i;
-    if (visibleChars > segment.end) fallback = i;
-  }
-
-  return fallback !== -1 ? fallback : firstMarkdown;
-}
-
 function getStreamingIndicatorTarget(
   content: ContentBlock[],
   isStreaming?: boolean,
@@ -96,12 +79,8 @@ function getStreamingIndicatorTarget(
     const block = content[i];
 
     if (block.type === "text") {
-      const lookaheadText = block.lookaheadContent ?? block.content;
-      if (!lookaheadText.trim()) continue;
-      const visibleChars = block.visibleChars ?? block.content.length;
-      const segmentIndex = block.lookaheadContent
-        ? activeMarkdownSegmentIndex(lookaheadText, visibleChars)
-        : lastMarkdownSegmentIndex(block.content);
+      if (!block.content.trim()) continue;
+      const segmentIndex = lastMarkdownSegmentIndex(block.content);
       return segmentIndex === -1
         ? { kind: "after-block", blockIndex: i }
         : { kind: "text", blockIndex: i, segmentIndex };
@@ -239,36 +218,19 @@ function ChatMessage({
                           const block = blocks[i];
 
                           if (block.type === "text") {
-                            const text = block.lookaheadContent ?? block.content;
-                            const visibleChars = block.visibleChars;
-                            if (text && text.trim() !== "") {
-                              const segments = parseMessageSegments(text);
+                            if (block.content && block.content.trim() !== "") {
+                              const segments = parseMessageSegments(block.content);
                               segments.forEach((segment, segIdx) => {
                                 const isCursorSegment =
                                   indicatorTarget.kind === "text" &&
                                   indicatorTarget.blockIndex === i &&
                                   indicatorTarget.segmentIndex === segIdx;
 
-                                let segmentVisibleChars: number | undefined = undefined;
-                                if (visibleChars !== undefined) {
-                                  if (segment.kind === "renderer") {
-                                    if (segment.start >= visibleChars) return;
-                                    if (segment.end > visibleChars) return;
-                                  } else if (segment.kind === "markdown") {
-                                    segmentVisibleChars = Math.max(
-                                      0,
-                                      Math.min(segment.end, visibleChars) - segment.start,
-                                    );
-                                    if (segmentVisibleChars <= 0 && !isCursorSegment) return;
-                                  }
-                                }
-
                                 rendered.push(
                                   <MessageSegmentView
                                     key={`text-${i}-${segIdx}`}
                                     segment={segment}
                                     chatId={chatId}
-                                    visibleChars={segmentVisibleChars}
                                     showCursor={isCursorSegment}
                                   />,
                                 );
@@ -457,8 +419,6 @@ function ChatMessage({
                                     isLast={idx === visibleGroup.length - 1}
                                     active={!b.isCompleted && !!isStreaming}
                                     isCompleted={b.isCompleted}
-                                    lookaheadContent={b.lookaheadContent}
-                                    visibleChars={b.visibleChars}
                                     showIndicator={
                                       indicatorTarget.kind === "reasoning" &&
                                       indicatorTarget.blockIndex === blockIndex

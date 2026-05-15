@@ -14,8 +14,6 @@ import { useAutoCollapse } from "@/lib/hooks/use-auto-collapse";
 
 interface ThinkingCallProps {
   content: string;
-  lookaheadContent?: string;
-  visibleChars?: number;
   active?: boolean;
   isGrouped?: boolean;
   isFirst?: boolean;
@@ -27,8 +25,6 @@ interface ThinkingCallProps {
 
 export default function ThinkingCall({
   content,
-  lookaheadContent,
-  visibleChars,
   active = false,
   isGrouped = false,
   isFirst = false,
@@ -74,8 +70,7 @@ export default function ThinkingCall({
           className={(active || isClosing) && !isManuallyExpanded ? "max-h-48 overflow-y-auto pt-2" : ""}
         >
           <MarkdownRenderer
-            content={lookaheadContent ?? content}
-            visibleChars={visibleChars}
+            content={content}
             showCursor={showIndicator}
           />
         </div>

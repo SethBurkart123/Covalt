@@ -193,16 +193,12 @@ export type ContentBlock =
   | {
       type: "text";
       content: string;
-      lookaheadContent?: string;
-      visibleChars?: number;
     }
   | ({ type: "tool_call" } & ToolCallPayload & { isCompleted: boolean })
   | {
       type: "reasoning";
       content: string;
       isCompleted: boolean;
-      lookaheadContent?: string;
-      visibleChars?: number;
     }
   | {
       type: "member_run";
