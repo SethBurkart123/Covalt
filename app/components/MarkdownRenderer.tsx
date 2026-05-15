@@ -6,6 +6,7 @@ import { init as initMd4w, mdToHtml, setCodeHighlighter } from 'md4w';
 import md4wWasmUrl from 'md4w-wasm?url';
 import { Prism } from 'prism-react-renderer';
 import { cn } from '@/lib/utils';
+import { preprocessPartialMarkdown } from '@/lib/markdown/partial';
 import './md4w-renderer.css';
 const MD4W_EQUATION_OPEN = '<x-equation';
 const MD4W_EQUATION_CLOSE = '</x-equation>';
@@ -121,11 +122,21 @@ function restoreSafeDetails(html: string): string {
     .split('&lt;/strong&gt;').join('</strong>');
 }
 
+const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+const SAFE_DATA_URL_PREFIXES = ['data:image/png;', 'data:image/jpeg;', 'data:image/gif;', 'data:image/webp;'];
+
 function isSafeGeneratedUrl(value: string): boolean {
-  const decoded = decodeHtmlEntities(value).trim().replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+  const decoded = decodeHtmlEntities(value).trim().replace(/[\u0000-\u001F\u007F\s]+/g, '');
+  if (!decoded) return false;
   if (decoded.startsWith('#') || decoded.startsWith('/') || decoded.startsWith('./') || decoded.startsWith('../')) return true;
-  if (decoded.startsWith('http://') || decoded.startsWith('https://') || decoded.startsWith('mailto:')) return true;
-  return decoded.startsWith('data:image/png;') || decoded.startsWith('data:image/jpeg;') || decoded.startsWith('data:image/gif;') || decoded.startsWith('data:image/webp;');
+  const lower = decoded.toLowerCase();
+  if (SAFE_DATA_URL_PREFIXES.some(prefix => lower.startsWith(prefix))) return true;
+  try {
+    const url = new URL(decoded);
+    return SAFE_URL_PROTOCOLS.has(url.protocol);
+  } catch {
+    return false;
+  }
 }
 
 function scrubGeneratedUrls(html: string): string {
@@ -191,6 +202,7 @@ function appendInlineIndicator(html: string): string {
 }
 
 function renderMarkdown(content: string): string {
+  if (!content) return '';
   if (!md4wReady) {
     return `<pre class="markdown-fallback">${escapeHtml(content)}</pre>`;
   }
@@ -230,7 +242,8 @@ function SuspendingMarkdown({
     }
 
     const applyContent = () => {
-      const baseHtml = renderMarkdown(content);
+      const source = showCursor ? preprocessPartialMarkdown(content) : content;
+      const baseHtml = renderMarkdown(source);
       const html = showCursor ? appendInlineIndicator(baseHtml) : baseHtml;
       if (html !== lastHtmlRef.current) {
         if (lastHtmlRef.current === null) {
